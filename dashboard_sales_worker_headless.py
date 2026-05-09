@@ -34,7 +34,8 @@ pasta = os.path.dirname(os.path.abspath(__file__))
 download_dir = pasta if not IS_RAILWAY else tempfile.gettempdir()
 
 if IS_RAILWAY:
-    options.add_argument("--headless=new")
+    options.page_load_strategy = 'eager'
+    options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
@@ -52,6 +53,11 @@ if IS_RAILWAY:
     options.add_argument("--no-first-run")
     options.add_argument("--no-default-browser-check")
     options.add_argument("--disable-features=VizDisplayCompositor")
+    options.add_argument("--disable-setuid-sandbox")
+    options.add_argument("--single-process")
+    options.add_argument("--disable-infobars")
+    options.add_argument("--ignore-certificate-errors")
+    options.add_argument("--allow-insecure-localhost")
 else:
     options.add_argument("--start-maximized")
 
@@ -1201,7 +1207,9 @@ def coletar_margens_brutas_mes_atual():
 
 # ===== LOGIN
 driver.get(URL)
-time.sleep(5)
+time.sleep(8)
+print("TITLE:", driver.title)
+print("URL ATUAL:", driver.current_url)
 wait.until(EC.presence_of_element_located((By.NAME, "usuario"))).send_keys(LOGIN)
 senha_field = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@type='password']")))
 senha_field.send_keys(SENHA)
