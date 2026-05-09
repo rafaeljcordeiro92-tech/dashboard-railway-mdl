@@ -37,12 +37,20 @@ def run_job(script_path, label):
 
 def main():
     print(f"Scheduler Railway ativo | TZ={TZ}")
+    force_sales = os.getenv("FORCE_RUN_SALES_ON_BOOT", "0") == "1"
+    force_cobranca = os.getenv("FORCE_RUN_COBRANCA_ON_BOOT", "0") == "1"
+    if force_sales:
+        run_job(SALES_SCRIPT, "vendas_servicos_caminhao_boot")
+    if force_cobranca:
+        run_job(FULL_SCRIPT, "dashboard_completo_cobranca_boot")
+
     last_sales_key = None
     last_cob_key = None
 
     while True:
         now = datetime.now(TZ)
         minute_key = now.strftime("%Y-%m-%d %H:%M")
+        print(f"[{now.isoformat()}] tick | sales={should_run_sales(now)} | cobranca={should_run_cobranca(now)}")
 
         if should_run_sales(now) and minute_key != last_sales_key:
             run_job(SALES_SCRIPT, "vendas_servicos_caminhao")
