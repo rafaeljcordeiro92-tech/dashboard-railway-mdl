@@ -1115,7 +1115,7 @@ def _gerar_relatorio_margem(tipo):
     except Exception as e:
         print(f"⚠️ Não consegui selecionar formato XLS de Margem Bruta: {e}")
 
-    arquivos_antes = set(f for f in os.listdir(pasta) if _nome_arquivo_margem_valido(f))
+    arquivos_antes = set(f for f in os.listdir(download_dir) if _nome_arquivo_margem_valido(f))
 
     gerar_btn = wait.until(EC.presence_of_element_located((By.ID, 'gerar')))
     driver.execute_script("arguments[0].scrollIntoView({block:'center'});", gerar_btn)
@@ -1129,16 +1129,16 @@ def _gerar_relatorio_margem(tipo):
     caminho = None
     for _ in range(60):
         time.sleep(2)
-        baixando = any(f.endswith('.crdownload') or f.endswith('.tmp') for f in os.listdir(pasta))
+        baixando = any(f.endswith('.crdownload') or f.endswith('.tmp') for f in os.listdir(download_dir))
         if baixando:
             continue
-        novos = set(f for f in os.listdir(pasta) if _nome_arquivo_margem_valido(f)) - arquivos_antes
+        novos = set(f for f in os.listdir(download_dir) if _nome_arquivo_margem_valido(f)) - arquivos_antes
         if novos:
-            caminho = max([os.path.join(pasta, f) for f in novos], key=os.path.getctime)
+            caminho = max([os.path.join(download_dir, f) for f in novos], key=os.path.getctime)
             break
 
     if not caminho:
-        todos = [os.path.join(pasta, f) for f in os.listdir(pasta) if _nome_arquivo_margem_valido(f)]
+        todos = [os.path.join(download_dir, f) for f in os.listdir(download_dir) if _nome_arquivo_margem_valido(f)]
         if not todos:
             raise Exception('Nenhum arquivo XLS/XLSX de margem foi baixado')
         caminho = max(todos, key=os.path.getctime)
@@ -1208,7 +1208,50 @@ driver.get(URL)
 time.sleep(8)
 print("TITLE:", driver.title)
 print("URL ATUAL:", driver.current_url)
-wait.until(EC.presence_of_element_located((By.NAME, "usuario"))).send_keys(LOGIN)
+
+campo_usuario = None
+seletores_usuario = [
+    (By.NAME, "usuario"),
+    (By.ID, "usuario"),
+    (By.CSS_SELECTOR, "input[name='usuario']"),
+    (By.CSS_SELECTOR, "input[id='usuario']"),
+    (By.XPATH, "//input[contains(@name,'usuario') or contains(@id,'usuario')]"),
+    (By.XPATH, "//input[@type='text']"),
+]
+
+for by, sel in seletores_usuario:
+    try:
+        campo_usuario = WebDriverWait(driver, 8).until(
+            EC.presence_of_element_located((by, sel))
+        )
+        if campo_usuario:
+            print(f"✅ Campo usuário encontrado em: {by} = {sel}")
+            break
+    except Exception:
+        pass
+
+if not campo_usuario:
+    print("❌ Campo usuário não encontrado")
+    print("URL:", driver.current_url)
+    print("TITLE:", driver.title)
+    try:
+        print(driver.page_source[:5000])
+    except Exception:
+        pass
+    try:
+        driver.save_screenshot(os.path.join(download_dir, "debug_login.png"))
+    except Exception:
+        pass
+    raise Exception("Campo usuário não encontrado na tela de login")
+
+try:
+    campo_usuario.click()
+    campo_usuario.send_keys(Keys.CONTROL, "a")
+    campo_usuario.send_keys(Keys.DELETE)
+except Exception:
+    pass
+campo_usuario.send_keys(LOGIN)
+
 senha_field = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@type='password']")))
 senha_field.send_keys(SENHA)
 senha_field.send_keys(Keys.ENTER)
@@ -1216,7 +1259,7 @@ senha_field.send_keys(Keys.ENTER)
 try:
     wait.until(EC.element_to_be_clickable((By.ID, "botao_prosseguir_informa_local_trabalho"))).click()
     print("✅ Filial OK")
-except:
+except Exception:
     print("⚠️ Tela de filial não apareceu")
 time.sleep(5)
 
@@ -1278,7 +1321,7 @@ except Exception as e:
 
 # ===== GERAR E AGUARDAR DOWNLOAD
 arquivos_antes = set(
-    f for f in os.listdir(pasta)
+    f for f in os.listdir(download_dir)
     if nome_arquivo_contas_valido(f)
 )
 driver.find_element(By.ID, "gerar").click()
@@ -1287,22 +1330,29 @@ print("📥 Gerando XLS... aguardando download...")
 caminho = None
 for _ in range(60):
     time.sleep(2)
-    baixando = any(f.endswith(".crdownload") or f.endswith(".tmp") for f in os.listdir(pasta))
+    baixando = any(f.endswith(".crdownload") or f.endswith(".tmp") for f in os.listdir(download_dir))
     if baixando:
         print("⏳ Ainda baixando..."); continue
     novos = set(
-        f for f in os.listdir(pasta)
+        f for f in os.listdir(download_dir)
         if nome_arquivo_contas_valido(f)
     ) - arquivos_antes
     if novos:
-        caminho = max([os.path.join(pasta, f) for f in novos], key=os.path.getctime)
+        caminho = max([os.path.join(download_dir, f) for f in novos], key=os.path.getctime)
         print(f"✅ Download OK: {caminho}"); break
 
 if not caminho:
-    todos = [f for f in os.listdir(pasta) if nome_arquivo_contas_valido(f)]
+    todos = [f for f in os.listdir(download_dir) if nome_arquivo_contas_valido(f)]
+    print(f"📂 download_dir: {download_dir}")
+    try:
+        print("📂 Arquivos atuais:", os.listdir(download_dir))
+    except Exception as e:
+        print(f"⚠️ Não consegui listar download_dir: {e}")
     if not todos:
-        print("❌ Nenhum XLS/XLSX válido do Contas a Receber encontrado"); input("ENTER..."); driver.quit(); exit()
-    caminho = max([os.path.join(pasta, f) for f in todos], key=os.path.getctime)
+        print("❌ Nenhum XLS/XLSX válido do Contas a Receber encontrado")
+        driver.quit()
+        raise Exception("Nenhum XLS/XLSX válido do Contas a Receber encontrado")
+    caminho = max([os.path.join(download_dir, f) for f in todos], key=os.path.getctime)
     print(f"⚠️ Usando mais recente do Contas a Receber: {caminho}")
 
 # ===== LEITURA DO XLS
