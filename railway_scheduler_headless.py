@@ -17,7 +17,8 @@ FULL_SCRIPT = os.path.join(BASE_DIR, "dashboard_railway_main_headless.py")
 
 
 def is_business_day(dt):
-    return dt.weekday() < 5
+    # segunda=0 ... sábado=5 ... domingo=6
+    return dt.weekday() < 6
 
 
 def should_run_sales(dt):
@@ -27,7 +28,6 @@ def should_run_sales(dt):
         return False
     if dt.hour == SALES_END_HOUR and dt.minute > 0:
         return False
-    # dispara durante o minuto válido inteiro (00, 20, 40)
     return (dt.minute % SALES_INTERVAL_MIN == 0)
 
 
@@ -71,7 +71,6 @@ def main():
             run_job(FULL_SCRIPT, "dashboard_completo_cobranca")
             last_cob_key = minute_key
 
-        # checa com mais precisão para não perder o minuto exato
         time.sleep(5)
 
 
