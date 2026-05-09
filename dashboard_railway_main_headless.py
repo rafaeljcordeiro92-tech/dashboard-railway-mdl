@@ -49,7 +49,39 @@ prefs = {
     "download.directory_upgrade": True,
 }
 options.add_experimental_option("prefs", prefs)
-driver = webdriver.Chrome(options=options)
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.common.exceptions import WebDriverException
+
+chrome_bin = (
+    os.getenv("GOOGLE_CHROME_BIN")
+    or os.getenv("CHROME_BIN")
+    or "/usr/bin/google-chrome"
+    or "/usr/bin/chromium"
+)
+
+chrome_driver_bin = (
+    os.getenv("CHROMEDRIVER")
+    or os.getenv("CHROMEDRIVER_PATH")
+)
+
+if os.path.exists(chrome_bin):
+    options.binary_location = chrome_bin
+
+try:
+    if chrome_driver_bin and os.path.exists(chrome_driver_bin):
+        driver = webdriver.Chrome(service=Service(chrome_driver_bin), options=options)
+    else:
+        driver = webdriver.Chrome(options=options)
+except WebDriverException as e:
+    print(f"❌ Erro ao iniciar Chrome/Chromedriver: {e}")
+    print(f"   binary_location={getattr(options, 'binary_location', '')}")
+    print(f"   GOOGLE_CHROME_BIN={os.getenv('GOOGLE_CHROME_BIN')}")
+    print(f"   CHROME_BIN={os.getenv('CHROME_BIN')}")
+    print(f"   CHROMEDRIVER={os.getenv('CHROMEDRIVER')}")
+    print(f"   CHROMEDRIVER_PATH={os.getenv('CHROMEDRIVER_PATH')}")
+    raise
+
 wait   = WebDriverWait(driver, 40)
 
 
