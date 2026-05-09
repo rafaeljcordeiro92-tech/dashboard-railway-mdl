@@ -6030,5 +6030,5 @@ else:
     print(f'   {html_path} → {FTP_DIR}/dashboard_vendedores.html')
 
 print('\n🔥 FINALIZADO!')
-input('🔎 ENTER para fechar...')
+print("🔎 Fechamento automático em ambiente Railway")
 driver.quit()
