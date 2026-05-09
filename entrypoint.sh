@@ -3,7 +3,7 @@ set -e
 
 echo "Iniciando Xvfb em ${DISPLAY} ..."
 Xvfb ${DISPLAY} -screen 0 1920x1080x24 -ac +extension RANDR >/tmp/xvfb.log 2>&1 &
-sleep 2
+sleep 3
 
 echo "Validando Chromium..."
 which chromium || true
