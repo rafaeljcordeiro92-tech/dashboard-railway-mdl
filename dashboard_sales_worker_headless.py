@@ -38,8 +38,20 @@ if IS_RAILWAY:
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
-    options.add_argument("--window-size=1600,2200")
+    options.add_argument("--window-size=1920,1080")
     options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--remote-debugging-port=9222")
+    options.add_argument("--disable-software-rasterizer")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-background-networking")
+    options.add_argument("--disable-background-timer-throttling")
+    options.add_argument("--disable-backgrounding-occluded-windows")
+    options.add_argument("--disable-renderer-backgrounding")
+    options.add_argument("--hide-scrollbars")
+    options.add_argument("--mute-audio")
+    options.add_argument("--no-first-run")
+    options.add_argument("--no-default-browser-check")
+    options.add_argument("--disable-features=VizDisplayCompositor")
 else:
     options.add_argument("--start-maximized")
 
@@ -82,6 +94,7 @@ except WebDriverException as e:
     print(f"   CHROMEDRIVER_PATH={os.getenv('CHROMEDRIVER_PATH')}")
     raise
 
+driver.set_page_load_timeout(120)
 wait   = WebDriverWait(driver, 40)
 
 
@@ -1188,6 +1201,7 @@ def coletar_margens_brutas_mes_atual():
 
 # ===== LOGIN
 driver.get(URL)
+time.sleep(5)
 wait.until(EC.presence_of_element_located((By.NAME, "usuario"))).send_keys(LOGIN)
 senha_field = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@type='password']")))
 senha_field.send_keys(SENHA)
