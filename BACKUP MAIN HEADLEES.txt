@@ -2064,8 +2064,6 @@ SENHA_MASTER = "mdladm01"
 LOGIN_MASTER = "master"
 SENHA_DIRETOR = "mdldir01"
 LOGIN_DIRETOR = "diretorcomercial"
-LOGIN_PAINEL = "painel"
-SENHA_PAINEL = "painelmdl10"
 EMAIL_RECUPERACAO = "sac@moveisdolar.com.br"
 cred_path    = os.path.join(pasta, "credenciais_vendedores.txt")
 cred_state_path = os.path.join(pasta, "credenciais_dashboard.json")
@@ -2227,36 +2225,6 @@ for _fil_cred, _login_cred in CREDIARISTAS_FILIAIS.items():
     }
     linhas_txt.append(f"{_login_cred} | {_nome_cred} | {_senha_cred} | {_fil_cred} | CREDIARISTA")
 
-
-# Usuário somente visualização da tela inicial
-_estado_painel = cred_state.get("users", {}).get(LOGIN_PAINEL, {})
-_senha_painel = _estado_painel.get("password") or SENHA_PAINEL
-_troca_painel = bool(_estado_painel.get("must_change_password", False))
-credenciais[LOGIN_PAINEL] = {
-    "senha": _senha_painel,
-    "senha_inicial": SENHA_PAINEL,
-    "nome": "Painel",
-    "filial": "",
-    "is_gerente": False,
-    "is_viewer": True,
-    "pendente": 0.0,
-    "pago": 0.0,
-    "total": 0.0,
-    "perc_filial": 0.0,
-}
-auth_users[LOGIN_PAINEL] = {
-    "login": LOGIN_PAINEL,
-    "password": _senha_painel,
-    "initial_password": SENHA_PAINEL,
-    "must_change_password": _troca_painel,
-    "nome": "Painel",
-    "filial": "",
-    "is_gerente": False,
-    "is_viewer": True,
-    "email_recuperacao": EMAIL_RECUPERACAO,
-}
-linhas_txt.append(f"{LOGIN_PAINEL} | Painel | {_senha_painel} | --- | VISUALIZAÇÃO")
-
 cred_state["users"] = auth_users
 cred_state["director"] = {
     "login": LOGIN_DIRETOR,
@@ -2276,8 +2244,7 @@ with open(cred_path, "w", encoding="utf-8") as f:
     f.write("   CREDENCIAIS DASHBOARD – MÓVEIS DOLAR\n")
     f.write("=" * 70 + "\n\n")
     f.write(f"  MASTER             login: {LOGIN_MASTER}   senha: {SENHA_MASTER}\n")
-    f.write(f"  DIRETOR COMERCIAL  login: {LOGIN_DIRETOR}   senha atual: {cred_state['director']['password']}\n")
-    f.write(f"  PAINEL            login: {LOGIN_PAINEL}   senha atual: {_senha_painel}\n\n")
+    f.write(f"  DIRETOR COMERCIAL  login: {LOGIN_DIRETOR}   senha atual: {cred_state['director']['password']}\n\n")
     f.write("-" * 70 + "\n")
     f.write(f"  {'LOGIN':<20} {'NOME':<35} {'SENHA':<14} {'FILIAL':<6} TIPO\n")
     f.write("-" * 70 + "\n")
@@ -2603,149 +2570,7 @@ def fechar_mes_anterior_travado(_mes_atual, _hist_dash, _config_global, _config_
     print(f'📦 Fechamento mensal travado salvo: {_prev_month}')
     return _fech
 
-
 ensure_month_reference_locked(mes_str, hoje_str)
-
-# ── Base mensal opcional via relatório de início do mês ───────────────
-MESES_PT = {
-    "jan": "01", "janeiro": "01",
-    "fev": "02", "fevereiro": "02",
-    "mar": "03", "marco": "03", "março": "03",
-    "abr": "04", "abril": "04",
-    "mai": "05", "maio": "05",
-    "jun": "06", "junho": "06",
-    "jul": "07", "julho": "07",
-    "ago": "08", "agosto": "08",
-    "set": "09", "setembro": "09",
-    "out": "10", "outubro": "10",
-    "nov": "11", "novembro": "11",
-    "dez": "12", "dezembro": "12",
-}
-
-def _month_from_filename(_name):
-    _n = os.path.basename(str(_name)).lower()
-    _n = _n.replace("ç", "c")
-    for _mes_nome, _mes_num in sorted(MESES_PT.items(), key=lambda x: len(x[0]), reverse=True):
-        if _mes_nome in _n:
-            _m = re.search(r"(20\d{2}|\d{2})", _n)
-            if _m:
-                _yy = _m.group(1)
-                _yy = f"20{_yy}" if len(_yy) == 2 else _yy
-                return f"{_yy}-{_mes_num}"
-    return None
-
-def _find_base_report_for_month(_month_str):
-    _cands = []
-    for _root in [pasta, CACHE_DIR]:
-        try:
-            for _name in os.listdir(_root):
-                _low = _name.lower()
-                if ("meta inicio" in _low or "meta_inicio" in _low) and _low.endswith((".xls", ".xlsx")):
-                    if _month_from_filename(_name) == _month_str:
-                        _cands.append(os.path.join(_root, _name))
-        except Exception:
-            pass
-    if not _cands:
-        return None
-    _cands = sorted(set(_cands), key=lambda p: os.path.getmtime(p), reverse=True)
-    return _cands[0]
-
-def _parse_base_report_faixas(_path, _month_str):
-    _base_date = datetime.strptime(f"{_month_str}-01", "%Y-%m-%d")
-    _dfb = pd.read_excel(_path, header=None)
-    _vend_atual = None
-    _out_v = {}
-    _out_f = {}
-
-    for _i in range(len(_dfb)):
-        _row = _dfb.iloc[_i]
-        _c0 = str(_row[COL["filial"]]).strip()
-        _c1 = str(_row[COL["cliente"]]).strip()
-
-        if "Vendedor:" in _c0:
-            _vend_atual = limpar_nome_erp(_c0)
-            continue
-
-        if _c1 in ("nan", "", "Cliente", "Filial"):
-            continue
-        if _c0.upper().startswith("FILIAL") and _c1 in ("nan", "", "Cliente", "Filial"):
-            continue
-        if not _vend_atual:
-            continue
-
-        _venc = _parse_data(_row[COL["vencimento"]])
-        _pend = tratar_valor(_row[COL["pendente"]])
-        if not _venc or _pend <= 0:
-            continue
-        if str(_row[COL["conta_caixa"]]).strip() == "Caixa Filial 100":
-            continue
-
-        _dias = (_base_date - _venc).days
-        if _dias >= 60:
-            _fx = "grave"
-        elif 30 <= _dias < 60:
-            _fx = "alerta"
-        elif 15 <= _dias < 30:
-            _fx = "atencao"
-        else:
-            continue
-
-        _fv, _ig = extrair_filial_nome(_vend_atual)
-        _nome = limpar_nome_display(_vend_atual)
-
-        if _fv is not None:
-            _filial = str(_fv).strip().upper()
-        else:
-            _lookup = _filial_inativo_lookup.get(_nome, "")
-            if _lookup == "FDEP" or _nome in _nomes_fdep:
-                continue
-            elif _lookup:
-                _filial = str(_lookup).strip().upper()
-            else:
-                _fil_txt = str(_row[COL["filial"]]).upper()
-                _mfil = re.search(r"FILIAL\s*(\d+)", _fil_txt)
-                _filial = f"F{int(_mfil.group(1))}" if _mfil else "OUTROS"
-
-        _key = f"{_nome}_{_filial}"
-        _out_v.setdefault(_key, {"grave": 0.0, "alerta": 0.0, "atencao": 0.0})
-        _out_f.setdefault(_filial, {"grave": 0.0, "alerta": 0.0, "atencao": 0.0})
-        _out_v[_key][_fx] += float(_pend)
-        _out_f[_filial][_fx] += float(_pend)
-
-    for _d in (_out_v, _out_f):
-        for _k, _vals in _d.items():
-            for _fx in ["grave", "alerta", "atencao"]:
-                _vals[_fx] = round(float(_vals.get(_fx, 0) or 0), 2)
-    return {"data": f"{_month_str}-01", "vendedores": _out_v, "filiais": _out_f, "arquivo": os.path.basename(_path)}
-
-BASE_MENSAL_INFO = {"data": f"{mes_str}-01", "vendedores": {}, "filiais": {}, "arquivo": ""}
-_base_report_path = _find_base_report_for_month(mes_str)
-if _base_report_path:
-    try:
-        BASE_MENSAL_INFO = _parse_base_report_faixas(_base_report_path, mes_str)
-        _base_meta_path = os.path.join(CACHE_DIR, f"base_meta_{mes_str}.json")
-        with open(_base_meta_path, "w", encoding="utf-8") as _fbm:
-            json.dump(BASE_MENSAL_INFO, _fbm, ensure_ascii=False, indent=2)
-        with open(ref_path(mes_str), "w", encoding="utf-8") as _fr:
-            json.dump({
-                "data": BASE_MENSAL_INFO["data"],
-                "gerado_em": datetime.now().isoformat(),
-                "origem": "arquivo_base_relatorio",
-                "arquivo_base": os.path.basename(_base_report_path),
-                "snapshot_origem_data": BASE_MENSAL_INFO["data"],
-            }, _fr, ensure_ascii=False, indent=2)
-        print(f"🧷 Base mensal carregada do relatório: {os.path.basename(_base_report_path)}")
-    except Exception as _e_base:
-        print(f"⚠️ Erro lendo base mensal {_base_report_path}: {_e_base}")
-else:
-    _base_meta_path = os.path.join(CACHE_DIR, f"base_meta_{mes_str}.json")
-    if os.path.exists(_base_meta_path):
-        try:
-            with open(_base_meta_path, "r", encoding="utf-8") as _fbm:
-                BASE_MENSAL_INFO = json.load(_fbm)
-            print(f"🧷 Base mensal reutilizada do cache: {os.path.basename(_base_meta_path)}")
-        except Exception:
-            pass
 
 # ── Snapshot de hoje ──────────────────────────────────────────────────
 snapshot_hoje = {
@@ -2872,26 +2697,6 @@ def calc_pendente_faixas(pendente_total):
         "alerta":  round(pendente_total * 0.30, 2),
         "atencao": round(pendente_total * 0.20, 2),
     }
-
-def get_base_faixas_vendedor(key, pendente_total):
-    _base = (BASE_MENSAL_INFO.get("vendedores", {}) or {}).get(key)
-    if isinstance(_base, dict) and sum(float(_base.get(_fx, 0) or 0) for _fx in ["grave","alerta","atencao"]) > 0:
-        return {
-            "grave": round(float(_base.get("grave", 0) or 0), 2),
-            "alerta": round(float(_base.get("alerta", 0) or 0), 2),
-            "atencao": round(float(_base.get("atencao", 0) or 0), 2),
-        }
-    return calc_pendente_faixas(pendente_total)
-
-def get_base_faixas_filial(filial, pendente_total):
-    _base = (BASE_MENSAL_INFO.get("filiais", {}) or {}).get(filial)
-    if isinstance(_base, dict) and sum(float(_base.get(_fx, 0) or 0) for _fx in ["grave","alerta","atencao"]) > 0:
-        return {
-            "grave": round(float(_base.get("grave", 0) or 0), 2),
-            "alerta": round(float(_base.get("alerta", 0) or 0), 2),
-            "atencao": round(float(_base.get("atencao", 0) or 0), 2),
-        }
-    return calc_pendente_faixas(pendente_total)
 
 def calc_metas_alvo(faixas, cfg=None):
     """Calcula alvo de meta de cada faixa usando config (global ou individual)."""
@@ -3194,7 +2999,7 @@ for key, vd in snapshot_hoje["vendedores"].items():
 
     _cfg_key = get_config_meta(key)  # config individual ou global
     if key not in meta_mes["vendedores"]:
-        faixas = get_base_faixas_vendedor(key, vd["pendente"])
+        faixas = calc_pendente_faixas(vd["pendente"])
         alvos  = calc_metas_alvo(faixas, _cfg_key)
         meta_mes["vendedores"][key] = {
             "nome": vd["nome"], "filial": vd["filial"], "is_gerente": vd["is_gerente"],
@@ -3244,7 +3049,7 @@ for key, vd in snapshot_hoje["vendedores"].items():
 
     # Migração: se registro antigo não tem campos de faixa, recalcula
     if "grave_alvo" not in vm:
-        faixas_mig = get_base_faixas_vendedor(key, vd.get("pendente", 0))
+        faixas_mig = calc_pendente_faixas(vd.get("pendente", 0))
         alvos_mig  = calc_metas_alvo(faixas_mig)
         vm.update({
             "grave_alvo":   alvos_mig["grave_alvo"],
@@ -3254,16 +3059,6 @@ for key, vd in snapshot_hoje["vendedores"].items():
             "alerta_pend":  faixas_mig["alerta"],
             "atencao_pend": faixas_mig["atencao"],
         })
-
-    # Base mensal do relatório, se existir, prevalece como alvo do mês
-    _faixas_base_vm = get_base_faixas_vendedor(key, vd.get("pendente", 0))
-    _alvos_base_vm = calc_metas_alvo(_faixas_base_vm, _cfg_key)
-    vm["grave_pend"] = _faixas_base_vm["grave"]
-    vm["alerta_pend"] = _faixas_base_vm["alerta"]
-    vm["atencao_pend"] = _faixas_base_vm["atencao"]
-    vm["grave_alvo"] = _alvos_base_vm["grave_alvo"]
-    vm["alerta_alvo"] = _alvos_base_vm["alerta_alvo"]
-    vm["atencao_alvo"] = _alvos_base_vm["atencao_alvo"]
 
     # Percentuais por faixa
     ga = vm["grave_alvo"];   gr = vm["grave_rec"]
@@ -3288,7 +3083,7 @@ for f, fd in snapshot_hoje["filiais"].items():
     # CRIA META SE NÃO EXISTIR
     # =========================================
     if f not in meta_mes["filiais"]:
-        faixas_f = get_base_faixas_filial(f, fd["pendente"])
+        faixas_f = calc_pendente_faixas(fd["pendente"])
         alvos_f  = calc_metas_alvo(faixas_f)
 
         meta_mes["filiais"][f] = {
@@ -3329,7 +3124,7 @@ for f, fd in snapshot_hoje["filiais"].items():
     # 🔄 SEGURANÇA (migração)
     # =========================================
     if "grave_alvo" not in fm:
-        faixas_mig_f = get_base_faixas_filial(f, fd.get("pendente", 0))
+        faixas_mig_f = calc_pendente_faixas(fd.get("pendente", 0))
         alvos_mig_f  = calc_metas_alvo(faixas_mig_f)
 
         fm.update({
@@ -3340,16 +3135,6 @@ for f, fd in snapshot_hoje["filiais"].items():
             "alerta_pend":  faixas_mig_f["alerta"],
             "atencao_pend": faixas_mig_f["atencao"],
         })
-
-    # Base mensal do relatório, se existir, prevalece como alvo do mês
-    _faixas_base_fm = get_base_faixas_filial(f, fd.get("pendente", 0))
-    _alvos_base_fm = calc_metas_alvo(_faixas_base_fm)
-    fm["grave_pend"] = _faixas_base_fm["grave"]
-    fm["alerta_pend"] = _faixas_base_fm["alerta"]
-    fm["atencao_pend"] = _faixas_base_fm["atencao"]
-    fm["grave_alvo"] = _alvos_base_fm["grave_alvo"]
-    fm["alerta_alvo"] = _alvos_base_fm["alerta_alvo"]
-    fm["atencao_alvo"] = _alvos_base_fm["atencao_alvo"]
 
     # =========================================
     # 📊 % META
@@ -4844,15 +4629,12 @@ function renderKPIs(){
   const rentPct=Number(RENT_EMPRESA?.margem_bruta_pct||0);
   const sales=SALES_EMPRESA||{};
   const salesDates=Object.keys(HIST_DASH?.sales_dates||{}).sort();
-  const hojeIso=new Date().toISOString().slice(0,10);
-  const prevDate=salesDates.filter(d=>String(d)<String(hojeIso)).slice(-1)[0]||'';
+  const prevDate=salesDates.filter(d=>String(d)<String(new Date().toISOString().slice(0,10))).slice(-1)[0]||'';
   const prevEmpresa=(prevDate?(HIST_DASH?.sales_dates?.[prevDate]?.empresa||{}):{});
   const vendaDiaria=Math.max(0, Number(sales.venda_realizado_total||0)-Number(prevEmpresa.venda_realizado_total||0)) + Math.max(0, Number(sales.servico_realizado_total||0)-Number(prevEmpresa.servico_realizado_total||0));
   const markupBase=(Number(sales.venda_realizado_total||0)+Number(sales.servico_realizado_total||0));
   const markupCost=Number(RENT_EMPRESA?.custo_total||0);
   const markupTotal=markupCost>0?(markupBase/markupCost):0;
-  const isViewer=!!usuarioAtual?.is_viewer;
-  const isPrivileged=(usuarioAtual?.tipo==='master' || isViewer);
   const cards=[
     makeKpi('💰 Total pendente',R(TOTAL_P),'var(--red)'),
     makeKpi('🏦 Total recebido',R(TOTAL_PG),'var(--green)'),
@@ -4864,10 +4646,11 @@ function renderKPIs(){
     makeKpi('🧰 Serviços projetado',R(sales.servico_projetado||0),'var(--blue-400)',`Meta período ${R(sales.servico_meta_periodo||0)}`),
     makeKpi('🚚 Caminhão realizado',R(sales.caminhao_realizado_total||0),'var(--yellow)',`Meta ${R(sales.caminhao_meta_total||0)} · Atingido ${pct(sales.caminhao_atingido_total||0)}`),
     makeKpi('🛣️ Caminhão projetado',R(sales.caminhao_projetado||0),'var(--yellow-400)',`Meta período ${R(sales.caminhao_meta_periodo||0)}`),
-    (isPrivileged ? makeKpi('💵 Faturamento total',R((Number(sales.venda_realizado_total||0)+Number(sales.servico_realizado_total||0))),'var(--green-400)','Mercantil + serviços realizado') : ''),
-    (isPrivileged ? makeKpi('🕒 Venda diária',R(vendaDiaria),'var(--cyan-400)','Mercantil + serviços do dia') : ''),
+    ((usuarioAtual?.tipo==='master')
+      ? makeKpi('💵 Faturamento total',R((Number(sales.venda_realizado_total||0)+Number(sales.servico_realizado_total||0))),'var(--green-400)','Mercantil + serviços realizado')
+      : ''),
     makeKpi('📊 Rentabilidade total', rentPct?`${rentPct.toFixed(2).replace('.',',')}%`:'Sem dado','var(--green-400)','Última linha do relatório de margem bruta por filial'),
-    makeKpi('🧮 Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)', isViewer ? 'Índice mercantil + serviços / custo oculto' : `(Mercantil + serviços) / custo total ${R(markupCost||0)}`)
+    makeKpi('🧮 Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)',`(Mercantil + serviços) / custo total ${R(markupCost||0)}`)
   ];
   document.getElementById('kpis').innerHTML=cards.join('');
 }
@@ -5854,7 +5637,7 @@ function closeRecover(){document.getElementById('recoverModal').classList.remove
 async function enviarRecuperacaoSenha(){const login=(document.getElementById('recLogin').value||'').trim().toLowerCase(); const obs=(document.getElementById('recObs').value||'').trim(); const box=document.getElementById('recMsg'); if(!login){box.textContent='Informe o usuário.'; return;} try{const fd=new FormData(); fd.append('action','request_reset'); fd.append('login',login); fd.append('obs',obs); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); box.textContent=j.ok?'✅ Solicitação enviada ao Master.':'⚠️ Não consegui enviar a solicitação.';}catch(e){box.textContent='⚠️ Não consegui enviar a solicitação.';}}
 async function salvarPrimeiroAcesso(){const login=(document.getElementById('faLogin').value||'').trim().toLowerCase(); const atual=(document.getElementById('faCurrentPass').value||'').trim(); const nova=(document.getElementById('faNewPass').value||'').trim(); const nova2=(document.getElementById('faNewPass2').value||'').trim(); const box=document.getElementById('faMsg'); box.textContent=''; if(!login||!atual||!nova||!nova2){box.textContent='Preencha todos os campos.'; return;} if(nova.length<4){box.textContent='A nova senha deve ter pelo menos 4 caracteres.'; return;} if(nova!==nova2){box.textContent='A confirmação da senha não confere.'; return;} const auth=getAuthUser(login); if(!auth || String(auth.password)!==atual){box.textContent='Usuário ou senha atual inválidos.'; return;} try{const fd=new FormData(); fd.append('action','change_password'); fd.append('login',login); fd.append('current_password',atual); fd.append('new_password',nova); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); box.textContent=j.ok?'✅ Senha alterada com sucesso. Entre com a nova senha.':'⚠️ Não consegui alterar a senha.'; if(j.ok){await carregarCredenciaisOnline(); document.getElementById('loginPass').value=''; setTimeout(()=>{closeFirstAccess();},700);}}catch(e){box.textContent='⚠️ Não consegui alterar a senha.';}}
 async function fazerLogin(){const u=(document.getElementById('loginUser').value||'').trim().toLowerCase(); const s=(document.getElementById('loginPass').value||'').trim(); const msg=document.getElementById('loginMsg'); msg.textContent=''; if(!u || !s){msg.textContent='Informe usuário e senha.'; return;} await carregarCredenciaisOnline(); if(u===LOGIN_MASTER.toLowerCase() && s===SENHA_MASTER){usuarioAtual={tipo:'master',nome:'Master',roleLabel:'Master'}; saveSession(); return abrirApp()} if(u===LOGIN_DIRETOR.toLowerCase()){const authDir=getAuthUser(u); const senhaDir=authDir?.password || SENHA_DIRETOR; if(String(senhaDir)===s){ if(authDir?.must_change_password){ msg.textContent='Primeiro acesso do Diretor Comercial: defina uma nova senha.'; return openPrimeiroAcesso(u);} usuarioAtual={tipo:'master',nome:'Diretor Comercial',roleLabel:'Diretor Comercial'}; saveSession(); return abrirApp(); }} const auth=getAuthUser(u); if(CREDS[u] && auth && String(auth.password)===s){ if(auth.must_change_password){ msg.textContent='Primeiro acesso: defina sua nova senha.'; return openPrimeiroAcesso(u);} usuarioAtual={tipo:'user',login:u,...CREDS[u]}; saveSession(); return abrirApp()} msg.textContent='Login ou senha inválidos.'}
-async function abrirApp(){await carregarCredenciaisOnline(); await carregarConfigOnline(); await carregarHistoricoOnline(); await carregarCobrancasOnline(); await carregarMsgsOnline(); loginScreen.classList.add('hidden'); app.classList.remove('hidden'); if(usuarioAtual.tipo==='master'){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); const isDiretor=usuarioAtual?.roleLabel==='Diretor Comercial'; userBadge.textContent=isDiretor?'👑 Diretor Comercial':'👑 Master'; masterTabs.classList.remove('hidden'); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{const t=btn.dataset.tab; btn.classList.toggle('hidden', isDiretor && ['cobrancas','senhas'].includes(t));}); setMainTab('vendedores')} else if(usuarioAtual.is_viewer){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); userBadge.textContent='📺 Painel'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); listSection.classList.add('hidden'); metaSection.classList.add('hidden'); logSection.classList.add('hidden'); avisosSection.classList.add('hidden'); senhasSection.classList.add('hidden'); histSection.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden');} else {document.getElementById('kpis').classList.add('hidden'); userBadge.textContent=usuarioAtual.is_terceiro?`🤝 ${usuarioAtual.nome}`:(usuarioAtual.is_crediarista?`🧾 ${usuarioAtual.nome}`:(usuarioAtual.is_gerente?`🏬 ${usuarioAtual.filial}`:`👤 ${usuarioAtual.nome}`)); masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(usuarioAtual.is_terceiro){openThirdChargePanel()} else if(usuarioAtual.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login}) }}
+async function abrirApp(){await carregarCredenciaisOnline(); await carregarConfigOnline(); await carregarHistoricoOnline(); await carregarCobrancasOnline(); await carregarMsgsOnline(); loginScreen.classList.add('hidden'); app.classList.remove('hidden'); if(usuarioAtual.tipo==='master'){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); const isDiretor=usuarioAtual?.roleLabel==='Diretor Comercial'; userBadge.textContent=isDiretor?'👑 Diretor Comercial':'👑 Master'; masterTabs.classList.remove('hidden'); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{const t=btn.dataset.tab; btn.classList.toggle('hidden', isDiretor && ['cobrancas','senhas'].includes(t));}); setMainTab('vendedores')} else {document.getElementById('kpis').classList.add('hidden'); userBadge.textContent=usuarioAtual.is_terceiro?`🤝 ${usuarioAtual.nome}`:(usuarioAtual.is_crediarista?`🧾 ${usuarioAtual.nome}`:(usuarioAtual.is_gerente?`🏬 ${usuarioAtual.filial}`:`👤 ${usuarioAtual.nome}`)); masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(usuarioAtual.is_terceiro){openThirdChargePanel()} else if(usuarioAtual.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login}) }}
 function logout(){clearSession(); location.reload()}
 window.addEventListener('load',async ()=>{const u=document.getElementById('loginUser'); const p=document.getElementById('loginPass'); if(u) u.focus(); if(u) u.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault(); if(p) p.focus();}}); if(p) p.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault(); fazerLogin();}}); await carregarCredenciaisOnline(); if(restoreSession()){abrirApp();} setInterval(pollSalesLive,60000); setInterval(pollDashboardLiveReload,60000); setTimeout(pollSalesLive,3000); setTimeout(pollDashboardLiveReload,5000);})
 </script>
@@ -5888,8 +5671,6 @@ repls = {
     '__SENHA_MASTER__': json.dumps(SENHA_MASTER, ensure_ascii=False),
     '__LOGIN_DIRETOR__': json.dumps(LOGIN_DIRETOR, ensure_ascii=False),
     '__SENHA_DIRETOR__': json.dumps(SENHA_DIRETOR, ensure_ascii=False),
-    '__LOGIN_PAINEL__': json.dumps(LOGIN_PAINEL, ensure_ascii=False),
-    '__SENHA_PAINEL__': json.dumps(SENHA_PAINEL, ensure_ascii=False),
     '__ORDEM__': json.dumps(ORDEM_FILIAIS, ensure_ascii=False),
     '__TOTAL_P__': json.dumps(total_dash_p, ensure_ascii=False),
     '__TOTAL_PG__': json.dumps(total_dash_pg, ensure_ascii=False),
