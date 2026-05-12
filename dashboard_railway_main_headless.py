@@ -5698,7 +5698,53 @@ async function marcarMsgLida(id){
 function targetOptionsMsg(){
   let o='<option value="all|ALL">Todos</option>';
   ORDEM.forEach(f=>o+=`<option value="filial|${f}">Filial ${f}</option>`);
-  flattenVendedores().forEach(v=>o+=`<option value="user|${v.nome}_${v.filial}">${v.nome} (${v.filial})</option>`);
+
+  const added = new Set();
+
+  const addUserOpt = (value, label)=>{
+    const v = String(value||'').trim();
+    const l = String(label||'').trim();
+    if(!v || !l) return;
+    const key = `${v}__${l}`.toLowerCase();
+    if(added.has(key)) return;
+    added.add(key);
+    o += `<option value="user|${escAttr(v)}">${esc(l)}</option>`;
+  };
+
+  // vendedores normais do dashboard
+  flattenVendedores().forEach(v=>{
+    addUserOpt(`${v.nome}_${v.filial}`, `${v.nome} (${v.filial})`);
+  });
+
+  // usuários especiais vindos das credenciais online
+  const users = Object.values((AUTH_STATE && AUTH_STATE.users) || {});
+  users.forEach(u=>{
+    const login = String(u?.login || '').trim();
+    const nome = String(u?.nome || '').trim();
+    const filial = String(u?.filial || '').trim();
+
+    if(u?.is_viewer){
+      addUserOpt(login || nome || 'painel', nome || 'Painel');
+      return;
+    }
+
+    if(login === 'master' || login === 'diretorcomercial') return;
+
+    if(u?.is_crediarista || u?.is_terceiro || u?.only_cobranca){
+      addUserOpt(login || nome, filial ? `${nome} (${filial})` : nome);
+      return;
+    }
+
+    if(login && nome){
+      addUserOpt(login, filial ? `${nome} (${filial})` : nome);
+    }
+  });
+
+  if(AUTH_STATE?.director){
+    addUserOpt('diretorcomercial', AUTH_STATE.director?.nome || 'Diretor Comercial');
+  }
+  addUserOpt('master', 'Master');
+
   return o;
 }
 function renderSenhaCard(u, isDirector=false){const key=isDirector?'diretorcomercial':u.login; const pend=(AUTH_STATE?.password_reset_requests||[]).filter(r=>String(r.login||'').toLowerCase()===String(key).toLowerCase() && String(r.status||'pendente')==='pendente').length; return `<div class="glass card" style="cursor:default"><div class="title" style="min-height:auto">${esc(isDirector?'Diretor Comercial':u.nome)} ${!isDirector?`(${u.filial||''})`:''}</div><div class="legend-inline"><span><i class="dot" style="background:${u.must_change_password?'#f59e0b':'#22c55e'}"></i>${u.must_change_password?'Precisa trocar senha':'Senha ativa'}</span>${pend?`<span><i class="dot" style="background:#ef4444"></i>${pend} solicitação(ões)</span>`:''}</div><div class="form-grid bonus" style="grid-template-columns:1.1fr .9fr;margin-top:12px"><div class="input-card"><label>Nova senha para ${esc(key)}</label><input id="pwd_${key}" placeholder="Digite a nova senha"></div><div class="input-card"><label>Ações</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="adminSalvarSenha('${key}')">💾 Salvar senha</button><button class="btn soft" type="button" onclick="adminMarcarTroca('${key}')">🔁 Exigir troca</button></div></div></div>${pend?`<div class="note" style="margin-top:10px">Solicitação pendente de recuperação. <button class="btn soft" style="margin-left:8px" onclick="adminResolverReset('${key}')">Resolver solicitação</button></div>`:''}<div id="pwd_msg_${key}" class="note" style="margin-top:8px"></div></div>`}
@@ -5906,7 +5952,6 @@ async function abrirApp(){
     }
   };
 
-  // Render inicial imediato
   afterOnlineRefresh();
 
   const withTimeout = (p, ms=8000) => Promise.race([
@@ -5920,24 +5965,20 @@ async function abrirApp(){
       withTimeout(carregarConfigOnline(), 8000),
       withTimeout(carregarHistoricoOnline(), 8000),
       withTimeout(carregarCobrancasOnline(), 8000),
-      withTimeout(carregarMsgsOnline(), 8000),
+      withTimeout(carregarMsgsOnline(), 8000)
     ]);
   }catch(_e){
     console.warn('Falha parcial no carregamento online do dashboard:', _e);
   }
 
-  // Render final após atualização online
   afterOnlineRefresh();
 
-  // Painel: abre os avisos automaticamente quando houver novos
   try{
     if(usuarioAtual?.is_viewer){
       const arr=(MSGS||[]).filter(m=>msgMatchesUser(m) && !isExpiredCampaign(m));
       const unread=arr.filter(m=>!isCampaign(m) && !isReadMsg(m));
-      if(arr.length){
-        const banner=document.getElementById('msgBanner');
-        if(banner){ banner.innerHTML = renderInboxBanner(); }
-      }
+      const banner=document.getElementById('msgBanner');
+      if(banner){ banner.innerHTML = renderInboxBanner(); }
       if(unread.length){
         setTimeout(()=>{ try{ openBell(); }catch(_e){} }, 600);
       }
