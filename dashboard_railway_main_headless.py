@@ -500,13 +500,16 @@ def valor_float_brasil(v):
 
 
 def nome_arquivo_contas_valido(fname):
-    s = str(fname or "").lower()
+    s = str(fname or "").lower().strip()
     if s.startswith("~$"):
         return False
     if not (s.endswith(".xls") or s.endswith(".xlsx")):
         return False
-    # Exclui arquivos auxiliares gerados pelo próprio script
+
+    # nunca aceitar relatórios de margem ou arquivos auxiliares
     bloqueados = [
+        "margem",
+        "margens",
         "metas_vendas_mes_atual",
         "dashboard",
         "historico",
@@ -517,14 +520,14 @@ def nome_arquivo_contas_valido(fname):
     ]
     if any(b in s for b in bloqueados):
         return False
-    # Dá preferência a nomes típicos do relatório de contas a receber
-    preferidos = [
+
+    # aceitar apenas nomes típicos do Contas a Receber
+    permitidos = [
         "relatorio_contas",
         "contas_pagar_receber",
         "contas_receber",
-        "administrativo",
     ]
-    return any(p in s for p in preferidos)
+    return any(p in s for p in permitidos)
 
 
 def _is_total_row(reg):
@@ -1342,18 +1345,14 @@ for _ in range(60):
         print(f"✅ Download OK: {caminho}"); break
 
 if not caminho:
-    todos = [f for f in os.listdir(download_dir) if nome_arquivo_contas_valido(f)]
     print(f"📂 download_dir: {download_dir}")
     try:
         print("📂 Arquivos atuais:", os.listdir(download_dir))
     except Exception as e:
         print(f"⚠️ Não consegui listar download_dir: {e}")
-    if not todos:
-        print("❌ Nenhum XLS/XLSX válido do Contas a Receber encontrado")
-        driver.quit()
-        raise Exception("Nenhum XLS/XLSX válido do Contas a Receber encontrado")
-    caminho = max([os.path.join(download_dir, f) for f in todos], key=os.path.getctime)
-    print(f"⚠️ Usando mais recente do Contas a Receber: {caminho}")
+
+    driver.quit()
+    raise Exception("Nenhum XLS válido de Contas a Receber foi baixado nesta execução")
 
 # ===== LEITURA DO XLS
 if not nome_arquivo_contas_valido(os.path.basename(caminho)):
@@ -2300,17 +2299,11 @@ js_auth_state = json.dumps(cred_state, ensure_ascii=False)
 import json
 from datetime import datetime, timedelta, date
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 CACHE_DIR  = os.path.join(pasta, "cache_historico")
 Path(CACHE_DIR).mkdir(exist_ok=True)
 
-APP_TZ = ZoneInfo(os.getenv('APP_TZ', 'America/Sao_Paulo'))
-
-def now_brasilia():
-    return datetime.now(APP_TZ)
-
-hoje_str = now_brasilia().strftime("%Y-%m-%d")
+hoje_str = datetime.now().strftime("%Y-%m-%d")
 mes_str  = datetime.now().strftime("%Y-%m")
 
 # Carrega configurações de meta (definidas pelo master no dashboard)
@@ -4875,7 +4868,7 @@ function renderKPIs(){
     makeKpi('📊 Rentabilidade total', rentPct?`${rentPct.toFixed(2).replace('.',',')}%`:'Sem dado','var(--green-400)','Última linha do relatório de margem bruta por filial'),
     makeKpi('🧮 Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)', isViewer ? 'Índice mercantil + serviços / custo oculto' : `(Mercantil + serviços) / custo total ${R(markupCost||0)}`)
   ];
-  document.getElementById('kpis').innerHTML=cards.join('') + `<div class="glass" style="grid-column:1/-1;padding:10px 14px;display:flex;align-items:center;justify-content:flex-start;min-height:46px"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(dashboardUpdatedLabel()||'--')}</strong></div></div>`;
+  document.getElementById('kpis').innerHTML=cards.join('') + `<div class="glass" style="grid-column:1/-1;padding:10px 14px;display:flex;align-items:center;justify-content:flex-start;min-height:46px"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div></div>`;
 }
 
 async function fetchJsonNoCache(url){
@@ -4883,7 +4876,9 @@ async function fetchJsonNoCache(url){
   if(!r.ok) throw new Error('HTTP '+r.status);
   return await r.json();
 }
-function formatDashboardUpdatedAt(v){
+const DASHBOARD_UPDATED_AT_LABEL='12/05/2026 17:28:27';
+
+function formatUpdatedLabel(v){
   try{
     const s=String(v||'').trim();
     if(!s) return '';
@@ -4898,7 +4893,22 @@ function formatDashboardUpdatedAt(v){
   }
 }
 function dashboardUpdatedLabel(){
-  return formatDashboardUpdatedAt(window.__dashboardUpdatedAtLabel||'');
+  return formatUpdatedLabel(window.__dashboardUpdatedAtLabel || DASHBOARD_UPDATED_AT_LABEL);
+}
+function latestUpdatedLabel(){
+  const aRaw = window.__dashboardUpdatedAtLabel || DASHBOARD_UPDATED_AT_LABEL || '';
+  const bRaw = window.__salesUpdatedAtLabel || '';
+  const a = formatUpdatedLabel(aRaw);
+  const b = formatUpdatedLabel(bRaw);
+  if(!a && !b) return '';
+  if(a && !b) return a;
+  if(b && !a) return b;
+  const da = new Date(aRaw);
+  const db = new Date(bRaw);
+  if(!isNaN(da.getTime()) && !isNaN(db.getTime())){
+    return db > da ? b : a;
+  }
+  return b || a;
 }
 
 function calcSalesEmpresaFromMetas(payload){
@@ -4939,9 +4949,19 @@ async function pollSalesLive(){
   try{
     const ver=await fetchJsonNoCache('sales_version.json');
     const stamp=String(ver?.updated_at||'');
+    if(stamp){
+      window.__salesUpdatedAtLabel = stamp;
+    }
     if(!stamp) return;
-    if(window.__lastSalesVersion===undefined){window.__lastSalesVersion=stamp; return;}
-    if(window.__lastSalesVersion===stamp) return;
+    if(window.__lastSalesVersion===undefined){
+      window.__lastSalesVersion=stamp;
+      if(typeof renderKPIs==='function' && document.getElementById('kpis')) renderKPIs();
+      return;
+    }
+    if(window.__lastSalesVersion===stamp){
+      if(typeof renderKPIs==='function' && document.getElementById('kpis')) renderKPIs();
+      return;
+    }
     const metasWrap=await fetchJsonNoCache('metas_vendas_mes_atual.json');
     const margensWrap=await fetchJsonNoCache('margens_brutas_mes_atual.json');
     SALES_EMPRESA=calcSalesEmpresaFromMetas(metasWrap||{});
@@ -5727,7 +5747,52 @@ async function marcarMsgLida(id){
 function targetOptionsMsg(){
   let o='<option value="all|ALL">Todos</option>';
   ORDEM.forEach(f=>o+=`<option value="filial|${f}">Filial ${f}</option>`);
-  flattenVendedores().forEach(v=>o+=`<option value="user|${v.nome}_${v.filial}">${v.nome} (${v.filial})</option>`);
+
+  const added = new Set();
+
+  const addUserOpt = (value, label)=>{
+    const v = String(value||'').trim();
+    const l = String(label||'').trim();
+    if(!v || !l) return;
+    const key = `${v}__${l}`.toLowerCase();
+    if(added.has(key)) return;
+    added.add(key);
+    o += `<option value="user|${esc(v)}">${esc(l)}</option>`;
+  };
+
+  // vendedores normais
+  flattenVendedores().forEach(v=>{
+    addUserOpt(`${v.nome}_${v.filial}`, `${v.nome} (${v.filial})`);
+  });
+
+  // usuários especiais das credenciais online
+  const users = Object.values((AUTH_STATE && AUTH_STATE.users) || {});
+  users.forEach(u=>{
+    const login = String((u && u.login) || '').trim();
+    const nome = String((u && u.nome) || '').trim();
+    const filial = String((u && u.filial) || '').trim();
+
+    if(u && u.is_viewer){
+      addUserOpt(login || 'painel', nome || 'Painel');
+      return;
+    }
+    if(login === 'master' || login === 'diretorcomercial') return;
+
+    if((u && u.is_crediarista) || (u && u.is_terceiro) || (u && u.only_cobranca)){
+      addUserOpt(login || nome, filial ? `${nome} (${filial})` : nome);
+      return;
+    }
+
+    if(login && nome){
+      addUserOpt(login, filial ? `${nome} (${filial})` : nome);
+    }
+  });
+
+  if(AUTH_STATE && AUTH_STATE.director){
+    addUserOpt('diretorcomercial', (AUTH_STATE.director && AUTH_STATE.director.nome) || 'Diretor Comercial');
+  }
+  addUserOpt('master', 'Master');
+
   return o;
 }
 function renderSenhaCard(u, isDirector=false){const key=isDirector?'diretorcomercial':u.login; const pend=(AUTH_STATE?.password_reset_requests||[]).filter(r=>String(r.login||'').toLowerCase()===String(key).toLowerCase() && String(r.status||'pendente')==='pendente').length; return `<div class="glass card" style="cursor:default"><div class="title" style="min-height:auto">${esc(isDirector?'Diretor Comercial':u.nome)} ${!isDirector?`(${u.filial||''})`:''}</div><div class="legend-inline"><span><i class="dot" style="background:${u.must_change_password?'#f59e0b':'#22c55e'}"></i>${u.must_change_password?'Precisa trocar senha':'Senha ativa'}</span>${pend?`<span><i class="dot" style="background:#ef4444"></i>${pend} solicitação(ões)</span>`:''}</div><div class="form-grid bonus" style="grid-template-columns:1.1fr .9fr;margin-top:12px"><div class="input-card"><label>Nova senha para ${esc(key)}</label><input id="pwd_${key}" placeholder="Digite a nova senha"></div><div class="input-card"><label>Ações</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="adminSalvarSenha('${key}')">💾 Salvar senha</button><button class="btn soft" type="button" onclick="adminMarcarTroca('${key}')">🔁 Exigir troca</button></div></div></div>${pend?`<div class="note" style="margin-top:10px">Solicitação pendente de recuperação. <button class="btn soft" style="margin-left:8px" onclick="adminResolverReset('${key}')">Resolver solicitação</button></div>`:''}<div id="pwd_msg_${key}" class="note" style="margin-top:8px"></div></div>`}
@@ -5884,7 +5949,29 @@ async function salvarPrimeiroAcesso(){const login=(document.getElementById('faLo
 async function fazerLogin(){const u=(document.getElementById('loginUser').value||'').trim().toLowerCase(); const s=(document.getElementById('loginPass').value||'').trim(); const msg=document.getElementById('loginMsg'); msg.textContent=''; if(!u || !s){msg.textContent='Informe usuário e senha.'; return;} await carregarCredenciaisOnline(); if(u===LOGIN_MASTER.toLowerCase() && s===SENHA_MASTER){usuarioAtual={tipo:'master',nome:'Master',roleLabel:'Master'}; saveSession(); return abrirApp()} if(u===LOGIN_DIRETOR.toLowerCase()){const authDir=getAuthUser(u); const senhaDir=authDir?.password || SENHA_DIRETOR; if(String(senhaDir)===s){ if(authDir?.must_change_password){ msg.textContent='Primeiro acesso do Diretor Comercial: defina uma nova senha.'; return openPrimeiroAcesso(u);} usuarioAtual={tipo:'master',nome:'Diretor Comercial',roleLabel:'Diretor Comercial'}; saveSession(); return abrirApp(); }} const auth=getAuthUser(u); if(CREDS[u] && auth && String(auth.password)===s){ if(auth.must_change_password){ msg.textContent='Primeiro acesso: defina sua nova senha.'; return openPrimeiroAcesso(u);} usuarioAtual={tipo:'user',login:u,...CREDS[u]}; saveSession(); return abrirApp()} msg.textContent='Login ou senha inválidos.'}
 async function abrirApp(){await carregarCredenciaisOnline(); await carregarConfigOnline(); await carregarHistoricoOnline(); await carregarCobrancasOnline(); await carregarMsgsOnline(); loginScreen.classList.add('hidden'); app.classList.remove('hidden'); if(usuarioAtual.tipo==='master'){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); const isDiretor=usuarioAtual?.roleLabel==='Diretor Comercial'; userBadge.textContent=isDiretor?'👑 Diretor Comercial':'👑 Master'; masterTabs.classList.remove('hidden'); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{const t=btn.dataset.tab; btn.classList.toggle('hidden', isDiretor && ['cobrancas','senhas'].includes(t));}); setMainTab('vendedores')} else if(usuarioAtual.is_viewer){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); userBadge.textContent='📺 Painel'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); listSection.classList.add('hidden'); metaSection.classList.add('hidden'); logSection.classList.add('hidden'); avisosSection.classList.add('hidden'); senhasSection.classList.add('hidden'); histSection.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden');} else {document.getElementById('kpis').classList.add('hidden'); userBadge.textContent=usuarioAtual.is_terceiro?`🤝 ${usuarioAtual.nome}`:(usuarioAtual.is_crediarista?`🧾 ${usuarioAtual.nome}`:(usuarioAtual.is_gerente?`🏬 ${usuarioAtual.filial}`:`👤 ${usuarioAtual.nome}`)); masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(usuarioAtual.is_terceiro){openThirdChargePanel()} else if(usuarioAtual.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login}) }}
 function logout(){clearSession(); location.reload()}
-window.addEventListener('load',async ()=>{const u=document.getElementById('loginUser'); const p=document.getElementById('loginPass'); if(u) u.focus(); if(u) u.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault(); if(p) p.focus();}}); if(p) p.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault(); fazerLogin();}}); await carregarCredenciaisOnline(); if(restoreSession()){abrirApp();} setInterval(pollSalesLive,60000); setInterval(pollDashboardLiveReload,60000); setTimeout(pollSalesLive,3000); setTimeout(pollDashboardLiveReload,5000);})
+window.addEventListener('load',async ()=>{
+  const u=document.getElementById('loginUser');
+  const p=document.getElementById('loginPass');
+  if(u) u.focus();
+  if(u) u.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault(); if(p) p.focus();}});
+  if(p) p.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault(); fazerLogin();}});
+  await carregarCredenciaisOnline();
+  try{
+    const verDash = await fetchJsonNoCache('dashboard_version.json');
+    const stampDash = String((verDash && verDash.updated_at) || '');
+    if(stampDash) window.__dashboardUpdatedAtLabel = stampDash;
+  }catch(_e){}
+  try{
+    const verSales = await fetchJsonNoCache('sales_version.json');
+    const stampSales = String((verSales && verSales.updated_at) || '');
+    if(stampSales) window.__salesUpdatedAtLabel = stampSales;
+  }catch(_e){}
+  if(restoreSession()){abrirApp();}
+  setInterval(pollSalesLive,60000);
+  setInterval(pollDashboardLiveReload,60000);
+  setTimeout(pollSalesLive,3000);
+  setTimeout(pollDashboardLiveReload,5000);
+})
 </script>
 </body>
 </html>
@@ -6263,7 +6350,7 @@ if FTP_USER and FTP_PASS:
         except Exception:
             ftp.storbinary('STOR mensagens_log.json', BytesIO(b'[]'))
         try:
-            _dashboard_ver = json.dumps({'updated_at': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'), 'updated_at_iso': now_brasilia().isoformat(), 'timezone': 'America/Sao_Paulo', 'scope': 'dashboard_full'}, ensure_ascii=False).encode('utf-8')
+            _dashboard_ver = json.dumps({'updated_at': datetime.now().isoformat(), 'scope': 'dashboard_full'}, ensure_ascii=False).encode('utf-8')
             ftp.storbinary('STOR dashboard_version.json', BytesIO(_dashboard_ver))
             ftp.storbinary('STOR sales_version.json', BytesIO(_dashboard_ver))
         except Exception as e_ver_ftp:
