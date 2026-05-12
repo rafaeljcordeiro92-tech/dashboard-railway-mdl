@@ -4868,7 +4868,7 @@ function renderKPIs(){
     makeKpi('📊 Rentabilidade total', rentPct?`${rentPct.toFixed(2).replace('.',',')}%`:'Sem dado','var(--green-400)','Última linha do relatório de margem bruta por filial'),
     makeKpi('🧮 Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)', isViewer ? 'Índice mercantil + serviços / custo oculto' : `(Mercantil + serviços) / custo total ${R(markupCost||0)}`)
   ];
-  document.getElementById('kpis').innerHTML=cards.join('');
+  document.getElementById('kpis').innerHTML=cards.join('') + `<div class="glass" style="grid-column:1/-1;padding:10px 14px;display:flex;align-items:center;justify-content:flex-start;min-height:46px"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(dashboardUpdatedLabel())}</strong></div></div>`;
 }
 
 async function fetchJsonNoCache(url){
@@ -4876,6 +4876,12 @@ async function fetchJsonNoCache(url){
   if(!r.ok) throw new Error('HTTP '+r.status);
   return await r.json();
 }
+const DASHBOARD_UPDATED_AT_LABEL='12/05/2026 17:28:27';
+
+function dashboardUpdatedLabel(){
+  return window.__dashboardUpdatedAtLabel || DASHBOARD_UPDATED_AT_LABEL;
+}
+
 function calcSalesEmpresaFromMetas(payload){
   const metas=((payload||{}).metas)||{};
   function totalOf(key){
@@ -4929,6 +4935,10 @@ async function pollDashboardLiveReload(){
   try{
     const ver=await fetchJsonNoCache('dashboard_version.json');
     const stamp=String(ver?.updated_at||'');
+    if(stamp){
+      window.__dashboardUpdatedAtLabel = stamp;
+      if(typeof renderKPIs==='function' && document.getElementById('kpis')) renderKPIs();
+    }
     if(!stamp) return;
     if(window.__lastDashboardVersion===undefined){window.__lastDashboardVersion=stamp; return;}
     if(window.__lastDashboardVersion!==stamp){ location.reload(); return; }
@@ -5708,29 +5718,28 @@ function targetOptionsMsg(){
     const key = `${v}__${l}`.toLowerCase();
     if(added.has(key)) return;
     added.add(key);
-    o += `<option value="user|${escAttr(v)}">${esc(l)}</option>`;
+    o += `<option value="user|${esc(v)}">${esc(l)}</option>`;
   };
 
-  // vendedores normais do dashboard
+  // vendedores normais
   flattenVendedores().forEach(v=>{
     addUserOpt(`${v.nome}_${v.filial}`, `${v.nome} (${v.filial})`);
   });
 
-  // usuários especiais vindos das credenciais online
+  // usuários especiais das credenciais online
   const users = Object.values((AUTH_STATE && AUTH_STATE.users) || {});
   users.forEach(u=>{
-    const login = String(u?.login || '').trim();
-    const nome = String(u?.nome || '').trim();
-    const filial = String(u?.filial || '').trim();
+    const login = String((u && u.login) || '').trim();
+    const nome = String((u && u.nome) || '').trim();
+    const filial = String((u && u.filial) || '').trim();
 
-    if(u?.is_viewer){
-      addUserOpt(login || nome || 'painel', nome || 'Painel');
+    if(u && u.is_viewer){
+      addUserOpt(login || 'painel', nome || 'Painel');
       return;
     }
-
     if(login === 'master' || login === 'diretorcomercial') return;
 
-    if(u?.is_crediarista || u?.is_terceiro || u?.only_cobranca){
+    if((u && u.is_crediarista) || (u && u.is_terceiro) || (u && u.only_cobranca)){
       addUserOpt(login || nome, filial ? `${nome} (${filial})` : nome);
       return;
     }
@@ -5740,8 +5749,8 @@ function targetOptionsMsg(){
     }
   });
 
-  if(AUTH_STATE?.director){
-    addUserOpt('diretorcomercial', AUTH_STATE.director?.nome || 'Diretor Comercial');
+  if(AUTH_STATE && AUTH_STATE.director){
+    addUserOpt('diretorcomercial', (AUTH_STATE.director && AUTH_STATE.director.nome) || 'Diretor Comercial');
   }
   addUserOpt('master', 'Master');
 
@@ -5899,123 +5908,9 @@ function closeRecover(){document.getElementById('recoverModal').classList.remove
 async function enviarRecuperacaoSenha(){const login=(document.getElementById('recLogin').value||'').trim().toLowerCase(); const obs=(document.getElementById('recObs').value||'').trim(); const box=document.getElementById('recMsg'); if(!login){box.textContent='Informe o usuário.'; return;} try{const fd=new FormData(); fd.append('action','request_reset'); fd.append('login',login); fd.append('obs',obs); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); box.textContent=j.ok?'✅ Solicitação enviada ao Master.':'⚠️ Não consegui enviar a solicitação.';}catch(e){box.textContent='⚠️ Não consegui enviar a solicitação.';}}
 async function salvarPrimeiroAcesso(){const login=(document.getElementById('faLogin').value||'').trim().toLowerCase(); const atual=(document.getElementById('faCurrentPass').value||'').trim(); const nova=(document.getElementById('faNewPass').value||'').trim(); const nova2=(document.getElementById('faNewPass2').value||'').trim(); const box=document.getElementById('faMsg'); box.textContent=''; if(!login||!atual||!nova||!nova2){box.textContent='Preencha todos os campos.'; return;} if(nova.length<4){box.textContent='A nova senha deve ter pelo menos 4 caracteres.'; return;} if(nova!==nova2){box.textContent='A confirmação da senha não confere.'; return;} const auth=getAuthUser(login); if(!auth || String(auth.password)!==atual){box.textContent='Usuário ou senha atual inválidos.'; return;} try{const fd=new FormData(); fd.append('action','change_password'); fd.append('login',login); fd.append('current_password',atual); fd.append('new_password',nova); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); box.textContent=j.ok?'✅ Senha alterada com sucesso. Entre com a nova senha.':'⚠️ Não consegui alterar a senha.'; if(j.ok){await carregarCredenciaisOnline(); document.getElementById('loginPass').value=''; setTimeout(()=>{closeFirstAccess();},700);}}catch(e){box.textContent='⚠️ Não consegui alterar a senha.';}}
 async function fazerLogin(){const u=(document.getElementById('loginUser').value||'').trim().toLowerCase(); const s=(document.getElementById('loginPass').value||'').trim(); const msg=document.getElementById('loginMsg'); msg.textContent=''; if(!u || !s){msg.textContent='Informe usuário e senha.'; return;} await carregarCredenciaisOnline(); if(u===LOGIN_MASTER.toLowerCase() && s===SENHA_MASTER){usuarioAtual={tipo:'master',nome:'Master',roleLabel:'Master'}; saveSession(); return abrirApp()} if(u===LOGIN_DIRETOR.toLowerCase()){const authDir=getAuthUser(u); const senhaDir=authDir?.password || SENHA_DIRETOR; if(String(senhaDir)===s){ if(authDir?.must_change_password){ msg.textContent='Primeiro acesso do Diretor Comercial: defina uma nova senha.'; return openPrimeiroAcesso(u);} usuarioAtual={tipo:'master',nome:'Diretor Comercial',roleLabel:'Diretor Comercial'}; saveSession(); return abrirApp(); }} const auth=getAuthUser(u); if(CREDS[u] && auth && String(auth.password)===s){ if(auth.must_change_password){ msg.textContent='Primeiro acesso: defina sua nova senha.'; return openPrimeiroAcesso(u);} usuarioAtual={tipo:'user',login:u,...CREDS[u]}; saveSession(); return abrirApp()} msg.textContent='Login ou senha inválidos.'}
-async function abrirApp(){
-  // Mostra a aplicação imediatamente e carrega os dados online em segundo plano
-  loginScreen.classList.add('hidden');
-  app.classList.remove('hidden');
-
-  const afterOnlineRefresh = ()=>{
-    try{
-      if(usuarioAtual?.tipo==='master'){
-        document.getElementById('kpis').classList.remove('hidden');
-        renderKPIs();
-        const isDiretor=usuarioAtual?.roleLabel==='Diretor Comercial';
-        userBadge.textContent=isDiretor?'👑 Diretor Comercial':'👑 Master';
-        masterTabs.classList.remove('hidden');
-        document.querySelectorAll('#masterTabs .tab').forEach(btn=>{
-          const t=btn.dataset.tab;
-          btn.classList.toggle('hidden', isDiretor && ['cobrancas','senhas'].includes(t));
-        });
-        setMainTab('vendedores');
-      } else if(usuarioAtual?.is_viewer){
-        document.getElementById('kpis').classList.remove('hidden');
-        renderKPIs();
-        userBadge.textContent='📺 Painel';
-        masterTabs.classList.add('hidden');
-        mainFilters.classList.add('hidden');
-        listSection.classList.add('hidden');
-        metaSection.classList.add('hidden');
-        logSection.classList.add('hidden');
-        avisosSection.classList.add('hidden');
-        senhasSection.classList.add('hidden');
-        histSection.classList.add('hidden');
-        document.getElementById('mainScreen').classList.remove('hidden');
-        detailScreen.classList.add('hidden');
-        try{
-          const banner=document.getElementById('msgBanner');
-          if(banner){ banner.innerHTML = renderInboxBanner(); }
-        }catch(_e){}
-      } else {
-        document.getElementById('kpis').classList.add('hidden');
-        userBadge.textContent=usuarioAtual.is_terceiro?`🤝 ${usuarioAtual.nome}`:(usuarioAtual.is_crediarista?`🧾 ${usuarioAtual.nome}`:(usuarioAtual.is_gerente?`🏬 ${usuarioAtual.filial}`:`👤 ${usuarioAtual.nome}`));
-        masterTabs.classList.add('hidden');
-        mainFilters.classList.add('hidden');
-        const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome})));
-        document.getElementById('mainScreen').classList.add('hidden');
-        detailScreen.classList.remove('hidden');
-        if(usuarioAtual.is_terceiro){openThirdChargePanel()}
-        else if(usuarioAtual.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)}
-        else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login});
-      }
-    }catch(_e){
-      console.error('Erro ao renderizar app:', _e);
-    }
-  };
-
-  afterOnlineRefresh();
-
-  const withTimeout = (p, ms=8000) => Promise.race([
-    p,
-    new Promise(resolve => setTimeout(() => resolve({timeout:true}), ms))
-  ]);
-
-  try{
-    await Promise.allSettled([
-      withTimeout(carregarCredenciaisOnline(), 8000),
-      withTimeout(carregarConfigOnline(), 8000),
-      withTimeout(carregarHistoricoOnline(), 8000),
-      withTimeout(carregarCobrancasOnline(), 8000),
-      withTimeout(carregarMsgsOnline(), 8000)
-    ]);
-  }catch(_e){
-    console.warn('Falha parcial no carregamento online do dashboard:', _e);
-  }
-
-  afterOnlineRefresh();
-
-  try{
-    if(usuarioAtual?.is_viewer){
-      const arr=(MSGS||[]).filter(m=>msgMatchesUser(m) && !isExpiredCampaign(m));
-      const unread=arr.filter(m=>!isCampaign(m) && !isReadMsg(m));
-      const banner=document.getElementById('msgBanner');
-      if(banner){ banner.innerHTML = renderInboxBanner(); }
-      if(unread.length){
-        setTimeout(()=>{ try{ openBell(); }catch(_e){} }, 600);
-      }
-    }
-  }catch(_e){}
-}
+async function abrirApp(){await carregarCredenciaisOnline(); await carregarConfigOnline(); await carregarHistoricoOnline(); await carregarCobrancasOnline(); await carregarMsgsOnline(); loginScreen.classList.add('hidden'); app.classList.remove('hidden'); if(usuarioAtual.tipo==='master'){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); const isDiretor=usuarioAtual?.roleLabel==='Diretor Comercial'; userBadge.textContent=isDiretor?'👑 Diretor Comercial':'👑 Master'; masterTabs.classList.remove('hidden'); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{const t=btn.dataset.tab; btn.classList.toggle('hidden', isDiretor && ['cobrancas','senhas'].includes(t));}); setMainTab('vendedores')} else if(usuarioAtual.is_viewer){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); userBadge.textContent='📺 Painel'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); listSection.classList.add('hidden'); metaSection.classList.add('hidden'); logSection.classList.add('hidden'); avisosSection.classList.add('hidden'); senhasSection.classList.add('hidden'); histSection.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden');} else {document.getElementById('kpis').classList.add('hidden'); userBadge.textContent=usuarioAtual.is_terceiro?`🤝 ${usuarioAtual.nome}`:(usuarioAtual.is_crediarista?`🧾 ${usuarioAtual.nome}`:(usuarioAtual.is_gerente?`🏬 ${usuarioAtual.filial}`:`👤 ${usuarioAtual.nome}`)); masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(usuarioAtual.is_terceiro){openThirdChargePanel()} else if(usuarioAtual.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login}) }}
 function logout(){clearSession(); location.reload()}
-window.addEventListener('load',async ()=>{
-  const u=document.getElementById('loginUser');
-  const p=document.getElementById('loginPass');
-  if(u) u.focus();
-  if(u) u.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault(); if(p) p.focus();}});
-  if(p) p.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault(); fazerLogin();}});
-  try{
-    await Promise.race([
-      carregarCredenciaisOnline(),
-      new Promise(resolve => setTimeout(resolve, 5000))
-    ]);
-  }catch(_e){}
-  if(restoreSession()){abrirApp();}
-  setInterval(pollSalesLive,60000);
-  setInterval(pollDashboardLiveReload,60000);
-  setInterval(async ()=>{
-    if(usuarioAtual?.is_viewer){
-      try{
-        await Promise.race([
-          carregarMsgsOnline(),
-          new Promise(resolve => setTimeout(resolve, 5000))
-        ]);
-        const banner=document.getElementById('msgBanner');
-        if(banner){ banner.innerHTML = renderInboxBanner(); }
-      }catch(_e){}
-    }
-  },30000);
-  setTimeout(pollSalesLive,3000);
-  setTimeout(pollDashboardLiveReload,5000);
-})
+window.addEventListener('load',async ()=>{const u=document.getElementById('loginUser'); const p=document.getElementById('loginPass'); if(u) u.focus(); if(u) u.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault(); if(p) p.focus();}}); if(p) p.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault(); fazerLogin();}}); await carregarCredenciaisOnline(); if(restoreSession()){abrirApp();} setInterval(pollSalesLive,60000); setInterval(pollDashboardLiveReload,60000); setTimeout(pollSalesLive,3000); setTimeout(pollDashboardLiveReload,5000);})
 </script>
 </body>
 </html>
