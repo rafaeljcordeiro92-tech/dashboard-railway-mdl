@@ -500,16 +500,13 @@ def valor_float_brasil(v):
 
 
 def nome_arquivo_contas_valido(fname):
-    s = str(fname or "").lower().strip()
+    s = str(fname or "").lower()
     if s.startswith("~$"):
         return False
     if not (s.endswith(".xls") or s.endswith(".xlsx")):
         return False
-
-    # nunca aceitar relatórios de margem ou arquivos auxiliares
+    # Exclui arquivos auxiliares gerados pelo próprio script
     bloqueados = [
-        "margem",
-        "margens",
         "metas_vendas_mes_atual",
         "dashboard",
         "historico",
@@ -520,14 +517,14 @@ def nome_arquivo_contas_valido(fname):
     ]
     if any(b in s for b in bloqueados):
         return False
-
-    # aceitar apenas nomes típicos do Contas a Receber
-    permitidos = [
+    # Dá preferência a nomes típicos do relatório de contas a receber
+    preferidos = [
         "relatorio_contas",
         "contas_pagar_receber",
         "contas_receber",
+        "administrativo",
     ]
-    return any(p in s for p in permitidos)
+    return any(p in s for p in preferidos)
 
 
 def _is_total_row(reg):
@@ -1345,14 +1342,18 @@ for _ in range(60):
         print(f"✅ Download OK: {caminho}"); break
 
 if not caminho:
+    todos = [f for f in os.listdir(download_dir) if nome_arquivo_contas_valido(f)]
     print(f"📂 download_dir: {download_dir}")
     try:
         print("📂 Arquivos atuais:", os.listdir(download_dir))
     except Exception as e:
         print(f"⚠️ Não consegui listar download_dir: {e}")
-
-    driver.quit()
-    raise Exception("Nenhum XLS válido de Contas a Receber foi baixado nesta execução")
+    if not todos:
+        print("❌ Nenhum XLS/XLSX válido do Contas a Receber encontrado")
+        driver.quit()
+        raise Exception("Nenhum XLS/XLSX válido do Contas a Receber encontrado")
+    caminho = max([os.path.join(download_dir, f) for f in todos], key=os.path.getctime)
+    print(f"⚠️ Usando mais recente do Contas a Receber: {caminho}")
 
 # ===== LEITURA DO XLS
 if not nome_arquivo_contas_valido(os.path.basename(caminho)):
@@ -2299,11 +2300,17 @@ js_auth_state = json.dumps(cred_state, ensure_ascii=False)
 import json
 from datetime import datetime, timedelta, date
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 CACHE_DIR  = os.path.join(pasta, "cache_historico")
 Path(CACHE_DIR).mkdir(exist_ok=True)
 
-hoje_str = datetime.now().strftime("%Y-%m-%d")
+APP_TZ = ZoneInfo(os.getenv('APP_TZ', 'America/Sao_Paulo'))
+
+def now_brasilia():
+    return datetime.now(APP_TZ)
+
+hoje_str = now_brasilia().strftime("%Y-%m-%d")
 mes_str  = datetime.now().strftime("%Y-%m")
 
 # Carrega configurações de meta (definidas pelo master no dashboard)
@@ -4868,7 +4875,7 @@ function renderKPIs(){
     makeKpi('📊 Rentabilidade total', rentPct?`${rentPct.toFixed(2).replace('.',',')}%`:'Sem dado','var(--green-400)','Última linha do relatório de margem bruta por filial'),
     makeKpi('🧮 Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)', isViewer ? 'Índice mercantil + serviços / custo oculto' : `(Mercantil + serviços) / custo total ${R(markupCost||0)}`)
   ];
-  document.getElementById('kpis').innerHTML=cards.join('') + `<div class="glass" style="grid-column:1/-1;padding:10px 14px;display:flex;align-items:center;justify-content:flex-start;min-height:46px"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(dashboardUpdatedLabel())}</strong></div></div>`;
+  document.getElementById('kpis').innerHTML=cards.join('') + `<div class="glass" style="grid-column:1/-1;padding:10px 14px;display:flex;align-items:center;justify-content:flex-start;min-height:46px"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(dashboardUpdatedLabel()||'--')}</strong></div></div>`;
 }
 
 async function fetchJsonNoCache(url){
@@ -4876,10 +4883,22 @@ async function fetchJsonNoCache(url){
   if(!r.ok) throw new Error('HTTP '+r.status);
   return await r.json();
 }
-const DASHBOARD_UPDATED_AT_LABEL='12/05/2026 17:28:27';
-
+function formatDashboardUpdatedAt(v){
+  try{
+    const s=String(v||'').trim();
+    if(!s) return '';
+    if(/^\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}:\d{2}$/.test(s)) return s;
+    const d=new Date(s);
+    if(!isNaN(d.getTime())){
+      return d.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'});
+    }
+    return s;
+  }catch(_e){
+    return String(v||'');
+  }
+}
 function dashboardUpdatedLabel(){
-  return window.__dashboardUpdatedAtLabel || DASHBOARD_UPDATED_AT_LABEL;
+  return formatDashboardUpdatedAt(window.__dashboardUpdatedAtLabel||'');
 }
 
 function calcSalesEmpresaFromMetas(payload){
@@ -5708,52 +5727,7 @@ async function marcarMsgLida(id){
 function targetOptionsMsg(){
   let o='<option value="all|ALL">Todos</option>';
   ORDEM.forEach(f=>o+=`<option value="filial|${f}">Filial ${f}</option>`);
-
-  const added = new Set();
-
-  const addUserOpt = (value, label)=>{
-    const v = String(value||'').trim();
-    const l = String(label||'').trim();
-    if(!v || !l) return;
-    const key = `${v}__${l}`.toLowerCase();
-    if(added.has(key)) return;
-    added.add(key);
-    o += `<option value="user|${esc(v)}">${esc(l)}</option>`;
-  };
-
-  // vendedores normais
-  flattenVendedores().forEach(v=>{
-    addUserOpt(`${v.nome}_${v.filial}`, `${v.nome} (${v.filial})`);
-  });
-
-  // usuários especiais das credenciais online
-  const users = Object.values((AUTH_STATE && AUTH_STATE.users) || {});
-  users.forEach(u=>{
-    const login = String((u && u.login) || '').trim();
-    const nome = String((u && u.nome) || '').trim();
-    const filial = String((u && u.filial) || '').trim();
-
-    if(u && u.is_viewer){
-      addUserOpt(login || 'painel', nome || 'Painel');
-      return;
-    }
-    if(login === 'master' || login === 'diretorcomercial') return;
-
-    if((u && u.is_crediarista) || (u && u.is_terceiro) || (u && u.only_cobranca)){
-      addUserOpt(login || nome, filial ? `${nome} (${filial})` : nome);
-      return;
-    }
-
-    if(login && nome){
-      addUserOpt(login, filial ? `${nome} (${filial})` : nome);
-    }
-  });
-
-  if(AUTH_STATE && AUTH_STATE.director){
-    addUserOpt('diretorcomercial', (AUTH_STATE.director && AUTH_STATE.director.nome) || 'Diretor Comercial');
-  }
-  addUserOpt('master', 'Master');
-
+  flattenVendedores().forEach(v=>o+=`<option value="user|${v.nome}_${v.filial}">${v.nome} (${v.filial})</option>`);
   return o;
 }
 function renderSenhaCard(u, isDirector=false){const key=isDirector?'diretorcomercial':u.login; const pend=(AUTH_STATE?.password_reset_requests||[]).filter(r=>String(r.login||'').toLowerCase()===String(key).toLowerCase() && String(r.status||'pendente')==='pendente').length; return `<div class="glass card" style="cursor:default"><div class="title" style="min-height:auto">${esc(isDirector?'Diretor Comercial':u.nome)} ${!isDirector?`(${u.filial||''})`:''}</div><div class="legend-inline"><span><i class="dot" style="background:${u.must_change_password?'#f59e0b':'#22c55e'}"></i>${u.must_change_password?'Precisa trocar senha':'Senha ativa'}</span>${pend?`<span><i class="dot" style="background:#ef4444"></i>${pend} solicitação(ões)</span>`:''}</div><div class="form-grid bonus" style="grid-template-columns:1.1fr .9fr;margin-top:12px"><div class="input-card"><label>Nova senha para ${esc(key)}</label><input id="pwd_${key}" placeholder="Digite a nova senha"></div><div class="input-card"><label>Ações</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="adminSalvarSenha('${key}')">💾 Salvar senha</button><button class="btn soft" type="button" onclick="adminMarcarTroca('${key}')">🔁 Exigir troca</button></div></div></div>${pend?`<div class="note" style="margin-top:10px">Solicitação pendente de recuperação. <button class="btn soft" style="margin-left:8px" onclick="adminResolverReset('${key}')">Resolver solicitação</button></div>`:''}<div id="pwd_msg_${key}" class="note" style="margin-top:8px"></div></div>`}
@@ -6289,7 +6263,7 @@ if FTP_USER and FTP_PASS:
         except Exception:
             ftp.storbinary('STOR mensagens_log.json', BytesIO(b'[]'))
         try:
-            _dashboard_ver = json.dumps({'updated_at': datetime.now().isoformat(), 'scope': 'dashboard_full'}, ensure_ascii=False).encode('utf-8')
+            _dashboard_ver = json.dumps({'updated_at': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'), 'updated_at_iso': now_brasilia().isoformat(), 'timezone': 'America/Sao_Paulo', 'scope': 'dashboard_full'}, ensure_ascii=False).encode('utf-8')
             ftp.storbinary('STOR dashboard_version.json', BytesIO(_dashboard_ver))
             ftp.storbinary('STOR sales_version.json', BytesIO(_dashboard_ver))
         except Exception as e_ver_ftp:
