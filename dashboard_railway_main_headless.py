@@ -17,10 +17,15 @@ import unicodedata
 import urllib.request
 import urllib.error
 import tempfile
+from zoneinfo import ZoneInfo
 
 LOGIN = "administrativo01.moveisdolar"
 SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
+APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
+
+def now_brasilia():
+    return datetime.now(APP_TZ)
 
 # ===== DATAS
 hoje        = datetime.now()
@@ -4884,14 +4889,14 @@ function formatUpdatedLabel(v){
   try{
     const s=String(v||'').trim();
     if(!s) return '';
-    if(/^\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}:\d{2}$/.test(s)) return s;
+    if(/^\d{2}\/\d{2}\/\d{4}[, ]+\d{2}:\d{2}:\d{2}$/.test(s)) return s.replace(',', '').replace(/\s+/g,' ').trim();
     const d=new Date(s);
     if(!isNaN(d.getTime())){
-      return d.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'});
+      return d.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo', hour12:false}).replace(',', '');
     }
-    return s;
+    return s.replace(',', '').replace(/\s+/g,' ').trim();
   }catch(_e){
-    return String(v||'');
+    return String(v||'').replace(',', '').trim();
   }
 }
 function dashboardUpdatedLabel(){
@@ -4950,7 +4955,7 @@ function calcSalesEmpresaFromMetas(payload){
 async function pollSalesLive(){
   try{
     const ver=await fetchJsonNoCache('sales_version.json');
-    const stamp=String(ver?.updated_at||'');
+    const stamp=String(ver?.updated_at_label||ver?.updated_at||'');
     if(stamp){
       window.__salesUpdatedAtLabel = stamp;
     }
@@ -6352,7 +6357,7 @@ if FTP_USER and FTP_PASS:
         except Exception:
             ftp.storbinary('STOR mensagens_log.json', BytesIO(b'[]'))
         try:
-            _dashboard_ver = json.dumps({'updated_at': datetime.now().isoformat(), 'scope': 'dashboard_full'}, ensure_ascii=False).encode('utf-8')
+            _dashboard_ver = json.dumps({'updated_at': now_brasilia().isoformat(), 'updated_at_label': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'), 'timezone': 'America/Sao_Paulo', 'scope': 'dashboard_full'}, ensure_ascii=False).encode('utf-8')
             ftp.storbinary('STOR dashboard_version.json', BytesIO(_dashboard_ver))
             ftp.storbinary('STOR sales_version.json', BytesIO(_dashboard_ver))
         except Exception as e_ver_ftp:
