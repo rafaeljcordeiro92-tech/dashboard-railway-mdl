@@ -1348,7 +1348,7 @@ def coletar_relatorio_servicos_mes_atual():
 
     html_rel = _wait_container_relatorio_ready(timeout=90)
     parsed = _parse_relatorio_servicos_html(driver.page_source)
-    parsed['coletado_em'] = now_brasilia().strftime('%Y-%m-%d %H:%M:%S')
+    parsed['coletado_em'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     parsed['periodo'] = {'data_inicial': primeiro_dia, 'data_final': ultimo_dia}
 
     json_path = os.path.join(pasta, 'relatorio_servicos_mes_atual.json')
@@ -1522,20 +1522,91 @@ def aplicar_relatorio_servicos_em_metas(metas_info, servicos_info):
         print(f'⚠️ Erro ao aplicar relatório de serviços sobre metas: {e}')
     return metas_info
 
-# ===== LOGIN
-driver.get(URL)
-wait.until(EC.presence_of_element_located((By.NAME, "usuario"))).send_keys(LOGIN)
-senha_field = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@type='password']")))
-senha_field.send_keys(SENHA)
-senha_field.send_keys(Keys.ENTER)
+# ===== LOGIN ROBUSTO — UMA ÚNICA VEZ
+def fazer_login_sgi():
+    driver.get(URL)
+    time.sleep(5)
+    print("TITLE:", driver.title)
+    print("URL ATUAL:", driver.current_url)
 
-try:
-    wait.until(EC.element_to_be_clickable((By.ID, "botao_prosseguir_informa_local_trabalho"))).click()
-    print("✅ Filial OK")
-except:
-    print("⚠️ Tela de filial não apareceu")
-time.sleep(5)
+    campo_usuario = None
+    seletores_usuario = [
+        (By.NAME, "usuario"),
+        (By.ID, "usuario"),
+        (By.CSS_SELECTOR, "input[name='usuario']"),
+        (By.CSS_SELECTOR, "input[id='usuario']"),
+        (By.XPATH, "//input[contains(@name,'usuario') or contains(@id,'usuario')]"),
+        (By.XPATH, "//input[@type='text' and not(@disabled)]"),
+    ]
 
+    for by, sel in seletores_usuario:
+        try:
+            cand = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((by, sel))
+            )
+            if cand:
+                campo_usuario = cand
+                print(f"✅ Campo usuário encontrado em: {by} = {sel}")
+                break
+        except Exception:
+            pass
+
+    if not campo_usuario:
+        print("❌ Campo usuário não encontrado")
+        print("URL:", driver.current_url)
+        print("TITLE:", driver.title)
+        try:
+            driver.save_screenshot(os.path.join(download_dir, "debug_login_worker.png"))
+        except Exception:
+            pass
+        raise Exception("Campo usuário não encontrado na tela de login")
+
+    try:
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", campo_usuario)
+        esperar_sumir_overlays(8)
+        campo_usuario.click()
+        campo_usuario.send_keys(Keys.CONTROL, "a")
+        campo_usuario.send_keys(Keys.DELETE)
+        campo_usuario.send_keys(LOGIN)
+    except Exception:
+        # Railway às vezes acha o input, mas ele fica não-interagível. Força via JS.
+        driver.execute_script("""
+            arguments[0].value = arguments[1];
+            arguments[0].dispatchEvent(new Event('input', {bubbles:true}));
+            arguments[0].dispatchEvent(new Event('change', {bubbles:true}));
+        """, campo_usuario, LOGIN)
+
+    senha_field = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@type='password']")))
+    try:
+        senha_field.click()
+        senha_field.send_keys(Keys.CONTROL, "a")
+        senha_field.send_keys(Keys.DELETE)
+        senha_field.send_keys(SENHA)
+        senha_field.send_keys(Keys.ENTER)
+    except Exception:
+        driver.execute_script("""
+            arguments[0].value = arguments[1];
+            arguments[0].dispatchEvent(new Event('input', {bubbles:true}));
+            arguments[0].dispatchEvent(new Event('change', {bubbles:true}));
+        """, senha_field, SENHA)
+        try:
+            btn = driver.find_element(By.XPATH, "//button[@type='submit'] | //input[@type='submit']")
+            driver.execute_script("arguments[0].click();", btn)
+        except Exception:
+            senha_field.send_keys(Keys.ENTER)
+
+    try:
+        btn_filial = WebDriverWait(driver, 20).until(
+            EC.element_to_be_clickable((By.ID, "botao_prosseguir_informa_local_trabalho"))
+        )
+        driver.execute_script("arguments[0].click();", btn_filial)
+        print("✅ Filial OK")
+    except Exception:
+        print("⚠️ Tela de filial não apareceu")
+
+    time.sleep(5)
+
+fazer_login_sgi()
 
 metas_vendas_info = {"json_path": None, "xlsx_path": None, "dados": {}}
 try:
