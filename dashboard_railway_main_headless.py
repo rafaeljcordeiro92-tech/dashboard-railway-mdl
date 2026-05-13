@@ -4885,6 +4885,7 @@ function renderKPIs(){
   const markupTotal=markupCost>0?(markupBase/markupCost):0;
   const isViewer=!!usuarioAtual?.is_viewer;
   const isPrivileged=(usuarioAtual?.tipo==='master' || isViewer);
+  const topServicos = _srvSortedEntries((SERVICOS_RELATORIO||{}).servicos||{}, 'real_total').slice(0,3);
   const cards=[
     makeKpi('💰 Total pendente',R(TOTAL_P),'var(--red)'),
     makeKpi('🏦 Total recebido',R(TOTAL_PG),'var(--green)'),
@@ -4898,6 +4899,7 @@ function renderKPIs(){
     makeKpi('🛣️ Caminhão projetado',R(sales.caminhao_projetado||0),'var(--yellow-400)',`Meta período ${R(sales.caminhao_meta_periodo||0)}`),
     (isPrivileged ? makeKpi('💵 Faturamento total',R((Number(sales.venda_realizado_total||0)+Number(sales.servico_realizado_total||0))),'var(--green-400)','Mercantil + serviços realizado') : ''),
     (isPrivileged ? makeKpi('🕒 Venda diária',R(vendaDiaria),'var(--cyan-400)','Mercantil + serviços do dia') : ''),
+    ...(isPrivileged ? topServicos.map(srv=>makeKpi(`🧾 ${srv.servico||'Serviço'}`, R(srv.real_total||0), 'var(--indigo-400)', `${Number(srv.quantidade||0).toFixed(0)} venda(s)`)) : []),
     makeKpi('📊 Rentabilidade total', rentPct?`${rentPct.toFixed(2).replace('.',',')}%`:'Sem dado','var(--green-400)','Última linha do relatório de margem bruta por filial'),
     makeKpi('🧮 Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)', isViewer ? 'Índice mercantil + serviços / custo oculto' : `(Mercantil + serviços) / custo total ${R(markupCost||0)}`)
   ];
@@ -4929,19 +4931,9 @@ function dashboardUpdatedLabel(){
   return formatUpdatedLabel(window.__dashboardUpdatedAtLabel || DASHBOARD_UPDATED_AT_LABEL);
 }
 function latestUpdatedLabel(){
-  const aRaw = window.__dashboardUpdatedAtLabel || DASHBOARD_UPDATED_AT_LABEL || '';
-  const bRaw = window.__salesUpdatedAtLabel || '';
-  const a = formatUpdatedLabel(aRaw);
-  const b = formatUpdatedLabel(bRaw);
-  if(!a && !b) return '';
-  if(a && !b) return a;
-  if(b && !a) return b;
-  const da = new Date(aRaw);
-  const db = new Date(bRaw);
-  if(!isNaN(da.getTime()) && !isNaN(db.getTime())){
-    return db > da ? b : a;
-  }
-  return b || a;
+  const salesLabel = formatUpdatedLabel(window.__salesUpdatedAtLabel || '');
+  const dashLabel  = formatUpdatedLabel(window.__dashboardUpdatedAtLabel || DASHBOARD_UPDATED_AT_LABEL || '');
+  return salesLabel || dashLabel || '';
 }
 
 function calcSalesEmpresaFromMetas(payload){
