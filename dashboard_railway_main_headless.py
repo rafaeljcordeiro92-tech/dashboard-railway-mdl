@@ -3453,6 +3453,17 @@ js_margens_brutas = json.dumps(margens_brutas_info.get('dados', {}), ensure_asci
 js_sales_empresa = json.dumps({}, ensure_ascii=False)
 js_rent_empresa = json.dumps((margens_brutas_info.get('dados', {}) or {}).get('empresa', {}), ensure_ascii=False)
 
+# relatório de serviços do mês atual (gerado pelo worker de vendas)
+_servicos_rel_path = os.path.join(pasta, "relatorio_servicos_mes_atual.json")
+_servicos_rel_data = {}
+try:
+    if os.path.exists(_servicos_rel_path):
+        with open(_servicos_rel_path, "r", encoding="utf-8") as _fsrv:
+            _servicos_rel_data = json.load(_fsrv) or {}
+except Exception as _e:
+    print(f"⚠️ Falha ao carregar relatorio_servicos_mes_atual.json: {_e}")
+js_servicos_relatorio = json.dumps(_servicos_rel_data, ensure_ascii=False)
+
 # Inativos e FDEP por filial
 bruto_inat_p  = {f: 0.0 for f in ORDEM_FILIAIS + ["FDEP"]}
 bruto_inat_pg = {f: 0.0 for f in ORDEM_FILIAIS + ["FDEP"]}
@@ -3918,6 +3929,17 @@ for _bucket in list(_sales_fil.values()) + list(_sales_vend.values()):
 # agora que _sales_emp foi montado, serializa corretamente para o HTML
 js_sales_empresa = json.dumps(_sales_emp, ensure_ascii=False)
 js_rent_empresa = json.dumps((margens_brutas_info.get('dados', {}) or {}).get('empresa', {}), ensure_ascii=False)
+
+# relatório de serviços do mês atual (gerado pelo worker de vendas)
+_servicos_rel_path = os.path.join(pasta, "relatorio_servicos_mes_atual.json")
+_servicos_rel_data = {}
+try:
+    if os.path.exists(_servicos_rel_path):
+        with open(_servicos_rel_path, "r", encoding="utf-8") as _fsrv:
+            _servicos_rel_data = json.load(_fsrv) or {}
+except Exception as _e:
+    print(f"⚠️ Falha ao carregar relatorio_servicos_mes_atual.json: {_e}")
+js_servicos_relatorio = json.dumps(_servicos_rel_data, ensure_ascii=False)
 
 hist_dash.setdefault("sales_dates", {})
 hist_dash.setdefault("sales_months", {})
@@ -4673,6 +4695,7 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
       <button class="tab active" data-tab="vendedores" onclick="setMainTab('vendedores')">👤 Por Vendedor</button>
       <button class="tab" data-tab="filiais" onclick="setMainTab('filiais')">🏬 Por Filial</button>
       <button class="tab" data-tab="metas" onclick="setMainTab('metas')">🎯 Metas</button>
+      <button class="tab" data-tab="servicos" onclick="setMainTab('servicos')">🛠️ Serviços</button>
       <button class="tab" data-tab="cobrancas" onclick="setMainTab('cobrancas')">🧾 Cobranças</button>
       <button class="tab" data-tab="avisos" onclick="setMainTab('avisos')">📣 Avisos</button>
       <button class="tab" data-tab="senhas" onclick="setMainTab('senhas')">🔐 Senhas</button>
@@ -4684,6 +4707,7 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
     <div id="mainScreen">
       <div id="listSection"></div>
       <div id="metaSection" class="hidden"></div>
+      <div id="servicesSection" class="hidden"></div>
       <div id="logSection" class="hidden"></div>
       <div id="avisosSection" class="hidden"></div>
       <div id="senhasSection" class="hidden"></div>
@@ -4719,6 +4743,7 @@ const METAS_VENDAS=__JS_METAS_VENDAS__||{metas:{}};
 const MARGENS_BRUTAS=__JS_MARGENS_BRUTAS__||{filiais:{},vendedores:{}};
 let SALES_EMPRESA=__JS_SALES_EMPRESA__||{};
 let RENT_EMPRESA=__JS_RENT_EMPRESA__||{};
+let SERVICOS_RELATORIO=__JS_SERVICOS_RELATORIO__||{empresa:{},servicos:{},filiais:{},vendedores:{},detalhes:[]};
 let CONFIG_META={grave_pct:20,alerta_pct:15,atencao_pct:10,peso_grave:60,peso_alerta:30,peso_atencao:10,bonus_50:'',bonus_75:'',bonus_85:'',bonus_100:'',cob_cred_rateio_filial_pct:50,cob_cred_rateio_cred_pct:50,cobranca_global_rateio_pct:20,...(__CONFIG_META__||{})};
 let CONFIG_META_IND=__CONFIG_META_IND__||{};
 const LOGIN_MASTER=String(__LOGIN_MASTER__);
@@ -4764,6 +4789,7 @@ const masterTabs=document.getElementById('masterTabs');
 const mainFilters=document.getElementById('mainFilters');
 const listSection=document.getElementById('listSection');
 const metaSection=document.getElementById('metaSection');
+const servicesSection=document.getElementById('servicesSection');
 const logSection=document.getElementById('logSection');
 const detailScreen=document.getElementById('detailScreen');
 const avisosSection=document.getElementById('avisosSection');
@@ -4971,10 +4997,14 @@ async function pollSalesLive(){
     }
     const metasWrap=await fetchJsonNoCache('metas_vendas_mes_atual.json');
     const margensWrap=await fetchJsonNoCache('margens_brutas_mes_atual.json');
+    let servWrap={};
+    try{ servWrap=await fetchJsonNoCache('relatorio_servicos_mes_atual.json'); }catch(_e){ servWrap = SERVICOS_RELATORIO||{}; }
     SALES_EMPRESA=calcSalesEmpresaFromMetas(metasWrap||{});
     RENT_EMPRESA=((margensWrap||{}).empresa)||{};
+    SERVICOS_RELATORIO=(servWrap||{});
     window.__lastSalesVersion=stamp;
     if(typeof renderKPIs==='function' && document.getElementById('kpis')) renderKPIs();
+    if(typeof renderServicosTab==='function' && (!servicesSection.classList.contains('hidden') || usuarioAtual?.is_viewer)) renderServicosTab(!!usuarioAtual?.is_viewer);
   }catch(e){console.log('pollSalesLive',e)}
 }
 async function pollDashboardLiveReload(){
@@ -4991,7 +5021,83 @@ async function pollDashboardLiveReload(){
   }catch(e){console.log('pollDashboardLiveReload',e)}
 }
 
-function setMainTab(tab){const isDiretor=usuarioAtual?.tipo==='master' && usuarioAtual?.roleLabel==='Diretor Comercial';if(isDiretor && ['cobrancas','senhas'].includes(tab)){tab='vendedores';}mainTab=tab;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden');const hiddenMain=['metas','cobrancas','avisos','senhas','historico'].includes(tab);listSection.classList.toggle('hidden',hiddenMain);metaSection.classList.toggle('hidden',tab!=='metas');logSection.classList.toggle('hidden',tab!=='cobrancas');avisosSection.classList.toggle('hidden',tab!=='avisos');senhasSection.classList.toggle('hidden',tab!=='senhas');histSection.classList.toggle('hidden',tab!=='historico');mainFilters.classList.toggle('hidden',hiddenMain);if(tab==='vendedores'||tab==='filiais'){renderFilters();renderList()} if(tab==='metas') renderMetasTab(); if(tab==='cobrancas') renderLogsTab(); if(tab==='avisos') renderAvisosTab(); if(tab==='senhas') renderSenhasTab(); if(tab==='historico') renderHistoricoTab();}
+
+function _srvSortedEntries(obj, key='real_total'){
+  return Object.values(obj||{}).slice().sort((a,b)=>Number(b?.[key]||0)-Number(a?.[key]||0));
+}
+function _srvMiniCard(title, value, subtitle=''){
+  return `<div class="glass panel" style="padding:14px 16px"><div class="mini" style="margin-bottom:8px">${esc(title)}</div><div class="big" style="font-size:28px;color:#f8fafc">${value}</div>${subtitle?`<div class="hint" style="margin-top:6px">${subtitle}</div>`:''}</div>`;
+}
+function _srvRankRows(rows, kind){
+  if(!rows.length) return `<div class="empty">Nenhum dado encontrado no relatório de serviços.</div>`;
+  return rows.map((r,idx)=>{
+    const label = kind==='servico' ? (r.servico||'-') : (kind==='filial' ? (r.label||r.filial||'-') : (r.label||r.nome||'-'));
+    const qtd = Number(r.quantidade||0);
+    const total = Number(r.real_total||0);
+    const details = kind==='vendedor' ? `${esc(r.filial||'')}` : `${qtd.toLocaleString('pt-BR')} item(ns)`;
+    return `<div class="log-row"><div><strong>${idx+1}. ${esc(label)}</strong><div class="small muted">${details}</div></div><div><strong>${R(total)}</strong><div class="small muted">Total</div></div></div>`;
+  }).join('');
+}
+function renderServicosTab(isViewer=false){
+  const data = SERVICOS_RELATORIO||{};
+  const empresa = data.empresa||{};
+  const tipos = _srvSortedEntries(data.servicos||{});
+  const filiais = _srvSortedEntries(data.filiais||{});
+  const vendedores = _srvSortedEntries(data.vendedores||{});
+
+  const totalServ = Number(empresa.real_total||0);
+  const totalQtd = Number(empresa.quantidade||0);
+  const totalLinhas = Number(empresa.linhas||0);
+  const tiposAtivos = tipos.length;
+
+  const topTipo = tipos[0]||{};
+  const topFil = filiais[0]||{};
+  const topVend = vendedores[0]||{};
+
+  const summary = `
+    <div class="kpis" style="margin-bottom:14px">
+      ${_srvMiniCard('🧰 Serviços no mês', R(totalServ), `${totalQtd.toLocaleString('pt-BR')} item(ns) · ${totalLinhas.toLocaleString('pt-BR')} linha(s)`)}
+      ${_srvMiniCard('🏷️ Tipos de serviço', String(tiposAtivos), topTipo.servico?`Maior: ${esc(topTipo.servico)} · ${R(topTipo.real_total||0)}`:'')}
+      ${_srvMiniCard('🏬 Melhor filial', topFil.label?esc(topFil.label):'—', topFil.real_total?`${R(topFil.real_total)} · ${Number(topFil.quantidade||0).toLocaleString('pt-BR')} item(ns)`:'')}
+      ${_srvMiniCard('👤 Melhor vendedor', topVend.label?esc(topVend.label):'—', topVend.real_total?`${R(topVend.real_total)} · ${Number(topVend.quantidade||0).toLocaleString('pt-BR')} item(ns)`:'')}
+    </div>`;
+
+  const tipoCards = tipos.length ? `
+    <div class="glass panel" style="margin-bottom:14px">
+      <div class="section-head"><div><h2>🛠️ Serviços por tipo</h2><div class="hint">Totais consolidados por serviço do relatório mensal.</div></div></div>
+      <div class="grid-cards">${tipos.map(t=>`
+        <div class="glass card" style="padding:14px 16px">
+          <div class="title">${esc(t.servico||'-')}</div>
+          <div class="numbers" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
+            <div class="stat-box"><div class="mini">Quantidade</div><div class="big" style="font-size:18px">${Number(t.quantidade||0).toLocaleString('pt-BR')}</div></div>
+            <div class="stat-box"><div class="mini">Total</div><div class="big" style="font-size:18px;color:var(--green)">${R(t.real_total||0)}</div></div>
+          </div>
+          <div class="legend-inline"><span><i class="dot" style="background:#f59e0b"></i>${Number(t.linhas||0).toLocaleString('pt-BR')} lançamento(s)</span></div>
+        </div>`).join('')}</div>
+    </div>` : `<div class="empty">Nenhum serviço encontrado no relatório.</div>`;
+
+  const rankings = `
+    <div class="grid-2">
+      <div class="glass panel">
+        <div class="section-head"><div><h2>🏬 Ranking por filial</h2><div class="hint">Top filiais em serviços do mês.</div></div></div>
+        <div class="logs-list">${_srvRankRows(filiais.slice(0,20), 'filial')}</div>
+      </div>
+      <div class="glass panel">
+        <div class="section-head"><div><h2>👤 Ranking por vendedor</h2><div class="hint">Top vendedores em serviços do mês.</div></div></div>
+        <div class="logs-list">${_srvRankRows(vendedores.slice(0,20), 'vendedor')}</div>
+      </div>
+    </div>`;
+
+  const host = servicesSection;
+  if(!host) return;
+  host.innerHTML = summary + tipoCards + rankings;
+
+  if(isViewer){
+    host.classList.remove('hidden');
+  }
+}
+
+function setMainTab(tab){const isDiretor=usuarioAtual?.tipo==='master' && usuarioAtual?.roleLabel==='Diretor Comercial';if(isDiretor && ['cobrancas','senhas'].includes(tab)){tab='vendedores';}mainTab=tab;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden');const hiddenMain=['metas','servicos','cobrancas','avisos','senhas','historico'].includes(tab);listSection.classList.toggle('hidden',hiddenMain);metaSection.classList.toggle('hidden',tab!=='metas');servicesSection.classList.toggle('hidden',tab!=='servicos');logSection.classList.toggle('hidden',tab!=='cobrancas');avisosSection.classList.toggle('hidden',tab!=='avisos');senhasSection.classList.toggle('hidden',tab!=='senhas');histSection.classList.toggle('hidden',tab!=='historico');mainFilters.classList.toggle('hidden',hiddenMain);if(tab==='vendedores'||tab==='filiais'){renderFilters();renderList()} if(tab==='metas') renderMetasTab(); if(tab==='servicos') renderServicosTab(false); if(tab==='cobrancas') renderLogsTab(); if(tab==='avisos') renderAvisosTab(); if(tab==='senhas') renderSenhasTab(); if(tab==='historico') renderHistoricoTab();}
 function renderFilters(){if(mainTab!=='vendedores'&&mainTab!=='filiais'){mainFilters.innerHTML='';return} let html=`<button class="pill ${filtroFilial==='TODAS'?'active':''}" onclick="setFiltroFilial('TODAS')">Todas</button>`; ORDEM.forEach(f=>{html+=`<button class="pill ${filtroFilial===f?'active':''}" onclick="setFiltroFilial('${f}')">${f}</button>`}); mainFilters.innerHTML=html;}
 function setFiltroFilial(f){filtroFilial=f;renderFilters();renderList()}
 function currentEntities(){let arr=mainTab==='filiais'?flattenFiliais():flattenVendedores(); if(mainTab==='vendedores' && usuarioAtual?.tipo==='master'){const t=thirdChargeEntity(); const hasThird=Number(t.pendente||0)>0 || Number(t.pago||0)>0 || Number(t.grave_pend||0)>0 || Number(t.alerta_pend||0)>0 || Number(t.atencao_pend||0)>0; if(hasThird) arr=[t,...arr]; const creds=crediaristaEntities().filter(x=>Number(x.pendente||0)>0||Number(x.pago||0)>0); if(creds.length) arr=[...creds,...arr]} return arr.filter(x=>filtroFilial==='TODAS'||x.filial===filtroFilial || x.is_terceiro || x.is_crediarista)}
@@ -6002,6 +6108,7 @@ repls = {
     '__JS_MARGENS_BRUTAS__': js_margens_brutas,
     '__JS_SALES_EMPRESA__': js_sales_empresa,
     '__JS_RENT_EMPRESA__': js_rent_empresa,
+    '__JS_SERVICOS_RELATORIO__': js_servicos_relatorio,
     '__CONFIG_META__': json.dumps(CONFIG_META, ensure_ascii=False),
     '__CONFIG_META_IND__': json.dumps(CONFIG_META_IND, ensure_ascii=False),
     '__JS_DESTAQUE__': js_destaque,
