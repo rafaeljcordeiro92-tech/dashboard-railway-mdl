@@ -4885,7 +4885,14 @@ function renderKPIs(){
   const markupTotal=markupCost>0?(markupBase/markupCost):0;
   const isViewer=!!usuarioAtual?.is_viewer;
   const isPrivileged=(usuarioAtual?.tipo==='master' || isViewer);
-  const topServicos = _srvSortedEntries((SERVICOS_RELATORIO||{}).servicos||{}, 'real_total').slice(0,3);
+
+  // Cards extras por tipo de serviço vindos do relatorio_servicos_mes_atual.json
+  const topServiceCards = Object.values((SERVICOS_RELATORIO && SERVICOS_RELATORIO.servicos) || {})
+    .slice()
+    .sort((a,b)=>Number(b.real_total||0)-Number(a.real_total||0))
+    .slice(0,4)
+    .map(s=>makeKpi(`🛠️ ${String(s.servico||'Serviço').slice(0,30)}`, R(s.real_total||0), 'var(--blue-400)', `${Number(s.quantidade||0).toLocaleString('pt-BR')} item(ns)`));
+
   const cards=[
     makeKpi('💰 Total pendente',R(TOTAL_P),'var(--red)'),
     makeKpi('🏦 Total recebido',R(TOTAL_PG),'var(--green)'),
@@ -4895,11 +4902,11 @@ function renderKPIs(){
     makeKpi('📈 Mercantil projetado',R(sales.venda_projetado||0),'var(--amber-500)',`Meta período ${R(sales.venda_meta_periodo||0)}`),
     makeKpi('🛠️ Serviços realizado',R(sales.servico_realizado_total||0),'var(--blue)',`Meta ${R(sales.servico_meta_total||0)} · Atingido ${pct(sales.servico_atingido_total||0)}`),
     makeKpi('🧰 Serviços projetado',R(sales.servico_projetado||0),'var(--blue-400)',`Meta período ${R(sales.servico_meta_periodo||0)}`),
+    ...topServiceCards,
     makeKpi('🚚 Caminhão realizado',R(sales.caminhao_realizado_total||0),'var(--yellow)',`Meta ${R(sales.caminhao_meta_total||0)} · Atingido ${pct(sales.caminhao_atingido_total||0)}`),
     makeKpi('🛣️ Caminhão projetado',R(sales.caminhao_projetado||0),'var(--yellow-400)',`Meta período ${R(sales.caminhao_meta_periodo||0)}`),
     (isPrivileged ? makeKpi('💵 Faturamento total',R((Number(sales.venda_realizado_total||0)+Number(sales.servico_realizado_total||0))),'var(--green-400)','Mercantil + serviços realizado') : ''),
     (isPrivileged ? makeKpi('🕒 Venda diária',R(vendaDiaria),'var(--cyan-400)','Mercantil + serviços do dia') : ''),
-    ...(isPrivileged ? topServicos.map(srv=>makeKpi(`🧾 ${srv.servico||'Serviço'}`, R(srv.real_total||0), 'var(--indigo-400)', `${Number(srv.quantidade||0).toFixed(0)} venda(s)`)) : []),
     makeKpi('📊 Rentabilidade total', rentPct?`${rentPct.toFixed(2).replace('.',',')}%`:'Sem dado','var(--green-400)','Última linha do relatório de margem bruta por filial'),
     makeKpi('🧮 Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)', isViewer ? 'Índice mercantil + serviços / custo oculto' : `(Mercantil + serviços) / custo total ${R(markupCost||0)}`)
   ];
@@ -4931,9 +4938,19 @@ function dashboardUpdatedLabel(){
   return formatUpdatedLabel(window.__dashboardUpdatedAtLabel || DASHBOARD_UPDATED_AT_LABEL);
 }
 function latestUpdatedLabel(){
-  const salesLabel = formatUpdatedLabel(window.__salesUpdatedAtLabel || '');
-  const dashLabel  = formatUpdatedLabel(window.__dashboardUpdatedAtLabel || DASHBOARD_UPDATED_AT_LABEL || '');
-  return salesLabel || dashLabel || '';
+  const aRaw = window.__dashboardUpdatedAtLabel || DASHBOARD_UPDATED_AT_LABEL || '';
+  const bRaw = window.__salesUpdatedAtLabel || '';
+  const a = formatUpdatedLabel(aRaw);
+  const b = formatUpdatedLabel(bRaw);
+  if(!a && !b) return '';
+  if(a && !b) return a;
+  if(b && !a) return b;
+  const da = new Date(aRaw);
+  const db = new Date(bRaw);
+  if(!isNaN(da.getTime()) && !isNaN(db.getTime())){
+    return db > da ? b : a;
+  }
+  return b || a;
 }
 
 function calcSalesEmpresaFromMetas(payload){
@@ -4974,29 +4991,25 @@ async function pollSalesLive(){
   try{
     const ver=await fetchJsonNoCache('sales_version.json');
     const stamp=String(ver?.updated_at_label||ver?.updated_at||'');
-    if(stamp){
-      window.__salesUpdatedAtLabel = stamp;
-    }
-    if(!stamp) return;
-    if(window.__lastSalesVersion===undefined){
-      window.__lastSalesVersion=stamp;
-      if(typeof renderKPIs==='function' && document.getElementById('kpis')) renderKPIs();
-      return;
-    }
-    if(window.__lastSalesVersion===stamp){
-      if(typeof renderKPIs==='function' && document.getElementById('kpis')) renderKPIs();
-      return;
-    }
-    const metasWrap=await fetchJsonNoCache('metas_vendas_mes_atual.json');
-    const margensWrap=await fetchJsonNoCache('margens_brutas_mes_atual.json');
-    let servWrap={};
-    try{ servWrap=await fetchJsonNoCache('relatorio_servicos_mes_atual.json'); }catch(_e){ servWrap = SERVICOS_RELATORIO||{}; }
-    SALES_EMPRESA=calcSalesEmpresaFromMetas(metasWrap||{});
-    RENT_EMPRESA=((margensWrap||{}).empresa)||{};
-    SERVICOS_RELATORIO=(servWrap||{});
-    window.__lastSalesVersion=stamp;
+    if(stamp){ window.__salesUpdatedAtLabel = stamp; }
+
+    // Sempre tenta atualizar os arquivos de vendas/serviços quando a página está aberta.
+    // Assim os cards aparecem mesmo quando o usuário entrou depois da última execução.
+    let metasWrap=null, margensWrap=null, servWrap=null;
+    try{ metasWrap=await fetchJsonNoCache('metas_vendas_mes_atual.json'); }catch(_e){}
+    try{ margensWrap=await fetchJsonNoCache('margens_brutas_mes_atual.json'); }catch(_e){}
+    try{ servWrap=await fetchJsonNoCache('relatorio_servicos_mes_atual.json'); }catch(_e){}
+
+    if(metasWrap) SALES_EMPRESA=calcSalesEmpresaFromMetas(metasWrap||{});
+    if(margensWrap) RENT_EMPRESA=((margensWrap||{}).empresa)||{};
+    if(servWrap) SERVICOS_RELATORIO=(servWrap||{});
+
+    if(stamp) window.__lastSalesVersion=stamp;
     if(typeof renderKPIs==='function' && document.getElementById('kpis')) renderKPIs();
     if(typeof renderServicosTab==='function' && (!servicesSection.classList.contains('hidden') || usuarioAtual?.is_viewer)) renderServicosTab(!!usuarioAtual?.is_viewer);
+    if(!detailScreen.classList.contains('hidden') && currentDetailRef){
+      try{ openEntity(currentDetailRef); }catch(_e){}
+    }
   }catch(e){console.log('pollSalesLive',e)}
 }
 async function pollDashboardLiveReload(){
@@ -5252,6 +5265,44 @@ function renderMetaBox(title,color,obj){return `<div class="meta-card"><div clas
 function normSalesText(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9 ]/gi,' ').replace(/\s+/g,' ').trim().toUpperCase()}
 function salesCell(row, keys){for(const k of keys){if(row && row[k]!=null && String(row[k]).trim()!=='') return String(row[k]).trim()} return ''}
 function filialAliases(f){const raw=String(f||'').toUpperCase(); if(raw.includes('90')) return ['FILIAL 90/99','FILIAL 90','90/99','DEPOSITO MOVEIS','DEPOSITO']; const n=parseInt((raw.match(/\d+/)||[''])[0]||'0',10); if(!n) return [raw]; const two=String(n).padStart(2,'0'); return [`FILIAL ${two}`,`FILIAL ${n}`,`(${two})`,`(${n})`,`F${n}`]}
+
+function servicosKeyNome(nome){
+  return normSalesText(nome).replace(/\s+/g,' ').trim();
+}
+function servicosEntidade(ent){
+  const out=[];
+  const data=SERVICOS_RELATORIO||{};
+  if(!ent) return out;
+  if(ent.type==='filial'){
+    const item=(data.filiais||{})[ent.filial]||{};
+    Object.entries(item.servicos||{}).forEach(([servico,valor])=>{
+      out.push({servico, real_total:Number(valor||0), quantidade:0});
+    });
+  }else{
+    const vend=(data.vendedores||{});
+    const key1=`${servicosKeyNome(ent.nome)}_${ent.filial}`;
+    let item=vend[key1];
+    if(!item){
+      item=Object.values(vend).find(v=>{
+        return String(v?.filial||'').toUpperCase()===String(ent.filial||'').toUpperCase()
+          && servicosKeyNome(v?.nome||'')===servicosKeyNome(ent.nome||'');
+      });
+    }
+    Object.entries((item&&item.servicos)||{}).forEach(([servico,valor])=>{
+      out.push({servico, real_total:Number(valor||0), quantidade:0});
+    });
+  }
+  return out.sort((a,b)=>Number(b.real_total||0)-Number(a.real_total||0));
+}
+function renderServicosEntidade(ent){
+  const rows=servicosEntidade(ent).filter(x=>Number(x.real_total||0)>0);
+  if(!rows.length){
+    return `<div class="glass panel"><h3>🛠️ Serviços por tipo</h3><div class="empty">Nenhum serviço localizado para ${ent?.type==='filial'?'esta filial':'este vendedor'} no relatório mensal.</div></div>`;
+  }
+  const total=rows.reduce((a,b)=>a+Number(b.real_total||0),0);
+  return `<div class="glass panel"><div class="section-head" style="margin:0 0 10px"><div><h3 style="margin:0">🛠️ Serviços por tipo</h3><div class="hint">Relatório de serviços do mês atual · total ${R(total)}</div></div></div><div class="metrics-grid">${rows.slice(0,8).map(r=>`<div class="metric"><div class="k">${esc(String(r.servico||'Serviço').slice(0,34))}</div><div class="v" style="color:var(--blue-400);font-size:18px">${R(r.real_total||0)}</div></div>`).join('')}</div></div>`;
+}
+
 function rowMatchesFilial(ent,row){const joined=normSalesText([salesCell(row,['Filial','Filial_2','Vendedor','Vendedor_2','Nome','Nome_2']),salesCell(row,['Subgrupo'])].join(' ')); return filialAliases(ent.filial).some(a=>joined.includes(normSalesText(a)))}
 function vendedorNomeAlvo(row,key){if(key==='venda_filial_vendedor_meta' || key==='servico_filial_vendedor_ouro_fob') return salesCell(row,['Vendedor_2','Nome_2','Nome','Vendedor']); return salesCell(row,['Vendedor','Vendedor_2','Nome','Nome_2'])}
 function fuzzyContainsAllTokens(target, query){const t=normSalesText(target); const q=normSalesText(query); const toks=q.split(' ').filter(x=>x && x.length>1); return toks.length ? toks.every(tok=>t.includes(tok)) : false}
@@ -5274,7 +5325,7 @@ function renderDualMascotStatus(ent){const metaCob=calcMeta(ent).geral||0; if(en
 function salesCfgHeader(ent){const c=calcMeta(ent).cfg||{}; return ent.type==='filial' ? `mín. vendas ${Number(c.gerente_vendas_min_pct||0)}% · mín. serviços ${Number(c.gerente_servicos_min_pct||0)}%` : `mín. vendas ${Number(c.vendas_min_pct||0)}% · mín. serviços ${Number(c.servicos_min_pct||0)}%`}
 function rentabilidadeAtualPct(ent){return Number(ent?.rentabilidade_pct||0)}
 function renderRentabilidadeBadge(ent){const r=rentabilidadeAtualPct(ent); const txt=r?`${r.toFixed(2).replace('.',',')}%`:'Sem dado'; return `<div class="rent-badge"><span>📊 Rentabilidade atual</span><strong>${txt}</strong></div>`}
-function renderSalesPanel(ent){const blocks = ent.type==='filial' ? [['venda_filial_meta','📈 Venda · Meta Filial'],['servico_filial_ouro_fob','🛠️ Serviço · Ouro / FOB'],['venda_filial_subgrupo_20k','🚚 Venda · Caminhão 20K / Subgrupo']] : [['venda_filial_vendedor_meta','📈 Venda · Meta Vendedor'],['servico_filial_vendedor_ouro_fob','🛠️ Serviço · Ouro / FOB Vendedor'],['venda_vendedor_subgrupo_20k','🚚 Venda · Caminhão 20K / Subgrupo']]; return `<div class="glass panel sales-panel"><div class="section-head" style="margin:0 0 10px;align-items:flex-start"><div><h3 style="margin:0">💲 Vendas e metas <span class="sales-note">· SGI / mês atual</span></h3><div style="margin-top:8px">${renderRentabilidadeBadge(ent)}</div></div><div class="sales-note" style="text-align:right;max-width:280px">${salesCfgHeader(ent)}</div></div>${renderDualMascotStatus(ent)}<div class="sales-stack">${blocks.map(([k,t])=>renderSalesRows(ent,k,t)).join('')}</div></div>`}
+function renderSalesPanel(ent){const blocks = ent.type==='filial' ? [['venda_filial_meta','📈 Venda · Meta Filial'],['servico_filial_ouro_fob','🛠️ Serviço · Ouro / FOB'],['venda_filial_subgrupo_20k','🚚 Venda · Caminhão 20K / Subgrupo']] : [['venda_filial_vendedor_meta','📈 Venda · Meta Vendedor'],['servico_filial_vendedor_ouro_fob','🛠️ Serviço · Ouro / FOB Vendedor'],['venda_vendedor_subgrupo_20k','🚚 Venda · Caminhão 20K / Subgrupo']]; return `<div class="glass panel sales-panel"><div class="section-head" style="margin:0 0 10px;align-items:flex-start"><div><h3 style="margin:0">💲 Vendas e metas <span class="sales-note">· SGI / mês atual</span></h3><div style="margin-top:8px">${renderRentabilidadeBadge(ent)}</div></div><div class="sales-note" style="text-align:right;max-width:280px">${salesCfgHeader(ent)}</div></div>${renderDualMascotStatus(ent)}<div class="sales-stack">${blocks.map(([k,t])=>renderSalesRows(ent,k,t)).join('')}</div><div style="height:14px"></div>${renderServicosEntidade(ent)}</div>`}
 
 function salesMetricFromRow(row,key){if(!row) return 0; if(key==='venda_realizado') return salesNum(salesCell(row,['Realizado (R$) Total','Realizado(R$) Total'])); if(key==='servico_realizado') return salesNum(salesCell(row,['Realizado (R$) Total','Realizado(R$) Total'])); if(key==='venda_atingido') return salesNum(salesCell(row,['Atingido Total'])); if(key==='servico_atingido') return salesNum(salesCell(row,['Atingido Total'])); return 0}
 function bestLiveSalesEntity(entities,key){let best=null; entities.forEach(ent=>{const rows=getSalesRows(ent,key); rows.forEach(r=>{const val=salesMetricFromRow(r,key.includes('servico')?'servico_realizado':'venda_realizado'); if(!best || val>best.val) best={ent,row:r,val};})}); return best}
@@ -6063,12 +6114,12 @@ window.addEventListener('load',async ()=>{
   await carregarCredenciaisOnline();
   try{
     const verDash = await fetchJsonNoCache('dashboard_version.json');
-    const stampDash = String((verDash && verDash.updated_at) || '');
+    const stampDash = String((verDash && (verDash.updated_at_label||verDash.updated_at)) || '');
     if(stampDash) window.__dashboardUpdatedAtLabel = stampDash;
   }catch(_e){}
   try{
     const verSales = await fetchJsonNoCache('sales_version.json');
-    const stampSales = String((verSales && verSales.updated_at) || '');
+    const stampSales = String((verSales && (verSales.updated_at_label||verSales.updated_at)) || '');
     if(stampSales) window.__salesUpdatedAtLabel = stampSales;
   }catch(_e){}
   if(restoreSession()){abrirApp();}
