@@ -17,22 +17,10 @@ import unicodedata
 import urllib.request
 import urllib.error
 import tempfile
-from zoneinfo import ZoneInfo
 
 LOGIN = "administrativo01.moveisdolar"
 SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
-
-BR_TZ = ZoneInfo("America/Sao_Paulo")
-
-def now_brasilia():
-    return datetime.now(BR_TZ)
-
-def iso_brasilia(dt=None):
-    return (dt or now_brasilia()).isoformat()
-
-def label_brasilia(dt=None):
-    return (dt or now_brasilia()).strftime("%d/%m/%Y %H:%M:%S")
 
 # ===== DATAS
 hoje        = datetime.now()
@@ -2491,7 +2479,7 @@ def _historico_comissao_cobranca10():
         'recebido': recebido,
         'comissao': com,
         'total_comissao': round(sum(com.values()), 2),
-        'updated_at': iso_brasilia(),
+        'updated_at': datetime.now().isoformat(),
     }
     with open(COMISSAO_HIST_PATH, 'w', encoding='utf-8') as f:
         json.dump(hist, f, ensure_ascii=False, indent=2)
@@ -2557,7 +2545,7 @@ def ensure_month_reference_locked(_month_str, _today_str):
     if _base_snap:
         _ref_payload = {
             'data': _base_snap.get('data', _today_str),
-            'gerado_em': iso_brasilia(),
+            'gerado_em': datetime.now().isoformat(),
             'origem': 'ultimo_snapshot_anterior',
             'snapshot_origem_path': _base_snap.get('_path',''),
             'snapshot_origem_data': _base_snap.get('data', _today_str),
@@ -2565,7 +2553,7 @@ def ensure_month_reference_locked(_month_str, _today_str):
     else:
         _ref_payload = {
             'data': f'{_month_str}-01',
-            'gerado_em': iso_brasilia(),
+            'gerado_em': datetime.now().isoformat(),
             'origem': 'inicio_mes_sem_snapshot_anterior',
             'snapshot_origem_path': '',
             'snapshot_origem_data': f'{_month_str}-01',
@@ -2596,7 +2584,7 @@ def fechar_mes_anterior_travado(_mes_atual, _hist_dash, _config_global, _config_
     _resumo_final = (_hist_dash.get('dates', {}).get(_last_hist_date, {}) if _last_hist_date else {})
     _entry = {
         'mes': _prev_month,
-        'fechado_em': iso_brasilia(),
+        'fechado_em': datetime.now().isoformat(),
         'meta_file': os.path.basename(_prev_meta_path),
         'meta_final': _prev_meta,
         'empresa_final': _resumo_final.get('empresa', {}),
@@ -2740,7 +2728,7 @@ if _base_report_path:
         with open(ref_path(mes_str), "w", encoding="utf-8") as _fr:
             json.dump({
                 "data": BASE_MENSAL_INFO["data"],
-                "gerado_em": iso_brasilia(),
+                "gerado_em": datetime.now().isoformat(),
                 "origem": "arquivo_base_relatorio",
                 "arquivo_base": os.path.basename(_base_report_path),
                 "snapshot_origem_data": BASE_MENSAL_INFO["data"],
@@ -2760,7 +2748,7 @@ else:
 
 # ── Snapshot de hoje ──────────────────────────────────────────────────
 snapshot_hoje = {
-    "data": hoje_str, "gerado_em": iso_brasilia(),
+    "data": hoje_str, "gerado_em": datetime.now().isoformat(),
     "total_p": total_final_p, "total_pg": total_final_pg,
     "filiais": {}, "vendedores": {}
 }
@@ -3245,9 +3233,11 @@ for key, vd in snapshot_hoje["vendedores"].items():
             elif _fx == 'alerta': _alerta_delta  += _share
             else:                 _atencao_delta += _share
 
-    vm["grave_rec"]   = round(vm["grave_rec"]   + _grave_delta,   2)
-    vm["alerta_rec"]  = round(vm["alerta_rec"]  + _alerta_delta,  2)
-    vm["atencao_rec"] = round(vm["atencao_rec"] + _atencao_delta, 2)
+    # 🔥 CORREÇÃO: não acumular novamente a cada reprocessamento do mesmo período.
+    # O gráfico do vendedor deve refletir os valores reais atuais do período, assim como já ocorre nas filiais.
+    vm["grave_rec"]   = round(_grave_delta,   2)
+    vm["alerta_rec"]  = round(_alerta_delta,  2)
+    vm["atencao_rec"] = round(_atencao_delta, 2)
     vm["snapshots"].append({
         "data": hoje_str, "delta": delta,
         "grave_delta": _grave_delta, "alerta_delta": _alerta_delta, "atencao_delta": _atencao_delta
@@ -3988,7 +3978,7 @@ def _atualizar_meta_diaria_historico():
     _hist_md = hist_dash.setdefault("daily_meta", {})
     _hist_md.setdefault("dates", {})
     _hist_md.setdefault("months", {})
-    _today_entry = {"filiais": {}, "vendedores": {}, "prev_date": _prev_date, "updated_at": iso_brasilia()}
+    _today_entry = {"filiais": {}, "vendedores": {}, "prev_date": _prev_date, "updated_at": datetime.now().isoformat()}
     _month_entry = _hist_md["months"].setdefault(mes_str, {"filiais": {}, "vendedores": {}})
 
     # Filiais
@@ -4053,20 +4043,20 @@ hist_dash["sales_dates"][hoje_str] = {
     "empresa": _sales_emp,
     "filiais": _sales_fil,
     "vendedores": _sales_vend,
-    "updated_at": iso_brasilia(),
+    "updated_at": datetime.now().isoformat(),
 }
 hist_dash["sales_months"][mes_str] = {
     "empresa": _sales_emp,
     "filiais": _sales_fil,
     "vendedores": _sales_vend,
-    "updated_at": iso_brasilia(),
+    "updated_at": datetime.now().isoformat(),
 }
 
 hist_dash["dates"][hoje_str] = {
     "empresa": _hist_empresa,
     "vendedores": _hist_vends,
     "filiais": _hist_fils,
-    "updated_at": iso_brasilia(),
+    "updated_at": datetime.now().isoformat(),
 }
 _fech_mensal = fechar_mes_anterior_travado(mes_str, hist_dash, CONFIG_META, CONFIG_META_IND)
 hist_dash['months_closed'] = _fech_mensal.get('months', {})
@@ -4888,7 +4878,7 @@ async function fetchJsonNoCache(url){
   if(!r.ok) throw new Error('HTTP '+r.status);
   return await r.json();
 }
-const DASHBOARD_UPDATED_AT_LABEL='13/05/2026 10:16:49';
+const DASHBOARD_UPDATED_AT_LABEL='12/05/2026 17:28:27';
 
 function formatUpdatedLabel(v){
   try{
@@ -4961,9 +4951,8 @@ async function pollSalesLive(){
   try{
     const ver=await fetchJsonNoCache('sales_version.json');
     const stamp=String(ver?.updated_at||'');
-    const stampLabel=String(ver?.updated_at_label||'');
     if(stamp){
-      window.__salesUpdatedAtLabel = stampLabel || stamp;
+      window.__salesUpdatedAtLabel = stamp;
     }
     if(!stamp) return;
     if(window.__lastSalesVersion===undefined){
@@ -4986,10 +4975,9 @@ async function pollSalesLive(){
 async function pollDashboardLiveReload(){
   try{
     const ver=await fetchJsonNoCache('dashboard_version.json');
-    const stamp=String(ver?.updated_at||'');
-    const stampLabel=String(ver?.updated_at_label||'');
+    const stamp=String(ver?.updated_at||ver?.updated_at_label||'');
     if(stamp){
-      window.__dashboardUpdatedAtLabel = stampLabel || stamp;
+      window.__dashboardUpdatedAtLabel = stamp;
       if(typeof renderKPIs==='function' && document.getElementById('kpis')) renderKPIs();
     }
     if(!stamp) return;
@@ -6364,7 +6352,7 @@ if FTP_USER and FTP_PASS:
         except Exception:
             ftp.storbinary('STOR mensagens_log.json', BytesIO(b'[]'))
         try:
-            _dashboard_ver = json.dumps({'updated_at': iso_brasilia(), 'updated_at_label': label_brasilia(), 'timezone': 'America/Sao_Paulo', 'scope': 'dashboard_full'}, ensure_ascii=False).encode('utf-8')
+            _dashboard_ver = json.dumps({'updated_at': datetime.now().isoformat(), 'scope': 'dashboard_full'}, ensure_ascii=False).encode('utf-8')
             ftp.storbinary('STOR dashboard_version.json', BytesIO(_dashboard_ver))
             ftp.storbinary('STOR sales_version.json', BytesIO(_dashboard_ver))
         except Exception as e_ver_ftp:
