@@ -17,6 +17,7 @@ import unicodedata
 import urllib.request
 import urllib.error
 import tempfile
+from bs4 import BeautifulSoup
 
 LOGIN = "administrativo01.moveisdolar"
 SENHA = "mdladm01"
@@ -34,28 +35,12 @@ pasta = os.path.dirname(os.path.abspath(__file__))
 download_dir = pasta if not IS_RAILWAY else tempfile.gettempdir()
 
 if IS_RAILWAY:
-    options.page_load_strategy = 'eager'
+    options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
-    options.add_argument("--window-size=1920,1080")
+    options.add_argument("--window-size=1600,2200")
     options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument("--remote-debugging-port=9222")
-    options.add_argument("--disable-software-rasterizer")
-    options.add_argument("--disable-extensions")
-    options.add_argument("--disable-background-networking")
-    options.add_argument("--disable-background-timer-throttling")
-    options.add_argument("--disable-backgrounding-occluded-windows")
-    options.add_argument("--disable-renderer-backgrounding")
-    options.add_argument("--hide-scrollbars")
-    options.add_argument("--mute-audio")
-    options.add_argument("--no-first-run")
-    options.add_argument("--no-default-browser-check")
-    options.add_argument("--disable-features=VizDisplayCompositor")
-    options.add_argument("--disable-setuid-sandbox")
-    options.add_argument("--disable-infobars")
-    options.add_argument("--ignore-certificate-errors")
-    options.add_argument("--allow-insecure-localhost")
 else:
     options.add_argument("--start-maximized")
 
@@ -65,40 +50,7 @@ prefs = {
     "download.directory_upgrade": True,
 }
 options.add_experimental_option("prefs", prefs)
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import WebDriverException
-
-chrome_bin = (
-    os.getenv("GOOGLE_CHROME_BIN")
-    or os.getenv("CHROME_BIN")
-    or "/usr/bin/google-chrome"
-    or "/usr/bin/chromium"
-)
-
-chrome_driver_bin = (
-    os.getenv("CHROMEDRIVER")
-    or os.getenv("CHROMEDRIVER_PATH")
-)
-
-if os.path.exists(chrome_bin):
-    options.binary_location = chrome_bin
-
-try:
-    if chrome_driver_bin and os.path.exists(chrome_driver_bin):
-        driver = webdriver.Chrome(service=Service(chrome_driver_bin), options=options)
-    else:
-        driver = webdriver.Chrome(options=options)
-except WebDriverException as e:
-    print(f"❌ Erro ao iniciar Chrome/Chromedriver: {e}")
-    print(f"   binary_location={getattr(options, 'binary_location', '')}")
-    print(f"   GOOGLE_CHROME_BIN={os.getenv('GOOGLE_CHROME_BIN')}")
-    print(f"   CHROME_BIN={os.getenv('CHROME_BIN')}")
-    print(f"   CHROMEDRIVER={os.getenv('CHROMEDRIVER')}")
-    print(f"   CHROMEDRIVER_PATH={os.getenv('CHROMEDRIVER_PATH')}")
-    raise
-
-driver.set_page_load_timeout(120)
+driver = webdriver.Chrome(options=options)
 wait   = WebDriverWait(driver, 40)
 
 
@@ -1115,7 +1067,7 @@ def _gerar_relatorio_margem(tipo):
     except Exception as e:
         print(f"⚠️ Não consegui selecionar formato XLS de Margem Bruta: {e}")
 
-    arquivos_antes = set(f for f in os.listdir(download_dir) if _nome_arquivo_margem_valido(f))
+    arquivos_antes = set(f for f in os.listdir(pasta) if _nome_arquivo_margem_valido(f))
 
     gerar_btn = wait.until(EC.presence_of_element_located((By.ID, 'gerar')))
     driver.execute_script("arguments[0].scrollIntoView({block:'center'});", gerar_btn)
@@ -1129,16 +1081,16 @@ def _gerar_relatorio_margem(tipo):
     caminho = None
     for _ in range(60):
         time.sleep(2)
-        baixando = any(f.endswith('.crdownload') or f.endswith('.tmp') for f in os.listdir(download_dir))
+        baixando = any(f.endswith('.crdownload') or f.endswith('.tmp') for f in os.listdir(pasta))
         if baixando:
             continue
-        novos = set(f for f in os.listdir(download_dir) if _nome_arquivo_margem_valido(f)) - arquivos_antes
+        novos = set(f for f in os.listdir(pasta) if _nome_arquivo_margem_valido(f)) - arquivos_antes
         if novos:
-            caminho = max([os.path.join(download_dir, f) for f in novos], key=os.path.getctime)
+            caminho = max([os.path.join(pasta, f) for f in novos], key=os.path.getctime)
             break
 
     if not caminho:
-        todos = [os.path.join(download_dir, f) for f in os.listdir(download_dir) if _nome_arquivo_margem_valido(f)]
+        todos = [os.path.join(pasta, f) for f in os.listdir(pasta) if _nome_arquivo_margem_valido(f)]
         if not todos:
             raise Exception('Nenhum arquivo XLS/XLSX de margem foi baixado')
         caminho = max(todos, key=os.path.getctime)
@@ -1203,55 +1155,371 @@ def coletar_margens_brutas_mes_atual():
 
 
 
+
+
+def _br_money(v):
+    try:
+        s = str(v or '').strip()
+        if s in ('', 'None', 'nan'):
+            return 0.0
+        s = s.replace('R$', '').replace('%', '').strip()
+        s = s.replace('.', '').replace(',', '.')
+        return float(s)
+    except Exception:
+        return 0.0
+
+
+def _first_day_last_day_current_month():
+    primeiro_dia = hoje.replace(day=1)
+    prox_mes = (hoje.replace(day=28) + timedelta(days=4)).replace(day=1)
+    ultimo_dia = prox_mes - timedelta(days=1)
+    return primeiro_dia.strftime('%d/%m/%Y'), ultimo_dia.strftime('%d/%m/%Y')
+
+
+def _wait_container_relatorio_ready(timeout=60):
+    fim = time.time() + timeout
+    while time.time() < fim:
+        try:
+            html = driver.execute_script("""
+                const el = document.getElementById('container_relatorio');
+                return el ? (el.innerHTML || '') : '';
+            """) or ''
+            if 'label-agrupamento' in html and ('DADOS DO SERVIÇO/RECUPERAÇÃO' in html or 'TOTAL' in html):
+                return html
+        except Exception:
+            pass
+        time.sleep(1)
+    raise Exception('container_relatorio não carregou com os dados do relatório de serviços')
+
+
+def _parse_relatorio_servicos_html(html):
+    soup = BeautifulSoup(html, 'html.parser')
+    container = soup.find(id='container_relatorio') or soup
+
+    detalhes = []
+    servicos = {}
+    filiais = {}
+    vendedores = {}
+    empresa_total = 0.0
+    empresa_qtd = 0.0
+    servico_atual = ''
+
+    for tr in container.find_all('tr'):
+        th = tr.find('th', class_=lambda c: c and 'label-agrupamento' in c)
+        if th:
+            servico_atual = ' '.join(th.get_text(' ', strip=True).split())
+            continue
+
+        tds = tr.find_all('td')
+        if len(tds) < 10:
+            continue
+
+        vals = [' '.join(td.get_text(' ', strip=True).split()) for td in tds]
+        if vals[0].strip().upper() == 'TOTAL':
+            continue
+        if not servico_atual:
+            continue
+
+        filial_txt = vals[0]
+        filial_key = _filial_key_from_text(filial_txt)
+        num_lanc = vals[1] if len(vals) > 1 else ''
+        data_lanc = vals[2] if len(vals) > 2 else ''
+        cliente = vals[3] if len(vals) > 3 else ''
+        periodo_validade = vals[4] if len(vals) > 4 else ''
+        vendedor_txt = vals[5] if len(vals) > 5 else ''
+        quantidade = _br_money(vals[6] if len(vals) > 6 else 0)
+        data_cancelamento = vals[7] if len(vals) > 7 else ''
+        vl_unit = _br_money(vals[8] if len(vals) > 8 else 0)
+        vl_total = _br_money(vals[9] if len(vals) > 9 else 0)
+        numeros_bilhetes = vals[10] if len(vals) > 10 else ''
+
+        vendedor_nome = _limpar_nome_margem(vendedor_txt)
+        vendedor_key = f'{vendedor_nome}_{filial_key}' if vendedor_nome and filial_key else vendedor_nome
+
+        row = {
+            'servico': servico_atual,
+            'filial': filial_key,
+            'filial_label': filial_txt,
+            'num_lanc': num_lanc,
+            'data_lanc': data_lanc,
+            'cliente': cliente,
+            'periodo_validade': periodo_validade,
+            'vendedor': vendedor_nome,
+            'vendedor_label': vendedor_txt,
+            'quantidade': quantidade,
+            'data_cancelamento': data_cancelamento,
+            'vl_unitario': round(vl_unit, 2),
+            'vl_total': round(vl_total, 2),
+            'numeros_bilhetes': numeros_bilhetes,
+            'vendedor_key': vendedor_key,
+        }
+        detalhes.append(row)
+
+        empresa_total += vl_total
+        empresa_qtd += quantidade
+
+        srv = servicos.setdefault(servico_atual, {
+            'servico': servico_atual,
+            'quantidade': 0.0,
+            'real_total': 0.0,
+            'linhas': 0,
+        })
+        srv['quantidade'] += quantidade
+        srv['real_total'] += vl_total
+        srv['linhas'] += 1
+
+        if filial_key:
+            fil = filiais.setdefault(filial_key, {
+                'filial': filial_key,
+                'label': filial_txt,
+                'quantidade': 0.0,
+                'real_total': 0.0,
+                'linhas': 0,
+                'servicos': {},
+            })
+            fil['quantidade'] += quantidade
+            fil['real_total'] += vl_total
+            fil['linhas'] += 1
+            fil['servicos'][servico_atual] = round(float(fil['servicos'].get(servico_atual, 0.0)) + vl_total, 2)
+
+        if vendedor_key:
+            vend = vendedores.setdefault(vendedor_key, {
+                'key': vendedor_key,
+                'nome': vendedor_nome,
+                'filial': filial_key,
+                'label': vendedor_txt,
+                'quantidade': 0.0,
+                'real_total': 0.0,
+                'linhas': 0,
+                'servicos': {},
+            })
+            vend['quantidade'] += quantidade
+            vend['real_total'] += vl_total
+            vend['linhas'] += 1
+            vend['servicos'][servico_atual] = round(float(vend['servicos'].get(servico_atual, 0.0)) + vl_total, 2)
+
+    for bucket in (servicos, filiais, vendedores):
+        for _, item in bucket.items():
+            if 'quantidade' in item:
+                item['quantidade'] = round(float(item['quantidade']), 2)
+            if 'real_total' in item:
+                item['real_total'] = round(float(item['real_total']), 2)
+
+    return {
+        'empresa': {
+            'quantidade': round(float(empresa_qtd), 2),
+            'real_total': round(float(empresa_total), 2),
+            'linhas': len(detalhes),
+        },
+        'servicos': servicos,
+        'filiais': filiais,
+        'vendedores': vendedores,
+        'detalhes': detalhes,
+    }
+
+
+def coletar_relatorio_servicos_mes_atual():
+    primeiro_dia, ultimo_dia = _first_day_last_day_current_month()
+    print('\n🧰 Iniciando coleta do relatório de serviços do mês atual...')
+
+    driver.get(URL + '/relatorio_servicos')
+    wait.until(EC.presence_of_element_located((By.ID, 'data_emissao_inicial')))
+    set_input_value_safe(By.ID, 'data_emissao_inicial', primeiro_dia)
+    set_input_value_safe(By.ID, 'data_emissao_final', ultimo_dia)
+
+    try:
+        Select(wait.until(EC.presence_of_element_located((By.ID, '_formato')))).select_by_value('html')
+        print('✅ Formato HTML para relatório de serviços')
+    except Exception as e:
+        print(f'⚠️ Não consegui selecionar formato HTML do relatório de serviços: {e}')
+
+    try:
+        clicar_seguro_xpath("//button[@id='gerar'] | //input[@id='gerar'] | //button[contains(.,'Gerar')] | //input[@value='Gerar']", timeout=20)
+    except Exception:
+        try:
+            driver.find_element(By.ID, 'gerar').click()
+        except Exception as e:
+            raise Exception(f'Não consegui clicar em Gerar do relatório de serviços: {e}')
+
+    html_rel = _wait_container_relatorio_ready(timeout=90)
+    parsed = _parse_relatorio_servicos_html(driver.page_source)
+    parsed['coletado_em'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    parsed['periodo'] = {'data_inicial': primeiro_dia, 'data_final': ultimo_dia}
+
+    json_path = os.path.join(pasta, 'relatorio_servicos_mes_atual.json')
+    xlsx_path = os.path.join(pasta, 'relatorio_servicos_mes_atual.xlsx')
+
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(parsed, f, ensure_ascii=False, indent=2)
+
+    df_det = pd.DataFrame(parsed['detalhes'])
+    df_srv = pd.DataFrame(list(parsed['servicos'].values()))
+    df_fil = pd.DataFrame(list(parsed['filiais'].values()))
+    df_vend = pd.DataFrame(list(parsed['vendedores'].values()))
+
+    serv_fil_rows = []
+    for fkey, fitem in parsed['filiais'].items():
+        for srv, total in (fitem.get('servicos') or {}).items():
+            serv_fil_rows.append({'filial': fkey, 'servico': srv, 'real_total': round(float(total), 2)})
+    serv_vend_rows = []
+    for vkey, vitem in parsed['vendedores'].items():
+        for srv, total in (vitem.get('servicos') or {}).items():
+            serv_vend_rows.append({'vendedor_key': vkey, 'nome': vitem.get('nome',''), 'filial': vitem.get('filial',''), 'servico': srv, 'real_total': round(float(total), 2)})
+
+    with pd.ExcelWriter(xlsx_path, engine='openpyxl') as writer:
+        pd.DataFrame([parsed['empresa']]).to_excel(writer, sheet_name='empresa', index=False)
+        df_srv.to_excel(writer, sheet_name='resumo_servico', index=False)
+        df_fil.to_excel(writer, sheet_name='resumo_filial', index=False)
+        df_vend.to_excel(writer, sheet_name='resumo_vendedor', index=False)
+        pd.DataFrame(serv_fil_rows).to_excel(writer, sheet_name='servico_filial', index=False)
+        pd.DataFrame(serv_vend_rows).to_excel(writer, sheet_name='servico_vendedor', index=False)
+        df_det.to_excel(writer, sheet_name='detalhado', index=False)
+
+    print(f"✅ Relatório de serviços coletado: {len(parsed['detalhes'])} linha(s)")
+    print(f"💾 Serviços JSON: {json_path}")
+    print(f"💾 Serviços XLSX: {xlsx_path}")
+    return {'json_path': json_path, 'xlsx_path': xlsx_path, 'dados': parsed}
+
+
+def _num_from_row(row, *keys):
+    for k in keys:
+        if k in row and row.get(k) not in (None, ''):
+            return float(row.get(k) or 0)
+    return 0.0
+
+
+def _set_money_fields(row, valor, use_vendor=False, filial_label=''):
+    meta_total = _num_from_row(row, 'Meta(R$) Total_float', 'Meta (R$) Total_float')
+    meta_per = _num_from_row(row, 'Meta(R$) Período_float', 'Meta (R$) Período_float')
+    proj = _num_from_row(row, 'Projetado(R$)_float', 'Projetado (R$)_float')
+    ating_total = round((valor / meta_total * 100.0), 2) if meta_total > 0 else 0.0
+    ating_per = round((valor / meta_per * 100.0), 2) if meta_per > 0 else 0.0
+
+    row['Realizado(R$) Total_float'] = round(valor, 2)
+    row['Realizado(R$) Total'] = f"{valor:.2f}"
+    row['Realizado(R$) Período_float'] = round(valor, 2)
+    row['Realizado(R$) Período'] = f"{valor:.2f}"
+    row['Atingido Total_float'] = ating_total
+    row['Atingido Total'] = f"{ating_total:.2f}%"
+    row['Atingido Período_float'] = ating_per
+    row['Atingido Período'] = f"{ating_per:.2f}%"
+    if 'Projetado(R$)_float' not in row:
+        row['Projetado(R$)_float'] = proj
+        row['Projetado(R$)'] = f"{proj:.2f}"
+    if 'Meta(R$) Total_float' not in row:
+        row['Meta(R$) Total_float'] = meta_total
+        row['Meta(R$) Total'] = f"{meta_total:.2f}"
+    if 'Meta(R$) Período_float' not in row:
+        row['Meta(R$) Período_float'] = meta_per
+        row['Meta(R$) Período'] = f"{meta_per:.2f}"
+    if filial_label and 'Filial' not in row:
+        row['Filial'] = filial_label
+    if use_vendor:
+        row.setdefault('Vendedor', filial_label)
+        row.setdefault('Vendedor_2', '')
+    return row
+
+
+def aplicar_relatorio_servicos_em_metas(metas_info, servicos_info):
+    try:
+        dados_metas = metas_info.get('dados', {}) if isinstance(metas_info, dict) else {}
+        metas = dados_metas.get('metas', {}) if isinstance(dados_metas, dict) else {}
+        dados_srv = servicos_info.get('dados', {}) if isinstance(servicos_info, dict) else {}
+        filiais_srv = dados_srv.get('filiais', {}) or {}
+        vendedores_srv = dados_srv.get('vendedores', {}) or {}
+        empresa_srv = dados_srv.get('empresa', {}) or {}
+
+        # Filiais
+        chave_fil = 'servico_filial_ouro_fob'
+        obj_fil = metas.get(chave_fil)
+        if isinstance(obj_fil, dict) and obj_fil.get('ok'):
+            linhas = obj_fil.get('linhas') or []
+            novas = []
+            vistos = set()
+            total_model = next((dict(r) for r in linhas if r.get('_is_total')), {'_is_total': True, '_meta_chave': chave_fil})
+            for row in linhas:
+                if row.get('_is_total'):
+                    continue
+                nr = dict(row)
+                fk = _filial_key_from_text(nr.get('Filial', ''))
+                vistos.add(fk)
+                valor = round(float((filiais_srv.get(fk, {}) or {}).get('real_total', 0.0) or 0.0), 2)
+                _set_money_fields(nr, valor, filial_label=nr.get('Filial', ''))
+                novas.append(nr)
+            for fk, item in filiais_srv.items():
+                if fk in vistos:
+                    continue
+                nr = {
+                    'Filial': f'FILIAL {fk.replace("F", "").zfill(2)}',
+                    '_meta_chave': chave_fil,
+                }
+                _set_money_fields(nr, round(float(item.get('real_total', 0.0) or 0.0), 2), filial_label=nr['Filial'])
+                novas.append(nr)
+            total_val = round(float(empresa_srv.get('real_total', 0.0) or 0.0), 2)
+            total_row = dict(total_model)
+            total_row['_is_total'] = True
+            total_row['_meta_chave'] = chave_fil
+            total_row['Filial'] = 'Total'
+            _set_money_fields(total_row, total_val, filial_label='Total')
+            obj_fil['linhas'] = novas + [total_row]
+
+        # Vendedores
+        chave_vend = 'servico_filial_vendedor_ouro_fob'
+        obj_v = metas.get(chave_vend)
+        if isinstance(obj_v, dict) and obj_v.get('ok'):
+            linhas = obj_v.get('linhas') or []
+            novas = []
+            vistos = set()
+            total_model = next((dict(r) for r in linhas if r.get('_is_total')), {'_is_total': True, '_meta_chave': chave_vend})
+            for row in linhas:
+                if row.get('_is_total'):
+                    continue
+                nr = dict(row)
+                nome = str(nr.get('Vendedor_2') or nr.get('Vendedor') or '').strip()
+                filial_txt = str(nr.get('Vendedor') or nr.get('Filial') or '').strip()
+                fk = _filial_key_from_text(filial_txt)
+                key = f'{_limpar_nome_margem(nome)}_{fk}' if nome and fk else ''
+                if key:
+                    vistos.add(key)
+                valor = round(float((vendedores_srv.get(key, {}) or {}).get('real_total', 0.0) or 0.0), 2)
+                _set_money_fields(nr, valor, use_vendor=True, filial_label=filial_txt)
+                novas.append(nr)
+            for key, item in vendedores_srv.items():
+                if key in vistos:
+                    continue
+                fk = item.get('filial', '')
+                filial_label = f'FILIAL {str(fk).replace("F", "").zfill(2)}' if fk else ''
+                nome = item.get('nome', '')
+                nr = {
+                    'Vendedor': filial_label,
+                    'Vendedor_2': nome,
+                    '_meta_chave': chave_vend,
+                }
+                _set_money_fields(nr, round(float(item.get('real_total', 0.0) or 0.0), 2), use_vendor=True, filial_label=filial_label)
+                novas.append(nr)
+            total_val = round(float(empresa_srv.get('real_total', 0.0) or 0.0), 2)
+            total_row = dict(total_model)
+            total_row['_is_total'] = True
+            total_row['_meta_chave'] = chave_vend
+            total_row['Vendedor'] = 'Total'
+            total_row['Vendedor_2'] = 'Total'
+            _set_money_fields(total_row, total_val, use_vendor=True, filial_label='Total')
+            obj_v['linhas'] = novas + [total_row]
+
+        dados_metas['servicos_relatorio'] = dados_srv
+
+        # regrava JSON consolidado de metas para o dashboard ler os serviços reais do relatório
+        if metas_info.get('json_path'):
+            with open(metas_info['json_path'], 'w', encoding='utf-8') as f:
+                json.dump(dados_metas, f, ensure_ascii=False, indent=2)
+        print('✅ Relatório de serviços aplicado sobre os blocos de serviços em metas_vendas_mes_atual.json')
+    except Exception as e:
+        print(f'⚠️ Erro ao aplicar relatório de serviços sobre metas: {e}')
+    return metas_info
+
 # ===== LOGIN
 driver.get(URL)
-time.sleep(8)
-print("TITLE:", driver.title)
-print("URL ATUAL:", driver.current_url)
-
-campo_usuario = None
-seletores_usuario = [
-    (By.NAME, "usuario"),
-    (By.ID, "usuario"),
-    (By.CSS_SELECTOR, "input[name='usuario']"),
-    (By.CSS_SELECTOR, "input[id='usuario']"),
-    (By.XPATH, "//input[contains(@name,'usuario') or contains(@id,'usuario')]"),
-    (By.XPATH, "//input[@type='text']"),
-]
-
-for by, sel in seletores_usuario:
-    try:
-        campo_usuario = WebDriverWait(driver, 8).until(
-            EC.presence_of_element_located((by, sel))
-        )
-        if campo_usuario:
-            print(f"✅ Campo usuário encontrado em: {by} = {sel}")
-            break
-    except Exception:
-        pass
-
-if not campo_usuario:
-    print("❌ Campo usuário não encontrado")
-    print("URL:", driver.current_url)
-    print("TITLE:", driver.title)
-    try:
-        print(driver.page_source[:5000])
-    except Exception:
-        pass
-    try:
-        driver.save_screenshot(os.path.join(download_dir, "debug_login.png"))
-    except Exception:
-        pass
-    raise Exception("Campo usuário não encontrado na tela de login")
-
-try:
-    campo_usuario.click()
-    campo_usuario.send_keys(Keys.CONTROL, "a")
-    campo_usuario.send_keys(Keys.DELETE)
-except Exception:
-    pass
-campo_usuario.send_keys(LOGIN)
-
+wait.until(EC.presence_of_element_located((By.NAME, "usuario"))).send_keys(LOGIN)
 senha_field = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@type='password']")))
 senha_field.send_keys(SENHA)
 senha_field.send_keys(Keys.ENTER)
@@ -1259,7 +1527,22 @@ senha_field.send_keys(Keys.ENTER)
 try:
     wait.until(EC.element_to_be_clickable((By.ID, "botao_prosseguir_informa_local_trabalho"))).click()
     print("✅ Filial OK")
-except Exception:
+except:
+    print("⚠️ Tela de filial não apareceu")
+time.sleep(5)
+
+
+# ===== LOGIN
+driver.get(URL)
+wait.until(EC.presence_of_element_located((By.NAME, "usuario"))).send_keys(LOGIN)
+senha_field = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@type='password']")))
+senha_field.send_keys(SENHA)
+senha_field.send_keys(Keys.ENTER)
+
+try:
+    wait.until(EC.element_to_be_clickable((By.ID, "botao_prosseguir_informa_local_trabalho"))).click()
+    print("✅ Filial OK")
+except:
     print("⚠️ Tela de filial não apareceu")
 time.sleep(5)
 
@@ -1274,6 +1557,13 @@ try:
     margens_brutas_info = coletar_margens_brutas_mes_atual()
 except Exception as e:
     print(f"⚠️ Erro ao coletar Margem Bruta/Rentabilidade do SGI: {e}")
+
+relatorio_servicos_info = {"json_path": None, "xlsx_path": None, "dados": {}}
+try:
+    relatorio_servicos_info = coletar_relatorio_servicos_mes_atual()
+    metas_vendas_info = aplicar_relatorio_servicos_em_metas(metas_vendas_info, relatorio_servicos_info)
+except Exception as e:
+    print(f"⚠️ Erro ao coletar/aplicar relatório de serviços do SGI: {e}")
 
 FTP_HOST  = "moveisdolar.com.br"
 FTP_USER  = "moveisdolar3"
@@ -1303,10 +1593,17 @@ try:
         with open(margens_brutas_info['xlsx_path'], 'rb') as f_mxlsx:
             ftp.storbinary('STOR margens_brutas_mes_atual.xlsx', f_mxlsx)
 
+    if relatorio_servicos_info.get('json_path') and os.path.exists(relatorio_servicos_info['json_path']):
+        with open(relatorio_servicos_info['json_path'], 'rb') as f_sjson:
+            ftp.storbinary('STOR relatorio_servicos_mes_atual.json', f_sjson)
+    if relatorio_servicos_info.get('xlsx_path') and os.path.exists(relatorio_servicos_info['xlsx_path']):
+        with open(relatorio_servicos_info['xlsx_path'], 'rb') as f_sxlsx:
+            ftp.storbinary('STOR relatorio_servicos_mes_atual.xlsx', f_sxlsx)
+
     ver = json.dumps({'updated_at': datetime.now().isoformat(), 'scope': 'sales_only'}, ensure_ascii=False).encode('utf-8')
     ftp.storbinary('STOR sales_version.json', BytesIO(ver))
     ftp.quit()
-    print('✅ Upload vendas/margens concluído')
+    print('✅ Upload vendas/margens/serviços concluído')
 except Exception as e:
     print(f'⚠️ Erro no upload FTP vendas/margens: {e}')
 
