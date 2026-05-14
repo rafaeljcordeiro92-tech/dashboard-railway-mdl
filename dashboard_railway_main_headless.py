@@ -5313,6 +5313,26 @@ function renderServicosEntidade(ent){
   return `<div class="glass panel"><div class="section-head" style="margin:0 0 10px"><div><h3 style="margin:0">🛠️ Serviços por tipo</h3><div class="hint">Relatório real de serviços do mês atual · total oficial ${R(total)}</div></div></div><div class="metrics-grid">${rows.slice(0,8).map(r=>`<div class="metric"><div class="k">${esc(String(r.servico||'Serviço').slice(0,34))}</div><div class="v" style="color:var(--blue-400);font-size:18px">${R(r.real_total||0)}</div></div>`).join('')}</div></div>`;
 }
 
+function servicosEntidadeTotal(ent){
+  return servicosEntidade(ent).reduce((acc,r)=>acc+Number(r.real_total||0),0);
+}
+function serviceOfficialOverride(ent,key,row){
+  if(!String(key||'').includes('servico')) return null;
+  const total=servicosEntidadeTotal(ent);
+  if(!(total>0)) return null;
+  const metaTotalStr=salesCell(row,['Meta (R$) Total','Meta(R$) Total']);
+  const metaPeriodoStr=salesCell(row,['Meta (R$) Período','Meta(R$) Período']);
+  const metaTotal=salesNum(metaTotalStr);
+  const metaPeriodo=salesNum(metaPeriodoStr);
+  return {
+    total: total,
+    realizado: R(total),
+    atingidoTotal: metaTotal>0 ? pct(total/metaTotal*100) : '0%',
+    atingidoPeriodo: metaPeriodo>0 ? pct(total/metaPeriodo*100) : '0%',
+    nota: 'relatório serviços'
+  };
+}
+
 function rowMatchesFilial(ent,row){const joined=normSalesText([salesCell(row,['Filial','Filial_2','Vendedor','Vendedor_2','Nome','Nome_2']),salesCell(row,['Subgrupo'])].join(' ')); return filialAliases(ent.filial).some(a=>joined.includes(normSalesText(a)))}
 function vendedorNomeAlvo(row,key){if(key==='venda_filial_vendedor_meta' || key==='servico_filial_vendedor_ouro_fob') return salesCell(row,['Vendedor_2','Nome_2','Nome','Vendedor']); return salesCell(row,['Vendedor','Vendedor_2','Nome','Nome_2'])}
 function fuzzyContainsAllTokens(target, query){const t=normSalesText(target); const q=normSalesText(query); const toks=q.split(' ').filter(x=>x && x.length>1); return toks.length ? toks.every(tok=>t.includes(tok)) : false}
@@ -5323,7 +5343,29 @@ function salesPercentClass(v){const n=parseFloat(String(v||'').replace('%','').r
 function salesNum(v){return parseFloat(String(v||'').replace('%','').replace(/\./g,'').replace(',','.'))||0}
 function renderSalesProgress(v){const n=Math.max(0,Math.min(160,salesNum(v))); return `<div class="sales-progress"><span style="width:${Math.min(n,100)}%"></span></div><div class="sales-progress-label">${String(v||'0%')}</div>`}
 function renderSalesMini(k,v,kind='',showMascot=false,wrap=false){const cls=[kind, wrap?'wrap':'']; if(kind==='atingido'||kind==='projetado') cls.push(salesPercentClass(v)); return `<div class="sales-mini ${cls.join(' ')}">${showMascot?`<img src="${LARANJITO}" class="laranjito-mini" alt="">`:''}<div class="k">${k}</div><div class="v">${v||'-'}</div>${(kind==='atingido')?renderSalesProgress(v):''}</div>`}
-function renderSalesRows(ent, key, label){const rows=getSalesRows(ent,key); if(!rows.length) return `<div class="sales-card"><h4>${label}</h4><div class="sales-empty">Sem dados desta meta para ${ent.type==='filial'?'esta filial':'este vendedor'}.</div></div>`; return `<div class="sales-card"><h4>${label}</h4><div class="sales-list">${rows.map(r=>{const ating=salesCell(r,['Atingido Total']); const proj=salesCell(r,['Projetado (R$)','Projetado(R$)']); const showMascot=(parseFloat(String(ating).replace('%','').replace(',','.'))||0)>=100; return `<div class="sales-row"><div class="sales-row-title">${esc(salesTitleForRow(ent,r,key))}</div><div class="sales-metrics">${renderSalesMini('Meta total',esc(salesCell(r,['Meta (R$) Total','Meta(R$) Total'])),'meta')}${renderSalesMini('Realizado total',esc(salesCell(r,['Realizado (R$) Total','Realizado(R$) Total'])),'realizado')}${renderSalesMini('Atingido total',esc(ating),'atingido',showMascot)}${renderSalesMini('Meta período',esc(salesCell(r,['Meta (R$) Período','Meta(R$) Período'])),'meta')}${renderSalesMini('Realizado período',esc(salesCell(r,['Realizado (R$) Período','Realizado(R$) Período'])),'realizado')}${renderSalesMini('Atingido período',esc(salesCell(r,['Atingido Período'])),'atingido')}${renderSalesMini('Projetado',esc(proj),'projetado',showMascot)}${renderSalesMini(ent.type==='filial'?'Filial':'Vendedor',esc(salesCell(r, ent.type==='filial'?['Filial']:['Vendedor_2','Vendedor'])),'realizado',false,true)}</div></div>`}).join('')}</div></div>`}
+function renderSalesRows(ent, key, label){
+  let rows=getSalesRows(ent,key);
+  if(!rows.length) return `<div class="sales-card"><h4>${label}</h4><div class="sales-empty">Sem dados desta meta para ${ent.type==='filial'?'esta filial':'este vendedor'}.</div></div>`;
+
+  // Para SERVIÇOS, o realizado oficial vem do relatório real de serviços por tipo.
+  // A meta do SGI permanece como alvo, mas os campos "Realizado" e "% atingido" passam a bater
+  // exatamente com o painel "Serviços por tipo" da mesma filial/vendedor.
+  if(String(key||'').includes('servico') && servicosEntidadeTotal(ent)>0){
+    rows=[rows[0]];
+  }
+
+  return `<div class="sales-card"><h4>${label}</h4><div class="sales-list">${rows.map(r=>{
+    const srv=serviceOfficialOverride(ent,key,r);
+    const ating=srv ? srv.atingidoTotal : salesCell(r,['Atingido Total']);
+    const atingPeriodo=srv ? srv.atingidoPeriodo : salesCell(r,['Atingido Período']);
+    const realizadoTotal=srv ? srv.realizado : esc(salesCell(r,['Realizado (R$) Total','Realizado(R$) Total']));
+    const realizadoPeriodo=srv ? srv.realizado : esc(salesCell(r,['Realizado (R$) Período','Realizado(R$) Período']));
+    const proj=salesCell(r,['Projetado (R$)','Projetado(R$)']);
+    const showMascot=(parseFloat(String(ating).replace('%','').replace(',','.'))||0)>=100;
+    const title=srv ? `${salesTitleForRow(ent,r,key)} · relatório serviços` : salesTitleForRow(ent,r,key);
+    return `<div class="sales-row"><div class="sales-row-title">${esc(title)}</div><div class="sales-metrics">${renderSalesMini('Meta total',esc(salesCell(r,['Meta (R$) Total','Meta(R$) Total'])),'meta')}${renderSalesMini('Realizado total',realizadoTotal,'realizado')}${renderSalesMini('Atingido total',esc(ating),'atingido',showMascot)}${renderSalesMini('Meta período',esc(salesCell(r,['Meta (R$) Período','Meta(R$) Período'])),'meta')}${renderSalesMini('Realizado período',realizadoPeriodo,'realizado')}${renderSalesMini('Atingido período',esc(atingPeriodo),'atingido')}${renderSalesMini('Projetado',esc(proj),'projetado',showMascot)}${renderSalesMini(ent.type==='filial'?'Filial':'Vendedor',esc(salesCell(r, ent.type==='filial'?['Filial']:['Vendedor_2','Vendedor'])),'realizado',false,true)}</div></div>`;
+  }).join('')}</div></div>`;
+}
 function summarizeSalesCard(ent){const keys=ent.type==='filial'?['venda_filial_meta']:['venda_filial_vendedor_meta']; let best=null; keys.forEach(k=>{getSalesRows(ent,k).forEach(r=>{const ating=salesCell(r,['Atingido Total']); const n=parseFloat(String(ating).replace('%','').replace(',','.'))||0; if(!best || n>best.n){best={row:r,key:k,n};}})}); return best}
 function renderSalesCardSummary(ent){const s=summarizeSalesCard(ent); if(!s) return ''; const row=s.row; const showMascot=s.n>=100; return `<div class="card-sales"><div class="card-sales-title">💲 Vendas e metas</div><div class="card-sales-grid">${renderSalesMini('Realizado total',esc(salesCell(row,['Realizado (R$) Total','Realizado(R$) Total'])),'realizado')}${renderSalesMini('Atingido total',esc(salesCell(row,['Atingido Total'])),'atingido',showMascot)}${renderSalesMini('Projetado',esc(salesCell(row,['Projetado (R$)','Projetado(R$)'])),'projetado',showMascot)}</div></div>`}
 const MASCOTE_FELIZ='https://moveisdolar.com.br/colaborador/mascote%20feliz1.png';
