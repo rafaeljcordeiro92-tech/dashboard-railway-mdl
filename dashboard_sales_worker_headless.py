@@ -17,10 +17,15 @@ import unicodedata
 import urllib.request
 import urllib.error
 import tempfile
+from zoneinfo import ZoneInfo
 
 LOGIN = "administrativo01.moveisdolar"
 SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
+APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
+
+def now_brasilia():
+    return datetime.now(APP_TZ)
 
 # ===== DATAS
 hoje        = datetime.now()
@@ -1362,7 +1367,7 @@ try:
         with open(margens_brutas_info['xlsx_path'], 'rb') as f_mxlsx:
             ftp.storbinary('STOR margens_brutas_mes_atual.xlsx', f_mxlsx)
 
-    ver = json.dumps({'updated_at': datetime.now().isoformat(), 'scope': 'sales_only'}, ensure_ascii=False).encode('utf-8')
+    ver = json.dumps({'updated_at': now_brasilia().isoformat(), 'updated_at_label': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'), 'timezone': 'America/Sao_Paulo', 'scope': 'sales_only'}, ensure_ascii=False).encode('utf-8')
     ftp.storbinary('STOR sales_version.json', BytesIO(ver))
     ftp.quit()
     print('✅ Upload vendas/margens concluído')
