@@ -4651,6 +4651,41 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 @keyframes liquidGlow{0%{transform:translateY(0)}100%{transform:translateY(12px)}}
 @media(max-width:1100px){.detail-top,.meta-layout,.search-row,.mega-progress{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}.meta-grid{grid-template-columns:repeat(2,1fr)}.sales-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.card-sales-grid{grid-template-columns:1fr}}
 @media(max-width:760px){.app-shell{padding:14px 14px 80px}.brand h1{font-size:20px}.kpis{grid-template-columns:1fr}.grid-cards,.meta-preview-grid{grid-template-columns:1fr}.form-grid,.form-grid.bonus,.meta-grid,.metrics-grid,.commission-grid,.campaign-grid{grid-template-columns:1fr}.row-top,.log-row{grid-template-columns:1fr}.tabs{gap:4px}.tab{padding:9px 12px;font-size:12px}.group{min-width:88px}.group .bars{height:220px}.bar{width:16px}}
+
+/* ===== AJUSTE VISUAL DOS CARDS KPI - CORES POR GRUPO E ÍCONES MAIORES ===== */
+.kpi.card-cobranca{
+  background:
+    radial-gradient(circle at 12% 12%, rgba(96,165,250,.30), transparent 36%),
+    linear-gradient(135deg, rgba(30,64,175,.36), rgba(15,23,42,.90) 64%) !important;
+}
+.kpi.card-financeiro{
+  background:
+    radial-gradient(circle at 12% 12%, rgba(74,222,128,.28), transparent 36%),
+    linear-gradient(135deg, rgba(22,101,52,.36), rgba(15,23,42,.90) 64%) !important;
+}
+.kpi.card-venda-dia{
+  background:
+    radial-gradient(circle at 12% 12%, rgba(250,204,21,.34), transparent 36%),
+    linear-gradient(135deg, rgba(161,98,7,.38), rgba(15,23,42,.90) 64%) !important;
+}
+.kpi .label{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.kpi .kpi-emoji{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  font-size:25px;
+  line-height:1;
+  min-width:26px;
+  filter:drop-shadow(0 0 8px rgba(255,255,255,.20));
+}
+.kpi .kpi-label-text{
+  line-height:1.1;
+}
+
 </style>
 </head>
 <body>
@@ -4869,7 +4904,17 @@ function renderPiggyBank(perc){
 }
 function toast(msg, type='info'){const host=document.getElementById('toast'); const el=document.createElement('div'); el.className='toast-item'; el.innerHTML=`<img src="${LARANJITO}" alt="ok"><div><div style="font-weight:900">${type==='success'?'Tudo certo!':'Aviso'}</div><div class="small">${esc(msg)}</div></div>`; host.appendChild(el); setTimeout(()=>{el.remove();},4200)}
 function mascotCongrats(ent){const meta=calcMeta(ent);const b=getBonus(meta.cfg,meta.geral);if(!b) return;toast(`Parabéns, ${ent.type==='vendedor'?ent.nome:filialLabel(ent.filial)}! Meta em ${pct(meta.geral)}. ${b.text||''}`,'success')}
-function makeKpi(label,val,accent,sub=''){return `<div class="glass kpi" style="--accent:${accent}"><div class="label">${label}</div><div class="value">${val}</div>${sub?`<div class="subline">${sub}</div>`:''}</div>`}
+function makeKpi(label,val,accent,sub='',extraClass=''){
+  const raw=String(label||'').trim();
+  const p=raw.split(' ');
+  const emoji=p.length>1?p[0]:'';
+  const txt=p.length>1?p.slice(1).join(' '):raw;
+  return `<div class="glass kpi ${extraClass||''}" style="--accent:${accent}">
+    <div class="label">${emoji?`<span class="kpi-emoji">${emoji}</span>`:''}<span class="kpi-label-text">${esc(txt)}</span></div>
+    <div class="value">${val}</div>
+    ${sub?`<div class="subline">${sub}</div>`:''}
+  </div>`;
+}
 function renderKPIs(){
   const grave=flattenFiliais().reduce((a,b)=>a+Number(b.grave_pend||0),0);
   const alerta=flattenFiliais().reduce((a,b)=>a+Number(b.alerta_pend||0),0);
@@ -4897,17 +4942,24 @@ function renderKPIs(){
   const isPrivileged=(usuarioAtual?.tipo==='master' || isViewer);
 
   // Cards extras por tipo de serviço vindos do relatorio_servicos_mes_atual.json
+  function servicoIcone(nome){
+    const n=normSalesText(nome||'');
+    if(n.includes('OURO')) return '🧱';
+    if(n.includes('FOB')) return '🚚';
+    if(n.includes('COPA') || n.includes('CUPOM')) return '⚽';
+    return '🛠️';
+  }
   const topServiceCards = Object.values((SERVICOS_RELATORIO && SERVICOS_RELATORIO.servicos) || {})
     .slice()
     .sort((a,b)=>Number(b.real_total||0)-Number(a.real_total||0))
     .slice(0,4)
-    .map(s=>makeKpi(`🛠️ ${String(s.servico||'Serviço').slice(0,30)}`, R(s.real_total||0), 'var(--blue-400)', `${Number(s.quantidade||0).toLocaleString('pt-BR')} item(ns)`));
+    .map(s=>makeKpi(`${servicoIcone(s.servico)} ${String(s.servico||'Serviço').slice(0,30)}`, R(s.real_total||0), 'var(--blue-400)', `${Number(s.quantidade||0).toLocaleString('pt-BR')} item(ns)`));
 
   const cards=[
-    makeKpi('💰 Total pendente',R(TOTAL_P),'var(--red)'),
-    makeKpi('🏦 Total recebido',R(TOTAL_PG),'var(--green)'),
-    makeKpi('🚨 Grave',R(grave),'var(--red)'),
-    makeKpi('🟠 Alerta',R(alerta),'var(--orange)'),
+    makeKpi('💰 Total pendente',R(TOTAL_P),'var(--red)','', 'card-cobranca'),
+    makeKpi('🏦 Total recebido',R(TOTAL_PG),'var(--green)','', 'card-cobranca'),
+    makeKpi('🚨 Grave',R(grave),'var(--red)','', 'card-cobranca'),
+    makeKpi('🟠 Alerta',R(alerta),'var(--orange)','', 'card-cobranca'),
     makeKpi('📦 Mercantil realizado',R(sales.venda_realizado_total||0),'var(--amber-400)',`Meta ${R(sales.venda_meta_total||0)} · Atingido ${pct(sales.venda_atingido_total||0)}`),
     makeKpi('📈 Mercantil projetado',R(sales.venda_projetado||0),'var(--amber-500)',`Meta período ${R(sales.venda_meta_periodo||0)}`),
     makeKpi('🛠️ Serviços realizado',R(servicoRealizadoOficial),'var(--blue)',`Meta ${R(sales.servico_meta_total||0)} · Atingido ${pct(servicoAtingidoOficial)} · relatório serviços`),
@@ -4915,10 +4967,10 @@ function renderKPIs(){
     ...topServiceCards,
     makeKpi('🚚 Caminhão realizado',R(sales.caminhao_realizado_total||0),'var(--yellow)',`Meta ${R(sales.caminhao_meta_total||0)} · Atingido ${pct(sales.caminhao_atingido_total||0)}`),
     makeKpi('🛣️ Caminhão projetado',R(sales.caminhao_projetado||0),'var(--yellow-400)',`Meta período ${R(sales.caminhao_meta_periodo||0)}`),
-    (isPrivileged ? makeKpi('💵 Faturamento total',R((Number(sales.venda_realizado_total||0)+servicoRealizadoOficial)),'var(--green-400)','Mercantil + serviços realizado') : ''),
-    (isPrivileged ? makeKpi('🕒 Venda diária',R(vendaDiaria),'var(--cyan-400)','Mercantil + serviços do dia') : ''),
-    makeKpi('📊 Rentabilidade total', rentPct?`${rentPct.toFixed(2).replace('.',',')}%`:'Sem dado','var(--green-400)','Última linha do relatório de margem bruta por filial'),
-    makeKpi('🧮 Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)', isViewer ? 'Índice mercantil + serviços / custo oculto' : `(Mercantil + serviços) / custo total ${R(markupCost||0)}`)
+    (isPrivileged ? makeKpi('💵 Faturamento total',R((Number(sales.venda_realizado_total||0)+servicoRealizadoOficial)),'var(--green-400)','Mercantil + serviços realizado', 'card-financeiro') : ''),
+    (isPrivileged ? makeKpi('🕒 Venda diária',R(vendaDiaria),'var(--cyan-400)','Mercantil + serviços do dia', 'card-venda-dia') : ''),
+    makeKpi('📊 Rentabilidade total', rentPct?`${rentPct.toFixed(2).replace('.',',')}%`:'Sem dado','var(--green-400)','Última linha do relatório de margem bruta por filial', 'card-financeiro'),
+    makeKpi('🧮 Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)', isViewer ? 'Índice mercantil + serviços / custo oculto' : `(Mercantil + serviços) / custo total ${R(markupCost||0)}`, 'card-financeiro')
   ];
   document.getElementById('kpis').innerHTML=cards.join('') + `<div class="glass" style="grid-column:1/-1;padding:10px 14px;display:flex;align-items:center;justify-content:flex-start;min-height:46px"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div></div>`;
 }
