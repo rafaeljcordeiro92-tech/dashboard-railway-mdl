@@ -4879,8 +4879,18 @@ function renderKPIs(){
   const hojeIso=new Date().toISOString().slice(0,10);
   const prevDate=salesDates.filter(d=>String(d)<String(hojeIso)).slice(-1)[0]||'';
   const prevEmpresa=(prevDate?(HIST_DASH?.sales_dates?.[prevDate]?.empresa||{}):{});
-  const vendaDiaria=Math.max(0, Number(sales.venda_realizado_total||0)-Number(prevEmpresa.venda_realizado_total||0)) + Math.max(0, Number(sales.servico_realizado_total||0)-Number(prevEmpresa.servico_realizado_total||0));
-  const markupBase=(Number(sales.venda_realizado_total||0)+Number(sales.servico_realizado_total||0));
+  // 🔥 Serviços realizado deve vir do relatório real de serviços, não da meta SGI.
+  // Antes usava sales.servico_realizado_total, que vem de servico_filial_ouro_fob
+  // e pode divergir do relatorio_servicos_mes_atual.json.
+  const servicoRelatorioTotal = Number(SERVICOS_RELATORIO?.empresa?.real_total || 0);
+  const servicoRealizadoOficial = servicoRelatorioTotal > 0 ? servicoRelatorioTotal : Number(sales.servico_realizado_total||0);
+  const servicoAtingidoOficial = Number(sales.servico_meta_total||0)>0
+    ? (servicoRealizadoOficial / Number(sales.servico_meta_total||0) * 100)
+    : Number(sales.servico_atingido_total||0);
+
+  const prevServicoReal = Number(prevEmpresa.servico_realizado_realatorio_total || prevEmpresa.servico_realizado_total || 0);
+  const vendaDiaria=Math.max(0, Number(sales.venda_realizado_total||0)-Number(prevEmpresa.venda_realizado_total||0)) + Math.max(0, servicoRealizadoOficial-prevServicoReal);
+  const markupBase=(Number(sales.venda_realizado_total||0)+servicoRealizadoOficial);
   const markupCost=Number(RENT_EMPRESA?.custo_total||0);
   const markupTotal=markupCost>0?(markupBase/markupCost):0;
   const isViewer=!!usuarioAtual?.is_viewer;
@@ -4900,12 +4910,12 @@ function renderKPIs(){
     makeKpi('🟠 Alerta',R(alerta),'var(--orange)'),
     makeKpi('📦 Mercantil realizado',R(sales.venda_realizado_total||0),'var(--amber-400)',`Meta ${R(sales.venda_meta_total||0)} · Atingido ${pct(sales.venda_atingido_total||0)}`),
     makeKpi('📈 Mercantil projetado',R(sales.venda_projetado||0),'var(--amber-500)',`Meta período ${R(sales.venda_meta_periodo||0)}`),
-    makeKpi('🛠️ Serviços realizado',R(sales.servico_realizado_total||0),'var(--blue)',`Meta ${R(sales.servico_meta_total||0)} · Atingido ${pct(sales.servico_atingido_total||0)}`),
+    makeKpi('🛠️ Serviços realizado',R(servicoRealizadoOficial),'var(--blue)',`Meta ${R(sales.servico_meta_total||0)} · Atingido ${pct(servicoAtingidoOficial)} · relatório serviços`),
     makeKpi('🧰 Serviços projetado',R(sales.servico_projetado||0),'var(--blue-400)',`Meta período ${R(sales.servico_meta_periodo||0)}`),
     ...topServiceCards,
     makeKpi('🚚 Caminhão realizado',R(sales.caminhao_realizado_total||0),'var(--yellow)',`Meta ${R(sales.caminhao_meta_total||0)} · Atingido ${pct(sales.caminhao_atingido_total||0)}`),
     makeKpi('🛣️ Caminhão projetado',R(sales.caminhao_projetado||0),'var(--yellow-400)',`Meta período ${R(sales.caminhao_meta_periodo||0)}`),
-    (isPrivileged ? makeKpi('💵 Faturamento total',R((Number(sales.venda_realizado_total||0)+Number(sales.servico_realizado_total||0))),'var(--green-400)','Mercantil + serviços realizado') : ''),
+    (isPrivileged ? makeKpi('💵 Faturamento total',R((Number(sales.venda_realizado_total||0)+servicoRealizadoOficial)),'var(--green-400)','Mercantil + serviços realizado') : ''),
     (isPrivileged ? makeKpi('🕒 Venda diária',R(vendaDiaria),'var(--cyan-400)','Mercantil + serviços do dia') : ''),
     makeKpi('📊 Rentabilidade total', rentPct?`${rentPct.toFixed(2).replace('.',',')}%`:'Sem dado','var(--green-400)','Última linha do relatório de margem bruta por filial'),
     makeKpi('🧮 Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)', isViewer ? 'Índice mercantil + serviços / custo oculto' : `(Mercantil + serviços) / custo total ${R(markupCost||0)}`)
@@ -5069,7 +5079,7 @@ function renderServicosTab(isViewer=false){
 
   const tipoCards = tipos.length ? `
     <div class="glass panel" style="margin-bottom:14px">
-      <div class="section-head"><div><h2>🛠️ Serviços por tipo</h2><div class="hint">Totais consolidados por serviço do relatório mensal.</div></div></div>
+      <div class="section-head"><div><h2>🛠️ Serviços por tipo</h2><div class="hint">Totais consolidados por serviço do relatório mensal. Este é o valor oficial usado no card Serviços realizado.</div></div></div>
       <div class="grid-cards">${tipos.map(t=>`
         <div class="glass card" style="padding:14px 16px">
           <div class="title">${esc(t.servico||'-')}</div>
@@ -5300,7 +5310,7 @@ function renderServicosEntidade(ent){
     return `<div class="glass panel"><h3>🛠️ Serviços por tipo</h3><div class="empty">Nenhum serviço localizado para ${ent?.type==='filial'?'esta filial':'este vendedor'} no relatório mensal.</div></div>`;
   }
   const total=rows.reduce((a,b)=>a+Number(b.real_total||0),0);
-  return `<div class="glass panel"><div class="section-head" style="margin:0 0 10px"><div><h3 style="margin:0">🛠️ Serviços por tipo</h3><div class="hint">Relatório de serviços do mês atual · total ${R(total)}</div></div></div><div class="metrics-grid">${rows.slice(0,8).map(r=>`<div class="metric"><div class="k">${esc(String(r.servico||'Serviço').slice(0,34))}</div><div class="v" style="color:var(--blue-400);font-size:18px">${R(r.real_total||0)}</div></div>`).join('')}</div></div>`;
+  return `<div class="glass panel"><div class="section-head" style="margin:0 0 10px"><div><h3 style="margin:0">🛠️ Serviços por tipo</h3><div class="hint">Relatório real de serviços do mês atual · total oficial ${R(total)}</div></div></div><div class="metrics-grid">${rows.slice(0,8).map(r=>`<div class="metric"><div class="k">${esc(String(r.servico||'Serviço').slice(0,34))}</div><div class="v" style="color:var(--blue-400);font-size:18px">${R(r.real_total||0)}</div></div>`).join('')}</div></div>`;
 }
 
 function rowMatchesFilial(ent,row){const joined=normSalesText([salesCell(row,['Filial','Filial_2','Vendedor','Vendedor_2','Nome','Nome_2']),salesCell(row,['Subgrupo'])].join(' ')); return filialAliases(ent.filial).some(a=>joined.includes(normSalesText(a)))}
