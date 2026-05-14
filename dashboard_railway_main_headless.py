@@ -4686,6 +4686,47 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
   line-height:1.1;
 }
 
+
+/* ===== LARANJITO NOS CARDS DE ALERTA ===== */
+@keyframes laranjitoPulse {
+  0%,100% { transform: scale(1); filter: drop-shadow(0 0 7px rgba(255,147,0,.35)); }
+  50% { transform: scale(1.13); filter: drop-shadow(0 0 18px rgba(255,147,0,.75)); }
+}
+.kpi.kpi-laranjito{
+  position:relative;
+  overflow:hidden;
+  padding-right:104px !important;
+}
+.kpi .laranjito-card{
+  position:absolute;
+  right:14px;
+  top:50%;
+  transform:translateY(-50%);
+  width:78px;
+  height:78px;
+  border-radius:22px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:54px;
+  animation:laranjitoPulse 1.4s ease-in-out infinite;
+  background:radial-gradient(circle at 40% 35%, rgba(255,177,59,.22), rgba(255,122,0,.06) 60%, transparent 72%);
+  pointer-events:none;
+}
+.kpi .laranjito-card.triste::after{content:'😢';}
+.kpi .laranjito-card.preocupado::after{content:'😟';}
+.kpi .laranjito-card.feliz::after{content:'😄';}
+.kpi .laranjito-caption{
+  position:absolute;
+  right:13px;
+  bottom:8px;
+  font-size:10px;
+  color:#fbbf24;
+  opacity:.9;
+  font-weight:800;
+  letter-spacing:.04em;
+}
+
 </style>
 </head>
 <body>
@@ -4727,7 +4768,7 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
     <div id="kpis" class="kpis"></div>
 
     <div id="masterTabs" class="tabs hidden">
-      <button class="tab active" data-tab="vendedores" onclick="setMainTab('vendedores')">👤 Por Vendedor</button>
+      <button class="tab active" data-tab="vendedores" onclick="setMainTab('vendedores')">👥 Por Colaborador</button>
       <button class="tab" data-tab="filiais" onclick="setMainTab('filiais')">🏬 Por Filial</button>
       <button class="tab" data-tab="metas" onclick="setMainTab('metas')">🎯 Metas</button>
       <button class="tab" data-tab="servicos" onclick="setMainTab('servicos')">🛠️ Serviços</button>
@@ -4904,15 +4945,17 @@ function renderPiggyBank(perc){
 }
 function toast(msg, type='info'){const host=document.getElementById('toast'); const el=document.createElement('div'); el.className='toast-item'; el.innerHTML=`<img src="${LARANJITO}" alt="ok"><div><div style="font-weight:900">${type==='success'?'Tudo certo!':'Aviso'}</div><div class="small">${esc(msg)}</div></div>`; host.appendChild(el); setTimeout(()=>{el.remove();},4200)}
 function mascotCongrats(ent){const meta=calcMeta(ent);const b=getBonus(meta.cfg,meta.geral);if(!b) return;toast(`Parabéns, ${ent.type==='vendedor'?ent.nome:filialLabel(ent.filial)}! Meta em ${pct(meta.geral)}. ${b.text||''}`,'success')}
-function makeKpi(label,val,accent,sub='',extraClass=''){
+function makeKpi(label,val,accent,sub='',extraClass='',mascote=''){
   const raw=String(label||'').trim();
   const p=raw.split(' ');
   const emoji=p.length>1?p[0]:'';
   const txt=p.length>1?p.slice(1).join(' '):raw;
-  return `<div class="glass kpi ${extraClass||''}" style="--accent:${accent}">
+  const masc = mascote ? `<div class="laranjito-card ${esc(mascote)}"></div><div class="laranjito-caption">Laranjito</div>` : '';
+  return `<div class="glass kpi ${extraClass||''} ${mascote?'kpi-laranjito':''}" style="--accent:${accent}">
     <div class="label">${emoji?`<span class="kpi-emoji">${emoji}</span>`:''}<span class="kpi-label-text">${esc(txt)}</span></div>
     <div class="value">${val}</div>
     ${sub?`<div class="subline">${sub}</div>`:''}
+    ${masc}
   </div>`;
 }
 function renderKPIs(){
@@ -4938,6 +4981,18 @@ function renderKPIs(){
   const markupBase=(Number(sales.venda_realizado_total||0)+servicoRealizadoOficial);
   const markupCost=Number(RENT_EMPRESA?.custo_total||0);
   const markupTotal=markupCost>0?(markupBase/markupCost):0;
+  function statusLaranjitoVendaDiaria(v){
+    v=Number(v||0);
+    if(v < 20000) return 'triste';
+    if(v <= 25000) return 'preocupado';
+    return 'feliz';
+  }
+  function statusLaranjitoMarkup(v){
+    v=Number(v||0);
+    if(!v || v < 2.00) return 'triste';
+    if(v <= 2.14) return 'preocupado';
+    return 'feliz';
+  }
   const isViewer=!!usuarioAtual?.is_viewer;
   const isPrivileged=(usuarioAtual?.tipo==='master' || isViewer);
 
@@ -4968,9 +5023,9 @@ function renderKPIs(){
     makeKpi('🚚 Caminhão realizado',R(sales.caminhao_realizado_total||0),'var(--yellow)',`Meta ${R(sales.caminhao_meta_total||0)} · Atingido ${pct(sales.caminhao_atingido_total||0)}`),
     makeKpi('🛣️ Caminhão projetado',R(sales.caminhao_projetado||0),'var(--yellow-400)',`Meta período ${R(sales.caminhao_meta_periodo||0)}`),
     (isPrivileged ? makeKpi('💵 Faturamento total',R((Number(sales.venda_realizado_total||0)+servicoRealizadoOficial)),'var(--green-400)','Mercantil + serviços realizado', 'card-financeiro') : ''),
-    (isPrivileged ? makeKpi('🕒 Venda diária',R(vendaDiaria),'var(--cyan-400)','Mercantil + serviços do dia', 'card-venda-dia') : ''),
+    (isPrivileged ? makeKpi('🕒 Venda diária',R(vendaDiaria),'var(--cyan-400)','Mercantil + serviços do dia', 'card-venda-dia', statusLaranjitoVendaDiaria(vendaDiaria)) : ''),
     makeKpi('📊 Rentabilidade total', rentPct?`${rentPct.toFixed(2).replace('.',',')}%`:'Sem dado','var(--green-400)','Última linha do relatório de margem bruta por filial', 'card-financeiro'),
-    makeKpi('🧮 Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)', isViewer ? 'Índice mercantil + serviços / custo oculto' : `(Mercantil + serviços) / custo total ${R(markupCost||0)}`, 'card-financeiro')
+    makeKpi('🧮 Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)', isViewer ? 'Índice mercantil + serviços / custo oculto' : `(Mercantil + serviços) / custo total ${R(markupCost||0)}`, 'card-financeiro', statusLaranjitoMarkup(markupTotal))
   ];
   document.getElementById('kpis').innerHTML=cards.join('') + `<div class="glass" style="grid-column:1/-1;padding:10px 14px;display:flex;align-items:center;justify-content:flex-start;min-height:46px"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div></div>`;
 }
