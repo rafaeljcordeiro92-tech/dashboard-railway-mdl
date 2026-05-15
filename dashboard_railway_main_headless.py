@@ -4791,6 +4791,43 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 .kpi .laranjito-card::after{content:none!important;}
 .kpi .laranjito-caption{display:none!important;}
 
+
+/* ===== CONFIGURAÇÃO GLOBAL DE MENSAGEM DE COBRANÇA ===== */
+.cobranca-config-grid{
+  display:grid;
+  grid-template-columns: 1.4fr .9fr;
+  gap:14px;
+}
+.cobranca-template{
+  min-height:180px;
+  resize:vertical;
+  line-height:1.45;
+}
+.placeholder-list{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:6px;
+  margin-top:8px;
+}
+.placeholder-list code{
+  font-size:11px;
+  background:rgba(255,255,255,.06);
+  border:1px solid rgba(255,255,255,.09);
+  padding:5px 7px;
+  border-radius:9px;
+  color:#e5e7eb;
+}
+.preview-whats{
+  white-space:pre-wrap;
+  background:rgba(15,23,42,.76);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:14px;
+  padding:12px;
+  color:#dbeafe;
+  min-height:130px;
+}
+@media(max-width:900px){.cobranca-config-grid{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body>
@@ -4884,7 +4921,7 @@ const MARGENS_BRUTAS=__JS_MARGENS_BRUTAS__||{filiais:{},vendedores:{}};
 let SALES_EMPRESA=__JS_SALES_EMPRESA__||{};
 let RENT_EMPRESA=__JS_RENT_EMPRESA__||{};
 let SERVICOS_RELATORIO=__JS_SERVICOS_RELATORIO__||{empresa:{},servicos:{},filiais:{},vendedores:{},detalhes:[]};
-let CONFIG_META={grave_pct:20,alerta_pct:15,atencao_pct:10,peso_grave:60,peso_alerta:30,peso_atencao:10,bonus_50:'',bonus_75:'',bonus_85:'',bonus_100:'',cob_cred_rateio_filial_pct:50,cob_cred_rateio_cred_pct:50,cobranca_global_rateio_pct:20,...(__CONFIG_META__||{})};
+let CONFIG_META={grave_pct:20,alerta_pct:15,atencao_pct:10,peso_grave:60,peso_alerta:30,peso_atencao:10,bonus_50:'',bonus_75:'',bonus_85:'',bonus_100:'',cob_cred_rateio_filial_pct:50,cob_cred_rateio_cred_pct:50,cobranca_global_rateio_pct:20,cobranca_msg_template:`Olá, {primeiro_nome} tudo bem?\nAqui é da Lojas MDL - Móveis do Lar.\nPassando para lembrar que tem uma parcelinha vencida na data de {vencimento}, no valor de {valor}.\nCaso o pagamento já tenha sido realizado, por gentileza, desconsidere esta mensagem.\nSe precisar do boleto, chave PIX ou tiver qualquer dúvida, fico à disposição para ajudar.`,cobranca_img_url:'',...(__CONFIG_META__||{})};
 let CONFIG_META_IND=__CONFIG_META_IND__||{};
 const LOGIN_MASTER=String(__LOGIN_MASTER__);
 const SENHA_MASTER=String(__SENHA_MASTER__);
@@ -5947,13 +5984,158 @@ function getCobradosHoje(ent){
   }
   return (COB_LOGS||[]).filter(x=>isTodayStr(x.server_time||x.data||'') && String(x.filial||'')===String(ent.filial||'') && (ent.type==='filial' || String(x.destino_nome||'')===String(ent.nome||'')));
 }
+
+const DEFAULT_COBRANCA_TEMPLATE = `Olá, {primeiro_nome} tudo bem?
+Aqui é da Lojas MDL - Móveis do Lar.
+Passando para lembrar que tem uma parcelinha vencida na data de {vencimento}, no valor de {valor}.
+Caso o pagamento já tenha sido realizado, por gentileza, desconsidere esta mensagem.
+Se precisar do boleto, chave PIX ou tiver qualquer dúvida, fico à disposição para ajudar.`;
+
+function cobrancaTemplateAtual(){
+  return String(CONFIG_META?.cobranca_msg_template || DEFAULT_COBRANCA_TEMPLATE);
+}
+function cobrancaImgAtual(){
+  return String(CONFIG_META?.cobranca_img_url || '').trim();
+}
+function primeiroNomeClienteJs(nome){
+  const s=String(nome||'').trim();
+  return s ? s.split(/\s+/)[0] : 'Cliente';
+}
+function valorBR(v){
+  return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+}
+function montarMensagemCobranca(reg){
+  let tpl=cobrancaTemplateAtual();
+  const dados={
+    primeiro_nome: primeiroNomeClienteJs(reg.cliente||reg.nome||''),
+    cliente: String(reg.cliente||reg.nome||''),
+    vencimento: String(reg.vencimento||''),
+    valor: valorBR(reg.pendente||0),
+    titulo: String(reg.titulo||''),
+    parcela: String(reg.parcela||''),
+    filial: String(reg.filial||''),
+    vendedor: String(reg.vendedor||''),
+    dias: String(reg.dias||'')
+  };
+  Object.entries(dados).forEach(([k,v])=>{
+    tpl=tpl.replaceAll(`{${k}}`, v);
+  });
+  const img=cobrancaImgAtual();
+  if(img){
+    tpl += `\n\nImagem/anexo: ${img}`;
+  }
+  return tpl;
+}
+function exemploMensagemCobranca(){
+  return montarMensagemCobranca({
+    cliente:'MARIA APARECIDA DA SILVA',
+    vencimento:'10/05/2026',
+    pendente:199.90,
+    titulo:'123456',
+    parcela:'03',
+    filial:'F1',
+    vendedor:'VENDEDOR EXEMPLO',
+    dias:25
+  });
+}
+function atualizarPreviewCobranca(){
+  const tpl=document.getElementById('cobMsgTemplate')?.value;
+  const img=document.getElementById('cobMsgImgUrl')?.value;
+  const oldTpl=CONFIG_META.cobranca_msg_template;
+  const oldImg=CONFIG_META.cobranca_img_url;
+  CONFIG_META.cobranca_msg_template=tpl || DEFAULT_COBRANCA_TEMPLATE;
+  CONFIG_META.cobranca_img_url=img || '';
+  const el=document.getElementById('cobMsgPreview');
+  if(el) el.textContent=exemploMensagemCobranca();
+  CONFIG_META.cobranca_msg_template=oldTpl;
+  CONFIG_META.cobranca_img_url=oldImg;
+}
+async function salvarMensagemCobrancaGlobal(){
+  const msgEl=document.getElementById('cobMsgSaveStatus');
+  const tpl=String(document.getElementById('cobMsgTemplate')?.value||'').trim();
+  const img=String(document.getElementById('cobMsgImgUrl')?.value||'').trim();
+  if(!tpl){
+    if(msgEl) msgEl.textContent='⚠️ A mensagem não pode ficar vazia.';
+    return;
+  }
+  CONFIG_META.cobranca_msg_template=tpl;
+  CONFIG_META.cobranca_img_url=img;
+  try{
+    const payload={global:CONFIG_META,individual:CONFIG_META_IND};
+    const resp=await fetch(API_CFG,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const j=await resp.json();
+    if(j.ok){
+      await carregarConfigOnline();
+      if(msgEl) msgEl.textContent='✅ Mensagem global de cobrança salva online.';
+      toast('Mensagem de cobrança atualizada.','success');
+      renderLogsTab();
+    }else{
+      if(msgEl) msgEl.textContent='⚠️ Não consegui salvar online.';
+    }
+  }catch(e){
+    console.log('Erro ao salvar mensagem de cobrança',e);
+    if(msgEl) msgEl.textContent='⚠️ Falha ao salvar online.';
+  }
+}
+function restaurarMensagemCobrancaPadrao(){
+  const t=document.getElementById('cobMsgTemplate');
+  const img=document.getElementById('cobMsgImgUrl');
+  if(t) t.value=DEFAULT_COBRANCA_TEMPLATE;
+  if(img) img.value='';
+  atualizarPreviewCobranca();
+}
+function renderCobrancaConfigPanel(){
+  const tpl=esc(cobrancaTemplateAtual());
+  const img=esc(cobrancaImgAtual());
+  return `<div class="glass panel" style="margin-bottom:14px">
+    <div class="section-head" style="margin:0 0 10px">
+      <div>
+        <h2 style="margin:0">💬 Mensagem padrão de cobrança</h2>
+        <div class="hint">Configuração global usada ao abrir WhatsApp nos clientes. Os campos entre chaves são preenchidos automaticamente.</div>
+      </div>
+      <button class="btn primary" onclick="salvarMensagemCobrancaGlobal()">Salvar global</button>
+    </div>
+    <div class="cobranca-config-grid">
+      <div>
+        <div class="input-card">
+          <label>Texto da mensagem</label>
+          <textarea id="cobMsgTemplate" class="cobranca-template" oninput="atualizarPreviewCobranca()">${tpl}</textarea>
+        </div>
+        <div class="placeholder-list">
+          <code>{primeiro_nome}</code><code>{cliente}</code>
+          <code>{vencimento}</code><code>{valor}</code>
+          <code>{titulo}</code><code>{parcela}</code>
+          <code>{filial}</code><code>{vendedor}</code>
+        </div>
+        <div class="input-card" style="margin-top:10px">
+          <label>Imagem junto com a mensagem</label>
+          <input id="cobMsgImgUrl" value="${img}" placeholder="Cole aqui a URL pública da imagem. Ex: https://moveisdolar.com.br/colaborador/imagem.png" oninput="atualizarPreviewCobranca()">
+          <div class="hint">O WhatsApp por link não anexa arquivo automaticamente; a imagem entra como link no final da mensagem.</div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap">
+          <button class="btn primary" onclick="salvarMensagemCobrancaGlobal()">Salvar global</button>
+          <button class="btn soft" onclick="restaurarMensagemCobrancaPadrao()">Restaurar padrão</button>
+          <span id="cobMsgSaveStatus" class="hint"></span>
+        </div>
+      </div>
+      <div>
+        <div class="input-card">
+          <label>Prévia com dados de exemplo</label>
+          <div id="cobMsgPreview" class="preview-whats">${esc(exemploMensagemCobranca())}</div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+
 function normalizarListaTelefones(contatos){let base=[]; if(Array.isArray(contatos)) base=contatos; else if(typeof contatos==='string') base=contatos.split(/[;,/|]+/); const out=[]; const seen=new Set(); base.forEach(item=>{const num=String(item||'').replace(/\D/g,''); if(num.length>=10){const finalNum=num.startsWith('55')?num:'55'+num; if(!seen.has(finalNum)){seen.add(finalNum); out.push(finalNum);}}}); return out}
 function matchCob(r){return COB_LOGS.some(x=>String(x.cliente||'')===String(r.cliente||r.nome||'') && String(x.titulo||'')===String(r.titulo||'') && String(x.parcela||'')===String(r.parcela||''))}
 function renderCobrancasEnt(ent){const src=getClientesEnt(ent); const cobradosHoje=getCobradosHoje(ent); const allHoje=[...(src.grave||[]),...(src.alerta||[]),...(src.atencao||[])].filter(r=>r.novo); const renderRows=(arr,showFaixa)=>!arr.length?'<div class="empty">Nada nesta aba.</div>':arr.slice(0,150).map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')} ${r.novo?'<span class="mini-chip" style="margin-left:6px;background:#eef7ff;color:#1e3a8a;border-color:#93c5fd">Novo hoje</span>':''} ${matchCob(r)?'<span class="mini-chip" style="margin-left:6px">Cobrado</span>':''}</div><div class="small muted">✍️ Avalista: ${esc((r.avalista && String(r.avalista).toLowerCase()!=='nan')?r.avalista:'Sem Aval')}</div>${(r.avalista && String(r.avalista).toLowerCase()!=='nan')?'<div class="small avalista-alert">⚠️ Atenção, lembre de cobrar o AVALISTA</div>':''}<div class="small muted">🔒 Restrição crédito: ${/sem restr/i.test(String(r.restricao||''))?`<span class="restr-ok">${esc(r.restricao||'Sem Restrição')}</span>`:esc(r.restricao||'Sem informação')}</div><div class="small muted">👤 ${esc(r.vendedor||'')}</div><div class="small muted">☎️ ${esc(Array.isArray(r.telefones)?r.telefones.join(', '):(r.contato||''))}</div></div><div><strong>${esc(r.titulo||'')}</strong><div class="small muted">Título</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${R(r.pendente||0)}</strong><div class="small muted">Pendente</div></div><div>${showFaixa?`<div class="small muted">${esc(r.faixa_label||'')}</div>`:''}<button class="btn wa" onclick='abrirWhats(${JSON.stringify(r)}, ${JSON.stringify({type:ent.type,filial:ent.filial,nome:ent.nome})})'>💬 WhatsApp</button></div></div></div>`).join(''); const faixas=['grave','alerta','atencao']; const tabs=`<div class="tabs" style="justify-content:flex-start;margin:0 0 12px"><button class="tab active" data-cobtab="geral" onclick="switchCobTab(this,'geral')">Todos</button><button class="tab" data-cobtab="novos" onclick="switchCobTab(this,'novos')">Novos Hoje</button><button class="tab" data-cobtab="cobrados" onclick="switchCobTab(this,'cobrados')">Cobrados Hoje</button></div>`; let geral=''; faixas.forEach(fx=>{const arr=(src[fx]||[]).map(r=>({...r,faixa_label:fx})); const label=fx==='grave'?'Grave':fx==='alerta'?'Alerta':'Atenção'; geral+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${arr.length} títulos · ${R(arr.reduce((a,b)=>a+Number(b.pendente||0),0))}</span></div><div class="tableish">${renderRows(arr,false)}</div></div>`}); const srcAll=[...(src.grave||[]),...(src.alerta||[]),...(src.atencao||[])]; const cobradosRows=(cobradosHoje||[]).map(x=>{const m=srcAll.find(r=>cobrancaRowKey(r)===cobrancaRowKey(x))||{}; return {cliente:x.cliente,titulo:x.titulo,parcela:x.parcela,vencimento:x.vencimento,pendente:x.pendente,vendedor:x.usuario||m.vendedor||'',dias:'',telefones:Array.isArray(m.telefones)&&m.telefones.length?m.telefones:[x.telefone],contato:m.contato||x.telefone,avalista:m.avalista||'',restricao:m.restricao||'',faixa_label:m.faixa||'',novo:false,pagamento:m.pagamento||'',lancamento:m.lancamento||''};}); return `${tabs}<div class="cob-pane" data-cobpane="geral">${geral}</div><div class="cob-pane hidden" data-cobpane="novos">${renderRows(allHoje.map(r=>({...r,faixa_label:r.faixa||''})),true)}</div><div class="cob-pane hidden" data-cobpane="cobrados">${renderRows(cobradosRows,true)}</div>`}
 function switchCobTab(btn,name){const box=btn.closest('.acc-body'); box.querySelectorAll('[data-cobtab]').forEach(b=>b.classList.toggle('active',b===btn)); box.querySelectorAll('[data-cobpane]').forEach(p=>p.classList.toggle('hidden',p.dataset.cobpane!==name));}
 function abrirWhats(reg,entRef){const nums=normalizarListaTelefones((reg.telefones&&reg.telefones.length)?reg.telefones:reg.contato); if(!nums.length){toast('Cliente sem telefone válido.'); return} phoneContext={reg,entRef}; if(nums.length===1){enviarWhats(nums[0]); return} const phoneList=document.getElementById('phoneList'); phoneList.innerHTML=nums.map(n=>`<button class="btn soft" style="width:100%" onclick="enviarWhats('${n}')">${n}</button>`).join(''); document.getElementById('phoneModal').classList.add('show')}
 function closePhoneModal(){document.getElementById('phoneModal').classList.remove('show'); phoneContext=null}
-function enviarWhats(numero){if(!phoneContext) return; const {reg,entRef}=phoneContext; const msg=reg.mensagem_whatsapp||`Olá, ${String(reg.cliente||reg.nome||'').split(' ')[0]} tudo bem?`; window.open(`https://wa.me/${numero}?text=${encodeURIComponent(msg)}`,'_blank'); registrarCobrancaOnline(reg,entRef,numero); closePhoneModal()}
+function enviarWhats(numero){if(!phoneContext) return; const {reg,entRef}=phoneContext; const msg=montarMensagemCobranca(reg); window.open(`https://wa.me/${numero}?text=${encodeURIComponent(msg)}`,'_blank'); registrarCobrancaOnline(reg,entRef,numero); closePhoneModal()}
 async function registrarCobrancaOnline(r,entRef,numero){
   // Para crediarista usa o login como usuario para que getCobradosHoje() funcione corretamente
   const usuarioLog = (entRef.type==='crediarista'||entRef.is_crediarista)
@@ -6048,7 +6230,7 @@ async function removerMetaIndividual(){
     if(j.ok){await carregarConfigOnline(); renderMetasTab(); const restoreMsg=document.getElementById('metaSaveMsg'); if(restoreMsg) restoreMsg.textContent='✅ Configuração individual removida.';}
   }catch(e){console.log('Erro ao remover meta individual',e); if(msgEl) msgEl.textContent='⚠️ Não consegui remover online.';}
 }
-function renderLogsTab(){const filOpts=['<option value="">Todas as filiais</option>',...ORDEM.map(f=>`<option value="${f}">${f}</option>`)].join(''); const vendOpts=['<option value="">Todos os usuários</option>',...Array.from(new Set(COB_LOGS.map(x=>x.usuario).filter(Boolean))).sort().map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)].join(''); logSection.innerHTML=`<div class="section-head"><div><h2>🧾 Histórico de cobranças</h2><div class="hint">Filtre por data, usuário ou filial. Também é possível remover lançamentos indevidos.</div></div></div><div class="glass panel"><div class="search-row"><div class="input-card"><label>Buscar cliente/título</label><input id="logQ" placeholder="Nome, título, parcela"></div><div class="input-card"><label>Data inicial</label><input id="logDe" type="date"></div><div class="input-card"><label>Data final</label><input id="logAte" type="date"></div><div class="input-card"><label>Filial</label><select id="logFil">${filOpts}</select></div></div><div class="search-row" style="margin-top:10px"><div class="input-card"><label>Usuário</label><select id="logVend">${vendOpts}</select></div><div style="display:flex;align-items:end;gap:10px"><button class="btn primary" onclick="applyLogFilter()">Filtrar</button><button class="btn soft" onclick="clearLogFilter()">Limpar</button></div></div><div id="logsList" class="logs-list"></div></div>`; applyLogFilter()}
+function renderLogsTab(){const cfgPanel=renderCobrancaConfigPanel(); const filOpts=['<option value="">Todas as filiais</option>',...ORDEM.map(f=>`<option value="${f}">${f}</option>`)].join(''); const vendOpts=['<option value="">Todos os usuários</option>',...Array.from(new Set(COB_LOGS.map(x=>x.usuario).filter(Boolean))).sort().map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)].join(''); logSection.innerHTML=cfgPanel+`<div class="section-head"><div><h2>🧾 Histórico de cobranças</h2><div class="hint">Filtre por data, usuário ou filial. Também é possível remover lançamentos indevidos.</div></div></div><div class="glass panel"><div class="search-row"><div class="input-card"><label>Buscar cliente/título</label><input id="logQ" placeholder="Nome, título, parcela"></div><div class="input-card"><label>Data inicial</label><input id="logDe" type="date"></div><div class="input-card"><label>Data final</label><input id="logAte" type="date"></div><div class="input-card"><label>Filial</label><select id="logFil">${filOpts}</select></div></div><div class="search-row" style="margin-top:10px"><div class="input-card"><label>Usuário</label><select id="logVend">${vendOpts}</select></div><div style="display:flex;align-items:end;gap:10px"><button class="btn primary" onclick="applyLogFilter()">Filtrar</button><button class="btn soft" onclick="clearLogFilter()">Limpar</button></div></div><div id="logsList" class="logs-list"></div></div>`; applyLogFilter()}
 function parseDateBR(s){if(!s) return null; const v=String(s).trim(); let m=v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); if(m){const d=new Date(Number(m[3]), Number(m[2])-1, Number(m[1])); return isNaN(d)?null:d} const d=new Date(v); return isNaN(d)?null:d}
 function parseDate(s){if(!s) return null; const d=new Date(s); return isNaN(d)?null:d}
 function applyLogFilter(){const q=(document.getElementById('logQ')?.value||'').toLowerCase(); const de=parseDate(document.getElementById('logDe')?.value); const ate=parseDate(document.getElementById('logAte')?.value); const fil=document.getElementById('logFil')?.value||''; const vend=document.getElementById('logVend')?.value||''; let arr=[...COB_LOGS].reverse(); arr=arr.filter(x=>{const txt=`${x.cliente||''} ${x.titulo||''} ${x.parcela||''}`.toLowerCase(); const dt=parseDate(x.server_time||x.data||''); if(q && !txt.includes(q)) return false; if(fil && String(x.filial||'')!==fil) return false; if(vend && String(x.usuario||'')!==vend) return false; if(de && (!dt || dt<de)) return false; if(ate){const end=new Date(ate); end.setHours(23,59,59,999); if(!dt || dt>end) return false;} return true}); _logFiltered=arr; const host=document.getElementById('logsList'); if(!host) return; host.innerHTML=arr.length?arr.map((x,i)=>`<div class="log-row"><div><div style="font-weight:900">${esc(x.cliente||'')}</div><div class="small muted">${esc(x.titulo||'')} · Parcela ${esc(x.parcela||'')}</div></div><div><strong>${R(x.pendente||0)}</strong><div class="small muted">${esc(x.filial||'')} · ${esc(x.usuario||'')}</div></div><div><strong>${esc(x.telefone||'')}</strong><div class="small muted">Telefone</div></div><div><strong>${esc((x.server_time||'').replace('T',' ').slice(0,16))}</strong><div class="small muted">Data</div></div><div><button class="btn danger" onclick="removerCobrancaIdx(${i})">Remover</button></div></div>`).join(''):'<div class="empty">Nenhuma cobrança encontrada para esse filtro.</div>'}
