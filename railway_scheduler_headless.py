@@ -53,6 +53,7 @@ def maybe_finish_logs(name, proc):
 
 
 def sales_slot_key(dt_now):
+    # roda imediatamente ao subir e depois a cada 20 minutos: 00, 20, 40
     slot_minute = (dt_now.minute // SALES_INTERVAL_MIN) * SALES_INTERVAL_MIN
     return dt_now.strftime('%Y-%m-%d %H:') + f'{slot_minute:02d}'
 
@@ -64,14 +65,9 @@ def cobranca_slot_key(dt_now):
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
 log(f'Vendas configuradas: imediata ao iniciar + a cada {SALES_INTERVAL_MIN} minutos')
 log('Cobrança configurada: a cada 2 horas, das 07:00 às 21:00')
-log('HTML/dashboard configurado: após a primeira venda do boot, roda main uma vez para subir layout novo')
 
 # força a primeira execução de vendas logo ao subir o container
 _force_sales_boot = True
-
-# força uma execução do main depois da primeira venda.
-# Isso atualiza dashboard_vendedores.html no FTP sem esperar a próxima janela de cobrança.
-_force_main_after_first_sales = True
 
 while True:
     _sales_proc = maybe_finish_logs('vendas_servicos_caminhao', _sales_proc)
@@ -82,38 +78,27 @@ while True:
     sales_running = is_running(_sales_proc)
     cobranca_running = is_running(_cobranca_proc)
 
-    _sales_key = sales_slot_key(agora)
-    _cobranca_key = cobranca_slot_key(agora)
-
     # PRIORIDADE 1: VENDAS
-    # Não inicia venda em paralelo com cobrança/main para evitar dois Chromes logados no SGI ao mesmo tempo.
-    if (not sales_running) and (not cobranca_running):
-        if _force_sales_boot:
-            _force_sales_boot = False
-            _last_sales_slot = _sales_key
-            _sales_proc = start_job('vendas_servicos_caminhao', SALES_CMD)
-            sales_running = True
-        elif _last_sales_slot != _sales_key:
-            _last_sales_slot = _sales_key
-            _sales_proc = start_job('vendas_servicos_caminhao', SALES_CMD)
-            sales_running = True
+    _sales_key = sales_slot_key(agora)
+    _should_run_sales = False
 
-    # PRIORIDADE 2: APÓS PRIMEIRA VENDA, RODA MAIN UMA VEZ PARA ATUALIZAR HTML/CSS/JS DO DASHBOARD
-    if (
-        _force_main_after_first_sales
-        and (not sales_running)
-        and (not cobranca_running)
-        and (_last_sales_slot is not None)
-    ):
-        _force_main_after_first_sales = False
-        _cobranca_proc = start_job('dashboard_completo_cobranca_boot_atualiza_html', COBRANCA_CMD)
-        cobranca_running = True
+    if _force_sales_boot and not sales_running:
+        _should_run_sales = True
+    elif (not sales_running) and (_last_sales_slot != _sales_key):
+        _should_run_sales = True
 
-    # PRIORIDADE 3: COBRANÇA PROGRAMADA
+    if _should_run_sales:
+        _force_sales_boot = False
+        _last_sales_slot = _sales_key
+        _sales_proc = start_job('vendas_servicos_caminhao', SALES_CMD)
+        sales_running = True
+
+    # PRIORIDADE 2: COBRANÇA
     _cobranca_ok = (
         agora.hour in COBRANCA_HOURS
         and 0 <= agora.minute <= COBRANCA_MINUTE_MAX
     )
+    _cobranca_key = cobranca_slot_key(agora)
 
     if (
         _cobranca_ok
