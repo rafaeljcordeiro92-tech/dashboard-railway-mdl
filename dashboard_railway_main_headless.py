@@ -5547,6 +5547,7 @@ function renderCrediaristaDetail(ent){
   const meta=calcMeta(ent);
   detailScreen.innerHTML=`
     ${renderInboxBanner()}
+    ${renderUpdateStrip()}
     <div class="back-row">
       <button class="btn soft" onclick="backToMain()">⬅️ Voltar</button>
       <div>

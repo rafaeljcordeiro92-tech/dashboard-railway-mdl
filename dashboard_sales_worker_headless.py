@@ -1208,48 +1208,33 @@ def _parse_relatorio_servicos_html(html):
     empresa_total = 0.0
     empresa_qtd = 0.0
     servico_atual = ''
-    header_map = {}
     totais_oficiais_servico = {}
 
-    def _norm_header(txt):
-        s = unicodedata.normalize('NFD', str(txt or '')).encode('ascii', 'ignore').decode('ascii')
-        s = re.sub(r'\s+', ' ', s).strip().lower()
-        s = s.replace('(r$)', '').replace('r$', '').strip()
-        return s
+    def _txt(el):
+        return ' '.join(el.get_text(' ', strip=True).split())
 
-    def _set_headers_from_tr(tr):
-        nonlocal header_map
-        ths = tr.find_all('th')
-        labels = [' '.join(th.get_text(' ', strip=True).split()) for th in ths]
-        if not labels:
-            return
-        if len(labels) == 1 and tr.find('th', class_=lambda c: c and 'label-agrupamento' in c):
-            return
-        header_map = {_norm_header(lbl): i for i, lbl in enumerate(labels)}
-        if header_map:
-            print('🧰 Cabeçalho serviços detectado:', labels)
+    def _is_money_text(txt):
+        txt = str(txt or '').strip()
+        if not txt or txt.upper() in {'X', '-', '*'}:
+            return False
+        if re.search(r'\d{1,2}/\d{1,2}/\d{2,4}', txt):
+            return False
+        return bool(re.fullmatch(r'-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2}', txt))
 
-    def _idx(*names, fallback=None):
-        wanted = [_norm_header(n) for n in names]
-        for w in wanted:
-            for h, i in header_map.items():
-                if h == w:
-                    return i
-        for w in wanted:
-            for h, i in header_map.items():
-                if w and (w in h or h in w):
-                    return i
-        return fallback
+    def _money_candidates(vals):
+        out = []
+        for raw in vals:
+            txt = str(raw or '').strip()
+            if _is_money_text(txt):
+                out.append(_br_money(txt))
+        return out
 
-    def _val(vals, idx, default=''):
-        try:
-            if idx is None:
-                return default
-            if idx < 0:
-                idx = len(vals) + idx
-            return vals[idx] if 0 <= idx < len(vals) else default
-        except Exception:
-            return default
+    def _first_number(vals):
+        for raw in vals:
+            txt = str(raw or '').strip()
+            if re.fullmatch(r'\d+(?:,\d+)?', txt):
+                return _br_money(txt)
+        return 0.0
 
     def _is_total_row(vals):
         if not vals:
@@ -1262,59 +1247,55 @@ def _parse_relatorio_servicos_html(html):
         raw = unicodedata.normalize('NFD', raw).encode('ascii', 'ignore').decode('ascii')
         return 'CANCELAD' in raw
 
-    def _money_candidates(vals):
-        out = []
-        for raw in vals:
-            txt = str(raw or '').strip()
-            if not txt:
-                continue
-            # Aceita números BR; ignora textos como X, TOTAL, datas e códigos longos sem vírgula.
-            if not re.search(r'\d', txt):
-                continue
-            if re.search(r'\d{1,2}/\d{1,2}/\d{2,4}', txt):
-                continue
-            # evita número de lançamento/bilhete puro muito grande; mantém quantidade 327 e valores com vírgula
-            if ',' not in txt and '.' not in txt and len(re.sub(r'\D','',txt)) > 4:
-                continue
-            val = _br_money(txt)
-            out.append(val)
-        return out
-
     def _aplicar_total_oficial(servico, vals):
         if not servico or _is_total_cancelado(vals):
             return
+
+        # TOTAL correto do tipo = último valor monetário da linha TOTAL do bloco SERVIÇO.
+        # Exemplo do SGI: TOTAL | 327 | ... | Vl. Unitário 209,79 | Vl. Acréscimo 812,52 | Vl. Total 4.079,25
         nums = _money_candidates(vals)
-        # No HTML do SGI a linha TOTAL possui, na parte SERVIÇO:
-        # Quantidade, Quantidade Cancelada, Vl. Unitário, Vl. Total.
-        # Depois podem vir totais da parte DADOS DA VENDA, que NÃO podem entrar nos cards.
-        # Exemplo visto: TOTAL | 327 | 0 | 209,79 | 3.266,73 | ... venda ...
-        if len(nums) >= 4:
-            qtd = nums[0]
-            qtd_cancelada = nums[1]
-            vl_unit_total = nums[2]
-            vl_total = nums[3]
-        elif nums:
-            qtd = nums[0] if len(nums) >= 1 else 0
-            qtd_cancelada = nums[1] if len(nums) >= 2 else 0
-            vl_unit_total = nums[-2] if len(nums) >= 2 else 0
-            vl_total = nums[-1]
-        else:
+        if not nums:
             return
+
+        qtd = _first_number(vals[1:3]) if len(vals) > 1 else 0.0
+        vl_total = nums[-1]
+        vl_acrescimo = nums[-2] if len(nums) >= 2 else 0.0
+        vl_unit_total = nums[-3] if len(nums) >= 3 else 0.0
+
         totais_oficiais_servico[servico] = {
             'servico': servico,
             'quantidade': round(float(qtd or 0), 2),
-            'quantidade_cancelada': round(float(qtd_cancelada or 0), 2),
             'vl_unitario_total': round(float(vl_unit_total or 0), 2),
+            'vl_acrescimo_total': round(float(vl_acrescimo or 0), 2),
             'real_total': round(float(vl_total or 0), 2),
             'linhas': 0,
-            'fonte_total': 'linha_TOTAL_SGI',
+            'fonte_total': 'linha_TOTAL_SGI_VL_TOTAL_com_acrescimo',
         }
-        print(f"✅ Total oficial serviço [{servico}]: qtd={qtd} cancel={qtd_cancelada} vl_total={vl_total}")
+        print(f"✅ Total oficial serviço [{servico}]: qtd={qtd} unit_total={vl_unit_total} acresc_total={vl_acrescimo} vl_total={vl_total}")
+
+    def _servico_area_vals(vals):
+        # A área SERVIÇO fica antes do bloco DADOS DA VENDA.
+        # Mantém até a coluna Número dos Bilhetes; evita pegar preço de produto da venda.
+        return vals[:13] if len(vals) >= 13 else vals
+
+    def _pegar_total_linha(vals):
+        servico_vals = _servico_area_vals(vals)
+        money = _money_candidates(servico_vals[6:])
+        # Último monetário da área serviço = Vl. Total já com acréscimo.
+        return round(float(money[-1]), 2) if money else 0.0
+
+    def _pegar_vl_unit_acrescimo(vals):
+        servico_vals = _servico_area_vals(vals)
+        money = _money_candidates(servico_vals[6:])
+        # Normalmente: Vl.Unitário, Vl.Acréscimo, Vl.Total
+        vl_unit = money[-3] if len(money) >= 3 else (money[-2] if len(money) >= 2 else 0.0)
+        vl_acresc = money[-2] if len(money) >= 2 else 0.0
+        return round(float(vl_unit), 2), round(float(vl_acresc), 2)
 
     for tr in container.find_all('tr'):
         th = tr.find('th', class_=lambda c: c and 'label-agrupamento' in c)
         if th:
-            servico_atual = ' '.join(th.get_text(' ', strip=True).split())
+            servico_atual = _txt(th)
             servicos.setdefault(servico_atual, {
                 'servico': servico_atual,
                 'quantidade': 0.0,
@@ -1324,61 +1305,35 @@ def _parse_relatorio_servicos_html(html):
             continue
 
         if tr.find_all('th'):
-            _set_headers_from_tr(tr)
             continue
 
         tds = tr.find_all('td')
         if len(tds) < 2:
             continue
 
-        vals = [' '.join(td.get_text(' ', strip=True).split()) for td in tds]
-        if not vals:
+        vals = [_txt(td) for td in tds]
+        if not vals or not servico_atual:
             continue
 
         if _is_total_row(vals):
             _aplicar_total_oficial(servico_atual, vals)
             continue
 
-        if len(tds) < 6:
-            continue
-        if not servico_atual:
-            continue
-        if _is_total_cancelado(vals):
+        if len(vals) < 6 or _is_total_cancelado(vals):
             continue
 
-        idx_filial = _idx('Filial', 'Serviço', fallback=0)
-        idx_num = _idx('Nº Lançamento', 'N Lançamento', 'Lancamento', fallback=1)
-        idx_data = _idx('Data', 'Data Lançamento', 'Data Lancamento', fallback=2)
-        idx_cliente = _idx('Cliente', fallback=3)
-        idx_validade = _idx('Validade', 'Período', 'Periodo', fallback=4)
-        idx_vendedor = _idx('Vendedor', fallback=5)
-        idx_qtd = _idx('Quantidade', 'Qtde', 'Qtd', fallback=6)
-        idx_cancel = _idx('Cancelamento', 'Data Cancelamento', fallback=7)
-        idx_vl_unit = _idx('Vl. Unitário', 'Vl Unitario', 'Valor Unitário', 'Valor Unitario', 'Vl. Serviço', 'Vl Servico', fallback=8)
-        idx_vl_total = _idx('Vl. Total', 'Vl Total', 'Valor Total', 'Total', fallback=9)
-        idx_bilhetes = _idx('Números Bilhetes', 'Numeros Bilhetes', 'Bilhetes', fallback=10)
-
-        filial_txt = _val(vals, idx_filial)
+        filial_txt = vals[0] if len(vals) > 0 else ''
         filial_key = _filial_key_from_text(filial_txt)
-        num_lanc = _val(vals, idx_num)
-        data_lanc = _val(vals, idx_data)
-        cliente = _val(vals, idx_cliente)
-        periodo_validade = _val(vals, idx_validade)
-        vendedor_txt = _val(vals, idx_vendedor)
-        quantidade = _br_money(_val(vals, idx_qtd, 0))
-        data_cancelamento = _val(vals, idx_cancel)
-        vl_unit = _br_money(_val(vals, idx_vl_unit, 0))
-        vl_total = _br_money(_val(vals, idx_vl_total, 0))
-        numeros_bilhetes = _val(vals, idx_bilhetes)
+        num_lanc = vals[1] if len(vals) > 1 else ''
+        data_lanc = vals[2] if len(vals) > 2 else ''
+        cliente = vals[3] if len(vals) > 3 else ''
+        periodo_validade = vals[4] if len(vals) > 4 else ''
+        vendedor_txt = vals[5] if len(vals) > 5 else ''
+        quantidade = _br_money(vals[6]) if len(vals) > 6 else 0.0
 
-        if vl_total == 0 and len(vals) >= 2:
-            money_candidates = []
-            for raw in vals:
-                val = _br_money(raw)
-                if val:
-                    money_candidates.append(val)
-            if money_candidates:
-                vl_total = money_candidates[-1]
+        vl_total = _pegar_total_linha(vals)
+        vl_unit, vl_acrescimo = _pegar_vl_unit_acrescimo(vals)
+        numeros_bilhetes = vals[12] if len(vals) > 12 else ''
 
         vendedor_nome = _limpar_nome_margem(vendedor_txt)
         vendedor_key = f'{vendedor_nome}_{filial_key}' if vendedor_nome and filial_key else vendedor_nome
@@ -1394,8 +1349,8 @@ def _parse_relatorio_servicos_html(html):
             'vendedor': vendedor_nome,
             'vendedor_label': vendedor_txt,
             'quantidade': quantidade,
-            'data_cancelamento': data_cancelamento,
             'vl_unitario': round(vl_unit, 2),
+            'vl_acrescimo': round(vl_acrescimo, 2),
             'vl_total': round(vl_total, 2),
             'numeros_bilhetes': numeros_bilhetes,
             'vendedor_key': vendedor_key,
@@ -1445,8 +1400,8 @@ def _parse_relatorio_servicos_html(html):
             vend['linhas'] += 1
             vend['servicos'][servico_atual] = round(float(vend['servicos'].get(servico_atual, 0.0)) + vl_total, 2)
 
-    # O resumo por tipo deve vir obrigatoriamente das linhas TOTAL do SGI.
-    # Isso evita pegar valores da coluna lateral "DADOS DA VENDA" e inflar Ouro/FOB/Copa.
+    # Cards por tipo = linha TOTAL do SGI.
+    # Filial/vendedor = soma da coluna Vl. Total de cada linha.
     if totais_oficiais_servico:
         for servico, total_item in totais_oficiais_servico.items():
             antigo = servicos.get(servico, {})
@@ -1472,7 +1427,6 @@ def _parse_relatorio_servicos_html(html):
             'quantidade': round(float(empresa_qtd), 2),
             'real_total': round(float(empresa_total), 2),
             'linhas': len(detalhes),
-            'fonte_total': 'linhas_TOTAL_SGI' if totais_oficiais_servico else 'soma_linhas',
         },
         'servicos': servicos,
         'filiais': filiais,
