@@ -4829,43 +4829,11 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 @media(max-width:900px){.cobranca-config-grid{grid-template-columns:1fr}}
 
 
-/* ===== AUDIO PADRÃO DE COBRANÇA ===== */
-.audio-cobranca-box{
-  background:rgba(15,23,42,.64);
-  border:1px solid rgba(255,255,255,.08);
-  border-radius:14px;
-  padding:12px;
-}
-.audio-cobranca-box audio{width:100%;margin-top:8px}
-.audio-cobranca-box .audio-url{
-  font-size:11px;
-  color:var(--text-muted);
-  word-break:break-all;
-  margin-top:8px;
-}
-.sem-cobrancas-grid{
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
-  gap:8px;
-  margin-top:12px;
-}
-.sem-cobranca-chip{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  border:1px solid rgba(239,68,68,.18);
-  background:rgba(239,68,68,.06);
-  border-radius:12px;
-  padding:8px 10px;
-  font-size:12px;
-  font-weight:700;
-}
-.sem-cobranca-chip small{
-  display:block;
-  color:var(--text-muted);
-  font-weight:600;
-  margin-top:2px;
-}
+
+/* ===== LISTA SEM COBRANÇAS HOJE ===== */
+.sem-cobrancas-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:12px}
+.sem-cobranca-chip{display:flex;align-items:center;gap:8px;border:1px solid rgba(239,68,68,.18);background:rgba(239,68,68,.06);border-radius:12px;padding:8px 10px;font-size:12px;font-weight:700}
+.sem-cobranca-chip small{display:block;color:var(--text-muted);font-weight:600;margin-top:2px}
 
 </style>
 </head>
@@ -4960,7 +4928,7 @@ const MARGENS_BRUTAS=__JS_MARGENS_BRUTAS__||{filiais:{},vendedores:{}};
 let SALES_EMPRESA=__JS_SALES_EMPRESA__||{};
 let RENT_EMPRESA=__JS_RENT_EMPRESA__||{};
 let SERVICOS_RELATORIO=__JS_SERVICOS_RELATORIO__||{empresa:{},servicos:{},filiais:{},vendedores:{},detalhes:[]};
-let CONFIG_META={grave_pct:20,alerta_pct:15,atencao_pct:10,peso_grave:60,peso_alerta:30,peso_atencao:10,bonus_50:'',bonus_75:'',bonus_85:'',bonus_100:'',cob_cred_rateio_filial_pct:50,cob_cred_rateio_cred_pct:50,cobranca_global_rateio_pct:20,cobranca_msg_template:`Olá, {primeiro_nome} tudo bem?\nAqui é da Lojas MDL - Móveis do Lar.\nPassando para lembrar que tem uma parcelinha vencida na data de {vencimento}, no valor de {valor}.\nCaso o pagamento já tenha sido realizado, por gentileza, desconsidere esta mensagem.\nSe precisar do boleto, chave PIX ou tiver qualquer dúvida, fico à disposição para ajudar.`,cobranca_audio_url:'',...(__CONFIG_META__||{})};
+let CONFIG_META={grave_pct:20,alerta_pct:15,atencao_pct:10,peso_grave:60,peso_alerta:30,peso_atencao:10,bonus_50:'',bonus_75:'',bonus_85:'',bonus_100:'',cob_cred_rateio_filial_pct:50,cob_cred_rateio_cred_pct:50,cobranca_global_rateio_pct:20,cobranca_msg_template:`Olá, {primeiro_nome} tudo bem?\nAqui é da Lojas MDL - Móveis do Lar.\nPassando para lembrar que tem uma parcelinha vencida na data de {vencimento}, no valor de {valor}.\nCaso o pagamento já tenha sido realizado, por gentileza, desconsidere esta mensagem.\nSe precisar do boleto, chave PIX ou tiver qualquer dúvida, fico à disposição para ajudar.`,...(__CONFIG_META__||{})};
 let CONFIG_META_IND=__CONFIG_META_IND__||{};
 const LOGIN_MASTER=String(__LOGIN_MASTER__);
 const SENHA_MASTER=String(__SENHA_MASTER__);
@@ -4978,7 +4946,6 @@ const API_COB='cobrancas_api.php';
 const API_MSG='mensagens_api.php';
 const API_CRED='credenciais_api.php';
 const API_HIST='historico_api.php';
-const API_COB_AUDIO='cobranca_audio_api.php';
 let usuarioAtual=null;
 let mainTab='vendedores';
 let filtroFilial='TODAS';
@@ -5383,7 +5350,28 @@ function renderServicosTab(isViewer=false){
 
 function setMainTab(tab){const isDiretor=usuarioAtual?.tipo==='master' && usuarioAtual?.roleLabel==='Diretor Comercial';if(isDiretor && ['cobrancas','senhas'].includes(tab)){tab='vendedores';}mainTab=tab;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden');const hiddenMain=['metas','servicos','cobrancas','avisos','senhas','historico'].includes(tab);listSection.classList.toggle('hidden',hiddenMain);metaSection.classList.toggle('hidden',tab!=='metas');servicesSection.classList.toggle('hidden',tab!=='servicos');logSection.classList.toggle('hidden',tab!=='cobrancas');avisosSection.classList.toggle('hidden',tab!=='avisos');senhasSection.classList.toggle('hidden',tab!=='senhas');histSection.classList.toggle('hidden',tab!=='historico');mainFilters.classList.toggle('hidden',hiddenMain);if(tab==='vendedores'||tab==='filiais'){renderFilters();renderList()} if(tab==='metas') renderMetasTab(); if(tab==='servicos') renderServicosTab(false); if(tab==='cobrancas') renderLogsTab(); if(tab==='avisos') renderAvisosTab(); if(tab==='senhas') renderSenhasTab(); if(tab==='historico') renderHistoricoTab();}
 function renderFilters(){if(mainTab!=='vendedores'&&mainTab!=='filiais'){mainFilters.innerHTML='';return} let html=`<button class="pill ${filtroFilial==='TODAS'?'active':''}" onclick="setFiltroFilial('TODAS')">Todas</button>`; ORDEM.forEach(f=>{html+=`<button class="pill ${filtroFilial===f?'active':''}" onclick="setFiltroFilial('${f}')">${f}</button>`}); mainFilters.innerHTML=html;}
-function setFiltroFilial(f){filtroFilial=f;renderFilters();renderList()}
+function setFiltroFilial(f){
+  filtroFilial=f;
+  renderFilters();
+
+  const detalheAberto = !detailScreen.classList.contains('hidden');
+  if(detalheAberto){
+    if(mainTab==='filiais'){
+      if(f && f!=='TODAS'){
+        openEntity({type:'filial',filial:f,nome:filialLabel(f)});
+        renderFilters();
+        return;
+      }
+      detailScreen.classList.add('hidden');
+      document.getElementById('mainScreen').classList.remove('hidden');
+      renderList();
+      return;
+    }
+    detailScreen.classList.add('hidden');
+    document.getElementById('mainScreen').classList.remove('hidden');
+  }
+  renderList();
+}
 function currentEntities(){let arr=mainTab==='filiais'?flattenFiliais():flattenVendedores(); if(mainTab==='vendedores' && usuarioAtual?.tipo==='master'){const t=thirdChargeEntity(); const hasThird=Number(t.pendente||0)>0 || Number(t.pago||0)>0 || Number(t.grave_pend||0)>0 || Number(t.alerta_pend||0)>0 || Number(t.atencao_pend||0)>0; if(hasThird) arr=[t,...arr]; const creds=crediaristaEntities().filter(x=>Number(x.pendente||0)>0||Number(x.pago||0)>0); if(creds.length) arr=[...creds,...arr]} return arr.filter(x=>filtroFilial==='TODAS'||x.filial===filtroFilial || x.is_terceiro || x.is_crediarista)}
 function renderEntityCard(ent){const m=calcMeta(ent); const isThird=!!(ent?.is_terceiro || ent?.type==='terceiro'); const isCred=!!(ent?.is_crediarista || ent?.type==='crediarista'); if(isThird || isCred){const credLogin=String(ent.login||crediaristaLoginByFilial(ent.filial)||'').toLowerCase(); const credFilial=String(ent.filial||'').toUpperCase(); const credNome=String(ent.nome||`CREDIARISTA${credFilial}`); const label=isThird?'Cobrança terceiro':'Crediarista'; const sub=isThird?'Clique para abrir a carteira terceirizada':'Clique para abrir a carteira do crediarista'; const actionAttr=isThird?`data-action="third-card" role="button" tabindex="0"`:`data-action="cred-card" data-login="${esc(credLogin)}" data-filial="${esc(credFilial)}" data-nome="${esc(credNome)}" role="button" tabindex="0"`; return `<div class="glass card ${m.geral>=50?'card-hit':(m.geral<30?'card-low-red':(m.geral<40?'card-low-orange':''))}" style="box-shadow:0 0 0 2px rgba(239,68,68,.12) inset" ${actionAttr}><div class="title">${esc(credNome)}</div><div class="numbers" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="stat-box" style="min-width:0"><div class="mini">Pendente</div><div class="big" style="color:var(--red);font-size:15px;word-break:break-word">${R(ent.pendente||0)}</div></div><div class="stat-box" style="min-width:0"><div class="mini">Recebido</div><div class="big" style="color:var(--green);font-size:15px;word-break:break-word">${R(ent.pago||0)}</div></div></div><div class="meta-row"><div class="mini-chip">🔴 Grave ${pct(m.grave.perc)}</div><div class="mini-chip">🟠 Alerta ${pct(m.alerta.perc)}</div><div class="mini-chip">🟡 Atenção ${pct(m.atencao.perc)}</div><div class="mini-chip" style="font-size:12px">🔵 Meta geral ${pct(m.geral)}</div></div>${renderMascotStatus(m.geral,label)}<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>${sub}</span></div></div>`} const bonus=getBonus(m.cfg,m.geral);const sales=summarizeSalesCard(ent);const salesPct=sales?.n||0;const salesBorder=salesPct>=100?'box-shadow:0 0 0 2px rgba(242,201,76,.35) inset':salesPct>=80?'box-shadow:0 0 0 2px rgba(34,197,94,.18) inset':salesPct>=50?'box-shadow:0 0 0 2px rgba(249,115,22,.18) inset':'box-shadow:0 0 0 2px rgba(239,68,68,.12) inset';const cls=m.geral>=50?'card-hit':(m.geral<30?'card-low-red':(m.geral<40?'card-low-orange':''));const pulseNote=m.geral>=50?'<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>Meta atingida no mês</span></div>':'';return `<div class="glass card ${cls}" style="${salesBorder}" onclick='openEntity(${JSON.stringify({type:ent.type,filial:ent.filial,nome:ent.nome})})'><div class="title">${esc(ent.nome)} ${ent.type==='vendedor'?`(${ent.filial})`:''}</div><div class="numbers" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="stat-box" style="min-width:0"><div class="mini">Pendente</div><div class="big" style="color:var(--red);font-size:15px;word-break:break-word">${R(ent.pendente||0)}</div></div><div class="stat-box" style="min-width:0"><div class="mini">Recebido</div><div class="big" style="color:var(--green);font-size:15px;word-break:break-word">${R(ent.pago||0)}</div></div></div><div class="meta-row"><div class="mini-chip">🔴 Grave ${pct(m.grave.perc)}</div><div class="mini-chip">🟠 Alerta ${pct(m.alerta.perc)}</div><div class="mini-chip">🟡 Atenção ${pct(m.atencao.perc)}</div><div class="mini-chip" style="font-size:12px">🔵 Meta geral ${pct(m.geral)}</div></div>${renderSalesCardSummary(ent)}${renderDualMascotStatus(ent)}${bonus?`<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>${esc(bonus.text)}</span></div>`:''}${pulseNote}</div>`}
 function renderGroupBars(entities){if(!entities.length) return `<div class="empty">Nenhum dado para exibir.</div>`; const max=Math.max(1,...entities.map(e=>Math.max(Number(e.grave_pend||0),Number(e.alerta_pend||0),Number(e.atencao_pend||0),Number(e.pago||0)))); return `<div class="glass big-chart-card"><div class="section-head"><div><h2>📊 Panorama por ${mainTab==='filiais'?'filial':'vendedor'}</h2><div class="hint">Barras por faixa: Grave, Alerta, Atenção e Recebido</div></div><div class="legend-inline"><span><i class="dot" style="background:var(--red)"></i>Grave</span><span><i class="dot" style="background:var(--orange)"></i>Alerta</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção</span><span><i class="dot" style="background:var(--green)"></i>Recebido</span></div></div><div class="groupbars">${entities.map(e=>{const vals=[{c:'var(--red)',v:Number(e.grave_pend||0),t:'Grave'},{c:'var(--orange)',v:Number(e.alerta_pend||0),t:'Alerta'},{c:'var(--yellow)',v:Number(e.atencao_pend||0),t:'Atenção'},{c:'var(--green)',v:Number(e.pago||0),t:'Recebido'}]; return `<div class="group"><div class="bars">${vals.map(v=>`<div title="${v.t}: ${R(v.v)}" class="bar" style="height:${Math.max(12,(v.v/max)*240)}px;background:linear-gradient(180deg,${v.c},${v.c})"></div>`).join('')}<span class="wave one"></span><span class="wave two"></span><span class="bubble b1"></span><span class="bubble b2"></span><span class="bubble b3"></span></div><div class="glabel">${esc(trunc(e.nome,16))}</div></div>`}).join('')}</div><div class="axis"><span>Escala relativa automática</span><span>${entities.length} ${mainTab==='filiais'?'filiais':'colaboradores'}</span></div></div>`}
@@ -6086,9 +6074,6 @@ Se precisar do boleto, chave PIX ou tiver qualquer dúvida, fico à disposição
 function cobrancaTemplateAtual(){
   return String(CONFIG_META?.cobranca_msg_template || DEFAULT_COBRANCA_TEMPLATE);
 }
-function cobrancaAudioAtual(){
-  return String(CONFIG_META?.cobranca_audio_url || '').trim();
-}
 function primeiroNomeClienteJs(nome){
   const s=String(nome||'').trim();
   return s ? s.split(/\s+/)[0] : 'Cliente';
@@ -6112,9 +6097,7 @@ function montarMensagemCobranca(reg){
   Object.entries(dados).forEach(([k,v])=>{
     tpl=tpl.replaceAll(`{${k}}`, v);
   });
-  const audio=cobrancaAudioAtual();
-  if(audio){
-    tpl += `\n\nÁudio padrão de cobrança: ${audio}`;
+`;
   }
   return tpl;
 }
@@ -6132,26 +6115,20 @@ function exemploMensagemCobranca(){
 }
 function atualizarPreviewCobranca(){
   const tpl=document.getElementById('cobMsgTemplate')?.value;
-  const audio=document.getElementById('cobMsgAudioUrl')?.value;
   const oldTpl=CONFIG_META.cobranca_msg_template;
-  const oldAudio=CONFIG_META.cobranca_audio_url;
   CONFIG_META.cobranca_msg_template=tpl || DEFAULT_COBRANCA_TEMPLATE;
-  CONFIG_META.cobranca_audio_url=audio || '';
   const el=document.getElementById('cobMsgPreview');
   if(el) el.textContent=exemploMensagemCobranca();
   CONFIG_META.cobranca_msg_template=oldTpl;
-  CONFIG_META.cobranca_audio_url=oldAudio;
 }
 async function salvarMensagemCobrancaGlobal(){
   const msgEl=document.getElementById('cobMsgSaveStatus');
   const tpl=String(document.getElementById('cobMsgTemplate')?.value||'').trim();
-  const audio=String(document.getElementById('cobMsgAudioUrl')?.value||'').trim();
   if(!tpl){
     if(msgEl) msgEl.textContent='⚠️ A mensagem não pode ficar vazia.';
     return;
   }
   CONFIG_META.cobranca_msg_template=tpl;
-  CONFIG_META.cobranca_audio_url=audio;
   try{
     const payload={global:CONFIG_META,individual:CONFIG_META_IND};
     const resp=await fetch(API_CFG,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -6171,46 +6148,12 @@ async function salvarMensagemCobrancaGlobal(){
 }
 function restaurarMensagemCobrancaPadrao(){
   const t=document.getElementById('cobMsgTemplate');
-  const audio=document.getElementById('cobMsgAudioUrl');
   if(t) t.value=DEFAULT_COBRANCA_TEMPLATE;
-  if(audio) audio.value='';
   atualizarPreviewCobranca();
-}
-
-async function enviarAudioCobrancaPadrao(){
-  const status=document.getElementById('cobAudioStatus');
-  const input=document.getElementById('cobMsgAudioFile');
-  const file=input?.files?.[0];
-  if(!file){
-    if(status) status.textContent='⚠️ Escolha um arquivo de áudio primeiro.';
-    return;
-  }
-  const fd=new FormData();
-  fd.append('audio', file);
-  try{
-    if(status) status.textContent='⏳ Enviando áudio...';
-    const r=await fetch(API_COB_AUDIO,{method:'POST',body:fd});
-    const j=await r.json();
-    if(j.ok && j.url){
-      CONFIG_META.cobranca_audio_url=j.url;
-      const urlEl=document.getElementById('cobMsgAudioUrl');
-      if(urlEl) urlEl.value=j.url;
-      atualizarPreviewCobranca();
-      await salvarMensagemCobrancaGlobal();
-      if(status) status.textContent='✅ Áudio salvo e configurado como padrão.';
-      renderLogsTab();
-    }else{
-      if(status) status.textContent='⚠️ Falha ao enviar áudio.';
-    }
-  }catch(e){
-    console.log('Erro upload áudio cobrança',e);
-    if(status) status.textContent='⚠️ Erro ao enviar áudio.';
-  }
 }
 
 function renderCobrancaConfigPanel(){
   const tpl=esc(cobrancaTemplateAtual());
-  const audio=esc(cobrancaAudioAtual());
   return `<div class="glass panel" style="margin-bottom:14px">
     <div class="section-head" style="margin:0 0 10px">
       <div>
@@ -6230,19 +6173,6 @@ function renderCobrancaConfigPanel(){
           <code>{vencimento}</code><code>{valor}</code>
           <code>{titulo}</code><code>{parcela}</code>
           <code>{filial}</code><code>{vendedor}</code>
-        </div>
-        <div class="input-card" style="margin-top:10px">
-          <label>Áudio padrão da cobrança</label>
-          <div class="audio-cobranca-box">
-            <input id="cobMsgAudioUrl" type="hidden" value="${audio}" oninput="atualizarPreviewCobranca()">
-            <input id="cobMsgAudioFile" type="file" accept="audio/*">
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
-              <button type="button" class="btn soft" onclick="enviarAudioCobrancaPadrao()">Enviar/atualizar áudio padrão</button>
-              <span id="cobAudioStatus" class="hint"></span>
-            </div>
-            ${audio?`<audio controls src="${audio}"></audio><div class="audio-url">${audio}</div>`:`<div class="hint" style="margin-top:8px">Nenhum áudio padrão configurado. Envie um arquivo .ogg, .mp3, .m4a ou .wav.</div>`}
-          </div>
-          <div class="hint">No WhatsApp Web por link, o áudio entra como link padrão no final da mensagem. Para anexar o áudio como arquivo automaticamente, só usando API oficial do WhatsApp Business.</div>
         </div>
         <div style="display:flex;gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap">
           <button class="btn primary" onclick="salvarMensagemCobrancaGlobal()">Salvar global</button>
@@ -6869,30 +6799,6 @@ echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado'], JSON_UNESCAPED_U
 
 
 
-COBRANCA_AUDIO_API_PHP = r"""<?php
-header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type');
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
-$uploadDir = __DIR__ . '/uploads_cobranca';
-if (!file_exists($uploadDir)) @mkdir($uploadDir, 0777, true);
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') { echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado']); exit; }
-if (empty($_FILES['audio']['name'])) { echo json_encode(['ok'=>false,'error'=>'audio_obrigatorio']); exit; }
-$allowed = ['audio/ogg','audio/mpeg','audio/mp3','audio/wav','audio/x-wav','audio/mp4','audio/aac','audio/webm'];
-$mime = $_FILES['audio']['type'] ?? '';
-$ext = strtolower(pathinfo($_FILES['audio']['name'], PATHINFO_EXTENSION));
-if (!in_array($ext, ['ogg','mp3','wav','m4a','aac','webm'])) { echo json_encode(['ok'=>false,'error'=>'extensao_nao_permitida']); exit; }
-$name = 'audio_cobranca_padrao_' . time() . '.' . $ext;
-$dest = $uploadDir . '/' . $name;
-if (!move_uploaded_file($_FILES['audio']['tmp_name'], $dest)) { echo json_encode(['ok'=>false,'error'=>'falha_upload']); exit; }
-$scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-$base = $scheme . '://' . $_SERVER['HTTP_HOST'] . rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
-$url = $base . '/uploads_cobranca/' . $name;
-echo json_encode(['ok'=>true,'url'=>$url,'mime'=>$mime], JSON_UNESCAPED_UNICODE); exit;
-?>"""
-
-
 CREDENCIAIS_API_PHP = r"""<?php
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -7027,27 +6933,8 @@ if FTP_USER and FTP_PASS:
         ftp.storbinary('STOR cobrancas_api.php', BytesIO(COBRANCAS_API_PHP.encode('utf-8')))
         ftp.storbinary('STOR config_meta_api.php', BytesIO(CONFIG_META_API_PHP.encode('utf-8')))
         ftp.storbinary('STOR mensagens_api.php', BytesIO(MESSAGES_API_PHP.encode('utf-8')))
-        ftp.storbinary('STOR cobranca_audio_api.php', BytesIO(COBRANCA_AUDIO_API_PHP.encode('utf-8')))
         ftp.storbinary('STOR credenciais_api.php', BytesIO(CREDENCIAIS_API_PHP.encode('utf-8')))
         ftp.storbinary('STOR historico_api.php', BytesIO(HISTORICO_API_PHP.encode('utf-8')))
-        try:
-            _audio_padrao_path = os.path.join(pasta, 'audio_cobranca_padrao.ogg')
-            if os.path.exists(_audio_padrao_path):
-                try:
-                    ftp.mkd('uploads_cobranca')
-                except Exception:
-                    pass
-                try:
-                    ftp.cwd('uploads_cobranca')
-                    with open(_audio_padrao_path, 'rb') as f_audio:
-                        ftp.storbinary('STOR audio_cobranca_padrao.ogg', f_audio)
-                    ftp.cwd(FTP_DIR)
-                    print('✅ Áudio padrão de cobrança enviado ao FTP.')
-                except Exception as e:
-                    print(f'⚠️ Não consegui enviar áudio padrão: {e}')
-        except Exception:
-            pass
-
         try:
             with open(_config_meta_path, 'rb') as f_cfg:
                 ftp.storbinary('STOR config_meta.json', f_cfg)

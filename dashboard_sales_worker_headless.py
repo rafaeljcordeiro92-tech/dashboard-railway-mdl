@@ -1208,6 +1208,47 @@ def _parse_relatorio_servicos_html(html):
     empresa_total = 0.0
     empresa_qtd = 0.0
     servico_atual = ''
+    header_map = {}
+
+    def _norm_header(txt):
+        s = unicodedata.normalize('NFD', str(txt or '')).encode('ascii', 'ignore').decode('ascii')
+        s = re.sub(r'\s+', ' ', s).strip().lower()
+        s = s.replace('(r$)', '').replace('r$', '').strip()
+        return s
+
+    def _set_headers_from_tr(tr):
+        nonlocal header_map
+        ths = tr.find_all('th')
+        labels = [' '.join(th.get_text(' ', strip=True).split()) for th in ths]
+        if not labels:
+            return
+        if len(labels) == 1 and tr.find('th', class_=lambda c: c and 'label-agrupamento' in c):
+            return
+        header_map = {_norm_header(lbl): i for i, lbl in enumerate(labels)}
+        if header_map:
+            print('🧰 Cabeçalho serviços detectado:', labels)
+
+    def _idx(*names, fallback=None):
+        wanted = [_norm_header(n) for n in names]
+        for w in wanted:
+            for h, i in header_map.items():
+                if h == w:
+                    return i
+        for w in wanted:
+            for h, i in header_map.items():
+                if w and (w in h or h in w):
+                    return i
+        return fallback
+
+    def _val(vals, idx, default=''):
+        try:
+            if idx is None:
+                return default
+            if idx < 0:
+                idx = len(vals) + idx
+            return vals[idx] if 0 <= idx < len(vals) else default
+        except Exception:
+            return default
 
     for tr in container.find_all('tr'):
         th = tr.find('th', class_=lambda c: c and 'label-agrupamento' in c)
@@ -1215,28 +1256,57 @@ def _parse_relatorio_servicos_html(html):
             servico_atual = ' '.join(th.get_text(' ', strip=True).split())
             continue
 
+        if tr.find_all('th'):
+            _set_headers_from_tr(tr)
+            continue
+
         tds = tr.find_all('td')
-        if len(tds) < 10:
+        if len(tds) < 6:
             continue
 
         vals = [' '.join(td.get_text(' ', strip=True).split()) for td in tds]
+        if not vals:
+            continue
         if vals[0].strip().upper() == 'TOTAL':
             continue
         if not servico_atual:
             continue
 
-        filial_txt = vals[0]
+        idx_filial = _idx('Filial', 'Serviço', fallback=0)
+        idx_num = _idx('Nº Lançamento', 'N Lançamento', 'Lancamento', fallback=1)
+        idx_data = _idx('Data', 'Data Lançamento', 'Data Lancamento', fallback=2)
+        idx_cliente = _idx('Cliente', fallback=3)
+        idx_validade = _idx('Validade', 'Período', 'Periodo', fallback=4)
+        idx_vendedor = _idx('Vendedor', fallback=5)
+        idx_qtd = _idx('Quantidade', 'Qtde', 'Qtd', fallback=6)
+        idx_cancel = _idx('Cancelamento', 'Data Cancelamento', fallback=7)
+        idx_vl_unit = _idx('Vl. Unitário', 'Vl Unitario', 'Valor Unitário', 'Valor Unitario', 'Vl. Serviço', 'Vl Servico', fallback=8)
+        idx_vl_total = _idx('Vl. Total', 'Vl Total', 'Valor Total', 'Total', fallback=9)
+        idx_bilhetes = _idx('Números Bilhetes', 'Numeros Bilhetes', 'Bilhetes', fallback=10)
+
+        filial_txt = _val(vals, idx_filial)
         filial_key = _filial_key_from_text(filial_txt)
-        num_lanc = vals[1] if len(vals) > 1 else ''
-        data_lanc = vals[2] if len(vals) > 2 else ''
-        cliente = vals[3] if len(vals) > 3 else ''
-        periodo_validade = vals[4] if len(vals) > 4 else ''
-        vendedor_txt = vals[5] if len(vals) > 5 else ''
-        quantidade = _br_money(vals[6] if len(vals) > 6 else 0)
-        data_cancelamento = vals[7] if len(vals) > 7 else ''
-        vl_unit = _br_money(vals[8] if len(vals) > 8 else 0)
-        vl_total = _br_money(vals[9] if len(vals) > 9 else 0)
-        numeros_bilhetes = vals[10] if len(vals) > 10 else ''
+        num_lanc = _val(vals, idx_num)
+        data_lanc = _val(vals, idx_data)
+        cliente = _val(vals, idx_cliente)
+        periodo_validade = _val(vals, idx_validade)
+        vendedor_txt = _val(vals, idx_vendedor)
+        quantidade = _br_money(_val(vals, idx_qtd, 0))
+        data_cancelamento = _val(vals, idx_cancel)
+        vl_unit = _br_money(_val(vals, idx_vl_unit, 0))
+        vl_total = _br_money(_val(vals, idx_vl_total, 0))
+        numeros_bilhetes = _val(vals, idx_bilhetes)
+
+        # Total correto é a coluna "Vl. Total". Se vier vazio por mudança do SGI,
+        # usa o último valor monetário relevante da linha como fallback.
+        if vl_total == 0 and len(vals) >= 2:
+            money_candidates = []
+            for raw in vals:
+                val = _br_money(raw)
+                if val:
+                    money_candidates.append(val)
+            if money_candidates:
+                vl_total = money_candidates[-1]
 
         vendedor_nome = _limpar_nome_margem(vendedor_txt)
         vendedor_key = f'{vendedor_nome}_{filial_key}' if vendedor_nome and filial_key else vendedor_nome
