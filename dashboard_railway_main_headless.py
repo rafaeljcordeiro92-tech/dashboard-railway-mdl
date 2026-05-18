@@ -5080,17 +5080,26 @@ function renderKPIs(){
   const hojeIso=new Date().toISOString().slice(0,10);
   const prevDate=salesDates.filter(d=>String(d)<String(hojeIso)).slice(-1)[0]||'';
   const prevEmpresa=(prevDate?(HIST_DASH?.sales_dates?.[prevDate]?.empresa||{}):{});
-  // 🔥 Serviços realizado deve vir do relatório real de serviços, não da meta SGI.
-  // Antes usava sales.servico_realizado_total, que vem de servico_filial_ouro_fob
-  // e pode divergir do relatorio_servicos_mes_atual.json.
+  // ✅ Total de Serviços da tela inicial deve bater com o Controle de Meta do SGI.
+  // Fonte oficial do TOTAL: sales.servico_realizado_total, vindo da tela /metas/consulta.
+  // O relatório de serviços separado continua sendo usado apenas para detalhar por tipo
+  // (Ouro, FOB, Cupom Copa etc.), mas não substitui o total oficial.
   const servicoRelatorioTotal = Number(SERVICOS_RELATORIO?.empresa?.real_total || 0);
-  const servicoRealizadoOficial = servicoRelatorioTotal > 0 ? servicoRelatorioTotal : Number(sales.servico_realizado_total||0);
+  const servicoRealizadoOficial = Number(sales.servico_realizado_total || 0);
   const servicoAtingidoOficial = Number(sales.servico_meta_total||0)>0
     ? (servicoRealizadoOficial / Number(sales.servico_meta_total||0) * 100)
     : Number(sales.servico_atingido_total||0);
 
-  const prevServicoReal = Number(prevEmpresa.servico_realizado_realatorio_total || prevEmpresa.servico_realizado_total || 0);
+  const prevServicoReal = Number(prevEmpresa.servico_realizado_total || 0);
   const vendaDiaria=Math.max(0, Number(sales.venda_realizado_total||0)-Number(prevEmpresa.venda_realizado_total||0)) + Math.max(0, servicoRealizadoOficial-prevServicoReal);
+  try{
+    console.log('[MDL serviços]', {
+      total_controle_meta_sgi: Number(sales.servico_realizado_total||0),
+      total_relatorio_servicos_tipos: servicoRelatorioTotal,
+      usado_no_card_servicos: servicoRealizadoOficial
+    });
+  }catch(e){}
+
   const markupBase=(Number(sales.venda_realizado_total||0)+servicoRealizadoOficial);
   const markupCost=Number(RENT_EMPRESA?.custo_total||0);
   const markupTotal=markupCost>0?(markupBase/markupCost):0;
@@ -5130,7 +5139,7 @@ function renderKPIs(){
     makeKpi('🟠 Alerta',R(alerta),'var(--orange)','', 'card-cobranca'),
     makeKpi('📦 Mercantil realizado',R(sales.venda_realizado_total||0),'var(--amber-400)',`Meta ${R(sales.venda_meta_total||0)} · Atingido ${pct(sales.venda_atingido_total||0)}`),
     makeKpi('📈 Mercantil projetado',R(sales.venda_projetado||0),'var(--amber-500)',`Meta período ${R(sales.venda_meta_periodo||0)}`),
-    makeKpi('🛠️ Serviços realizado',R(servicoRealizadoOficial),'var(--blue)',`Meta ${R(sales.servico_meta_total||0)} · Atingido ${pct(servicoAtingidoOficial)} · relatório serviços`),
+    makeKpi('🛠️ Serviços realizado',R(servicoRealizadoOficial),'var(--blue)',`Meta ${R(sales.servico_meta_total||0)} · Atingido ${pct(servicoAtingidoOficial)} · controle de meta SGI`),
     makeKpi('🧰 Serviços projetado',R(sales.servico_projetado||0),'var(--blue-400)',`Meta período ${R(sales.servico_meta_periodo||0)}`),
     ...topServiceCards,
     makeKpi('🚚 Caminhão realizado',R(sales.caminhao_realizado_total||0),'var(--yellow)',`Meta ${R(sales.caminhao_meta_total||0)} · Atingido ${pct(sales.caminhao_atingido_total||0)}`),
