@@ -4828,6 +4828,45 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 }
 @media(max-width:900px){.cobranca-config-grid{grid-template-columns:1fr}}
 
+
+/* ===== AUDIO PADRÃO DE COBRANÇA ===== */
+.audio-cobranca-box{
+  background:rgba(15,23,42,.64);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:14px;
+  padding:12px;
+}
+.audio-cobranca-box audio{width:100%;margin-top:8px}
+.audio-cobranca-box .audio-url{
+  font-size:11px;
+  color:var(--text-muted);
+  word-break:break-all;
+  margin-top:8px;
+}
+.sem-cobrancas-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:8px;
+  margin-top:12px;
+}
+.sem-cobranca-chip{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  border:1px solid rgba(239,68,68,.18);
+  background:rgba(239,68,68,.06);
+  border-radius:12px;
+  padding:8px 10px;
+  font-size:12px;
+  font-weight:700;
+}
+.sem-cobranca-chip small{
+  display:block;
+  color:var(--text-muted);
+  font-weight:600;
+  margin-top:2px;
+}
+
 </style>
 </head>
 <body>
@@ -4921,7 +4960,7 @@ const MARGENS_BRUTAS=__JS_MARGENS_BRUTAS__||{filiais:{},vendedores:{}};
 let SALES_EMPRESA=__JS_SALES_EMPRESA__||{};
 let RENT_EMPRESA=__JS_RENT_EMPRESA__||{};
 let SERVICOS_RELATORIO=__JS_SERVICOS_RELATORIO__||{empresa:{},servicos:{},filiais:{},vendedores:{},detalhes:[]};
-let CONFIG_META={grave_pct:20,alerta_pct:15,atencao_pct:10,peso_grave:60,peso_alerta:30,peso_atencao:10,bonus_50:'',bonus_75:'',bonus_85:'',bonus_100:'',cob_cred_rateio_filial_pct:50,cob_cred_rateio_cred_pct:50,cobranca_global_rateio_pct:20,cobranca_msg_template:`Olá, {primeiro_nome} tudo bem?\nAqui é da Lojas MDL - Móveis do Lar.\nPassando para lembrar que tem uma parcelinha vencida na data de {vencimento}, no valor de {valor}.\nCaso o pagamento já tenha sido realizado, por gentileza, desconsidere esta mensagem.\nSe precisar do boleto, chave PIX ou tiver qualquer dúvida, fico à disposição para ajudar.`,cobranca_img_url:'',...(__CONFIG_META__||{})};
+let CONFIG_META={grave_pct:20,alerta_pct:15,atencao_pct:10,peso_grave:60,peso_alerta:30,peso_atencao:10,bonus_50:'',bonus_75:'',bonus_85:'',bonus_100:'',cob_cred_rateio_filial_pct:50,cob_cred_rateio_cred_pct:50,cobranca_global_rateio_pct:20,cobranca_msg_template:`Olá, {primeiro_nome} tudo bem?\nAqui é da Lojas MDL - Móveis do Lar.\nPassando para lembrar que tem uma parcelinha vencida na data de {vencimento}, no valor de {valor}.\nCaso o pagamento já tenha sido realizado, por gentileza, desconsidere esta mensagem.\nSe precisar do boleto, chave PIX ou tiver qualquer dúvida, fico à disposição para ajudar.`,cobranca_audio_url:'',...(__CONFIG_META__||{})};
 let CONFIG_META_IND=__CONFIG_META_IND__||{};
 const LOGIN_MASTER=String(__LOGIN_MASTER__);
 const SENHA_MASTER=String(__SENHA_MASTER__);
@@ -4939,6 +4978,7 @@ const API_COB='cobrancas_api.php';
 const API_MSG='mensagens_api.php';
 const API_CRED='credenciais_api.php';
 const API_HIST='historico_api.php';
+const API_COB_AUDIO='cobranca_audio_api.php';
 let usuarioAtual=null;
 let mainTab='vendedores';
 let filtroFilial='TODAS';
@@ -5350,13 +5390,55 @@ function renderGroupBars(entities){if(!entities.length) return `<div class="empt
 
 function renderNoChargeAlerts(){
   const hoje=(new Date()).toISOString().slice(0,10);
-  const entries=flattenVendedores().map(v=>{
-    const pending=((CLIENTES_VEND[v.nome]?.grave||[]).length+(CLIENTES_VEND[v.nome]?.alerta||[]).length+(CLIENTES_VEND[v.nome]?.atencao||[]).length);
-    const done=(COB_LOGS||[]).filter(x=>String(x.usuario||'')===String(v.nome||'') && String(x.server_time||'').slice(0,10)===hoje).length;
-    return {...v,pending,done};
-  }).filter(x=>x.pending>0 && x.done===0);
-  if(!entries.length) return '';
-  return `<div class="glass panel" style="margin-bottom:16px;padding:14px 18px"><div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:18px">⏰ Sem cobranças hoje</h2><div class="hint">Aviso preventivo para o Master sobre quem ainda não cobrou hoje.</div></div></div><div class="legend-inline">${entries.slice(0,12).map(e=>`<span><i class="dot" style="background:#ef4444"></i>${esc(e.nome)} · ${e.pending} clientes</span>`).join('')}</div></div>`;
+  const totalPend=(obj)=>((obj?.grave||[]).length+(obj?.alerta||[]).length+(obj?.atencao||[]).length);
+  const doneHoje=(keys)=>(COB_LOGS||[]).filter(x=>{
+    const u=String(x.usuario||'').toLowerCase();
+    return keys.map(k=>String(k||'').toLowerCase()).includes(u) && String(x.server_time||'').slice(0,10)===hoje;
+  }).length;
+  const entries=[];
+
+  // Vendedores / colaboradores
+  flattenVendedores().forEach(v=>{
+    const pending=totalPend(CLIENTES_VEND[v.nome]||{});
+    const done=doneHoje([v.nome, v.login]);
+    if(pending>0 && done===0) entries.push({tipo:'Colaborador',nome:v.nome,filial:v.filial,pending,done});
+  });
+
+  // Filiais / gerentes
+  flattenFiliais().forEach(f=>{
+    const pending=totalPend(CLIENTES_FIL[f.filial]||{});
+    const done=doneHoje([f.nome, f.filial, filialLabel(f.filial)]);
+    if(pending>0 && done===0) entries.push({tipo:'Filial',nome:filialLabel(f.filial),filial:f.filial,pending,done});
+  });
+
+  // Crediaristas
+  crediaristaEntities().forEach(c=>{
+    const key=String(c.login||'').toLowerCase();
+    const pending=totalPend(CLIENTES_CREDIARISTA[key]||{});
+    const done=doneHoje([c.nome, c.login, c.filial]);
+    if(pending>0 && done===0) entries.push({tipo:'Crediarista',nome:c.nome,filial:c.filial,pending,done});
+  });
+
+  // Cobrança terceiro / Cobrança10
+  const t=thirdChargeEntity();
+  const pendingTer=totalPend(CLIENTES_TERCEIRO||{});
+  const doneTer=doneHoje([COBRANCA10_NOME, COBRANCA10_LOGIN, 'cobranca10']);
+  if(pendingTer>0 && doneTer===0) entries.push({tipo:'Cobrança',nome:COBRANCA10_NOME,filial:'FTER',pending:pendingTer,done:doneTer});
+
+  const uniq=[];
+  const seen=new Set();
+  entries.forEach(e=>{
+    const k=`${e.tipo}|${e.nome}|${e.filial}`;
+    if(!seen.has(k)){seen.add(k); uniq.push(e);}
+  });
+  uniq.sort((a,b)=>String(a.tipo).localeCompare(String(b.tipo),'pt-BR') || Number(b.pending||0)-Number(a.pending||0));
+  if(!uniq.length) return '';
+  return `<div class="glass panel" style="margin-bottom:16px;padding:14px 18px">
+    <div class="section-head" style="margin:0">
+      <div><h2 style="margin:0;font-size:18px">⏰ Sem cobranças hoje</h2><div class="hint">Todos os usuários/carteiras que ainda não registraram cobrança hoje: colaboradores, filiais, crediaristas e cobrança.</div></div>
+    </div>
+    <div class="sem-cobrancas-grid">${uniq.map(e=>`<div class="sem-cobranca-chip"><i class="dot" style="background:#ef4444"></i><div>${esc(e.nome)}<small>${esc(e.tipo)} ${e.filial?`· ${esc(e.filial)}`:''} · ${e.pending} clientes</small></div></div>`).join('')}</div>
+  </div>`;
 }
 
 function renderHighlights(){const cobrarParts=[]; const vendasParts=[]; const filiais=flattenFiliais(); const vendedores=flattenVendedores(); const calcDelta=(e)=>{const delta=Number(e.var_pago_delta||0); const prev=Math.max(Math.abs(Number(e.pago||0)-delta),1); const perc=(Math.abs(delta)/prev)*100; return {delta,perc};}; const bestFil=filiais.slice().sort((a,b)=>Number(b.var_pago_delta||0)-Number(a.var_pago_delta||0))[0]; const bestVend=vendedores.slice().sort((a,b)=>Number(b.var_pago_delta||0)-Number(a.var_pago_delta||0))[0]; if(bestFil){const d=calcDelta(bestFil); cobrarParts.push(`<div class="glass panel highlight-pulse" style="margin-bottom:12px;padding:16px 18px"><div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:20px">🏆 Destaque da semana · Filial</h2><div class="hint">${esc(filialLabel(bestFil.filial))} recebeu ${R(d.delta)} a mais</div></div>${renderDeltaPill(d.delta,d.perc)}</div></div>`);} if(bestVend){const d=calcDelta(bestVend); cobrarParts.push(`<div class="glass panel highlight-pulse" style="margin-bottom:16px;padding:16px 18px"><div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:20px">🥇 Destaque da semana · Vendedor</h2><div class="hint">${esc(bestVend.nome)} recebeu ${R(d.delta)} a mais</div></div>${renderDeltaPill(d.delta,d.perc)}</div></div>`);} const achievers=currentEntities().filter(e=>calcMeta(e).geral>=50); if(achievers.length){cobrarParts.push(`<div class="glass panel" style="margin-bottom:16px;padding:14px 18px"><div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:18px">🔔 Metas atingidas</h2><div class="hint">${achievers.length} colaboradores/filiais com meta alcançada</div></div></div><div class="legend-inline">${achievers.slice(0,10).map(e=>`<span><i class="dot" style="background:#2f67f6"></i>${esc(e.nome)} ${pct(calcMeta(e).geral)}</span>`).join('')}</div></div>`);} cobrarParts.push(renderNoChargeAlerts());
@@ -5487,7 +5569,8 @@ function renderCrediaristaDetail(ent){
 }
 
 function openEntity(ref){if(ref && (ref.type==='crediarista' || ref.is_crediarista)){return openCrediaristaPanel(ref.login||'', ref.filial||'', ref.nome||'')} const ent=findEntity(ref); if(!ent) return; currentDetailRef={type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''}; mascotCongrats(ent); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(ent.is_terceiro || ent.type==='terceiro'){return renderTerceiroDetail(ent)} if(ent.is_crediarista || ent.type==='crediarista'){return openCrediaristaPanel(ent.login||'', ent.filial||'', ent.nome||'')} const meta=calcMeta(ent); const bonus=getBonus(meta.cfg,meta.geral); const deltaVal=Number(ent.var_pago_delta||0); const prevBase=Math.max(Math.abs(Number(ent.pago||0)-deltaVal),1); const pctFallback=(Math.abs(deltaVal)/prevBase)*100; const compPerc=(ent.var_pago_perc==null || Math.abs(Number(ent.var_pago_perc||0))<0.01)?pctFallback:Math.abs(Number(ent.var_pago_perc||0)); detailScreen.innerHTML=`${usuarioAtual && usuarioAtual.tipo!=='master' ? renderInboxBanner() : ''}<div class="back-row"><button class="btn soft" onclick="backToMain()">⬅️ Voltar</button><div><h2>${ent.type==='filial'?filialLabel(ent.filial):esc(ent.nome)}</h2><div class="sub">${ent.type==='filial'?'Painel individual da filial':'Painel individual do vendedor'} · ${ent.filial}</div></div><div class="badge">${ent.type==='filial'?'🏬 Filial':'👤 Vendedor'}</div></div><div class="detail-top"><div class="glass panel"><h3>🎯 Meta do mês <span class="note">· Não acumulativo</span></h3><div class="mega-progress"><div class="ring-wrap">${renderPiggyBank(meta.geral)}</div><div><div class="metrics-grid"><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">% da filial</div><div class="v">${pct(ent.perc_filial||100)}</div></div><div class="metric"><div class="k">Configuração usada</div><div class="v">${Number(meta.cfg.grave_pct||0)}/${Number(meta.cfg.alerta_pct||0)}/${Number(meta.cfg.atencao_pct||0)}</div></div><div class="metric"><div class="k">Comparado a ontem</div><div class="v" style="font-size:16px">${renderDeltaPill(ent.var_pago_delta,compPerc)} <span>${R(Math.abs(Number(ent.var_pago_delta||0)))}</span></div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave alvo ${R(meta.grave.alvo)} · recebido ${R(meta.grave.rec)}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta alvo ${R(meta.alerta.alvo)} · recebido ${R(meta.alerta.rec)}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção alvo ${R(meta.atencao.alvo)} · recebido ${R(meta.atencao.rec)}</span></div></div></div><div class="meta-grid">${renderMetaBox('Grave','var(--red)',meta.grave)}${renderMetaBox('Alerta','var(--orange)',meta.alerta)}${renderMetaBox('Atenção','var(--yellow)',meta.atencao)}${renderMetaBox('Meta geral','var(--blue)',{perc:meta.geral,alvo:meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,rec:meta.grave.rec+meta.alerta.rec+meta.atencao.rec})}</div><div style="height:18px"></div><h3>🌊 Gráfico Geral Contas a Receber</h3>${renderSingleBars(ent,meta,true)}<div style="height:16px"></div><div class="glass panel"><h3>🏆 Bônus e premiações <span class="note">· Não acumulativo</span></h3>${renderBonusBox(meta.cfg,meta.geral)}</div></div><div>${renderSalesPanel(ent)}<div style="height:16px"></div>${renderCommissionSummary(ent)}<div style="height:16px"></div>${renderCampaignSummary(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span>clique para ${'abrir'}</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span>clique para ${'abrir'}</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
-function renderCommissionSummary(ent){
+function canVerComissionamento(){return usuarioAtual?.tipo==='master'}
+function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';if(!canVerComissionamento()) return '';
   const c=calcCommissionSummary(ent);
   const totalLiberado = c.elegivelMercantil && c.elegivelServicos;
   const totalExibido = totalLiberado ? c.totalPrevisto : 0;
@@ -5956,7 +6039,7 @@ function renderCampaignSummary(ent){
   </div>`;
 }
 
-function renderCommissionSummary(ent){const c=calcCommissionSummary(ent); const totalLiberado = c.elegivelMercantil && c.elegivelServicos; const totalExibido = totalLiberado ? c.totalPrevisto : 0; const moneyCell=(title,val,locked=false,extra='')=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''} ${extra}"><div class="k">${title}</div><div class="v">${R(val||0)}</div></div>`; const pctCell=(title,val,locked=false)=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''}"><div class="k">${title}</div><div class="v">${String(Number(val||0).toFixed(2)).replace('.',',')}%</div></div>`; return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,!c.rentUnlocked)}${moneyCell('Rentab 52,15%',c.rent52,!c.rentUnlocked)}${moneyCell('Rentab 55,50%',c.rent55,!c.rentUnlocked)}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo vendas ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)} · rentabilidades liberam ao bater 50% da meta de cobrança.</div></div>`}
+function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';const c=calcCommissionSummary(ent); const totalLiberado = c.elegivelMercantil && c.elegivelServicos; const totalExibido = totalLiberado ? c.totalPrevisto : 0; const moneyCell=(title,val,locked=false,extra='')=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''} ${extra}"><div class="k">${title}</div><div class="v">${R(val||0)}</div></div>`; const pctCell=(title,val,locked=false)=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''}"><div class="k">${title}</div><div class="v">${String(Number(val||0).toFixed(2)).replace('.',',')}%</div></div>`; return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,!c.rentUnlocked)}${moneyCell('Rentab 52,15%',c.rent52,!c.rentUnlocked)}${moneyCell('Rentab 55,50%',c.rent55,!c.rentUnlocked)}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo vendas ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)} · rentabilidades liberam ao bater 50% da meta de cobrança.</div></div>`}
 function backToMain(){currentDetailRef=null; detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden')}
 function renderMetaBox(title,color,obj){return `<div class="meta-card"><div class="meta-title">${title}</div><div class="meta-main" style="color:${color}">${pct(obj.perc||0)}</div><div class="meta-sub">Alvo: ${R(obj.alvo||0)}</div><div class="meta-sub">Recebido: ${R(obj.rec||0)}</div></div>`}
 function renderBonusBox(cfg,geral){const achieved=(geral>=100&&cfg.bonus_100)?100:(geral>=85&&cfg.bonus_85)?85:(geral>=75&&cfg.bonus_75)?75:(geral>=50&&cfg.bonus_50)?50:0; const items=[[50,cfg.bonus_50||'-'],[75,cfg.bonus_75||'-'],[85,cfg.bonus_85||'-'],[100,cfg.bonus_100||'-']];return `<div class="bonus-box"><h4>Faixas configuradas</h4><div class="bonus-list">${items.map(([p,t])=>`<div class="bonus-item ${achieved===p?'active':''}" style="${achieved===p?'box-shadow:0 0 0 2px rgba(59,130,246,.18),0 0 26px rgba(59,130,246,.2);animation:liquid 1.6s ease-in-out infinite alternate':''}"><div class="left"><span>🎯</span><span>${p}%</span></div><div style="display:flex;align-items:center;gap:10px">${achieved===p?`<img src="${LARANJITO}" alt="laranjito" style="width:34px;height:34px;border-radius:10px;object-fit:cover">`:''}<span>${esc(t)}</span></div></div>`).join('')}</div></div>`}
@@ -6003,8 +6086,8 @@ Se precisar do boleto, chave PIX ou tiver qualquer dúvida, fico à disposição
 function cobrancaTemplateAtual(){
   return String(CONFIG_META?.cobranca_msg_template || DEFAULT_COBRANCA_TEMPLATE);
 }
-function cobrancaImgAtual(){
-  return String(CONFIG_META?.cobranca_img_url || '').trim();
+function cobrancaAudioAtual(){
+  return String(CONFIG_META?.cobranca_audio_url || '').trim();
 }
 function primeiroNomeClienteJs(nome){
   const s=String(nome||'').trim();
@@ -6029,9 +6112,9 @@ function montarMensagemCobranca(reg){
   Object.entries(dados).forEach(([k,v])=>{
     tpl=tpl.replaceAll(`{${k}}`, v);
   });
-  const img=cobrancaImgAtual();
-  if(img){
-    tpl += `\n\nImagem/anexo: ${img}`;
+  const audio=cobrancaAudioAtual();
+  if(audio){
+    tpl += `\n\nÁudio padrão de cobrança: ${audio}`;
   }
   return tpl;
 }
@@ -6049,26 +6132,26 @@ function exemploMensagemCobranca(){
 }
 function atualizarPreviewCobranca(){
   const tpl=document.getElementById('cobMsgTemplate')?.value;
-  const img=document.getElementById('cobMsgImgUrl')?.value;
+  const audio=document.getElementById('cobMsgAudioUrl')?.value;
   const oldTpl=CONFIG_META.cobranca_msg_template;
-  const oldImg=CONFIG_META.cobranca_img_url;
+  const oldAudio=CONFIG_META.cobranca_audio_url;
   CONFIG_META.cobranca_msg_template=tpl || DEFAULT_COBRANCA_TEMPLATE;
-  CONFIG_META.cobranca_img_url=img || '';
+  CONFIG_META.cobranca_audio_url=audio || '';
   const el=document.getElementById('cobMsgPreview');
   if(el) el.textContent=exemploMensagemCobranca();
   CONFIG_META.cobranca_msg_template=oldTpl;
-  CONFIG_META.cobranca_img_url=oldImg;
+  CONFIG_META.cobranca_audio_url=oldAudio;
 }
 async function salvarMensagemCobrancaGlobal(){
   const msgEl=document.getElementById('cobMsgSaveStatus');
   const tpl=String(document.getElementById('cobMsgTemplate')?.value||'').trim();
-  const img=String(document.getElementById('cobMsgImgUrl')?.value||'').trim();
+  const audio=String(document.getElementById('cobMsgAudioUrl')?.value||'').trim();
   if(!tpl){
     if(msgEl) msgEl.textContent='⚠️ A mensagem não pode ficar vazia.';
     return;
   }
   CONFIG_META.cobranca_msg_template=tpl;
-  CONFIG_META.cobranca_img_url=img;
+  CONFIG_META.cobranca_audio_url=audio;
   try{
     const payload={global:CONFIG_META,individual:CONFIG_META_IND};
     const resp=await fetch(API_CFG,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -6088,14 +6171,46 @@ async function salvarMensagemCobrancaGlobal(){
 }
 function restaurarMensagemCobrancaPadrao(){
   const t=document.getElementById('cobMsgTemplate');
-  const img=document.getElementById('cobMsgImgUrl');
+  const audio=document.getElementById('cobMsgAudioUrl');
   if(t) t.value=DEFAULT_COBRANCA_TEMPLATE;
-  if(img) img.value='';
+  if(audio) audio.value='';
   atualizarPreviewCobranca();
 }
+
+async function enviarAudioCobrancaPadrao(){
+  const status=document.getElementById('cobAudioStatus');
+  const input=document.getElementById('cobMsgAudioFile');
+  const file=input?.files?.[0];
+  if(!file){
+    if(status) status.textContent='⚠️ Escolha um arquivo de áudio primeiro.';
+    return;
+  }
+  const fd=new FormData();
+  fd.append('audio', file);
+  try{
+    if(status) status.textContent='⏳ Enviando áudio...';
+    const r=await fetch(API_COB_AUDIO,{method:'POST',body:fd});
+    const j=await r.json();
+    if(j.ok && j.url){
+      CONFIG_META.cobranca_audio_url=j.url;
+      const urlEl=document.getElementById('cobMsgAudioUrl');
+      if(urlEl) urlEl.value=j.url;
+      atualizarPreviewCobranca();
+      await salvarMensagemCobrancaGlobal();
+      if(status) status.textContent='✅ Áudio salvo e configurado como padrão.';
+      renderLogsTab();
+    }else{
+      if(status) status.textContent='⚠️ Falha ao enviar áudio.';
+    }
+  }catch(e){
+    console.log('Erro upload áudio cobrança',e);
+    if(status) status.textContent='⚠️ Erro ao enviar áudio.';
+  }
+}
+
 function renderCobrancaConfigPanel(){
   const tpl=esc(cobrancaTemplateAtual());
-  const img=esc(cobrancaImgAtual());
+  const audio=esc(cobrancaAudioAtual());
   return `<div class="glass panel" style="margin-bottom:14px">
     <div class="section-head" style="margin:0 0 10px">
       <div>
@@ -6117,9 +6232,17 @@ function renderCobrancaConfigPanel(){
           <code>{filial}</code><code>{vendedor}</code>
         </div>
         <div class="input-card" style="margin-top:10px">
-          <label>Imagem junto com a mensagem</label>
-          <input id="cobMsgImgUrl" value="${img}" placeholder="Cole aqui a URL pública da imagem. Ex: https://moveisdolar.com.br/colaborador/imagem.png" oninput="atualizarPreviewCobranca()">
-          <div class="hint">O WhatsApp por link não anexa arquivo automaticamente; a imagem entra como link no final da mensagem.</div>
+          <label>Áudio padrão da cobrança</label>
+          <div class="audio-cobranca-box">
+            <input id="cobMsgAudioUrl" type="hidden" value="${audio}" oninput="atualizarPreviewCobranca()">
+            <input id="cobMsgAudioFile" type="file" accept="audio/*">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+              <button type="button" class="btn soft" onclick="enviarAudioCobrancaPadrao()">Enviar/atualizar áudio padrão</button>
+              <span id="cobAudioStatus" class="hint"></span>
+            </div>
+            ${audio?`<audio controls src="${audio}"></audio><div class="audio-url">${audio}</div>`:`<div class="hint" style="margin-top:8px">Nenhum áudio padrão configurado. Envie um arquivo .ogg, .mp3, .m4a ou .wav.</div>`}
+          </div>
+          <div class="hint">No WhatsApp Web por link, o áudio entra como link padrão no final da mensagem. Para anexar o áudio como arquivo automaticamente, só usando API oficial do WhatsApp Business.</div>
         </div>
         <div style="display:flex;gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap">
           <button class="btn primary" onclick="salvarMensagemCobrancaGlobal()">Salvar global</button>
@@ -6745,6 +6868,31 @@ echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado'], JSON_UNESCAPED_U
 ?>"""
 
 
+
+COBRANCA_AUDIO_API_PHP = r"""<?php
+header('Content-Type: application/json; charset=utf-8');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type');
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
+$uploadDir = __DIR__ . '/uploads_cobranca';
+if (!file_exists($uploadDir)) @mkdir($uploadDir, 0777, true);
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') { echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado']); exit; }
+if (empty($_FILES['audio']['name'])) { echo json_encode(['ok'=>false,'error'=>'audio_obrigatorio']); exit; }
+$allowed = ['audio/ogg','audio/mpeg','audio/mp3','audio/wav','audio/x-wav','audio/mp4','audio/aac','audio/webm'];
+$mime = $_FILES['audio']['type'] ?? '';
+$ext = strtolower(pathinfo($_FILES['audio']['name'], PATHINFO_EXTENSION));
+if (!in_array($ext, ['ogg','mp3','wav','m4a','aac','webm'])) { echo json_encode(['ok'=>false,'error'=>'extensao_nao_permitida']); exit; }
+$name = 'audio_cobranca_padrao_' . time() . '.' . $ext;
+$dest = $uploadDir . '/' . $name;
+if (!move_uploaded_file($_FILES['audio']['tmp_name'], $dest)) { echo json_encode(['ok'=>false,'error'=>'falha_upload']); exit; }
+$scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+$base = $scheme . '://' . $_SERVER['HTTP_HOST'] . rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
+$url = $base . '/uploads_cobranca/' . $name;
+echo json_encode(['ok'=>true,'url'=>$url,'mime'=>$mime], JSON_UNESCAPED_UNICODE); exit;
+?>"""
+
+
 CREDENCIAIS_API_PHP = r"""<?php
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -6879,8 +7027,27 @@ if FTP_USER and FTP_PASS:
         ftp.storbinary('STOR cobrancas_api.php', BytesIO(COBRANCAS_API_PHP.encode('utf-8')))
         ftp.storbinary('STOR config_meta_api.php', BytesIO(CONFIG_META_API_PHP.encode('utf-8')))
         ftp.storbinary('STOR mensagens_api.php', BytesIO(MESSAGES_API_PHP.encode('utf-8')))
+        ftp.storbinary('STOR cobranca_audio_api.php', BytesIO(COBRANCA_AUDIO_API_PHP.encode('utf-8')))
         ftp.storbinary('STOR credenciais_api.php', BytesIO(CREDENCIAIS_API_PHP.encode('utf-8')))
         ftp.storbinary('STOR historico_api.php', BytesIO(HISTORICO_API_PHP.encode('utf-8')))
+        try:
+            _audio_padrao_path = os.path.join(pasta, 'audio_cobranca_padrao.ogg')
+            if os.path.exists(_audio_padrao_path):
+                try:
+                    ftp.mkd('uploads_cobranca')
+                except Exception:
+                    pass
+                try:
+                    ftp.cwd('uploads_cobranca')
+                    with open(_audio_padrao_path, 'rb') as f_audio:
+                        ftp.storbinary('STOR audio_cobranca_padrao.ogg', f_audio)
+                    ftp.cwd(FTP_DIR)
+                    print('✅ Áudio padrão de cobrança enviado ao FTP.')
+                except Exception as e:
+                    print(f'⚠️ Não consegui enviar áudio padrão: {e}')
+        except Exception:
+            pass
+
         try:
             with open(_config_meta_path, 'rb') as f_cfg:
                 ftp.storbinary('STOR config_meta.json', f_cfg)
