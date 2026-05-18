@@ -17,15 +17,10 @@ import unicodedata
 import urllib.request
 import urllib.error
 import tempfile
-from zoneinfo import ZoneInfo
 
 LOGIN = "administrativo01.moveisdolar"
 SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
-APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
-
-def now_brasilia():
-    return datetime.now(APP_TZ)
 
 # ===== DATAS
 hoje        = datetime.now()
@@ -3238,11 +3233,9 @@ for key, vd in snapshot_hoje["vendedores"].items():
             elif _fx == 'alerta': _alerta_delta  += _share
             else:                 _atencao_delta += _share
 
-    # 🔥 CORREÇÃO: não acumular novamente a cada reprocessamento do mesmo período.
-    # O gráfico do vendedor deve refletir os valores reais atuais do período, assim como já ocorre nas filiais.
-    vm["grave_rec"]   = round(_grave_delta,   2)
-    vm["alerta_rec"]  = round(_alerta_delta,  2)
-    vm["atencao_rec"] = round(_atencao_delta, 2)
+    vm["grave_rec"]   = round(vm["grave_rec"]   + _grave_delta,   2)
+    vm["alerta_rec"]  = round(vm["alerta_rec"]  + _alerta_delta,  2)
+    vm["atencao_rec"] = round(vm["atencao_rec"] + _atencao_delta, 2)
     vm["snapshots"].append({
         "data": hoje_str, "delta": delta,
         "grave_delta": _grave_delta, "alerta_delta": _alerta_delta, "atencao_delta": _atencao_delta
@@ -3452,17 +3445,6 @@ js_margens_brutas = json.dumps(margens_brutas_info.get('dados', {}), ensure_asci
 # placeholders; valores reais serão definidos após montar _sales_emp/_sales_fil/_sales_vend
 js_sales_empresa = json.dumps({}, ensure_ascii=False)
 js_rent_empresa = json.dumps((margens_brutas_info.get('dados', {}) or {}).get('empresa', {}), ensure_ascii=False)
-
-# relatório de serviços do mês atual (gerado pelo worker de vendas)
-_servicos_rel_path = os.path.join(pasta, "relatorio_servicos_mes_atual.json")
-_servicos_rel_data = {}
-try:
-    if os.path.exists(_servicos_rel_path):
-        with open(_servicos_rel_path, "r", encoding="utf-8") as _fsrv:
-            _servicos_rel_data = json.load(_fsrv) or {}
-except Exception as _e:
-    print(f"⚠️ Falha ao carregar relatorio_servicos_mes_atual.json: {_e}")
-js_servicos_relatorio = json.dumps(_servicos_rel_data, ensure_ascii=False)
 
 # Inativos e FDEP por filial
 bruto_inat_p  = {f: 0.0 for f in ORDEM_FILIAIS + ["FDEP"]}
@@ -3929,17 +3911,6 @@ for _bucket in list(_sales_fil.values()) + list(_sales_vend.values()):
 # agora que _sales_emp foi montado, serializa corretamente para o HTML
 js_sales_empresa = json.dumps(_sales_emp, ensure_ascii=False)
 js_rent_empresa = json.dumps((margens_brutas_info.get('dados', {}) or {}).get('empresa', {}), ensure_ascii=False)
-
-# relatório de serviços do mês atual (gerado pelo worker de vendas)
-_servicos_rel_path = os.path.join(pasta, "relatorio_servicos_mes_atual.json")
-_servicos_rel_data = {}
-try:
-    if os.path.exists(_servicos_rel_path):
-        with open(_servicos_rel_path, "r", encoding="utf-8") as _fsrv:
-            _servicos_rel_data = json.load(_fsrv) or {}
-except Exception as _e:
-    print(f"⚠️ Falha ao carregar relatorio_servicos_mes_atual.json: {_e}")
-js_servicos_relatorio = json.dumps(_servicos_rel_data, ensure_ascii=False)
 
 hist_dash.setdefault("sales_dates", {})
 hist_dash.setdefault("sales_months", {})
@@ -4651,190 +4622,6 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 @keyframes liquidGlow{0%{transform:translateY(0)}100%{transform:translateY(12px)}}
 @media(max-width:1100px){.detail-top,.meta-layout,.search-row,.mega-progress{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}.meta-grid{grid-template-columns:repeat(2,1fr)}.sales-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.card-sales-grid{grid-template-columns:1fr}}
 @media(max-width:760px){.app-shell{padding:14px 14px 80px}.brand h1{font-size:20px}.kpis{grid-template-columns:1fr}.grid-cards,.meta-preview-grid{grid-template-columns:1fr}.form-grid,.form-grid.bonus,.meta-grid,.metrics-grid,.commission-grid,.campaign-grid{grid-template-columns:1fr}.row-top,.log-row{grid-template-columns:1fr}.tabs{gap:4px}.tab{padding:9px 12px;font-size:12px}.group{min-width:88px}.group .bars{height:220px}.bar{width:16px}}
-
-/* ===== AJUSTE VISUAL DOS CARDS KPI - CORES POR GRUPO E ÍCONES MAIORES ===== */
-.kpi.card-cobranca{
-  background:
-    radial-gradient(circle at 12% 12%, rgba(96,165,250,.30), transparent 36%),
-    linear-gradient(135deg, rgba(30,64,175,.36), rgba(15,23,42,.90) 64%) !important;
-}
-.kpi.card-financeiro{
-  background:
-    radial-gradient(circle at 12% 12%, rgba(74,222,128,.28), transparent 36%),
-    linear-gradient(135deg, rgba(22,101,52,.36), rgba(15,23,42,.90) 64%) !important;
-}
-.kpi.card-venda-dia{
-  background:
-    radial-gradient(circle at 12% 12%, rgba(250,204,21,.34), transparent 36%),
-    linear-gradient(135deg, rgba(161,98,7,.38), rgba(15,23,42,.90) 64%) !important;
-}
-.kpi .label{
-  display:flex;
-  align-items:center;
-  gap:8px;
-}
-.kpi .kpi-emoji{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  font-size:25px;
-  line-height:1;
-  min-width:26px;
-  filter:drop-shadow(0 0 8px rgba(255,255,255,.20));
-}
-.kpi .kpi-label-text{
-  line-height:1.1;
-}
-
-
-/* ===== LARANJITO NOS CARDS DE ALERTA ===== */
-@keyframes laranjitoPulse {
-  0%,100% { transform: scale(1); filter: drop-shadow(0 0 7px rgba(255,147,0,.35)); }
-  50% { transform: scale(1.13); filter: drop-shadow(0 0 18px rgba(255,147,0,.75)); }
-}
-.kpi.kpi-laranjito{
-  position:relative;
-  overflow:hidden;
-  padding-right:104px !important;
-}
-.kpi .laranjito-card{
-  position:absolute;
-  right:14px;
-  top:50%;
-  transform:translateY(-50%);
-  width:78px;
-  height:78px;
-  border-radius:22px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-size:54px;
-  animation:laranjitoPulse 1.4s ease-in-out infinite;
-  background:radial-gradient(circle at 40% 35%, rgba(255,177,59,.22), rgba(255,122,0,.06) 60%, transparent 72%);
-  pointer-events:none;
-}
-.kpi .laranjito-caption{
-  position:absolute;
-  right:13px;
-  bottom:8px;
-  font-size:10px;
-  color:#fbbf24;
-  opacity:.9;
-  font-weight:800;
-  letter-spacing:.04em;
-}
-
-
-/* ===== IMAGENS REAIS DO LARANJITO E ÍCONE DE OURO ===== */
-.kpi .kpi-img-icon{
-  width:30px;
-  height:30px;
-  object-fit:contain;
-  display:inline-flex;
-  flex:0 0 auto;
-  filter:drop-shadow(0 0 8px rgba(255,255,255,.22));
-}
-.kpi .laranjito-card{
-  position:absolute;
-  right:12px;
-  top:50%;
-  transform:translateY(-50%);
-  width:96px;
-  height:96px;
-  object-fit:contain;
-  border-radius:0;
-  animation:laranjitoPulse 1.4s ease-in-out infinite;
-  background:transparent;
-  pointer-events:none;
-  z-index:2;
-}
-.kpi .laranjito-card::after{content:none!important;}
-.kpi.kpi-laranjito{
-  padding-right:120px !important;
-}
-.kpi .laranjito-caption{display:none!important;}
-
-
-/* ===== AJUSTE FINAL LARANJITO PROPORCIONAL SEM FUNDO ===== */
-.kpi.kpi-laranjito{
-  position:relative;
-  overflow:hidden;
-  padding-right:92px !important;
-}
-.kpi .laranjito-card{
-  position:absolute !important;
-  right:12px !important;
-  bottom:8px !important;
-  top:auto !important;
-  transform:none !important;
-  width:74px !important;
-  height:74px !important;
-  max-width:74px !important;
-  max-height:74px !important;
-  object-fit:contain !important;
-  object-position:center !important;
-  border-radius:0 !important;
-  background:transparent !important;
-  box-shadow:none !important;
-  border:0 !important;
-  outline:0 !important;
-  padding:0 !important;
-  margin:0 !important;
-  animation:laranjitoPulseImg 1.45s ease-in-out infinite !important;
-  pointer-events:none !important;
-  z-index:2 !important;
-}
-@keyframes laranjitoPulseImg{
-  0%,100% { transform:scale(1); filter:drop-shadow(0 0 6px rgba(255,147,0,.35)); }
-  50% { transform:scale(1.08); filter:drop-shadow(0 0 14px rgba(255,147,0,.75)); }
-}
-.kpi .laranjito-card::after{content:none!important;}
-.kpi .laranjito-caption{display:none!important;}
-
-
-/* ===== CONFIGURAÇÃO GLOBAL DE MENSAGEM DE COBRANÇA ===== */
-.cobranca-config-grid{
-  display:grid;
-  grid-template-columns: 1.4fr .9fr;
-  gap:14px;
-}
-.cobranca-template{
-  min-height:180px;
-  resize:vertical;
-  line-height:1.45;
-}
-.placeholder-list{
-  display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
-  gap:6px;
-  margin-top:8px;
-}
-.placeholder-list code{
-  font-size:11px;
-  background:rgba(255,255,255,.06);
-  border:1px solid rgba(255,255,255,.09);
-  padding:5px 7px;
-  border-radius:9px;
-  color:#e5e7eb;
-}
-.preview-whats{
-  white-space:pre-wrap;
-  background:rgba(15,23,42,.76);
-  border:1px solid rgba(255,255,255,.08);
-  border-radius:14px;
-  padding:12px;
-  color:#dbeafe;
-  min-height:130px;
-}
-@media(max-width:900px){.cobranca-config-grid{grid-template-columns:1fr}}
-
-
-
-/* ===== LISTA SEM COBRANÇAS HOJE ===== */
-.sem-cobrancas-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:12px}
-.sem-cobranca-chip{display:flex;align-items:center;gap:8px;border:1px solid rgba(239,68,68,.18);background:rgba(239,68,68,.06);border-radius:12px;padding:8px 10px;font-size:12px;font-weight:700}
-.sem-cobranca-chip small{display:block;color:var(--text-muted);font-weight:600;margin-top:2px}
-
 </style>
 </head>
 <body>
@@ -4879,7 +4666,6 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
       <button class="tab active" data-tab="vendedores" onclick="setMainTab('vendedores')">👥 Por Colaborador</button>
       <button class="tab" data-tab="filiais" onclick="setMainTab('filiais')">🏬 Por Filial</button>
       <button class="tab" data-tab="metas" onclick="setMainTab('metas')">🎯 Metas</button>
-      <button class="tab" data-tab="servicos" onclick="setMainTab('servicos')">🛠️ Serviços</button>
       <button class="tab" data-tab="cobrancas" onclick="setMainTab('cobrancas')">🧾 Cobranças</button>
       <button class="tab" data-tab="avisos" onclick="setMainTab('avisos')">📣 Avisos</button>
       <button class="tab" data-tab="senhas" onclick="setMainTab('senhas')">🔐 Senhas</button>
@@ -4891,7 +4677,6 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
     <div id="mainScreen">
       <div id="listSection"></div>
       <div id="metaSection" class="hidden"></div>
-      <div id="servicesSection" class="hidden"></div>
       <div id="logSection" class="hidden"></div>
       <div id="avisosSection" class="hidden"></div>
       <div id="senhasSection" class="hidden"></div>
@@ -4927,8 +4712,7 @@ const METAS_VENDAS=__JS_METAS_VENDAS__||{metas:{}};
 const MARGENS_BRUTAS=__JS_MARGENS_BRUTAS__||{filiais:{},vendedores:{}};
 let SALES_EMPRESA=__JS_SALES_EMPRESA__||{};
 let RENT_EMPRESA=__JS_RENT_EMPRESA__||{};
-let SERVICOS_RELATORIO=__JS_SERVICOS_RELATORIO__||{empresa:{},servicos:{},filiais:{},vendedores:{},detalhes:[]};
-let CONFIG_META={grave_pct:20,alerta_pct:15,atencao_pct:10,peso_grave:60,peso_alerta:30,peso_atencao:10,bonus_50:'',bonus_75:'',bonus_85:'',bonus_100:'',cob_cred_rateio_filial_pct:50,cob_cred_rateio_cred_pct:50,cobranca_global_rateio_pct:20,cobranca_msg_template:`Olá, {primeiro_nome} tudo bem?\nAqui é da Lojas MDL - Móveis do Lar.\nPassando para lembrar que tem uma parcelinha vencida na data de {vencimento}, no valor de {valor}.\nCaso o pagamento já tenha sido realizado, por gentileza, desconsidere esta mensagem.\nSe precisar do boleto, chave PIX ou tiver qualquer dúvida, fico à disposição para ajudar.`,...(__CONFIG_META__||{})};
+let CONFIG_META={grave_pct:20,alerta_pct:15,atencao_pct:10,peso_grave:60,peso_alerta:30,peso_atencao:10,bonus_50:'',bonus_75:'',bonus_85:'',bonus_100:'',cob_cred_rateio_filial_pct:50,cob_cred_rateio_cred_pct:50,cobranca_global_rateio_pct:20,...(__CONFIG_META__||{})};
 let CONFIG_META_IND=__CONFIG_META_IND__||{};
 const LOGIN_MASTER=String(__LOGIN_MASTER__);
 const SENHA_MASTER=String(__SENHA_MASTER__);
@@ -4959,12 +4743,25 @@ let _pendingFirstAccess=null;
 let HIST_DASH=__JS_HIST_DASH__||{dates:{}};
 const SESSION_KEY='mdl_dashboard_session_v1';
 function getAuthUser(login){const k=String(login||'').trim().toLowerCase(); if(k===LOGIN_DIRETOR.toLowerCase()) return AUTH_STATE?.director||null; return (AUTH_STATE?.users||{})[k]||null}
-async function carregarCredenciaisOnline(){try{const r=await fetch(API_CRED+'?_='+Date.now()); const j=await r.json(); if(j.ok && j.data){AUTH_STATE=j.data;}}catch(e){console.log('Falha ao carregar credenciais online',e);}}
-async function carregarHistoricoOnline(){try{const r=await fetch(API_HIST+'?_='+Date.now()); const j=await r.json(); if(j.ok && j.data){HIST_DASH=j.data;}}catch(e){console.log('Falha ao carregar histórico online',e);}}
+async function carregarCredenciaisOnline(){try{const r=await fetchComTimeout(API_CRED+'?_='+Date.now(),{},5000); const j=await r.json(); if(j.ok && j.data){AUTH_STATE=j.data;}}catch(e){console.log('Falha ao carregar credenciais online',e);}}
+async function carregarHistoricoOnline(){try{const r=await fetchComTimeout(API_HIST+'?_='+Date.now(),{},5000); const j=await r.json(); if(j.ok && j.data){HIST_DASH=j.data;}}catch(e){console.log('Falha ao carregar histórico online',e);}}
 function saveSession(){try{const data={usuarioAtual,exp:Date.now()+60*60*1000}; localStorage.setItem(SESSION_KEY, JSON.stringify(data));}catch(e){}}
 function clearSession(){try{localStorage.removeItem(SESSION_KEY);}catch(e){}}
 function restoreSession(){try{const raw=localStorage.getItem(SESSION_KEY); if(!raw) return false; const data=JSON.parse(raw); if(!data || !data.usuarioAtual || !data.exp || Date.now()>data.exp){localStorage.removeItem(SESSION_KEY); return false;} usuarioAtual=data.usuarioAtual; return true;}catch(e){return false;}}
 function currentUserKey(){return usuarioAtual?.tipo==='master'?'MASTER':(usuarioAtual?.login || `${usuarioAtual?.nome||''}_${usuarioAtual?.filial||''}`)}
+async function fetchComTimeout(url, opts={}, timeoutMs=5000){
+  const ctrl = new AbortController();
+  const id = setTimeout(()=>ctrl.abort(), timeoutMs);
+  try{
+    const r = await fetch(url, {...opts, signal: ctrl.signal, cache:'no-store'});
+    clearTimeout(id);
+    return r;
+  }catch(e){
+    clearTimeout(id);
+    throw e;
+  }
+}
+
 
 const loginScreen=document.getElementById('loginScreen');
 const app=document.getElementById('app');
@@ -4973,7 +4770,6 @@ const masterTabs=document.getElementById('masterTabs');
 const mainFilters=document.getElementById('mainFilters');
 const listSection=document.getElementById('listSection');
 const metaSection=document.getElementById('metaSection');
-const servicesSection=document.getElementById('servicesSection');
 const logSection=document.getElementById('logSection');
 const detailScreen=document.getElementById('detailScreen');
 const avisosSection=document.getElementById('avisosSection');
@@ -5053,31 +4849,7 @@ function renderPiggyBank(perc){
 }
 function toast(msg, type='info'){const host=document.getElementById('toast'); const el=document.createElement('div'); el.className='toast-item'; el.innerHTML=`<img src="${LARANJITO}" alt="ok"><div><div style="font-weight:900">${type==='success'?'Tudo certo!':'Aviso'}</div><div class="small">${esc(msg)}</div></div>`; host.appendChild(el); setTimeout(()=>{el.remove();},4200)}
 function mascotCongrats(ent){const meta=calcMeta(ent);const b=getBonus(meta.cfg,meta.geral);if(!b) return;toast(`Parabéns, ${ent.type==='vendedor'?ent.nome:filialLabel(ent.filial)}! Meta em ${pct(meta.geral)}. ${b.text||''}`,'success')}
-function makeKpi(label,val,accent,sub='',extraClass='',mascote='',iconHtml=''){
-  const raw=String(label||'').trim();
-  const p=raw.split(' ');
-  const emoji=p.length>1?p[0]:'';
-  const txt=p.length>1?p.slice(1).join(' '):raw;
-  const icon = iconHtml ? iconHtml : (emoji?`<span class="kpi-emoji">${emoji}</span>`:'');
-  const masc = mascote ? `<img class="laranjito-card ${esc(mascote)}" src="${laranjitoSrc(mascote)}" alt="Laranjito ${esc(mascote)}" loading="lazy">` : '';
-  return `<div class="glass kpi ${extraClass||''} ${mascote?'kpi-laranjito':''}" style="--accent:${accent}">
-    <div class="label">${icon}<span class="kpi-label-text">${esc(txt)}</span></div>
-    <div class="value">${val}</div>
-    ${sub?`<div class="subline">${sub}</div>`:''}
-    ${masc}
-  </div>`;
-}
-
-const LARANJITO_IMG = {
-  triste: '/colaborador/mascote%20triste1.png',
-  preocupado: '/colaborador/mascote%20preocupado1.png',
-  feliz: '/colaborador/mascote%20feliz1.png'
-};
-function laranjitoSrc(status){
-  return LARANJITO_IMG[status] || LARANJITO_IMG.triste;
-}
-
-
+function makeKpi(label,val,accent,sub=''){return `<div class="glass kpi" style="--accent:${accent}"><div class="label">${label}</div><div class="value">${val}</div>${sub?`<div class="subline">${sub}</div>`:''}</div>`}
 function renderKPIs(){
   const grave=flattenFiliais().reduce((a,b)=>a+Number(b.grave_pend||0),0);
   const alerta=flattenFiliais().reduce((a,b)=>a+Number(b.alerta_pend||0),0);
@@ -5087,76 +4859,29 @@ function renderKPIs(){
   const hojeIso=new Date().toISOString().slice(0,10);
   const prevDate=salesDates.filter(d=>String(d)<String(hojeIso)).slice(-1)[0]||'';
   const prevEmpresa=(prevDate?(HIST_DASH?.sales_dates?.[prevDate]?.empresa||{}):{});
-  // ✅ Total de Serviços da tela inicial deve bater com o Controle de Meta do SGI.
-  // Fonte oficial do TOTAL: sales.servico_realizado_total, vindo da tela /metas/consulta.
-  // O relatório de serviços separado continua sendo usado apenas para detalhar por tipo
-  // (Ouro, FOB, Cupom Copa etc.), mas não substitui o total oficial.
-  const servicoRelatorioTotal = Number(SERVICOS_RELATORIO?.empresa?.real_total || 0);
-  const servicoRealizadoOficial = Number(sales.servico_realizado_total || 0);
-  const servicoAtingidoOficial = Number(sales.servico_meta_total||0)>0
-    ? (servicoRealizadoOficial / Number(sales.servico_meta_total||0) * 100)
-    : Number(sales.servico_atingido_total||0);
-
-  const prevServicoReal = Number(prevEmpresa.servico_realizado_total || 0);
-  const vendaDiaria=Math.max(0, Number(sales.venda_realizado_total||0)-Number(prevEmpresa.venda_realizado_total||0)) + Math.max(0, servicoRealizadoOficial-prevServicoReal);
-  try{
-    console.log('[MDL serviços]', {
-      total_controle_meta_sgi: Number(sales.servico_realizado_total||0),
-      total_relatorio_servicos_tipos: servicoRelatorioTotal,
-      usado_no_card_servicos: servicoRealizadoOficial
-    });
-  }catch(e){}
-
-  const markupBase=(Number(sales.venda_realizado_total||0)+servicoRealizadoOficial);
+  const vendaDiaria=Math.max(0, Number(sales.venda_realizado_total||0)-Number(prevEmpresa.venda_realizado_total||0)) + Math.max(0, Number(sales.servico_realizado_total||0)-Number(prevEmpresa.servico_realizado_total||0));
+  const markupBase=(Number(sales.venda_realizado_total||0)+Number(sales.servico_realizado_total||0));
   const markupCost=Number(RENT_EMPRESA?.custo_total||0);
   const markupTotal=markupCost>0?(markupBase/markupCost):0;
-  function statusLaranjitoVendaDiaria(v){
-    v=Number(v||0);
-    if(v < 20000) return 'triste';
-    if(v <= 25000) return 'preocupado';
-    return 'feliz';
-  }
-  function statusLaranjitoMarkup(v){
-    v=Number(v||0);
-    if(!v || v < 2.00) return 'triste';
-    if(v <= 2.14) return 'preocupado';
-    return 'feliz';
-  }
   const isViewer=!!usuarioAtual?.is_viewer;
   const isPrivileged=(usuarioAtual?.tipo==='master' || isViewer);
-
-  // Cards extras por tipo de serviço vindos do relatorio_servicos_mes_atual.json
-  function servicoIcone(nome){
-    const n=normSalesText(nome||'');
-    if(n.includes('OURO')) return '🪙';
-    if(n.includes('FOB')) return '🚚';
-    if(n.includes('COPA') || n.includes('CUPOM')) return '⚽';
-    return '🛠️';
-  }
-  const topServiceCards = Object.values((SERVICOS_RELATORIO && SERVICOS_RELATORIO.servicos) || {})
-    .slice()
-    .sort((a,b)=>Number(b.real_total||0)-Number(a.real_total||0))
-    .slice(0,4)
-    .map(s=>makeKpi(`${servicoIcone(s.servico)} ${String(s.servico||'Serviço').slice(0,30)}`, R(s.real_total||0), 'var(--blue-400)', `${Number(s.quantidade||0).toLocaleString('pt-BR')} item(ns)`));
-
   const cards=[
-    makeKpi('💰 Total pendente',R(TOTAL_P),'var(--red)','', 'card-cobranca'),
-    makeKpi('🏦 Total recebido',R(TOTAL_PG),'var(--green)','', 'card-cobranca'),
-    makeKpi('🚨 Grave',R(grave),'var(--red)','', 'card-cobranca'),
-    makeKpi('🟠 Alerta',R(alerta),'var(--orange)','', 'card-cobranca'),
+    makeKpi('💰 Total pendente',R(TOTAL_P),'var(--red)'),
+    makeKpi('🏦 Total recebido',R(TOTAL_PG),'var(--green)'),
+    makeKpi('🚨 Grave',R(grave),'var(--red)'),
+    makeKpi('🟠 Alerta',R(alerta),'var(--orange)'),
     makeKpi('📦 Mercantil realizado',R(sales.venda_realizado_total||0),'var(--amber-400)',`Meta ${R(sales.venda_meta_total||0)} · Atingido ${pct(sales.venda_atingido_total||0)}`),
     makeKpi('📈 Mercantil projetado',R(sales.venda_projetado||0),'var(--amber-500)',`Meta período ${R(sales.venda_meta_periodo||0)}`),
-    makeKpi('🛠️ Serviços realizado',R(servicoRealizadoOficial),'var(--blue)',`Meta ${R(sales.servico_meta_total||0)} · Atingido ${pct(servicoAtingidoOficial)} · controle de meta SGI`),
+    makeKpi('🛠️ Serviços realizado',R(sales.servico_realizado_total||0),'var(--blue)',`Meta ${R(sales.servico_meta_total||0)} · Atingido ${pct(sales.servico_atingido_total||0)}`),
     makeKpi('🧰 Serviços projetado',R(sales.servico_projetado||0),'var(--blue-400)',`Meta período ${R(sales.servico_meta_periodo||0)}`),
-    ...topServiceCards,
     makeKpi('🚚 Caminhão realizado',R(sales.caminhao_realizado_total||0),'var(--yellow)',`Meta ${R(sales.caminhao_meta_total||0)} · Atingido ${pct(sales.caminhao_atingido_total||0)}`),
     makeKpi('🛣️ Caminhão projetado',R(sales.caminhao_projetado||0),'var(--yellow-400)',`Meta período ${R(sales.caminhao_meta_periodo||0)}`),
-    (isPrivileged ? makeKpi('💵 Faturamento total',R((Number(sales.venda_realizado_total||0)+servicoRealizadoOficial)),'var(--green-400)','Mercantil + serviços realizado', 'card-financeiro') : ''),
-    (isPrivileged ? makeKpi('🕒 Venda diária',R(vendaDiaria),'var(--cyan-400)','Mercantil + serviços do dia', 'card-venda-dia', statusLaranjitoVendaDiaria(vendaDiaria)) : ''),
-    makeKpi('📊 Rentabilidade total', rentPct?`${rentPct.toFixed(2).replace('.',',')}%`:'Sem dado','var(--green-400)','Última linha do relatório de margem bruta por filial', 'card-financeiro'),
-    makeKpi('🧮 Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)', isViewer ? 'Índice mercantil + serviços / custo oculto' : `(Mercantil + serviços) / custo total ${R(markupCost||0)}`, 'card-financeiro', statusLaranjitoMarkup(markupTotal))
+    (isPrivileged ? makeKpi('💵 Faturamento total',R((Number(sales.venda_realizado_total||0)+Number(sales.servico_realizado_total||0))),'var(--green-400)','Mercantil + serviços realizado') : ''),
+    (isPrivileged ? makeKpi('🕒 Venda diária',R(vendaDiaria),'var(--cyan-400)','Mercantil + serviços do dia') : ''),
+    makeKpi('📊 Rentabilidade total', rentPct?`${rentPct.toFixed(2).replace('.',',')}%`:'Sem dado','var(--green-400)','Última linha do relatório de margem bruta por filial'),
+    makeKpi('🧮 Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)', isViewer ? 'Índice mercantil + serviços / custo oculto' : `(Mercantil + serviços) / custo total ${R(markupCost||0)}`)
   ];
-  document.getElementById('kpis').innerHTML=cards.join('') + `<div class="glass" style="grid-column:1/-1;padding:10px 14px;display:flex;align-items:center;justify-content:flex-start;min-height:46px"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div></div>`;
+  document.getElementById('kpis').innerHTML=cards.join('');
 }
 
 async function fetchJsonNoCache(url){
@@ -5164,41 +4889,6 @@ async function fetchJsonNoCache(url){
   if(!r.ok) throw new Error('HTTP '+r.status);
   return await r.json();
 }
-const DASHBOARD_UPDATED_AT_LABEL='12/05/2026 17:28:27';
-
-function formatUpdatedLabel(v){
-  try{
-    const s=String(v||'').trim();
-    if(!s) return '';
-    if(/^\d{2}\/\d{2}\/\d{4}[, ]+\d{2}:\d{2}:\d{2}$/.test(s)) return s.replace(',', '').replace(/\s+/g,' ').trim();
-    const d=new Date(s);
-    if(!isNaN(d.getTime())){
-      return d.toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo', hour12:false}).replace(',', '');
-    }
-    return s.replace(',', '').replace(/\s+/g,' ').trim();
-  }catch(_e){
-    return String(v||'').replace(',', '').trim();
-  }
-}
-function dashboardUpdatedLabel(){
-  return formatUpdatedLabel(window.__dashboardUpdatedAtLabel || DASHBOARD_UPDATED_AT_LABEL);
-}
-function latestUpdatedLabel(){
-  const aRaw = window.__dashboardUpdatedAtLabel || DASHBOARD_UPDATED_AT_LABEL || '';
-  const bRaw = window.__salesUpdatedAtLabel || '';
-  const a = formatUpdatedLabel(aRaw);
-  const b = formatUpdatedLabel(bRaw);
-  if(!a && !b) return '';
-  if(a && !b) return a;
-  if(b && !a) return b;
-  const da = new Date(aRaw);
-  const db = new Date(bRaw);
-  if(!isNaN(da.getTime()) && !isNaN(db.getTime())){
-    return db > da ? b : a;
-  }
-  return b || a;
-}
-
 function calcSalesEmpresaFromMetas(payload){
   const metas=((payload||{}).metas)||{};
   function totalOf(key){
@@ -5236,124 +4926,33 @@ function calcSalesEmpresaFromMetas(payload){
 async function pollSalesLive(){
   try{
     const ver=await fetchJsonNoCache('sales_version.json');
-    const stamp=String(ver?.updated_at_label||ver?.updated_at||'');
-    if(stamp){ window.__salesUpdatedAtLabel = stamp; }
-
-    // Sempre tenta atualizar os arquivos de vendas/serviços quando a página está aberta.
-    // Assim os cards aparecem mesmo quando o usuário entrou depois da última execução.
-    let metasWrap=null, margensWrap=null, servWrap=null;
-    try{ metasWrap=await fetchJsonNoCache('metas_vendas_mes_atual.json'); }catch(_e){}
-    try{ margensWrap=await fetchJsonNoCache('margens_brutas_mes_atual.json'); }catch(_e){}
-    try{ servWrap=await fetchJsonNoCache('relatorio_servicos_mes_atual.json'); }catch(_e){}
-
-    if(metasWrap) SALES_EMPRESA=calcSalesEmpresaFromMetas(metasWrap||{});
-    if(margensWrap) RENT_EMPRESA=((margensWrap||{}).empresa)||{};
-    if(servWrap) SERVICOS_RELATORIO=(servWrap||{});
-
-    if(stamp) window.__lastSalesVersion=stamp;
+    const stamp=String(ver?.updated_at||'');
+    if(!stamp) return;
+    if(window.__lastSalesVersion===undefined){window.__lastSalesVersion=stamp; return;}
+    if(window.__lastSalesVersion===stamp) return;
+    const metasWrap=await fetchJsonNoCache('metas_vendas_mes_atual.json');
+    const margensWrap=await fetchJsonNoCache('margens_brutas_mes_atual.json');
+    SALES_EMPRESA=calcSalesEmpresaFromMetas(metasWrap||{});
+    RENT_EMPRESA=((margensWrap||{}).empresa)||{};
+    window.__lastSalesVersion=stamp;
     if(typeof renderKPIs==='function' && document.getElementById('kpis')) renderKPIs();
-    if(typeof renderServicosTab==='function' && (!servicesSection.classList.contains('hidden') || usuarioAtual?.is_viewer)) renderServicosTab(!!usuarioAtual?.is_viewer);
-    if(!detailScreen.classList.contains('hidden') && currentDetailRef){
-      try{ openEntity(currentDetailRef); }catch(_e){}
-    }
   }catch(e){console.log('pollSalesLive',e)}
 }
 async function pollDashboardLiveReload(){
   try{
     const ver=await fetchJsonNoCache('dashboard_version.json');
-    const stamp=String(ver?.updated_at||ver?.updated_at_label||'');
-    if(stamp){
-      window.__dashboardUpdatedAtLabel = stamp;
-      if(typeof renderKPIs==='function' && document.getElementById('kpis')) renderKPIs();
-    }
+    const stamp=String(ver?.updated_at||'');
     if(!stamp) return;
     if(window.__lastDashboardVersion===undefined){window.__lastDashboardVersion=stamp; return;}
     if(window.__lastDashboardVersion!==stamp){ location.reload(); return; }
   }catch(e){console.log('pollDashboardLiveReload',e)}
 }
 
-
-function _srvSortedEntries(obj, key='real_total'){
-  return Object.values(obj||{}).slice().sort((a,b)=>Number(b?.[key]||0)-Number(a?.[key]||0));
-}
-function _srvMiniCard(title, value, subtitle=''){
-  return `<div class="glass panel" style="padding:14px 16px"><div class="mini" style="margin-bottom:8px">${esc(title)}</div><div class="big" style="font-size:28px;color:#f8fafc">${value}</div>${subtitle?`<div class="hint" style="margin-top:6px">${subtitle}</div>`:''}</div>`;
-}
-function _srvRankRows(rows, kind){
-  if(!rows.length) return `<div class="empty">Nenhum dado encontrado no relatório de serviços.</div>`;
-  return rows.map((r,idx)=>{
-    const label = kind==='servico' ? (r.servico||'-') : (kind==='filial' ? (r.label||r.filial||'-') : (r.label||r.nome||'-'));
-    const qtd = Number(r.quantidade||0);
-    const total = Number(r.real_total||0);
-    const details = kind==='vendedor' ? `${esc(r.filial||'')}` : `${qtd.toLocaleString('pt-BR')} item(ns)`;
-    return `<div class="log-row"><div><strong>${idx+1}. ${esc(label)}</strong><div class="small muted">${details}</div></div><div><strong>${R(total)}</strong><div class="small muted">Total</div></div></div>`;
-  }).join('');
-}
-function renderServicosTab(isViewer=false){
-  const data = SERVICOS_RELATORIO||{};
-  const empresa = data.empresa||{};
-  const tipos = _srvSortedEntries(data.servicos||{});
-  const filiais = _srvSortedEntries(data.filiais||{});
-  const vendedores = _srvSortedEntries(data.vendedores||{});
-
-  const totalServ = Number(empresa.real_total||0);
-  const totalQtd = Number(empresa.quantidade||0);
-  const totalLinhas = Number(empresa.linhas||0);
-  const tiposAtivos = tipos.length;
-
-  const topTipo = tipos[0]||{};
-  const topFil = filiais[0]||{};
-  const topVend = vendedores[0]||{};
-
-  const summary = `
-    <div class="kpis" style="margin-bottom:14px">
-      ${_srvMiniCard('🧰 Serviços no mês', R(totalServ), `${totalQtd.toLocaleString('pt-BR')} item(ns) · ${totalLinhas.toLocaleString('pt-BR')} linha(s)`)}
-      ${_srvMiniCard('🏷️ Tipos de serviço', String(tiposAtivos), topTipo.servico?`Maior: ${esc(topTipo.servico)} · ${R(topTipo.real_total||0)}`:'')}
-      ${_srvMiniCard('🏬 Melhor filial', topFil.label?esc(topFil.label):'—', topFil.real_total?`${R(topFil.real_total)} · ${Number(topFil.quantidade||0).toLocaleString('pt-BR')} item(ns)`:'')}
-      ${_srvMiniCard('👤 Melhor vendedor', topVend.label?esc(topVend.label):'—', topVend.real_total?`${R(topVend.real_total)} · ${Number(topVend.quantidade||0).toLocaleString('pt-BR')} item(ns)`:'')}
-    </div>`;
-
-  const tipoCards = tipos.length ? `
-    <div class="glass panel" style="margin-bottom:14px">
-      <div class="section-head"><div><h2>🛠️ Serviços por tipo</h2><div class="hint">Totais consolidados por serviço do relatório mensal. Este é o valor oficial usado no card Serviços realizado.</div></div></div>
-      <div class="grid-cards">${tipos.map(t=>`
-        <div class="glass card" style="padding:14px 16px">
-          <div class="title">${esc(t.servico||'-')}</div>
-          <div class="numbers" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
-            <div class="stat-box"><div class="mini">Quantidade</div><div class="big" style="font-size:18px">${Number(t.quantidade||0).toLocaleString('pt-BR')}</div></div>
-            <div class="stat-box"><div class="mini">Total</div><div class="big" style="font-size:18px;color:var(--green)">${R(t.real_total||0)}</div></div>
-          </div>
-          <div class="legend-inline"><span><i class="dot" style="background:#f59e0b"></i>${Number(t.linhas||0).toLocaleString('pt-BR')} lançamento(s)</span></div>
-        </div>`).join('')}</div>
-    </div>` : `<div class="empty">Nenhum serviço encontrado no relatório.</div>`;
-
-  const rankings = `
-    <div class="grid-2">
-      <div class="glass panel">
-        <div class="section-head"><div><h2>🏬 Ranking por filial</h2><div class="hint">Top filiais em serviços do mês.</div></div></div>
-        <div class="logs-list">${_srvRankRows(filiais.slice(0,20), 'filial')}</div>
-      </div>
-      <div class="glass panel">
-        <div class="section-head"><div><h2>👤 Ranking por vendedor</h2><div class="hint">Top vendedores em serviços do mês.</div></div></div>
-        <div class="logs-list">${_srvRankRows(vendedores.slice(0,20), 'vendedor')}</div>
-      </div>
-    </div>`;
-
-  const host = servicesSection;
-  if(!host) return;
-  host.innerHTML = summary + tipoCards + rankings;
-
-  if(isViewer){
-    host.classList.remove('hidden');
-  }
-}
-
-function setMainTab(tab){const isDiretor=usuarioAtual?.tipo==='master' && usuarioAtual?.roleLabel==='Diretor Comercial';if(isDiretor && ['cobrancas','senhas'].includes(tab)){tab='vendedores';}mainTab=tab;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden');const hiddenMain=['metas','servicos','cobrancas','avisos','senhas','historico'].includes(tab);listSection.classList.toggle('hidden',hiddenMain);metaSection.classList.toggle('hidden',tab!=='metas');servicesSection.classList.toggle('hidden',tab!=='servicos');logSection.classList.toggle('hidden',tab!=='cobrancas');avisosSection.classList.toggle('hidden',tab!=='avisos');senhasSection.classList.toggle('hidden',tab!=='senhas');histSection.classList.toggle('hidden',tab!=='historico');mainFilters.classList.toggle('hidden',hiddenMain);if(tab==='vendedores'||tab==='filiais'){renderFilters();renderList()} if(tab==='metas') renderMetasTab(); if(tab==='servicos') renderServicosTab(false); if(tab==='cobrancas') renderLogsTab(); if(tab==='avisos') renderAvisosTab(); if(tab==='senhas') renderSenhasTab(); if(tab==='historico') renderHistoricoTab();}
+function setMainTab(tab){const isDiretor=usuarioAtual?.tipo==='master' && usuarioAtual?.roleLabel==='Diretor Comercial';if(isDiretor && ['cobrancas','senhas'].includes(tab)){tab='vendedores';}mainTab=tab;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden');const hiddenMain=['metas','cobrancas','avisos','senhas','historico'].includes(tab);listSection.classList.toggle('hidden',hiddenMain);metaSection.classList.toggle('hidden',tab!=='metas');logSection.classList.toggle('hidden',tab!=='cobrancas');avisosSection.classList.toggle('hidden',tab!=='avisos');senhasSection.classList.toggle('hidden',tab!=='senhas');histSection.classList.toggle('hidden',tab!=='historico');mainFilters.classList.toggle('hidden',hiddenMain);if(tab==='vendedores'||tab==='filiais'){renderFilters();renderList()} if(tab==='metas') renderMetasTab(); if(tab==='cobrancas') renderLogsTab(); if(tab==='avisos') renderAvisosTab(); if(tab==='senhas') renderSenhasTab(); if(tab==='historico') renderHistoricoTab();}
 function renderFilters(){if(mainTab!=='vendedores'&&mainTab!=='filiais'){mainFilters.innerHTML='';return} let html=`<button class="pill ${filtroFilial==='TODAS'?'active':''}" onclick="setFiltroFilial('TODAS')">Todas</button>`; ORDEM.forEach(f=>{html+=`<button class="pill ${filtroFilial===f?'active':''}" onclick="setFiltroFilial('${f}')">${f}</button>`}); mainFilters.innerHTML=html;}
 function setFiltroFilial(f){
   filtroFilial=f;
   renderFilters();
-
   const detalheAberto = !detailScreen.classList.contains('hidden');
   if(detalheAberto){
     if(mainTab==='filiais'){
@@ -5378,55 +4977,13 @@ function renderGroupBars(entities){if(!entities.length) return `<div class="empt
 
 function renderNoChargeAlerts(){
   const hoje=(new Date()).toISOString().slice(0,10);
-  const totalPend=(obj)=>((obj?.grave||[]).length+(obj?.alerta||[]).length+(obj?.atencao||[]).length);
-  const doneHoje=(keys)=>(COB_LOGS||[]).filter(x=>{
-    const u=String(x.usuario||'').toLowerCase();
-    return keys.map(k=>String(k||'').toLowerCase()).includes(u) && String(x.server_time||'').slice(0,10)===hoje;
-  }).length;
-  const entries=[];
-
-  // Vendedores / colaboradores
-  flattenVendedores().forEach(v=>{
-    const pending=totalPend(CLIENTES_VEND[v.nome]||{});
-    const done=doneHoje([v.nome, v.login]);
-    if(pending>0 && done===0) entries.push({tipo:'Colaborador',nome:v.nome,filial:v.filial,pending,done});
-  });
-
-  // Filiais / gerentes
-  flattenFiliais().forEach(f=>{
-    const pending=totalPend(CLIENTES_FIL[f.filial]||{});
-    const done=doneHoje([f.nome, f.filial, filialLabel(f.filial)]);
-    if(pending>0 && done===0) entries.push({tipo:'Filial',nome:filialLabel(f.filial),filial:f.filial,pending,done});
-  });
-
-  // Crediaristas
-  crediaristaEntities().forEach(c=>{
-    const key=String(c.login||'').toLowerCase();
-    const pending=totalPend(CLIENTES_CREDIARISTA[key]||{});
-    const done=doneHoje([c.nome, c.login, c.filial]);
-    if(pending>0 && done===0) entries.push({tipo:'Crediarista',nome:c.nome,filial:c.filial,pending,done});
-  });
-
-  // Cobrança terceiro / Cobrança10
-  const t=thirdChargeEntity();
-  const pendingTer=totalPend(CLIENTES_TERCEIRO||{});
-  const doneTer=doneHoje([COBRANCA10_NOME, COBRANCA10_LOGIN, 'cobranca10']);
-  if(pendingTer>0 && doneTer===0) entries.push({tipo:'Cobrança',nome:COBRANCA10_NOME,filial:'FTER',pending:pendingTer,done:doneTer});
-
-  const uniq=[];
-  const seen=new Set();
-  entries.forEach(e=>{
-    const k=`${e.tipo}|${e.nome}|${e.filial}`;
-    if(!seen.has(k)){seen.add(k); uniq.push(e);}
-  });
-  uniq.sort((a,b)=>String(a.tipo).localeCompare(String(b.tipo),'pt-BR') || Number(b.pending||0)-Number(a.pending||0));
-  if(!uniq.length) return '';
-  return `<div class="glass panel" style="margin-bottom:16px;padding:14px 18px">
-    <div class="section-head" style="margin:0">
-      <div><h2 style="margin:0;font-size:18px">⏰ Sem cobranças hoje</h2><div class="hint">Todos os usuários/carteiras que ainda não registraram cobrança hoje: colaboradores, filiais, crediaristas e cobrança.</div></div>
-    </div>
-    <div class="sem-cobrancas-grid">${uniq.map(e=>`<div class="sem-cobranca-chip"><i class="dot" style="background:#ef4444"></i><div>${esc(e.nome)}<small>${esc(e.tipo)} ${e.filial?`· ${esc(e.filial)}`:''} · ${e.pending} clientes</small></div></div>`).join('')}</div>
-  </div>`;
+  const entries=flattenVendedores().map(v=>{
+    const pending=((CLIENTES_VEND[v.nome]?.grave||[]).length+(CLIENTES_VEND[v.nome]?.alerta||[]).length+(CLIENTES_VEND[v.nome]?.atencao||[]).length);
+    const done=(COB_LOGS||[]).filter(x=>String(x.usuario||'')===String(v.nome||'') && String(x.server_time||'').slice(0,10)===hoje).length;
+    return {...v,pending,done};
+  }).filter(x=>x.pending>0 && x.done===0);
+  if(!entries.length) return '';
+  return `<div class="glass panel" style="margin-bottom:16px;padding:14px 18px"><div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:18px">⏰ Sem cobranças hoje</h2><div class="hint">Aviso preventivo para o Master sobre quem ainda não cobrou hoje.</div></div></div><div class="legend-inline">${entries.slice(0,12).map(e=>`<span><i class="dot" style="background:#ef4444"></i>${esc(e.nome)} · ${e.pending} clientes</span>`).join('')}</div></div>`;
 }
 
 function renderHighlights(){const cobrarParts=[]; const vendasParts=[]; const filiais=flattenFiliais(); const vendedores=flattenVendedores(); const calcDelta=(e)=>{const delta=Number(e.var_pago_delta||0); const prev=Math.max(Math.abs(Number(e.pago||0)-delta),1); const perc=(Math.abs(delta)/prev)*100; return {delta,perc};}; const bestFil=filiais.slice().sort((a,b)=>Number(b.var_pago_delta||0)-Number(a.var_pago_delta||0))[0]; const bestVend=vendedores.slice().sort((a,b)=>Number(b.var_pago_delta||0)-Number(a.var_pago_delta||0))[0]; if(bestFil){const d=calcDelta(bestFil); cobrarParts.push(`<div class="glass panel highlight-pulse" style="margin-bottom:12px;padding:16px 18px"><div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:20px">🏆 Destaque da semana · Filial</h2><div class="hint">${esc(filialLabel(bestFil.filial))} recebeu ${R(d.delta)} a mais</div></div>${renderDeltaPill(d.delta,d.perc)}</div></div>`);} if(bestVend){const d=calcDelta(bestVend); cobrarParts.push(`<div class="glass panel highlight-pulse" style="margin-bottom:16px;padding:16px 18px"><div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:20px">🥇 Destaque da semana · Vendedor</h2><div class="hint">${esc(bestVend.nome)} recebeu ${R(d.delta)} a mais</div></div>${renderDeltaPill(d.delta,d.perc)}</div></div>`);} const achievers=currentEntities().filter(e=>calcMeta(e).geral>=50); if(achievers.length){cobrarParts.push(`<div class="glass panel" style="margin-bottom:16px;padding:14px 18px"><div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:18px">🔔 Metas atingidas</h2><div class="hint">${achievers.length} colaboradores/filiais com meta alcançada</div></div></div><div class="legend-inline">${achievers.slice(0,10).map(e=>`<span><i class="dot" style="background:#2f67f6"></i>${esc(e.nome)} ${pct(calcMeta(e).geral)}</span>`).join('')}</div></div>`);} cobrarParts.push(renderNoChargeAlerts());
@@ -5558,7 +5115,7 @@ function renderCrediaristaDetail(ent){
 
 function openEntity(ref){if(ref && (ref.type==='crediarista' || ref.is_crediarista)){return openCrediaristaPanel(ref.login||'', ref.filial||'', ref.nome||'')} const ent=findEntity(ref); if(!ent) return; currentDetailRef={type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''}; mascotCongrats(ent); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(ent.is_terceiro || ent.type==='terceiro'){return renderTerceiroDetail(ent)} if(ent.is_crediarista || ent.type==='crediarista'){return openCrediaristaPanel(ent.login||'', ent.filial||'', ent.nome||'')} const meta=calcMeta(ent); const bonus=getBonus(meta.cfg,meta.geral); const deltaVal=Number(ent.var_pago_delta||0); const prevBase=Math.max(Math.abs(Number(ent.pago||0)-deltaVal),1); const pctFallback=(Math.abs(deltaVal)/prevBase)*100; const compPerc=(ent.var_pago_perc==null || Math.abs(Number(ent.var_pago_perc||0))<0.01)?pctFallback:Math.abs(Number(ent.var_pago_perc||0)); detailScreen.innerHTML=`${usuarioAtual && usuarioAtual.tipo!=='master' ? renderInboxBanner() : ''}<div class="back-row"><button class="btn soft" onclick="backToMain()">⬅️ Voltar</button><div><h2>${ent.type==='filial'?filialLabel(ent.filial):esc(ent.nome)}</h2><div class="sub">${ent.type==='filial'?'Painel individual da filial':'Painel individual do vendedor'} · ${ent.filial}</div></div><div class="badge">${ent.type==='filial'?'🏬 Filial':'👤 Vendedor'}</div></div><div class="detail-top"><div class="glass panel"><h3>🎯 Meta do mês <span class="note">· Não acumulativo</span></h3><div class="mega-progress"><div class="ring-wrap">${renderPiggyBank(meta.geral)}</div><div><div class="metrics-grid"><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">% da filial</div><div class="v">${pct(ent.perc_filial||100)}</div></div><div class="metric"><div class="k">Configuração usada</div><div class="v">${Number(meta.cfg.grave_pct||0)}/${Number(meta.cfg.alerta_pct||0)}/${Number(meta.cfg.atencao_pct||0)}</div></div><div class="metric"><div class="k">Comparado a ontem</div><div class="v" style="font-size:16px">${renderDeltaPill(ent.var_pago_delta,compPerc)} <span>${R(Math.abs(Number(ent.var_pago_delta||0)))}</span></div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave alvo ${R(meta.grave.alvo)} · recebido ${R(meta.grave.rec)}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta alvo ${R(meta.alerta.alvo)} · recebido ${R(meta.alerta.rec)}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção alvo ${R(meta.atencao.alvo)} · recebido ${R(meta.atencao.rec)}</span></div></div></div><div class="meta-grid">${renderMetaBox('Grave','var(--red)',meta.grave)}${renderMetaBox('Alerta','var(--orange)',meta.alerta)}${renderMetaBox('Atenção','var(--yellow)',meta.atencao)}${renderMetaBox('Meta geral','var(--blue)',{perc:meta.geral,alvo:meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,rec:meta.grave.rec+meta.alerta.rec+meta.atencao.rec})}</div><div style="height:18px"></div><h3>🌊 Gráfico Geral Contas a Receber</h3>${renderSingleBars(ent,meta,true)}<div style="height:16px"></div><div class="glass panel"><h3>🏆 Bônus e premiações <span class="note">· Não acumulativo</span></h3>${renderBonusBox(meta.cfg,meta.geral)}</div></div><div>${renderSalesPanel(ent)}<div style="height:16px"></div>${renderCommissionSummary(ent)}<div style="height:16px"></div>${renderCampaignSummary(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span>clique para ${'abrir'}</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span>clique para ${'abrir'}</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
 function canVerComissionamento(){return usuarioAtual?.tipo==='master'}
-function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';if(!canVerComissionamento()) return '';
+function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';
   const c=calcCommissionSummary(ent);
   const totalLiberado = c.elegivelMercantil && c.elegivelServicos;
   const totalExibido = totalLiberado ? c.totalPrevisto : 0;
@@ -5575,64 +5132,6 @@ function renderMetaBox(title,color,obj){return `<div class="meta-card"><div clas
 function normSalesText(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9 ]/gi,' ').replace(/\s+/g,' ').trim().toUpperCase()}
 function salesCell(row, keys){for(const k of keys){if(row && row[k]!=null && String(row[k]).trim()!=='') return String(row[k]).trim()} return ''}
 function filialAliases(f){const raw=String(f||'').toUpperCase(); if(raw.includes('90')) return ['FILIAL 90/99','FILIAL 90','90/99','DEPOSITO MOVEIS','DEPOSITO']; const n=parseInt((raw.match(/\d+/)||[''])[0]||'0',10); if(!n) return [raw]; const two=String(n).padStart(2,'0'); return [`FILIAL ${two}`,`FILIAL ${n}`,`(${two})`,`(${n})`,`F${n}`]}
-
-function servicosKeyNome(nome){
-  return normSalesText(nome).replace(/\s+/g,' ').trim();
-}
-function servicosEntidade(ent){
-  const out=[];
-  const data=SERVICOS_RELATORIO||{};
-  if(!ent) return out;
-  if(ent.type==='filial'){
-    const item=(data.filiais||{})[ent.filial]||{};
-    Object.entries(item.servicos||{}).forEach(([servico,valor])=>{
-      out.push({servico, real_total:Number(valor||0), quantidade:0});
-    });
-  }else{
-    const vend=(data.vendedores||{});
-    const key1=`${servicosKeyNome(ent.nome)}_${ent.filial}`;
-    let item=vend[key1];
-    if(!item){
-      item=Object.values(vend).find(v=>{
-        return String(v?.filial||'').toUpperCase()===String(ent.filial||'').toUpperCase()
-          && servicosKeyNome(v?.nome||'')===servicosKeyNome(ent.nome||'');
-      });
-    }
-    Object.entries((item&&item.servicos)||{}).forEach(([servico,valor])=>{
-      out.push({servico, real_total:Number(valor||0), quantidade:0});
-    });
-  }
-  return out.sort((a,b)=>Number(b.real_total||0)-Number(a.real_total||0));
-}
-function renderServicosEntidade(ent){
-  const rows=servicosEntidade(ent).filter(x=>Number(x.real_total||0)>0);
-  if(!rows.length){
-    return `<div class="glass panel"><h3>🛠️ Serviços por tipo</h3><div class="empty">Nenhum serviço localizado para ${ent?.type==='filial'?'esta filial':'este vendedor'} no relatório mensal.</div></div>`;
-  }
-  const total=rows.reduce((a,b)=>a+Number(b.real_total||0),0);
-  return `<div class="glass panel"><div class="section-head" style="margin:0 0 10px"><div><h3 style="margin:0">🛠️ Serviços por tipo</h3><div class="hint">Relatório real de serviços do mês atual · total oficial ${R(total)}</div></div></div><div class="metrics-grid">${rows.slice(0,8).map(r=>`<div class="metric"><div class="k">${esc(String(r.servico||'Serviço').slice(0,34))}</div><div class="v" style="color:var(--blue-400);font-size:18px">${R(r.real_total||0)}</div></div>`).join('')}</div></div>`;
-}
-
-function servicosEntidadeTotal(ent){
-  return servicosEntidade(ent).reduce((acc,r)=>acc+Number(r.real_total||0),0);
-}
-function serviceOfficialOverride(ent,key,row){
-  if(!String(key||'').includes('servico')) return null;
-  const total=servicosEntidadeTotal(ent);
-  if(!(total>0)) return null;
-  const metaTotalStr=salesCell(row,['Meta (R$) Total','Meta(R$) Total']);
-  const metaPeriodoStr=salesCell(row,['Meta (R$) Período','Meta(R$) Período']);
-  const metaTotal=salesNum(metaTotalStr);
-  const metaPeriodo=salesNum(metaPeriodoStr);
-  return {
-    total: total,
-    realizado: R(total),
-    atingidoTotal: metaTotal>0 ? pct(total/metaTotal*100) : '0%',
-    atingidoPeriodo: metaPeriodo>0 ? pct(total/metaPeriodo*100) : '0%',
-    nota: 'relatório serviços'
-  };
-}
-
 function rowMatchesFilial(ent,row){const joined=normSalesText([salesCell(row,['Filial','Filial_2','Vendedor','Vendedor_2','Nome','Nome_2']),salesCell(row,['Subgrupo'])].join(' ')); return filialAliases(ent.filial).some(a=>joined.includes(normSalesText(a)))}
 function vendedorNomeAlvo(row,key){if(key==='venda_filial_vendedor_meta' || key==='servico_filial_vendedor_ouro_fob') return salesCell(row,['Vendedor_2','Nome_2','Nome','Vendedor']); return salesCell(row,['Vendedor','Vendedor_2','Nome','Nome_2'])}
 function fuzzyContainsAllTokens(target, query){const t=normSalesText(target); const q=normSalesText(query); const toks=q.split(' ').filter(x=>x && x.length>1); return toks.length ? toks.every(tok=>t.includes(tok)) : false}
@@ -5643,29 +5142,7 @@ function salesPercentClass(v){const n=parseFloat(String(v||'').replace('%','').r
 function salesNum(v){return parseFloat(String(v||'').replace('%','').replace(/\./g,'').replace(',','.'))||0}
 function renderSalesProgress(v){const n=Math.max(0,Math.min(160,salesNum(v))); return `<div class="sales-progress"><span style="width:${Math.min(n,100)}%"></span></div><div class="sales-progress-label">${String(v||'0%')}</div>`}
 function renderSalesMini(k,v,kind='',showMascot=false,wrap=false){const cls=[kind, wrap?'wrap':'']; if(kind==='atingido'||kind==='projetado') cls.push(salesPercentClass(v)); return `<div class="sales-mini ${cls.join(' ')}">${showMascot?`<img src="${LARANJITO}" class="laranjito-mini" alt="">`:''}<div class="k">${k}</div><div class="v">${v||'-'}</div>${(kind==='atingido')?renderSalesProgress(v):''}</div>`}
-function renderSalesRows(ent, key, label){
-  let rows=getSalesRows(ent,key);
-  if(!rows.length) return `<div class="sales-card"><h4>${label}</h4><div class="sales-empty">Sem dados desta meta para ${ent.type==='filial'?'esta filial':'este vendedor'}.</div></div>`;
-
-  // Para SERVIÇOS, o realizado oficial vem do relatório real de serviços por tipo.
-  // A meta do SGI permanece como alvo, mas os campos "Realizado" e "% atingido" passam a bater
-  // exatamente com o painel "Serviços por tipo" da mesma filial/vendedor.
-  if(String(key||'').includes('servico') && servicosEntidadeTotal(ent)>0){
-    rows=[rows[0]];
-  }
-
-  return `<div class="sales-card"><h4>${label}</h4><div class="sales-list">${rows.map(r=>{
-    const srv=serviceOfficialOverride(ent,key,r);
-    const ating=srv ? srv.atingidoTotal : salesCell(r,['Atingido Total']);
-    const atingPeriodo=srv ? srv.atingidoPeriodo : salesCell(r,['Atingido Período']);
-    const realizadoTotal=srv ? srv.realizado : esc(salesCell(r,['Realizado (R$) Total','Realizado(R$) Total']));
-    const realizadoPeriodo=srv ? srv.realizado : esc(salesCell(r,['Realizado (R$) Período','Realizado(R$) Período']));
-    const proj=salesCell(r,['Projetado (R$)','Projetado(R$)']);
-    const showMascot=(parseFloat(String(ating).replace('%','').replace(',','.'))||0)>=100;
-    const title=srv ? `${salesTitleForRow(ent,r,key)} · relatório serviços` : salesTitleForRow(ent,r,key);
-    return `<div class="sales-row"><div class="sales-row-title">${esc(title)}</div><div class="sales-metrics">${renderSalesMini('Meta total',esc(salesCell(r,['Meta (R$) Total','Meta(R$) Total'])),'meta')}${renderSalesMini('Realizado total',realizadoTotal,'realizado')}${renderSalesMini('Atingido total',esc(ating),'atingido',showMascot)}${renderSalesMini('Meta período',esc(salesCell(r,['Meta (R$) Período','Meta(R$) Período'])),'meta')}${renderSalesMini('Realizado período',realizadoPeriodo,'realizado')}${renderSalesMini('Atingido período',esc(atingPeriodo),'atingido')}${renderSalesMini('Projetado',esc(proj),'projetado',showMascot)}${renderSalesMini(ent.type==='filial'?'Filial':'Vendedor',esc(salesCell(r, ent.type==='filial'?['Filial']:['Vendedor_2','Vendedor'])),'realizado',false,true)}</div></div>`;
-  }).join('')}</div></div>`;
-}
+function renderSalesRows(ent, key, label){const rows=getSalesRows(ent,key); if(!rows.length) return `<div class="sales-card"><h4>${label}</h4><div class="sales-empty">Sem dados desta meta para ${ent.type==='filial'?'esta filial':'este vendedor'}.</div></div>`; return `<div class="sales-card"><h4>${label}</h4><div class="sales-list">${rows.map(r=>{const ating=salesCell(r,['Atingido Total']); const proj=salesCell(r,['Projetado (R$)','Projetado(R$)']); const showMascot=(parseFloat(String(ating).replace('%','').replace(',','.'))||0)>=100; return `<div class="sales-row"><div class="sales-row-title">${esc(salesTitleForRow(ent,r,key))}</div><div class="sales-metrics">${renderSalesMini('Meta total',esc(salesCell(r,['Meta (R$) Total','Meta(R$) Total'])),'meta')}${renderSalesMini('Realizado total',esc(salesCell(r,['Realizado (R$) Total','Realizado(R$) Total'])),'realizado')}${renderSalesMini('Atingido total',esc(ating),'atingido',showMascot)}${renderSalesMini('Meta período',esc(salesCell(r,['Meta (R$) Período','Meta(R$) Período'])),'meta')}${renderSalesMini('Realizado período',esc(salesCell(r,['Realizado (R$) Período','Realizado(R$) Período'])),'realizado')}${renderSalesMini('Atingido período',esc(salesCell(r,['Atingido Período'])),'atingido')}${renderSalesMini('Projetado',esc(proj),'projetado',showMascot)}${renderSalesMini(ent.type==='filial'?'Filial':'Vendedor',esc(salesCell(r, ent.type==='filial'?['Filial']:['Vendedor_2','Vendedor'])),'realizado',false,true)}</div></div>`}).join('')}</div></div>`}
 function summarizeSalesCard(ent){const keys=ent.type==='filial'?['venda_filial_meta']:['venda_filial_vendedor_meta']; let best=null; keys.forEach(k=>{getSalesRows(ent,k).forEach(r=>{const ating=salesCell(r,['Atingido Total']); const n=parseFloat(String(ating).replace('%','').replace(',','.'))||0; if(!best || n>best.n){best={row:r,key:k,n};}})}); return best}
 function renderSalesCardSummary(ent){const s=summarizeSalesCard(ent); if(!s) return ''; const row=s.row; const showMascot=s.n>=100; return `<div class="card-sales"><div class="card-sales-title">💲 Vendas e metas</div><div class="card-sales-grid">${renderSalesMini('Realizado total',esc(salesCell(row,['Realizado (R$) Total','Realizado(R$) Total'])),'realizado')}${renderSalesMini('Atingido total',esc(salesCell(row,['Atingido Total'])),'atingido',showMascot)}${renderSalesMini('Projetado',esc(salesCell(row,['Projetado (R$)','Projetado(R$)'])),'projetado',showMascot)}</div></div>`}
 const MASCOTE_FELIZ='https://moveisdolar.com.br/colaborador/mascote%20feliz1.png';
@@ -5677,7 +5154,7 @@ function renderDualMascotStatus(ent){const metaCob=calcMeta(ent).geral||0; if(en
 function salesCfgHeader(ent){const c=calcMeta(ent).cfg||{}; return ent.type==='filial' ? `mín. vendas ${Number(c.gerente_vendas_min_pct||0)}% · mín. serviços ${Number(c.gerente_servicos_min_pct||0)}%` : `mín. vendas ${Number(c.vendas_min_pct||0)}% · mín. serviços ${Number(c.servicos_min_pct||0)}%`}
 function rentabilidadeAtualPct(ent){return Number(ent?.rentabilidade_pct||0)}
 function renderRentabilidadeBadge(ent){const r=rentabilidadeAtualPct(ent); const txt=r?`${r.toFixed(2).replace('.',',')}%`:'Sem dado'; return `<div class="rent-badge"><span>📊 Rentabilidade atual</span><strong>${txt}</strong></div>`}
-function renderSalesPanel(ent){const blocks = ent.type==='filial' ? [['venda_filial_meta','📈 Venda · Meta Filial'],['servico_filial_ouro_fob','🛠️ Serviço · Ouro / FOB'],['venda_filial_subgrupo_20k','🚚 Venda · Caminhão 20K / Subgrupo']] : [['venda_filial_vendedor_meta','📈 Venda · Meta Vendedor'],['servico_filial_vendedor_ouro_fob','🛠️ Serviço · Ouro / FOB Vendedor'],['venda_vendedor_subgrupo_20k','🚚 Venda · Caminhão 20K / Subgrupo']]; return `<div class="glass panel sales-panel"><div class="section-head" style="margin:0 0 10px;align-items:flex-start"><div><h3 style="margin:0">💲 Vendas e metas <span class="sales-note">· SGI / mês atual</span></h3><div style="margin-top:8px">${renderRentabilidadeBadge(ent)}</div></div><div class="sales-note" style="text-align:right;max-width:280px">${salesCfgHeader(ent)}</div></div>${renderDualMascotStatus(ent)}<div class="sales-stack">${blocks.map(([k,t])=>renderSalesRows(ent,k,t)).join('')}</div><div style="height:14px"></div>${renderServicosEntidade(ent)}</div>`}
+function renderSalesPanel(ent){const blocks = ent.type==='filial' ? [['venda_filial_meta','📈 Venda · Meta Filial'],['servico_filial_ouro_fob','🛠️ Serviço · Ouro / FOB'],['venda_filial_subgrupo_20k','🚚 Venda · Caminhão 20K / Subgrupo']] : [['venda_filial_vendedor_meta','📈 Venda · Meta Vendedor'],['servico_filial_vendedor_ouro_fob','🛠️ Serviço · Ouro / FOB Vendedor'],['venda_vendedor_subgrupo_20k','🚚 Venda · Caminhão 20K / Subgrupo']]; return `<div class="glass panel sales-panel"><div class="section-head" style="margin:0 0 10px;align-items:flex-start"><div><h3 style="margin:0">💲 Vendas e metas <span class="sales-note">· SGI / mês atual</span></h3><div style="margin-top:8px">${renderRentabilidadeBadge(ent)}</div></div><div class="sales-note" style="text-align:right;max-width:280px">${salesCfgHeader(ent)}</div></div>${renderDualMascotStatus(ent)}<div class="sales-stack">${blocks.map(([k,t])=>renderSalesRows(ent,k,t)).join('')}</div></div>`}
 
 function salesMetricFromRow(row,key){if(!row) return 0; if(key==='venda_realizado') return salesNum(salesCell(row,['Realizado (R$) Total','Realizado(R$) Total'])); if(key==='servico_realizado') return salesNum(salesCell(row,['Realizado (R$) Total','Realizado(R$) Total'])); if(key==='venda_atingido') return salesNum(salesCell(row,['Atingido Total'])); if(key==='servico_atingido') return salesNum(salesCell(row,['Atingido Total'])); return 0}
 function bestLiveSalesEntity(entities,key){let best=null; entities.forEach(ent=>{const rows=getSalesRows(ent,key); rows.forEach(r=>{const val=salesMetricFromRow(r,key.includes('servico')?'servico_realizado':'venda_realizado'); if(!best || val>best.val) best={ent,row:r,val};})}); return best}
@@ -6027,7 +5504,7 @@ function renderCampaignSummary(ent){
   </div>`;
 }
 
-function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';const c=calcCommissionSummary(ent); const totalLiberado = c.elegivelMercantil && c.elegivelServicos; const totalExibido = totalLiberado ? c.totalPrevisto : 0; const moneyCell=(title,val,locked=false,extra='')=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''} ${extra}"><div class="k">${title}</div><div class="v">${R(val||0)}</div></div>`; const pctCell=(title,val,locked=false)=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''}"><div class="k">${title}</div><div class="v">${String(Number(val||0).toFixed(2)).replace('.',',')}%</div></div>`; return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,!c.rentUnlocked)}${moneyCell('Rentab 52,15%',c.rent52,!c.rentUnlocked)}${moneyCell('Rentab 55,50%',c.rent55,!c.rentUnlocked)}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo vendas ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)} · rentabilidades liberam ao bater 50% da meta de cobrança.</div></div>`}
+function renderCommissionSummary(ent){const c=calcCommissionSummary(ent); const totalLiberado = c.elegivelMercantil && c.elegivelServicos; const totalExibido = totalLiberado ? c.totalPrevisto : 0; const moneyCell=(title,val,locked=false,extra='')=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''} ${extra}"><div class="k">${title}</div><div class="v">${R(val||0)}</div></div>`; const pctCell=(title,val,locked=false)=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''}"><div class="k">${title}</div><div class="v">${String(Number(val||0).toFixed(2)).replace('.',',')}%</div></div>`; return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,!c.rentUnlocked)}${moneyCell('Rentab 52,15%',c.rent52,!c.rentUnlocked)}${moneyCell('Rentab 55,50%',c.rent55,!c.rentUnlocked)}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo vendas ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)} · rentabilidades liberam ao bater 50% da meta de cobrança.</div></div>`}
 function backToMain(){currentDetailRef=null; detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden')}
 function renderMetaBox(title,color,obj){return `<div class="meta-card"><div class="meta-title">${title}</div><div class="meta-main" style="color:${color}">${pct(obj.perc||0)}</div><div class="meta-sub">Alvo: ${R(obj.alvo||0)}</div><div class="meta-sub">Recebido: ${R(obj.rec||0)}</div></div>`}
 function renderBonusBox(cfg,geral){const achieved=(geral>=100&&cfg.bonus_100)?100:(geral>=85&&cfg.bonus_85)?85:(geral>=75&&cfg.bonus_75)?75:(geral>=50&&cfg.bonus_50)?50:0; const items=[[50,cfg.bonus_50||'-'],[75,cfg.bonus_75||'-'],[85,cfg.bonus_85||'-'],[100,cfg.bonus_100||'-']];return `<div class="bonus-box"><h4>Faixas configuradas</h4><div class="bonus-list">${items.map(([p,t])=>`<div class="bonus-item ${achieved===p?'active':''}" style="${achieved===p?'box-shadow:0 0 0 2px rgba(59,130,246,.18),0 0 26px rgba(59,130,246,.2);animation:liquid 1.6s ease-in-out infinite alternate':''}"><div class="left"><span>🎯</span><span>${p}%</span></div><div style="display:flex;align-items:center;gap:10px">${achieved===p?`<img src="${LARANJITO}" alt="laranjito" style="width:34px;height:34px;border-radius:10px;object-fit:cover">`:''}<span>${esc(t)}</span></div></div>`).join('')}</div></div>`}
@@ -6064,140 +5541,13 @@ function getCobradosHoje(ent){
   }
   return (COB_LOGS||[]).filter(x=>isTodayStr(x.server_time||x.data||'') && String(x.filial||'')===String(ent.filial||'') && (ent.type==='filial' || String(x.destino_nome||'')===String(ent.nome||'')));
 }
-
-const DEFAULT_COBRANCA_TEMPLATE = `Olá, {primeiro_nome} tudo bem?
-Aqui é da Lojas MDL - Móveis do Lar.
-Passando para lembrar que tem uma parcelinha vencida na data de {vencimento}, no valor de {valor}.
-Caso o pagamento já tenha sido realizado, por gentileza, desconsidere esta mensagem.
-Se precisar do boleto, chave PIX ou tiver qualquer dúvida, fico à disposição para ajudar.`;
-
-function cobrancaTemplateAtual(){
-  return String(CONFIG_META?.cobranca_msg_template || DEFAULT_COBRANCA_TEMPLATE);
-}
-function primeiroNomeClienteJs(nome){
-  const s=String(nome||'').trim();
-  return s ? s.split(/\s+/)[0] : 'Cliente';
-}
-function valorBR(v){
-  return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
-}
-function montarMensagemCobranca(reg){
-  let tpl=cobrancaTemplateAtual();
-  const dados={
-    primeiro_nome: primeiroNomeClienteJs(reg.cliente||reg.nome||''),
-    cliente: String(reg.cliente||reg.nome||''),
-    vencimento: String(reg.vencimento||''),
-    valor: valorBR(reg.pendente||0),
-    titulo: String(reg.titulo||''),
-    parcela: String(reg.parcela||''),
-    filial: String(reg.filial||''),
-    vendedor: String(reg.vendedor||''),
-    dias: String(reg.dias||'')
-  };
-  Object.entries(dados).forEach(([k,v])=>{
-    tpl=tpl.replaceAll(`{${k}}`, v);
-  });
-`;
-  }
-  return tpl;
-}
-function exemploMensagemCobranca(){
-  return montarMensagemCobranca({
-    cliente:'MARIA APARECIDA DA SILVA',
-    vencimento:'10/05/2026',
-    pendente:199.90,
-    titulo:'123456',
-    parcela:'03',
-    filial:'F1',
-    vendedor:'VENDEDOR EXEMPLO',
-    dias:25
-  });
-}
-function atualizarPreviewCobranca(){
-  const tpl=document.getElementById('cobMsgTemplate')?.value;
-  const oldTpl=CONFIG_META.cobranca_msg_template;
-  CONFIG_META.cobranca_msg_template=tpl || DEFAULT_COBRANCA_TEMPLATE;
-  const el=document.getElementById('cobMsgPreview');
-  if(el) el.textContent=exemploMensagemCobranca();
-  CONFIG_META.cobranca_msg_template=oldTpl;
-}
-async function salvarMensagemCobrancaGlobal(){
-  const msgEl=document.getElementById('cobMsgSaveStatus');
-  const tpl=String(document.getElementById('cobMsgTemplate')?.value||'').trim();
-  if(!tpl){
-    if(msgEl) msgEl.textContent='⚠️ A mensagem não pode ficar vazia.';
-    return;
-  }
-  CONFIG_META.cobranca_msg_template=tpl;
-  try{
-    const payload={global:CONFIG_META,individual:CONFIG_META_IND};
-    const resp=await fetch(API_CFG,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    const j=await resp.json();
-    if(j.ok){
-      await carregarConfigOnline();
-      if(msgEl) msgEl.textContent='✅ Mensagem global de cobrança salva online.';
-      toast('Mensagem de cobrança atualizada.','success');
-      renderLogsTab();
-    }else{
-      if(msgEl) msgEl.textContent='⚠️ Não consegui salvar online.';
-    }
-  }catch(e){
-    console.log('Erro ao salvar mensagem de cobrança',e);
-    if(msgEl) msgEl.textContent='⚠️ Falha ao salvar online.';
-  }
-}
-function restaurarMensagemCobrancaPadrao(){
-  const t=document.getElementById('cobMsgTemplate');
-  if(t) t.value=DEFAULT_COBRANCA_TEMPLATE;
-  atualizarPreviewCobranca();
-}
-
-function renderCobrancaConfigPanel(){
-  const tpl=esc(cobrancaTemplateAtual());
-  return `<div class="glass panel" style="margin-bottom:14px">
-    <div class="section-head" style="margin:0 0 10px">
-      <div>
-        <h2 style="margin:0">💬 Mensagem padrão de cobrança</h2>
-        <div class="hint">Configuração global usada ao abrir WhatsApp nos clientes. Os campos entre chaves são preenchidos automaticamente.</div>
-      </div>
-      <button class="btn primary" onclick="salvarMensagemCobrancaGlobal()">Salvar global</button>
-    </div>
-    <div class="cobranca-config-grid">
-      <div>
-        <div class="input-card">
-          <label>Texto da mensagem</label>
-          <textarea id="cobMsgTemplate" class="cobranca-template" oninput="atualizarPreviewCobranca()">${tpl}</textarea>
-        </div>
-        <div class="placeholder-list">
-          <code>{primeiro_nome}</code><code>{cliente}</code>
-          <code>{vencimento}</code><code>{valor}</code>
-          <code>{titulo}</code><code>{parcela}</code>
-          <code>{filial}</code><code>{vendedor}</code>
-        </div>
-        <div style="display:flex;gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap">
-          <button class="btn primary" onclick="salvarMensagemCobrancaGlobal()">Salvar global</button>
-          <button class="btn soft" onclick="restaurarMensagemCobrancaPadrao()">Restaurar padrão</button>
-          <span id="cobMsgSaveStatus" class="hint"></span>
-        </div>
-      </div>
-      <div>
-        <div class="input-card">
-          <label>Prévia com dados de exemplo</label>
-          <div id="cobMsgPreview" class="preview-whats">${esc(exemploMensagemCobranca())}</div>
-        </div>
-      </div>
-    </div>
-  </div>`;
-}
-
-
 function normalizarListaTelefones(contatos){let base=[]; if(Array.isArray(contatos)) base=contatos; else if(typeof contatos==='string') base=contatos.split(/[;,/|]+/); const out=[]; const seen=new Set(); base.forEach(item=>{const num=String(item||'').replace(/\D/g,''); if(num.length>=10){const finalNum=num.startsWith('55')?num:'55'+num; if(!seen.has(finalNum)){seen.add(finalNum); out.push(finalNum);}}}); return out}
 function matchCob(r){return COB_LOGS.some(x=>String(x.cliente||'')===String(r.cliente||r.nome||'') && String(x.titulo||'')===String(r.titulo||'') && String(x.parcela||'')===String(r.parcela||''))}
 function renderCobrancasEnt(ent){const src=getClientesEnt(ent); const cobradosHoje=getCobradosHoje(ent); const allHoje=[...(src.grave||[]),...(src.alerta||[]),...(src.atencao||[])].filter(r=>r.novo); const renderRows=(arr,showFaixa)=>!arr.length?'<div class="empty">Nada nesta aba.</div>':arr.slice(0,150).map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')} ${r.novo?'<span class="mini-chip" style="margin-left:6px;background:#eef7ff;color:#1e3a8a;border-color:#93c5fd">Novo hoje</span>':''} ${matchCob(r)?'<span class="mini-chip" style="margin-left:6px">Cobrado</span>':''}</div><div class="small muted">✍️ Avalista: ${esc((r.avalista && String(r.avalista).toLowerCase()!=='nan')?r.avalista:'Sem Aval')}</div>${(r.avalista && String(r.avalista).toLowerCase()!=='nan')?'<div class="small avalista-alert">⚠️ Atenção, lembre de cobrar o AVALISTA</div>':''}<div class="small muted">🔒 Restrição crédito: ${/sem restr/i.test(String(r.restricao||''))?`<span class="restr-ok">${esc(r.restricao||'Sem Restrição')}</span>`:esc(r.restricao||'Sem informação')}</div><div class="small muted">👤 ${esc(r.vendedor||'')}</div><div class="small muted">☎️ ${esc(Array.isArray(r.telefones)?r.telefones.join(', '):(r.contato||''))}</div></div><div><strong>${esc(r.titulo||'')}</strong><div class="small muted">Título</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${R(r.pendente||0)}</strong><div class="small muted">Pendente</div></div><div>${showFaixa?`<div class="small muted">${esc(r.faixa_label||'')}</div>`:''}<button class="btn wa" onclick='abrirWhats(${JSON.stringify(r)}, ${JSON.stringify({type:ent.type,filial:ent.filial,nome:ent.nome})})'>💬 WhatsApp</button></div></div></div>`).join(''); const faixas=['grave','alerta','atencao']; const tabs=`<div class="tabs" style="justify-content:flex-start;margin:0 0 12px"><button class="tab active" data-cobtab="geral" onclick="switchCobTab(this,'geral')">Todos</button><button class="tab" data-cobtab="novos" onclick="switchCobTab(this,'novos')">Novos Hoje</button><button class="tab" data-cobtab="cobrados" onclick="switchCobTab(this,'cobrados')">Cobrados Hoje</button></div>`; let geral=''; faixas.forEach(fx=>{const arr=(src[fx]||[]).map(r=>({...r,faixa_label:fx})); const label=fx==='grave'?'Grave':fx==='alerta'?'Alerta':'Atenção'; geral+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${arr.length} títulos · ${R(arr.reduce((a,b)=>a+Number(b.pendente||0),0))}</span></div><div class="tableish">${renderRows(arr,false)}</div></div>`}); const srcAll=[...(src.grave||[]),...(src.alerta||[]),...(src.atencao||[])]; const cobradosRows=(cobradosHoje||[]).map(x=>{const m=srcAll.find(r=>cobrancaRowKey(r)===cobrancaRowKey(x))||{}; return {cliente:x.cliente,titulo:x.titulo,parcela:x.parcela,vencimento:x.vencimento,pendente:x.pendente,vendedor:x.usuario||m.vendedor||'',dias:'',telefones:Array.isArray(m.telefones)&&m.telefones.length?m.telefones:[x.telefone],contato:m.contato||x.telefone,avalista:m.avalista||'',restricao:m.restricao||'',faixa_label:m.faixa||'',novo:false,pagamento:m.pagamento||'',lancamento:m.lancamento||''};}); return `${tabs}<div class="cob-pane" data-cobpane="geral">${geral}</div><div class="cob-pane hidden" data-cobpane="novos">${renderRows(allHoje.map(r=>({...r,faixa_label:r.faixa||''})),true)}</div><div class="cob-pane hidden" data-cobpane="cobrados">${renderRows(cobradosRows,true)}</div>`}
 function switchCobTab(btn,name){const box=btn.closest('.acc-body'); box.querySelectorAll('[data-cobtab]').forEach(b=>b.classList.toggle('active',b===btn)); box.querySelectorAll('[data-cobpane]').forEach(p=>p.classList.toggle('hidden',p.dataset.cobpane!==name));}
 function abrirWhats(reg,entRef){const nums=normalizarListaTelefones((reg.telefones&&reg.telefones.length)?reg.telefones:reg.contato); if(!nums.length){toast('Cliente sem telefone válido.'); return} phoneContext={reg,entRef}; if(nums.length===1){enviarWhats(nums[0]); return} const phoneList=document.getElementById('phoneList'); phoneList.innerHTML=nums.map(n=>`<button class="btn soft" style="width:100%" onclick="enviarWhats('${n}')">${n}</button>`).join(''); document.getElementById('phoneModal').classList.add('show')}
 function closePhoneModal(){document.getElementById('phoneModal').classList.remove('show'); phoneContext=null}
-function enviarWhats(numero){if(!phoneContext) return; const {reg,entRef}=phoneContext; const msg=montarMensagemCobranca(reg); window.open(`https://wa.me/${numero}?text=${encodeURIComponent(msg)}`,'_blank'); registrarCobrancaOnline(reg,entRef,numero); closePhoneModal()}
+function enviarWhats(numero){if(!phoneContext) return; const {reg,entRef}=phoneContext; const msg=reg.mensagem_whatsapp||`Olá, ${String(reg.cliente||reg.nome||'').split(' ')[0]} tudo bem?`; window.open(`https://wa.me/${numero}?text=${encodeURIComponent(msg)}`,'_blank'); registrarCobrancaOnline(reg,entRef,numero); closePhoneModal()}
 async function registrarCobrancaOnline(r,entRef,numero){
   // Para crediarista usa o login como usuario para que getCobradosHoje() funcione corretamente
   const usuarioLog = (entRef.type==='crediarista'||entRef.is_crediarista)
@@ -6225,10 +5575,10 @@ async function registrarCobrancaOnline(r,entRef,numero){
     } else toast('Não consegui gravar a cobrança online.');
   }catch(e){toast('Falha ao salvar cobrança online.');}
 }
-async function carregarCobrancasOnline(){try{const r=await fetch(API_COB+'?_='+Date.now()); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} COB_LOGS=(j.ok&&Array.isArray(j.data))?j.data:[]; if(!j.ok && txt) console.log('cobrancas_api retorno:', txt);}catch(e){console.log(e); COB_LOGS=[]}}
+async function carregarCobrancasOnline(){try{const r=await fetchComTimeout(API_COB+'?_='+Date.now(),{},5000); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} COB_LOGS=(j.ok&&Array.isArray(j.data))?j.data:[]; if(!j.ok && txt) console.log('cobrancas_api retorno:', txt);}catch(e){console.log(e); COB_LOGS=[]}}
 async function removerCobranca(id,cliente='',titulo='',parcela=''){if(!confirm('Remover esta cobrança do histórico?')) return; try{const r=await fetch(API_COB,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete',id,cliente,titulo,parcela})}); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} if(j.ok){toast('Cobrança removida.','success'); await carregarCobrancasOnline(); renderLogsTab(); renderList(); if(currentDetailRef) openEntity(currentDetailRef);}else{console.log('Falha remover cobrança:', txt); toast('Não consegui remover.')}}catch(e){console.log(e); toast('Falha ao remover cobrança.')}}
 function toggleAcc(el){el.parentElement.classList.toggle('open')}
-async function carregarConfigOnline(){try{const r=await fetch(API_CFG+'?_='+Date.now()); const j=await r.json(); if(j.ok && j.data){CONFIG_META={...CONFIG_META,...(j.data.global||{})}; const ind=(j.data.individual && typeof j.data.individual==='object' && !Array.isArray(j.data.individual))?j.data.individual:{}; CONFIG_META_IND=ind;}}catch(e){console.log('Falha ao carregar config meta',e);}}
+async function carregarConfigOnline(){try{const r=await fetchComTimeout(API_CFG+'?_='+Date.now(),{},5000); const j=await r.json(); if(j.ok && j.data){CONFIG_META={...CONFIG_META,...(j.data.global||{})}; const ind=(j.data.individual && typeof j.data.individual==='object' && !Array.isArray(j.data.individual))?j.data.individual:{}; CONFIG_META_IND=ind;}}catch(e){console.log('Falha ao carregar config meta',e);}}
 function optionTargets(){let opts=''; flattenFiliais().forEach(f=>{opts+=`<option value="FILIAL::${f.filial}">🏬 ${filialLabel(f.filial)}</option>`}); opts+=`<option value="VEND::${COBRANCA10_NOME}_FTER">🤝 ${COBRANCA10_NOME} (Cobranças Terceiro)</option>`; crediaristaEntities().forEach(c=>{opts+=`<option value="VEND::${c.nome}_${c.filial}">🧾 ${c.nome} (${c.filial})</option>`}); flattenVendedores().forEach(v=>{opts+=`<option value="VEND::${v.nome}_${v.filial}">👤 ${v.nome} (${v.filial})</option>`}); return opts}
 function fillMetaForm(mode,val){const cfg=mode==='global'?{...CONFIG_META}:mergedMetaConfig(metaAliasesFromRaw(val)); ['grave_pct','alerta_pct','atencao_pct','peso_grave','peso_alerta','peso_atencao','bonus_50','bonus_75','bonus_85','bonus_100','vendas_min_pct','servicos_min_pct','gerente_vendas_min_pct','gerente_servicos_min_pct','cobranca_global_rateio_pct'].forEach(k=>{const el=document.getElementById('cfg_'+k); if(el) el.value=cfg[k]??''}); renderCommissionPanel(cfg)}
 function canonicalMetaLabelFromKey(k){
@@ -6292,7 +5642,7 @@ async function removerMetaIndividual(){
     if(j.ok){await carregarConfigOnline(); renderMetasTab(); const restoreMsg=document.getElementById('metaSaveMsg'); if(restoreMsg) restoreMsg.textContent='✅ Configuração individual removida.';}
   }catch(e){console.log('Erro ao remover meta individual',e); if(msgEl) msgEl.textContent='⚠️ Não consegui remover online.';}
 }
-function renderLogsTab(){const cfgPanel=renderCobrancaConfigPanel(); const filOpts=['<option value="">Todas as filiais</option>',...ORDEM.map(f=>`<option value="${f}">${f}</option>`)].join(''); const vendOpts=['<option value="">Todos os usuários</option>',...Array.from(new Set(COB_LOGS.map(x=>x.usuario).filter(Boolean))).sort().map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)].join(''); logSection.innerHTML=cfgPanel+`<div class="section-head"><div><h2>🧾 Histórico de cobranças</h2><div class="hint">Filtre por data, usuário ou filial. Também é possível remover lançamentos indevidos.</div></div></div><div class="glass panel"><div class="search-row"><div class="input-card"><label>Buscar cliente/título</label><input id="logQ" placeholder="Nome, título, parcela"></div><div class="input-card"><label>Data inicial</label><input id="logDe" type="date"></div><div class="input-card"><label>Data final</label><input id="logAte" type="date"></div><div class="input-card"><label>Filial</label><select id="logFil">${filOpts}</select></div></div><div class="search-row" style="margin-top:10px"><div class="input-card"><label>Usuário</label><select id="logVend">${vendOpts}</select></div><div style="display:flex;align-items:end;gap:10px"><button class="btn primary" onclick="applyLogFilter()">Filtrar</button><button class="btn soft" onclick="clearLogFilter()">Limpar</button></div></div><div id="logsList" class="logs-list"></div></div>`; applyLogFilter()}
+function renderLogsTab(){const filOpts=['<option value="">Todas as filiais</option>',...ORDEM.map(f=>`<option value="${f}">${f}</option>`)].join(''); const vendOpts=['<option value="">Todos os usuários</option>',...Array.from(new Set(COB_LOGS.map(x=>x.usuario).filter(Boolean))).sort().map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)].join(''); logSection.innerHTML=`<div class="section-head"><div><h2>🧾 Histórico de cobranças</h2><div class="hint">Filtre por data, usuário ou filial. Também é possível remover lançamentos indevidos.</div></div></div><div class="glass panel"><div class="search-row"><div class="input-card"><label>Buscar cliente/título</label><input id="logQ" placeholder="Nome, título, parcela"></div><div class="input-card"><label>Data inicial</label><input id="logDe" type="date"></div><div class="input-card"><label>Data final</label><input id="logAte" type="date"></div><div class="input-card"><label>Filial</label><select id="logFil">${filOpts}</select></div></div><div class="search-row" style="margin-top:10px"><div class="input-card"><label>Usuário</label><select id="logVend">${vendOpts}</select></div><div style="display:flex;align-items:end;gap:10px"><button class="btn primary" onclick="applyLogFilter()">Filtrar</button><button class="btn soft" onclick="clearLogFilter()">Limpar</button></div></div><div id="logsList" class="logs-list"></div></div>`; applyLogFilter()}
 function parseDateBR(s){if(!s) return null; const v=String(s).trim(); let m=v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); if(m){const d=new Date(Number(m[3]), Number(m[2])-1, Number(m[1])); return isNaN(d)?null:d} const d=new Date(v); return isNaN(d)?null:d}
 function parseDate(s){if(!s) return null; const d=new Date(s); return isNaN(d)?null:d}
 function applyLogFilter(){const q=(document.getElementById('logQ')?.value||'').toLowerCase(); const de=parseDate(document.getElementById('logDe')?.value); const ate=parseDate(document.getElementById('logAte')?.value); const fil=document.getElementById('logFil')?.value||''; const vend=document.getElementById('logVend')?.value||''; let arr=[...COB_LOGS].reverse(); arr=arr.filter(x=>{const txt=`${x.cliente||''} ${x.titulo||''} ${x.parcela||''}`.toLowerCase(); const dt=parseDate(x.server_time||x.data||''); if(q && !txt.includes(q)) return false; if(fil && String(x.filial||'')!==fil) return false; if(vend && String(x.usuario||'')!==vend) return false; if(de && (!dt || dt<de)) return false; if(ate){const end=new Date(ate); end.setHours(23,59,59,999); if(!dt || dt>end) return false;} return true}); _logFiltered=arr; const host=document.getElementById('logsList'); if(!host) return; host.innerHTML=arr.length?arr.map((x,i)=>`<div class="log-row"><div><div style="font-weight:900">${esc(x.cliente||'')}</div><div class="small muted">${esc(x.titulo||'')} · Parcela ${esc(x.parcela||'')}</div></div><div><strong>${R(x.pendente||0)}</strong><div class="small muted">${esc(x.filial||'')} · ${esc(x.usuario||'')}</div></div><div><strong>${esc(x.telefone||'')}</strong><div class="small muted">Telefone</div></div><div><strong>${esc((x.server_time||'').replace('T',' ').slice(0,16))}</strong><div class="small muted">Data</div></div><div><button class="btn danger" onclick="removerCobrancaIdx(${i})">Remover</button></div></div>`).join(''):'<div class="empty">Nenhuma cobrança encontrada para esse filtro.</div>'}
@@ -6328,7 +5678,7 @@ function isReadMsg(m){
   const readBy=Array.isArray(m.read_by)?m.read_by:[];
   return readBy.includes(currentUserKey());
 }
-async function carregarMsgsOnline(){try{const r=await fetch(API_MSG+'?_='+Date.now()); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} MSGS=(j.ok&&Array.isArray(j.data))?j.data:[]; if(!j.ok && txt) console.log('mensagens_api retorno:', txt);}catch(e){console.log(e); MSGS=[]} refreshBell()}
+async function carregarMsgsOnline(){try{const r=await fetchComTimeout(API_MSG+'?_='+Date.now(),{},5000); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} MSGS=(j.ok&&Array.isArray(j.data))?j.data:[]; if(!j.ok && txt) console.log('mensagens_api retorno:', txt);}catch(e){console.log(e); MSGS=[]} refreshBell()}
 function refreshBell(){const count=(MSGS||[]).filter(m=>msgMatchesUser(m) && !m.hidden_on_master && !isExpiredCampaign(m) && !isReadMsg(m) && !isCampaign(m)).length; const bell=document.getElementById('bellCount'); if(bell) bell.textContent=count;}
 function renderMsgCard(m, showRemove=false, showClear=false, compact=false){
   let media = '';
@@ -6382,52 +5732,7 @@ async function marcarMsgLida(id){
 function targetOptionsMsg(){
   let o='<option value="all|ALL">Todos</option>';
   ORDEM.forEach(f=>o+=`<option value="filial|${f}">Filial ${f}</option>`);
-
-  const added = new Set();
-
-  const addUserOpt = (value, label)=>{
-    const v = String(value||'').trim();
-    const l = String(label||'').trim();
-    if(!v || !l) return;
-    const key = `${v}__${l}`.toLowerCase();
-    if(added.has(key)) return;
-    added.add(key);
-    o += `<option value="user|${esc(v)}">${esc(l)}</option>`;
-  };
-
-  // vendedores normais
-  flattenVendedores().forEach(v=>{
-    addUserOpt(`${v.nome}_${v.filial}`, `${v.nome} (${v.filial})`);
-  });
-
-  // usuários especiais das credenciais online
-  const users = Object.values((AUTH_STATE && AUTH_STATE.users) || {});
-  users.forEach(u=>{
-    const login = String((u && u.login) || '').trim();
-    const nome = String((u && u.nome) || '').trim();
-    const filial = String((u && u.filial) || '').trim();
-
-    if(u && u.is_viewer){
-      addUserOpt(login || 'painel', nome || 'Painel');
-      return;
-    }
-    if(login === 'master' || login === 'diretorcomercial') return;
-
-    if((u && u.is_crediarista) || (u && u.is_terceiro) || (u && u.only_cobranca)){
-      addUserOpt(login || nome, filial ? `${nome} (${filial})` : nome);
-      return;
-    }
-
-    if(login && nome){
-      addUserOpt(login, filial ? `${nome} (${filial})` : nome);
-    }
-  });
-
-  if(AUTH_STATE && AUTH_STATE.director){
-    addUserOpt('diretorcomercial', (AUTH_STATE.director && AUTH_STATE.director.nome) || 'Diretor Comercial');
-  }
-  addUserOpt('master', 'Master');
-
+  flattenVendedores().forEach(v=>o+=`<option value="user|${v.nome}_${v.filial}">${v.nome} (${v.filial})</option>`);
   return o;
 }
 function renderSenhaCard(u, isDirector=false){const key=isDirector?'diretorcomercial':u.login; const pend=(AUTH_STATE?.password_reset_requests||[]).filter(r=>String(r.login||'').toLowerCase()===String(key).toLowerCase() && String(r.status||'pendente')==='pendente').length; return `<div class="glass card" style="cursor:default"><div class="title" style="min-height:auto">${esc(isDirector?'Diretor Comercial':u.nome)} ${!isDirector?`(${u.filial||''})`:''}</div><div class="legend-inline"><span><i class="dot" style="background:${u.must_change_password?'#f59e0b':'#22c55e'}"></i>${u.must_change_password?'Precisa trocar senha':'Senha ativa'}</span>${pend?`<span><i class="dot" style="background:#ef4444"></i>${pend} solicitação(ões)</span>`:''}</div><div class="form-grid bonus" style="grid-template-columns:1.1fr .9fr;margin-top:12px"><div class="input-card"><label>Nova senha para ${esc(key)}</label><input id="pwd_${key}" placeholder="Digite a nova senha"></div><div class="input-card"><label>Ações</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="adminSalvarSenha('${key}')">💾 Salvar senha</button><button class="btn soft" type="button" onclick="adminMarcarTroca('${key}')">🔁 Exigir troca</button></div></div></div>${pend?`<div class="note" style="margin-top:10px">Solicitação pendente de recuperação. <button class="btn soft" style="margin-left:8px" onclick="adminResolverReset('${key}')">Resolver solicitação</button></div>`:''}<div id="pwd_msg_${key}" class="note" style="margin-top:8px"></div></div>`}
@@ -6581,32 +5886,122 @@ function openRecuperarSenha(){document.getElementById('recLogin').value=document
 function closeRecover(){document.getElementById('recoverModal').classList.remove('show')}
 async function enviarRecuperacaoSenha(){const login=(document.getElementById('recLogin').value||'').trim().toLowerCase(); const obs=(document.getElementById('recObs').value||'').trim(); const box=document.getElementById('recMsg'); if(!login){box.textContent='Informe o usuário.'; return;} try{const fd=new FormData(); fd.append('action','request_reset'); fd.append('login',login); fd.append('obs',obs); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); box.textContent=j.ok?'✅ Solicitação enviada ao Master.':'⚠️ Não consegui enviar a solicitação.';}catch(e){box.textContent='⚠️ Não consegui enviar a solicitação.';}}
 async function salvarPrimeiroAcesso(){const login=(document.getElementById('faLogin').value||'').trim().toLowerCase(); const atual=(document.getElementById('faCurrentPass').value||'').trim(); const nova=(document.getElementById('faNewPass').value||'').trim(); const nova2=(document.getElementById('faNewPass2').value||'').trim(); const box=document.getElementById('faMsg'); box.textContent=''; if(!login||!atual||!nova||!nova2){box.textContent='Preencha todos os campos.'; return;} if(nova.length<4){box.textContent='A nova senha deve ter pelo menos 4 caracteres.'; return;} if(nova!==nova2){box.textContent='A confirmação da senha não confere.'; return;} const auth=getAuthUser(login); if(!auth || String(auth.password)!==atual){box.textContent='Usuário ou senha atual inválidos.'; return;} try{const fd=new FormData(); fd.append('action','change_password'); fd.append('login',login); fd.append('current_password',atual); fd.append('new_password',nova); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); box.textContent=j.ok?'✅ Senha alterada com sucesso. Entre com a nova senha.':'⚠️ Não consegui alterar a senha.'; if(j.ok){await carregarCredenciaisOnline(); document.getElementById('loginPass').value=''; setTimeout(()=>{closeFirstAccess();},700);}}catch(e){box.textContent='⚠️ Não consegui alterar a senha.';}}
-async function fazerLogin(){const u=(document.getElementById('loginUser').value||'').trim().toLowerCase(); const s=(document.getElementById('loginPass').value||'').trim(); const msg=document.getElementById('loginMsg'); msg.textContent=''; if(!u || !s){msg.textContent='Informe usuário e senha.'; return;} await carregarCredenciaisOnline(); if(u===LOGIN_MASTER.toLowerCase() && s===SENHA_MASTER){usuarioAtual={tipo:'master',nome:'Master',roleLabel:'Master'}; saveSession(); return abrirApp()} if(u===LOGIN_DIRETOR.toLowerCase()){const authDir=getAuthUser(u); const senhaDir=authDir?.password || SENHA_DIRETOR; if(String(senhaDir)===s){ if(authDir?.must_change_password){ msg.textContent='Primeiro acesso do Diretor Comercial: defina uma nova senha.'; return openPrimeiroAcesso(u);} usuarioAtual={tipo:'master',nome:'Diretor Comercial',roleLabel:'Diretor Comercial'}; saveSession(); return abrirApp(); }} const auth=getAuthUser(u); if(CREDS[u] && auth && String(auth.password)===s){ if(auth.must_change_password){ msg.textContent='Primeiro acesso: defina sua nova senha.'; return openPrimeiroAcesso(u);} usuarioAtual={tipo:'user',login:u,...CREDS[u]}; saveSession(); return abrirApp()} msg.textContent='Login ou senha inválidos.'}
-async function abrirApp(){await carregarCredenciaisOnline(); await carregarConfigOnline(); await carregarHistoricoOnline(); await carregarCobrancasOnline(); await carregarMsgsOnline(); loginScreen.classList.add('hidden'); app.classList.remove('hidden'); if(usuarioAtual.tipo==='master'){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); const isDiretor=usuarioAtual?.roleLabel==='Diretor Comercial'; userBadge.textContent=isDiretor?'👑 Diretor Comercial':'👑 Master'; masterTabs.classList.remove('hidden'); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{const t=btn.dataset.tab; btn.classList.toggle('hidden', isDiretor && ['cobrancas','senhas'].includes(t));}); setMainTab('vendedores')} else if(usuarioAtual.is_viewer){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); userBadge.textContent='📺 Painel'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); listSection.classList.add('hidden'); metaSection.classList.add('hidden'); logSection.classList.add('hidden'); avisosSection.classList.add('hidden'); senhasSection.classList.add('hidden'); histSection.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden');} else {document.getElementById('kpis').classList.add('hidden'); userBadge.textContent=usuarioAtual.is_terceiro?`🤝 ${usuarioAtual.nome}`:(usuarioAtual.is_crediarista?`🧾 ${usuarioAtual.nome}`:(usuarioAtual.is_gerente?`🏬 ${usuarioAtual.filial}`:`👤 ${usuarioAtual.nome}`)); masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(usuarioAtual.is_terceiro){openThirdChargePanel()} else if(usuarioAtual.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login}) }}
+async function fazerLogin(){
+  const u=(document.getElementById('loginUser').value||'').trim().toLowerCase();
+  const s=(document.getElementById('loginPass').value||'').trim();
+  const msg=document.getElementById('loginMsg');
+  if(msg) msg.textContent='';
+  if(!u || !s){if(msg) msg.textContent='Informe usuário e senha.'; return;}
+  try{
+    if(msg) msg.textContent='Entrando...';
+    await carregarCredenciaisOnline();
+
+    if(u===LOGIN_MASTER.toLowerCase() && s===SENHA_MASTER){
+      usuarioAtual={tipo:'master',nome:'Master',roleLabel:'Master'};
+      saveSession();
+      if(msg) msg.textContent='';
+      return abrirApp();
+    }
+
+    if(u===LOGIN_DIRETOR.toLowerCase()){
+      const authDir=getAuthUser(u);
+      const senhaDir=authDir?.password || SENHA_DIRETOR;
+      if(String(senhaDir)===s){
+        if(authDir?.must_change_password){
+          if(msg) msg.textContent='Primeiro acesso do Diretor Comercial: defina uma nova senha.';
+          return openPrimeiroAcesso(u);
+        }
+        usuarioAtual={tipo:'master',nome:'Diretor Comercial',roleLabel:'Diretor Comercial'};
+        saveSession();
+        if(msg) msg.textContent='';
+        return abrirApp();
+      }
+    }
+
+    const auth=getAuthUser(u);
+    if(CREDS[u] && auth && String(auth.password)===s){
+      if(auth.must_change_password){
+        if(msg) msg.textContent='Primeiro acesso: defina sua nova senha.';
+        return openPrimeiroAcesso(u);
+      }
+      usuarioAtual={tipo:'user',login:u,...CREDS[u]};
+      saveSession();
+      if(msg) msg.textContent='';
+      return abrirApp();
+    }
+
+    if(msg) msg.textContent='Login ou senha inválidos.';
+  }catch(e){
+    console.error('Erro no login:', e);
+    if(msg) msg.textContent='Erro ao entrar. Recarregue a página e tente novamente.';
+  }
+}
+async function abrirApp(){
+  try{
+    loginScreen.classList.add('hidden');
+    app.classList.remove('hidden');
+
+    if(usuarioAtual.tipo==='master'){
+      document.getElementById('kpis').classList.remove('hidden');
+      renderKPIs();
+      const isDiretor=usuarioAtual?.roleLabel==='Diretor Comercial';
+      userBadge.textContent=isDiretor?'👑 Diretor Comercial':'👑 Master';
+      masterTabs.classList.remove('hidden');
+      document.querySelectorAll('#masterTabs .tab').forEach(btn=>{
+        const t=btn.dataset.tab;
+        btn.classList.toggle('hidden', isDiretor && ['cobrancas','senhas'].includes(t));
+      });
+      setMainTab('vendedores');
+    } else if(usuarioAtual.is_viewer){
+      document.getElementById('kpis').classList.remove('hidden');
+      renderKPIs();
+      userBadge.textContent='📺 Painel';
+      masterTabs.classList.add('hidden');
+      mainFilters.classList.add('hidden');
+      listSection.classList.add('hidden');
+      metaSection.classList.add('hidden');
+      logSection.classList.add('hidden');
+      avisosSection.classList.add('hidden');
+      senhasSection.classList.add('hidden');
+      histSection.classList.add('hidden');
+      document.getElementById('mainScreen').classList.remove('hidden');
+      detailScreen.classList.add('hidden');
+    } else {
+      document.getElementById('kpis').classList.add('hidden');
+      userBadge.textContent=usuarioAtual.is_terceiro?`🤝 ${usuarioAtual.nome}`:(usuarioAtual.is_crediarista?`🧾 ${usuarioAtual.nome}`:(usuarioAtual.is_gerente?`🏬 ${usuarioAtual.filial}`:`👤 ${usuarioAtual.nome}`));
+      masterTabs.classList.add('hidden');
+      mainFilters.classList.add('hidden');
+      const ent=usuarioAtual.is_terceiro
+        ? findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME})
+        : (usuarioAtual.is_crediarista
+          ? findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome})
+          : (usuarioAtual.is_gerente
+            ? findEntity({type:'filial',filial:usuarioAtual.filial})
+            : findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome})));
+      document.getElementById('mainScreen').classList.add('hidden');
+      detailScreen.classList.remove('hidden');
+      if(usuarioAtual.is_terceiro){openThirdChargePanel()}
+      else if(usuarioAtual.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)}
+      else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login});
+    }
+
+    Promise.allSettled([
+      carregarConfigOnline(),
+      carregarHistoricoOnline(),
+      carregarCobrancasOnline(),
+      carregarMsgsOnline()
+    ]).then(()=>{try{refreshBell(); if(mainTab==='cobrancas') renderLogsTab();}catch(e){console.log(e)}});
+
+  }catch(e){
+    console.error('Erro ao abrir dashboard:', e);
+    const msg=document.getElementById('loginMsg');
+    if(msg) msg.textContent='Erro ao abrir dashboard. Atualize a página e tente novamente.';
+    loginScreen.classList.remove('hidden');
+    app.classList.add('hidden');
+  }
+}
 function logout(){clearSession(); location.reload()}
-window.addEventListener('load',async ()=>{
-  const u=document.getElementById('loginUser');
-  const p=document.getElementById('loginPass');
-  if(u) u.focus();
-  if(u) u.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault(); if(p) p.focus();}});
-  if(p) p.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault(); fazerLogin();}});
-  await carregarCredenciaisOnline();
-  try{
-    const verDash = await fetchJsonNoCache('dashboard_version.json');
-    const stampDash = String((verDash && (verDash.updated_at_label||verDash.updated_at)) || '');
-    if(stampDash) window.__dashboardUpdatedAtLabel = stampDash;
-  }catch(_e){}
-  try{
-    const verSales = await fetchJsonNoCache('sales_version.json');
-    const stampSales = String((verSales && (verSales.updated_at_label||verSales.updated_at)) || '');
-    if(stampSales) window.__salesUpdatedAtLabel = stampSales;
-  }catch(_e){}
-  if(restoreSession()){abrirApp();}
-  setInterval(pollSalesLive,60000);
-  setInterval(pollDashboardLiveReload,60000);
-  setTimeout(pollSalesLive,3000);
-  setTimeout(pollDashboardLiveReload,5000);
-})
+window.addEventListener('load',async ()=>{const u=document.getElementById('loginUser'); const p=document.getElementById('loginPass'); if(u) u.focus(); if(u) u.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault(); if(p) p.focus();}}); if(p) p.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault(); fazerLogin();}}); await carregarCredenciaisOnline(); if(restoreSession()){abrirApp().catch(e=>console.error(e));} setInterval(pollSalesLive,60000); setInterval(pollDashboardLiveReload,60000); setTimeout(pollSalesLive,3000); setTimeout(pollDashboardLiveReload,5000);})
 </script>
 </body>
 </html>
@@ -6630,7 +6025,6 @@ repls = {
     '__JS_MARGENS_BRUTAS__': js_margens_brutas,
     '__JS_SALES_EMPRESA__': js_sales_empresa,
     '__JS_RENT_EMPRESA__': js_rent_empresa,
-    '__JS_SERVICOS_RELATORIO__': js_servicos_relatorio,
     '__CONFIG_META__': json.dumps(CONFIG_META, ensure_ascii=False),
     '__CONFIG_META_IND__': json.dumps(CONFIG_META_IND, ensure_ascii=False),
     '__JS_DESTAQUE__': js_destaque,
@@ -6796,7 +6190,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado'], JSON_UNESCAPED_UNICODE);
 ?>"""
-
 
 
 CREDENCIAIS_API_PHP = r"""<?php
@@ -6987,7 +6380,7 @@ if FTP_USER and FTP_PASS:
         except Exception:
             ftp.storbinary('STOR mensagens_log.json', BytesIO(b'[]'))
         try:
-            _dashboard_ver = json.dumps({'updated_at': now_brasilia().isoformat(), 'updated_at_label': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'), 'timezone': 'America/Sao_Paulo', 'scope': 'dashboard_full'}, ensure_ascii=False).encode('utf-8')
+            _dashboard_ver = json.dumps({'updated_at': datetime.now().isoformat(), 'scope': 'dashboard_full'}, ensure_ascii=False).encode('utf-8')
             ftp.storbinary('STOR dashboard_version.json', BytesIO(_dashboard_ver))
             ftp.storbinary('STOR sales_version.json', BytesIO(_dashboard_ver))
         except Exception as e_ver_ftp:
