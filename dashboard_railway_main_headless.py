@@ -6130,8 +6130,6 @@ function montarMensagemCobranca(reg){
   Object.entries(dados).forEach(([k,v])=>{
     tpl=tpl.replaceAll(`{${k}}`, v);
   });
-`;
-  }
   return tpl;
 }
 function exemploMensagemCobranca(){
