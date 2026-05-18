@@ -1209,6 +1209,7 @@ def _parse_relatorio_servicos_html(html):
     empresa_qtd = 0.0
     servico_atual = ''
     header_map = {}
+    totais_oficiais_servico = {}
 
     def _norm_header(txt):
         s = unicodedata.normalize('NFD', str(txt or '')).encode('ascii', 'ignore').decode('ascii')
@@ -1250,10 +1251,76 @@ def _parse_relatorio_servicos_html(html):
         except Exception:
             return default
 
+    def _is_total_row(vals):
+        if not vals:
+            return False
+        first = unicodedata.normalize('NFD', str(vals[0] or '')).encode('ascii', 'ignore').decode('ascii').upper().strip()
+        return first == 'TOTAL'
+
+    def _is_total_cancelado(vals):
+        raw = ' '.join(str(v or '') for v in vals).upper()
+        raw = unicodedata.normalize('NFD', raw).encode('ascii', 'ignore').decode('ascii')
+        return 'CANCELAD' in raw
+
+    def _money_candidates(vals):
+        out = []
+        for raw in vals:
+            txt = str(raw or '').strip()
+            if not txt:
+                continue
+            # Aceita números BR; ignora textos como X, TOTAL, datas e códigos longos sem vírgula.
+            if not re.search(r'\d', txt):
+                continue
+            if re.search(r'\d{1,2}/\d{1,2}/\d{2,4}', txt):
+                continue
+            # evita número de lançamento/bilhete puro muito grande; mantém quantidade 327 e valores com vírgula
+            if ',' not in txt and '.' not in txt and len(re.sub(r'\D','',txt)) > 4:
+                continue
+            val = _br_money(txt)
+            out.append(val)
+        return out
+
+    def _aplicar_total_oficial(servico, vals):
+        if not servico or _is_total_cancelado(vals):
+            return
+        nums = _money_candidates(vals)
+        # No HTML do SGI a linha TOTAL possui, na parte SERVIÇO:
+        # Quantidade, Quantidade Cancelada, Vl. Unitário, Vl. Total.
+        # Depois podem vir totais da parte DADOS DA VENDA, que NÃO podem entrar nos cards.
+        # Exemplo visto: TOTAL | 327 | 0 | 209,79 | 3.266,73 | ... venda ...
+        if len(nums) >= 4:
+            qtd = nums[0]
+            qtd_cancelada = nums[1]
+            vl_unit_total = nums[2]
+            vl_total = nums[3]
+        elif nums:
+            qtd = nums[0] if len(nums) >= 1 else 0
+            qtd_cancelada = nums[1] if len(nums) >= 2 else 0
+            vl_unit_total = nums[-2] if len(nums) >= 2 else 0
+            vl_total = nums[-1]
+        else:
+            return
+        totais_oficiais_servico[servico] = {
+            'servico': servico,
+            'quantidade': round(float(qtd or 0), 2),
+            'quantidade_cancelada': round(float(qtd_cancelada or 0), 2),
+            'vl_unitario_total': round(float(vl_unit_total or 0), 2),
+            'real_total': round(float(vl_total or 0), 2),
+            'linhas': 0,
+            'fonte_total': 'linha_TOTAL_SGI',
+        }
+        print(f"✅ Total oficial serviço [{servico}]: qtd={qtd} cancel={qtd_cancelada} vl_total={vl_total}")
+
     for tr in container.find_all('tr'):
         th = tr.find('th', class_=lambda c: c and 'label-agrupamento' in c)
         if th:
             servico_atual = ' '.join(th.get_text(' ', strip=True).split())
+            servicos.setdefault(servico_atual, {
+                'servico': servico_atual,
+                'quantidade': 0.0,
+                'real_total': 0.0,
+                'linhas': 0,
+            })
             continue
 
         if tr.find_all('th'):
@@ -1261,15 +1328,22 @@ def _parse_relatorio_servicos_html(html):
             continue
 
         tds = tr.find_all('td')
-        if len(tds) < 6:
+        if len(tds) < 2:
             continue
 
         vals = [' '.join(td.get_text(' ', strip=True).split()) for td in tds]
         if not vals:
             continue
-        if vals[0].strip().upper() == 'TOTAL':
+
+        if _is_total_row(vals):
+            _aplicar_total_oficial(servico_atual, vals)
+            continue
+
+        if len(tds) < 6:
             continue
         if not servico_atual:
+            continue
+        if _is_total_cancelado(vals):
             continue
 
         idx_filial = _idx('Filial', 'Serviço', fallback=0)
@@ -1297,8 +1371,6 @@ def _parse_relatorio_servicos_html(html):
         vl_total = _br_money(_val(vals, idx_vl_total, 0))
         numeros_bilhetes = _val(vals, idx_bilhetes)
 
-        # Total correto é a coluna "Vl. Total". Se vier vazio por mudança do SGI,
-        # usa o último valor monetário relevante da linha como fallback.
         if vl_total == 0 and len(vals) >= 2:
             money_candidates = []
             for raw in vals:
@@ -1373,6 +1445,21 @@ def _parse_relatorio_servicos_html(html):
             vend['linhas'] += 1
             vend['servicos'][servico_atual] = round(float(vend['servicos'].get(servico_atual, 0.0)) + vl_total, 2)
 
+    # O resumo por tipo deve vir obrigatoriamente das linhas TOTAL do SGI.
+    # Isso evita pegar valores da coluna lateral "DADOS DA VENDA" e inflar Ouro/FOB/Copa.
+    if totais_oficiais_servico:
+        for servico, total_item in totais_oficiais_servico.items():
+            antigo = servicos.get(servico, {})
+            servicos[servico] = {
+                **antigo,
+                **total_item,
+                'linhas': int(antigo.get('linhas', 0) or 0),
+                'real_total_linhas': round(float(antigo.get('real_total', 0.0) or 0.0), 2),
+                'quantidade_linhas': round(float(antigo.get('quantidade', 0.0) or 0.0), 2),
+            }
+        empresa_total = sum(float(v.get('real_total', 0.0) or 0.0) for v in servicos.values())
+        empresa_qtd = sum(float(v.get('quantidade', 0.0) or 0.0) for v in servicos.values())
+
     for bucket in (servicos, filiais, vendedores):
         for _, item in bucket.items():
             if 'quantidade' in item:
@@ -1385,6 +1472,7 @@ def _parse_relatorio_servicos_html(html):
             'quantidade': round(float(empresa_qtd), 2),
             'real_total': round(float(empresa_total), 2),
             'linhas': len(detalhes),
+            'fonte_total': 'linhas_TOTAL_SGI' if totais_oficiais_servico else 'soma_linhas',
         },
         'servicos': servicos,
         'filiais': filiais,
