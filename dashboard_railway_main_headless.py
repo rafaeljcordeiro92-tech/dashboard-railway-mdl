@@ -4927,6 +4927,32 @@ const METAS_VENDAS=__JS_METAS_VENDAS__||{metas:{}};
 const MARGENS_BRUTAS=__JS_MARGENS_BRUTAS__||{filiais:{},vendedores:{}};
 let SALES_EMPRESA=__JS_SALES_EMPRESA__||{};
 let RENT_EMPRESA=__JS_RENT_EMPRESA__||{};
+
+function getRentEmpresa(){
+  let e = (RENT_EMPRESA && Object.keys(RENT_EMPRESA).length) ? {...RENT_EMPRESA} : {};
+  const mb = MARGENS_BRUTAS || {};
+  if((!e || !Object.keys(e).length) && mb.empresa) e = {...mb.empresa};
+
+  // Fallback: se por qualquer motivo a empresa não veio no JSON,
+  // soma as filiais do relatório de margem bruta.
+  if((!Number(e.custo_total||0)) && mb.filiais){
+    const vals = Object.values(mb.filiais || {});
+    const soma = (campo)=>vals.reduce((acc,x)=>acc + Number(x?.[campo]||0), 0);
+    e.custo_total = soma('custo_total');
+    e.valor_total = soma('valor_total');
+    e.valor_total_liquido = soma('valor_total_liquido');
+    e.margem_bruta_valor = soma('margem_bruta_valor');
+  }
+
+  if((!Number(e.margem_bruta_pct||0)) && Number(e.valor_total||0)>0){
+    e.margem_bruta_pct = Number(e.margem_bruta_valor||0) / Number(e.valor_total||0) * 100;
+  }
+  if((!Number(e.markup_realizado||0)) && Number(e.custo_total||0)>0){
+    e.markup_realizado = Number(e.valor_total||0) / Number(e.custo_total||0);
+  }
+  return e || {};
+}
+
 let SERVICOS_RELATORIO=__JS_SERVICOS_RELATORIO__||{empresa:{},servicos:{},filiais:{},vendedores:{},detalhes:[]};
 let CONFIG_META={grave_pct:20,alerta_pct:15,atencao_pct:10,peso_grave:60,peso_alerta:30,peso_atencao:10,bonus_50:'',bonus_75:'',bonus_85:'',bonus_100:'',cob_cred_rateio_filial_pct:50,cob_cred_rateio_cred_pct:50,cobranca_global_rateio_pct:20,cobranca_msg_template:`Olá, {primeiro_nome} tudo bem?\nAqui é da Lojas MDL - Móveis do Lar.\nPassando para lembrar que tem uma parcelinha vencida na data de {vencimento}, no valor de {valor}.\nCaso o pagamento já tenha sido realizado, por gentileza, desconsidere esta mensagem.\nSe precisar do boleto, chave PIX ou tiver qualquer dúvida, fico à disposição para ajudar.`,...(__CONFIG_META__||{})};
 let CONFIG_META_IND=__CONFIG_META_IND__||{};
@@ -5140,9 +5166,20 @@ function renderKPIs(){
     });
   }catch(e){}
 
+  const RENT_OK=getRentEmpresa();
+  RENT_EMPRESA=RENT_OK;
   const markupBase=(Number(sales.venda_realizado_total||0)+servicoRealizadoOficial);
-  const markupCost=Number(RENT_EMPRESA?.custo_total||0);
+  const markupCost=Number(RENT_OK?.custo_total||0);
   const markupTotal=markupCost>0?(markupBase/markupCost):0;
+  try{
+    console.log('[MDL margem]', {
+      rent_empresa_boot: RENT_EMPRESA,
+      margens_empresa: MARGENS_BRUTAS?.empresa,
+      markupBase,
+      markupCost,
+      markupTotal
+    });
+  }catch(e){}
   function statusLaranjitoVendaDiaria(v){
     v=Number(v||0);
     if(v < 20000) return 'triste';
