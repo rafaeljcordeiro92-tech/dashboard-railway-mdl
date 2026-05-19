@@ -7171,6 +7171,7 @@ repls = {
     '__CONFIG_META_IND__': json.dumps(CONFIG_META_IND, ensure_ascii=False),
     '__JS_DESTAQUE__': js_destaque,
     '__JS_HIST_DASH__': js_hist_dash,
+    '__JS_QUITADOS_180__': js_quitados_180,
     '__LOGIN_MASTER__': json.dumps(LOGIN_MASTER, ensure_ascii=False),
     '__SENHA_MASTER__': json.dumps(SENHA_MASTER, ensure_ascii=False),
     '__LOGIN_DIRETOR__': json.dumps(LOGIN_DIRETOR, ensure_ascii=False),
