@@ -5269,6 +5269,7 @@ const API_COB='cobrancas_api.php';
 const API_MSG='mensagens_api.php';
 const API_CRED='credenciais_api.php';
 const API_HIST='historico_api.php';
+const API_COMIS='historico_comissionamento_api.php';
 
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
 async function fetchComTimeout(url, opts={}, ms=3500){
@@ -5286,6 +5287,7 @@ async function tentarAtualizarOnlineDepoisLogin(){
       carregarCredenciaisOnline(),
       carregarConfigOnline(),
       carregarHistoricoOnline(),
+      carregarHistoricoComissaoOnline(),
       carregarCobrancasOnline(),
       carregarMsgsOnline()
     ]);
@@ -5295,6 +5297,7 @@ async function tentarAtualizarOnlineDepoisLogin(){
       if(usuarioAtual?.tipo==='master'){
         if(!detailScreen.classList.contains('hidden') && currentDetailRef) openEntity(currentDetailRef);
         else renderList();
+        setTimeout(()=>salvarSnapshotComissionamentoMensal(true),900);
       }
     }catch(e){}
   }catch(e){console.log('Falha atualização online pós-login',e);}
@@ -5311,11 +5314,14 @@ let _logFiltered=[];
 let AUTH_STATE=AUTH_BOOT||{users:{},director:{},password_reset_requests:[]};
 let _pendingFirstAccess=null;
 let HIST_DASH=__JS_HIST_DASH__||{dates:{}};
+let HIST_COMISSAO={months:{}};
 const SESSION_KEY='mdl_dashboard_session_v1';
 function getAuthUser(login){const k=String(login||'').trim().toLowerCase(); if(k===LOGIN_DIRETOR.toLowerCase()) return AUTH_STATE?.director||null; return (AUTH_STATE?.users||{})[k]||null}
 async function carregarCredenciaisOnline(){try{const r=await fetchComTimeout(API_CRED+'?_='+Date.now(),{},2500); const j=await r.json(); if(j.ok && j.data){AUTH_STATE=j.data;}}catch(e){console.log('Falha ao carregar credenciais online',e);}}
 
 async function carregarHistoricoOnline(){try{const r=await fetchComTimeout(API_HIST+'?_='+Date.now(),{},2500); const j=await r.json(); if(j.ok && j.data){HIST_DASH=j.data;}}catch(e){console.log('Falha ao carregar histórico online',e);}}
+async function carregarHistoricoComissaoOnline(){try{const r=await fetchComTimeout(API_COMIS+'?_='+Date.now(),{},3000); const j=await r.json(); if(j.ok && j.data){HIST_COMISSAO=j.data;}}catch(e){console.log('Falha ao carregar histórico de comissionamento',e);}}
+
 
 function saveSession(){try{const data={usuarioAtual,exp:Date.now()+60*60*1000}; localStorage.setItem(SESSION_KEY, JSON.stringify(data));}catch(e){}}
 function clearSession(){try{localStorage.removeItem(SESSION_KEY);}catch(e){}}
@@ -5343,23 +5349,38 @@ function trunc(s,n=18){s=String(s||'');return s.length>n?s.slice(0,n-1)+'…':s}
 function filialLabel(f){return String(f||'').replace(/^F/,'Filial F')}
 function flattenVendedores(){const out=[];Object.entries(TODOS||{}).forEach(([f,arr])=>(arr||[]).forEach(v=>out.push({type:'vendedor',filial:f,...v})));return out}
 function thirdChargeEntity(){const src=CLIENTES_TERCEIRO||{grave:[],alerta:[],atencao:[]}; const rsrc=RECEBIMENTOS_TERCEIRO||{grave:[],alerta:[],atencao:[]}; const pend=[...(src.grave||[]),...(src.alerta||[]),...(src.atencao||[])].reduce((a,b)=>a+Number(b.pendente||0),0); const rec=[...(rsrc.grave||[]),...(rsrc.alerta||[]),...(rsrc.atencao||[])].reduce((a,b)=>a+Number(b.pago||0),0); return {type:'terceiro',login:COBRANCA10_LOGIN,filial:'FTER',nome:COBRANCA10_NOME,is_terceiro:true,is_gerente:false,pendente:pend,pago:rec,total:pend+rec,perc_filial:100,grave_pend:(src.grave||[]).reduce((a,b)=>a+Number(b.pendente||0),0),alerta_pend:(src.alerta||[]).reduce((a,b)=>a+Number(b.pendente||0),0),atencao_pend:(src.atencao||[]).reduce((a,b)=>a+Number(b.pendente||0),0),grave_rec:(rsrc.grave||[]).reduce((a,b)=>a+Number(b.pago||0),0),alerta_rec:(rsrc.alerta||[]).reduce((a,b)=>a+Number(b.pago||0),0),atencao_rec:(rsrc.atencao||[]).reduce((a,b)=>a+Number(b.pago||0),0)}}
+
+function emptyRec(){return {grave:[],alerta:[],atencao:[]}}
+function recTotal(src){return ['grave','alerta','atencao'].reduce((acc,fx)=>acc+(src?.[fx]||[]).reduce((a,b)=>a+Number(b.pago||0),0),0)}
+function recebimentosSomenteConciliados(ent){
+  try{return mergeRecebimentosConciliados(emptyRec(), ent||{})}catch(e){return emptyRec()}
+}
+
 function crediaristaEntities(){return Object.entries(CREDIARISTAS_MAP||{}).map(([filial,login])=>{
   const filialKey=String(filial||'').toUpperCase();
   const loginKey=String(login||'').toLowerCase();
   const filData=FILIAIS?.[filialKey]||{};
+  const nomeCred=`CREDIARISTA${filialKey}`;
+  const recOwn=recebimentosSomenteConciliados({type:'crediarista',login:loginKey,filial:filialKey,nome:nomeCred,is_crediarista:true});
+  const gRec=(recOwn.grave||[]).reduce((a,b)=>a+Number(b.pago||0),0);
+  const aRec=(recOwn.alerta||[]).reduce((a,b)=>a+Number(b.pago||0),0);
+  const tRec=(recOwn.atencao||[]).reduce((a,b)=>a+Number(b.pago||0),0);
+  const recTotalOwn=gRec+aRec+tRec;
   return {
-    type:'crediarista',login:loginKey,filial:filialKey,nome:`CREDIARISTA${filialKey}`,
+    type:'crediarista',login:loginKey,filial:filialKey,nome:nomeCred,
     is_crediarista:true,is_gerente:false,only_cobranca:true,
-    // O crediarista usa exatamente os mesmos totais consolidados da filial/gerente.
+    // O crediarista só recebe crédito quando ele mesmo cobrou e o título foi pago depois.
     pendente:Number(filData.pendente||0),
-    pago:Number(filData.pago||0),
-    total:Number(filData.total||0),
+    pago:recTotalOwn,
+    total:Number(filData.pendente||0)+recTotalOwn,
     perc_filial:100,
     grave_pend:Number(filData.grave_pend||0),alerta_pend:Number(filData.alerta_pend||0),atencao_pend:Number(filData.atencao_pend||0),
-    grave_rec:Number(filData.grave_rec||0),alerta_rec:Number(filData.alerta_rec||0),atencao_rec:Number(filData.atencao_rec||0),
+    grave_rec:gRec,alerta_rec:aRec,atencao_rec:tRec,
     grave_alvo:Number(filData.grave_alvo||0),alerta_alvo:Number(filData.alerta_alvo||0),atencao_alvo:Number(filData.atencao_alvo||0),
-    grave_perc:Number(filData.grave_perc||0),alerta_perc:Number(filData.alerta_perc||0),atencao_perc:Number(filData.atencao_perc||0),
-    perc_meta:Number(filData.perc_meta||0),
+    grave_perc:Number(filData.grave_pend||0)>0?(gRec/(Number(filData.grave_pend||0)*Number((CONFIG_META||{}).grave_pct||20)/100)*100):0,
+    alerta_perc:Number(filData.alerta_pend||0)>0?(aRec/(Number(filData.alerta_pend||0)*Number((CONFIG_META||{}).alerta_pct||15)/100)*100):0,
+    atencao_perc:Number(filData.atencao_pend||0)>0?(tRec/(Number(filData.atencao_pend||0)*Number((CONFIG_META||{}).atencao_pct||10)/100)*100):0,
+    perc_meta:0,
     rentabilidade_pct:Number(filData.rentabilidade_pct||0),
     sem_ativo:Boolean(filData.sem_ativo||false),
   };
@@ -6512,9 +6533,8 @@ function getRecebimentos(ent){
   let base;
   if(ent.type==='terceiro' || ent.is_terceiro) base=RECEBIMENTOS_TERCEIRO||{grave:[],alerta:[],atencao:[]};
   else if(ent.type==='crediarista' || ent.is_crediarista){
-    const filialKey=String(ent.filial||'').toUpperCase();
+    // Crediarista: somente recebimentos conciliados com cobrança feita pelo próprio usuário antes do pagamento.
     base={grave:[],alerta:[],atencao:[]};
-    Object.entries(RECEBIMENTOS||{}).forEach(([k,v])=>{if(k.endsWith('_'+filialKey)){['grave','alerta','atencao'].forEach(fx=>base[fx].push(...(v[fx]||[])))}}); 
   } else if(ent.type==='vendedor') base=RECEBIMENTOS[recebKeyVend(ent)]||{grave:[],alerta:[],atencao:[]};
   else {
     base={grave:[],alerta:[],atencao:[]};
@@ -6940,7 +6960,57 @@ function renderSalesHistoricoTable(rows,title='💲 Histórico de vendas'){if(!r
 function renderHistoricoSalesResults(){const dateVal=_histSalesCurrentDate(); const scope=document.getElementById('histSalesScope')?.value||'empresa'; const entity=document.getElementById('histSalesEntity')?.value||''; const box=document.getElementById('histSalesResults'); const d=HIST_DASH?.sales_dates?.[dateVal]; if(!box) return; if(!d){box.innerHTML='<div class="empty">Nenhum histórico de vendas salvo para esta data.</div>'; return} let top=`<div class="kpis">${makeKpi('Venda realizada',R(d.empresa?.venda_realizado_total||0),'var(--orange)')}${makeKpi('Venda atingida',pct(d.empresa?.venda_atingido_total||0),'var(--orange)')}${makeKpi('Serviço realizado',R(d.empresa?.servico_realizado_total||0),'var(--orange)')}${makeKpi('Serviço atingido',pct(d.empresa?.servico_atingido_total||0),'var(--orange)')}</div>`; if(scope==='empresa'){box.innerHTML=top + renderSalesHistoricoTable([{nome:'Empresa',filial:'Resumo geral',...(d.empresa||{})}],'💲 Histórico diário de vendas da empresa'); return} const source = scope==='filiais' ? Object.entries(d.filiais||{}).map(([k,v])=>({...v,key:k})) : Object.entries(d.vendedores||{}).map(([k,v])=>({...v,key:k})); const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=top + renderSalesHistoricoTable(rows,`💲 Histórico diário de vendas ${scope==='filiais'?'de filiais':'de vendedores'}`)}
 function renderHistoricoSalesMonthResults(){const monthVal=_histSalesCurrentMonth(); const scope=document.getElementById('histSalesMonthScope')?.value||'empresa'; const entity=document.getElementById('histSalesMonthEntity')?.value||''; const box=document.getElementById('histSalesMonthResults'); const d=HIST_DASH?.sales_months?.[monthVal]; if(!box) return; if(!d){box.innerHTML='<div class="empty">Nenhum fechamento de vendas salvo para este mês.</div>'; return} let top=`<div class="kpis">${makeKpi('Venda realizada',R(d.empresa?.venda_realizado_total||0),'var(--orange)')}${makeKpi('Venda atingida',pct(d.empresa?.venda_atingido_total||0),'var(--orange)')}${makeKpi('Serviço realizado',R(d.empresa?.servico_realizado_total||0),'var(--orange)')}${makeKpi('Serviço atingido',pct(d.empresa?.servico_atingido_total||0),'var(--orange)')}</div>`; if(scope==='empresa'){box.innerHTML=top + renderSalesHistoricoTable([{nome:'Empresa',filial:'Resumo mensal',...(d.empresa||{})}],'🧡 Fechamento mensal de vendas'); return} const source = scope==='filiais' ? Object.entries(d.filiais||{}).map(([k,v])=>({...v,key:k})) : Object.entries(d.vendedores||{}).map(([k,v])=>({...v,key:k})); const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=top + renderSalesHistoricoTable(rows,`🧡 Fechamento mensal de vendas ${scope==='filiais'?'de filiais':'de vendedores'}`)}
 function _histMonthEntityOptions(monthVal, scope){const d=HIST_DASH?.months_closed?.[monthVal]||{}; let opts='<option value="">Todos</option>'; if(scope==='vendedores'){Object.entries(d.vendedores_finais||{}).sort((a,b)=>String(a[1].nome||'').localeCompare(String(b[1].nome||''),'pt-BR')).forEach(([k,v])=>{opts+=`<option value="${k}">${esc(v.nome)} (${v.filial})</option>`})} else if(scope==='filiais'){Object.entries(d.filiais_finais||{}).forEach(([k,v])=>{opts+=`<option value="${k}">${esc(v.nome||k)}</option>`})} return opts}
-function setHistMode(mode){window._histMode=mode; document.getElementById('histDailyPane')?.classList.toggle('hidden',mode!=='daily'); document.getElementById('histMonthPane')?.classList.toggle('hidden',mode!=='monthly'); document.getElementById('histSalesPane')?.classList.toggle('hidden',mode!=='sales'); document.getElementById('histTabDaily')?.classList.toggle('active',mode==='daily'); document.getElementById('histTabMonthly')?.classList.toggle('active',mode==='monthly'); document.getElementById('histTabSales')?.classList.toggle('active',mode==='sales'); if(mode==='daily'){updateHistEntityFilter(); renderHistoricoResults();} else if(mode==='monthly'){updateHistMonthEntityFilter(); renderHistoricoMonthResults();} else {updateHistSalesEntityFilter(); updateHistSalesMonthEntityFilter(); renderHistoricoSalesResults(); renderHistoricoSalesMonthResults();}}
+
+function mesAtualComissao(){const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`}
+function _histComMeses(){return Object.keys(HIST_COMISSAO?.months||{}).sort().reverse()}
+function _comEntKey(ent){return `${ent.type||'ent'}::${ent.filial||''}::${ent.login||ent.nome||''}`}
+function _recebResumo(ent){const r=getRecebimentos(ent); const sum=(fx)=>(r[fx]||[]).reduce((a,b)=>a+Number(b.pago||0),0); return {grave:sum('grave'),alerta:sum('alerta'),atencao:sum('atencao'),total:sum('grave')+sum('alerta')+sum('atencao'),qtd:(r.grave||[]).length+(r.alerta||[]).length+(r.atencao||[]).length}}
+function snapshotComissaoEntidade(ent){
+  const meta=calcMeta(ent); const rec=_recebResumo(ent); let c={};
+  try{ if(ent.type==='vendedor'||ent.type==='filial') c=calcCommissionSummary(ent)||{}; }catch(e){c={erro:String(e)}}
+  const totalPrev=Number(c.totalPrevisto||0);
+  return {
+    key:_comEntKey(ent), tipo:ent.type, nome:ent.nome||filialLabel(ent.filial), filial:ent.filial||'', login:ent.login||'',
+    pendente:Number(ent.pendente||0), recebido:Number(ent.pago||rec.total||0), recebido_conciliado:Number(rec.total||0), qtd_recebidos:Number(rec.qtd||0),
+    meta_geral:Number(meta.geral||0), grave_rec:Number(meta.grave?.rec||0), alerta_rec:Number(meta.alerta?.rec||0), atencao_rec:Number(meta.atencao?.rec||0),
+    grave_alvo:Number(meta.grave?.alvo||0), alerta_alvo:Number(meta.alerta?.alvo||0), atencao_alvo:Number(meta.atencao?.alvo||0),
+    venda_real:Number(c.vendaReal||0), servico_real:Number(c.servReal||0), caminhao_real:Number(c.camReal||0),
+    faixa:String(c.faixaTxt||''), comissao_vendas:Number(c.vendasComissao||0), comissao_servicos:Number(c.servicosComissao||0), comissao_caminhao:Number(c.caminhaoComissao||0), bonus_meta:Number(c.bonusMeta||0), rent48:Number(c.rent48||0), rent52:Number(c.rent52||0), rent55:Number(c.rent55||0), total_previsto:totalPrev,
+    elegivel_mercantil:Boolean(c.elegivelMercantil), elegivel_servicos:Boolean(c.elegivelServicos), observacao:(ent.type==='crediarista'?'Crediarista: somente pagos conciliados após cobrança própria.':(ent.type==='terceiro'?'Cobrança terceiro.':''))
+  };
+}
+function buildSnapshotComissionamentoMensal(month=mesAtualComissao()){
+  const ents=[...flattenVendedores(),...flattenFiliais(),...crediaristaEntities(),thirdChargeEntity()].filter(Boolean);
+  const entidades=ents.map(snapshotComissaoEntidade);
+  const total=entidades.reduce((a,b)=>a+Number(b.total_previsto||0),0);
+  return {month, gerado_em:new Date().toISOString(), atualizado_em_br:new Date().toLocaleString('pt-BR'), total_previsto:total, entidades};
+}
+async function salvarSnapshotComissionamentoMensal(auto=false){
+  if(usuarioAtual?.tipo!=='master') return;
+  const month=document.getElementById('histComMonthSave')?.value||mesAtualComissao();
+  const payload=buildSnapshotComissionamentoMensal(month);
+  const fd=new FormData(); fd.append('month',month); fd.append('payload',JSON.stringify(payload));
+  try{
+    const r=await fetch(API_COMIS,{method:'POST',body:fd}); const j=await r.json();
+    if(j.ok){HIST_COMISSAO=j.data||{months:{}}; if(!auto) toast('✅ Histórico de comissionamento salvo.'); renderHistoricoComissaoResults();}
+    else if(!auto) toast('⚠️ Não consegui salvar histórico de comissionamento.');
+  }catch(e){console.log('Erro salvar comissionamento',e); if(!auto) toast('⚠️ Erro ao salvar histórico de comissionamento.');}
+}
+function renderComissionamentoHistoricoTable(rows){
+  if(!rows.length) return '<div class="empty">Nenhum comissionamento salvo para este mês.</div>';
+  return `<div class="glass panel"><div class="tableish">${rows.map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.nome||'')}</div><div class="small muted">${esc(r.tipo||'')} · ${esc(r.filial||'')}</div></div><div><strong>${pct(r.meta_geral||0)}</strong><div class="small muted">Meta cobrança</div></div><div><strong>${R(r.recebido||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${R(r.comissao_vendas||0)}</strong><div class="small muted">Vendas</div></div><div><strong>${R(r.comissao_servicos||0)}</strong><div class="small muted">Serviços</div></div><div><strong>${R(r.bonus_meta||0)}</strong><div class="small muted">Bônus</div></div><div><strong>${R(r.total_previsto||0)}</strong><div class="small muted">Total previsto</div></div></div>${r.observacao?`<div class="small muted" style="margin-top:6px">${esc(r.observacao)}</div>`:''}</div>`).join('')}</div></div>`;
+}
+function renderHistoricoComissaoResults(){
+  const months=_histComMeses(); const current=document.getElementById('histComMonth')?.value || months[0] || mesAtualComissao();
+  const box=document.getElementById('histComResults'); if(!box) return;
+  const snap=HIST_COMISSAO?.months?.[current];
+  const saveInput=document.getElementById('histComMonthSave'); if(saveInput && !saveInput.value) saveInput.value=mesAtualComissao();
+  if(!snap){box.innerHTML=`<div class="empty">Nenhum histórico salvo para ${esc(current)}. Clique em “Salvar fechamento do mês atual” para gravar o resultado visível agora.</div>`; return;}
+  const rows=[...(snap.entidades||[])].sort((a,b)=>String(a.tipo).localeCompare(String(b.tipo),'pt-BR')||String(a.nome).localeCompare(String(b.nome),'pt-BR'));
+  box.innerHTML=`<div class="kpis">${makeKpi('Mês',esc(snap.month||current),'var(--blue)')}${makeKpi('Total previsto',R(snap.total_previsto||0),'var(--green)')}${makeKpi('Entidades',String(rows.length),'var(--orange)')}${makeKpi('Salvo em',esc((snap.atualizado_em_br||snap.gerado_em||'').replace('T',' ').slice(0,19)),'var(--blue)')}</div>`+renderComissionamentoHistoricoTable(rows);
+}
+
+function setHistMode(mode){window._histMode=mode; document.getElementById('histDailyPane')?.classList.toggle('hidden',mode!=='daily'); document.getElementById('histMonthPane')?.classList.toggle('hidden',mode!=='monthly'); document.getElementById('histSalesPane')?.classList.toggle('hidden',mode!=='sales'); document.getElementById('histThirdPane')?.classList.toggle('hidden',mode!=='third'); document.getElementById('histComPane')?.classList.toggle('hidden',mode!=='comissao'); document.getElementById('histTabDaily')?.classList.toggle('active',mode==='daily'); document.getElementById('histTabMonthly')?.classList.toggle('active',mode==='monthly'); document.getElementById('histTabSales')?.classList.toggle('active',mode==='sales'); document.getElementById('histTabThird')?.classList.toggle('active',mode==='third'); document.getElementById('histTabCom')?.classList.toggle('active',mode==='comissao'); if(mode==='daily'){updateHistEntityFilter(); renderHistoricoResults();} else if(mode==='monthly'){updateHistMonthEntityFilter(); renderHistoricoMonthResults();} else if(mode==='third'){renderHistoricoTerceiro();} else if(mode==='comissao'){renderHistoricoComissaoResults();} else {updateHistSalesEntityFilter(); updateHistSalesMonthEntityFilter(); renderHistoricoSalesResults(); renderHistoricoSalesMonthResults();}}
 function updateHistEntityFilter(){const dateVal=_histCurrentDate(); const scope=document.getElementById('histScope')?.value||'empresa'; const wrap=document.getElementById('histEntityWrap'); const sel=document.getElementById('histEntity'); if(!wrap||!sel) return; wrap.classList.toggle('hidden',!(scope==='vendedores'||scope==='filiais')); sel.innerHTML=_histEntityOptions(dateVal, scope);}
 function updateHistMonthEntityFilter(){const monthVal=_histCurrentMonth(); const scope=document.getElementById('histMonthScope')?.value||'empresa'; const wrap=document.getElementById('histMonthEntityWrap'); const sel=document.getElementById('histMonthEntity'); if(!wrap||!sel) return; wrap.classList.toggle('hidden',!(scope==='vendedores'||scope==='filiais')); sel.innerHTML=_histMonthEntityOptions(monthVal, scope);}
 function renderHistoricoTable(rows, scope, title='📋 Histórico'){if(!rows.length) return `<div class="empty">Nenhum registro encontrado para o filtro escolhido.</div>`; return `<div class="glass panel"><div class="section-head" style="margin:0 0 10px"><div><h2 style="font-size:18px">${title}</h2></div></div>${rows.map(r=>`<div class="log-row" style="margin-bottom:10px"><div><strong>${esc(r.nome||r.filial||'Empresa')}</strong><div class="small muted">${esc(r.filial||'Resumo')}</div></div><div><strong>${R(r.pendente||0)}</strong><div class="small muted">Pendente</div></div><div><strong>${R(r.recebido||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${pct(r.perc_meta||0)}</strong><div class="small muted">Meta</div></div><div><strong>${R(r.grave_alvo||0)} / ${R(r.alerta_alvo||0)} / ${R(r.atencao_alvo||0)}</strong><div class="small muted">Alvos G/A/At</div></div></div>`).join('')}</div>`}
@@ -7196,6 +7266,30 @@ print(f'🌐 HTML salvo: {html_path}')
 # =========================================
 # 📡 APIs PHP PARA LOG ONLINE / CONFIG ONLINE
 # =========================================
+
+HISTORICO_COMISSIONAMENTO_API_PHP = r"""<?php
+header('Content-Type: application/json; charset=utf-8');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type');
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
+$file = __DIR__ . '/historico_comissionamento.json';
+if (!file_exists($file)) file_put_contents($file, json_encode(['months'=>new stdClass()], JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+$data = json_decode(file_get_contents($file), true);
+if (!is_array($data)) $data = ['months'=>[]];
+if (!isset($data['months']) || !is_array($data['months'])) $data['months'] = [];
+if ($_SERVER['REQUEST_METHOD'] === 'GET') { echo json_encode(['ok'=>true,'data'=>$data], JSON_UNESCAPED_UNICODE); exit; }
+$month = $_POST['month'] ?? date('Y-m');
+$payloadRaw = $_POST['payload'] ?? '';
+$payload = json_decode($payloadRaw, true);
+if (!is_array($payload)) { echo json_encode(['ok'=>false,'error'=>'payload_invalido'], JSON_UNESCAPED_UNICODE); exit; }
+$payload['month'] = $month;
+$payload['salvo_em_php'] = date('c');
+$data['months'][$month] = $payload;
+file_put_contents($file, json_encode($data, JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT));
+echo json_encode(['ok'=>true,'data'=>$data], JSON_UNESCAPED_UNICODE); exit;
+?>"""
+
 COBRANCAS_API_PHP = r"""<?php
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -7472,6 +7566,7 @@ if FTP_USER and FTP_PASS:
         ftp.storbinary('STOR mensagens_api.php', BytesIO(MESSAGES_API_PHP.encode('utf-8')))
         ftp.storbinary('STOR credenciais_api.php', BytesIO(CREDENCIAIS_API_PHP.encode('utf-8')))
         ftp.storbinary('STOR historico_api.php', BytesIO(HISTORICO_API_PHP.encode('utf-8')))
+        ftp.storbinary('STOR historico_comissionamento_api.php', BytesIO(HISTORICO_COMISSIONAMENTO_API_PHP.encode('utf-8')))
         try:
             with open(_config_meta_path, 'rb') as f_cfg:
                 ftp.storbinary('STOR config_meta.json', f_cfg)
