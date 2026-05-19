@@ -7,11 +7,10 @@ from zoneinfo import ZoneInfo
 
 BR_TZ = ZoneInfo("America/Sao_Paulo")
 
-# Intervalos
 TICK_SECONDS = int(os.getenv("SCHED_TICK_SECONDS", "20"))
 SALES_INTERVAL_MIN = int(os.getenv("SALES_INTERVAL_MIN", "20"))
 
-# Cobrança: a cada 2 horas das 07:00 às 21:00
+# Cobrança/dashboard completo: a cada 2 horas, das 07:00 às 21:00
 COBRANCA_HOURS = {7, 9, 11, 13, 15, 17, 19, 21}
 COBRANCA_MINUTE_MAX = int(os.getenv("COBRANCA_RUN_MINUTE_MAX", "9"))
 
@@ -24,11 +23,7 @@ _last_cobranca_slot = None
 _sales_proc = None
 _cobranca_proc = None
 
-# Sempre roda o MAIN uma vez ao subir o container.
-# Isso publica o HTML/CSS/JS novo no FTP imediatamente, sem esperar a próxima cobrança.
 _force_main_boot = True
-
-# Depois que o MAIN de boot terminar, roda vendas imediatamente.
 _force_sales_boot = True
 
 
@@ -69,9 +64,9 @@ def cobranca_slot_key(dt_now):
 
 
 log("Scheduler Railway ativo | TZ=America/Sao_Paulo")
-log("HTML/dashboard configurado: MAIN roda imediatamente ao iniciar para publicar alterações no FTP")
-log(f"Vendas configuradas: após MAIN de boot + a cada {SALES_INTERVAL_MIN} minutos")
-log("Cobrança configurada: a cada 2 horas, das 07:00 às 21:00")
+log("PRIORIDADE: MAIN/dashboard completo roda primeiro no boot e nas janelas de cobrança")
+log(f"Vendas configuradas: depois do MAIN de boot + a cada {SALES_INTERVAL_MIN} minutos")
+log("Cobrança/dashboard completo: a cada 2 horas, das 07:00 às 21:00")
 
 while True:
     _sales_proc = maybe_finish_logs("vendas_servicos_caminhao", _sales_proc)
@@ -84,17 +79,31 @@ while True:
     _sales_key = sales_slot_key(agora)
     _cobranca_key = cobranca_slot_key(agora)
 
-    # PRIORIDADE 0: PUBLICAR HTML NOVO IMEDIATAMENTE AO SUBIR O CONTAINER
-    # Roda apenas uma vez no boot. Evita esperar a janela de cobrança.
+    _cobranca_ok = (
+        agora.hour in COBRANCA_HOURS
+        and 0 <= agora.minute <= COBRANCA_MINUTE_MAX
+    )
+
+    # PRIORIDADE 0: sempre publicar/gerar o dashboard completo primeiro ao subir o container.
     if _force_main_boot and (not sales_running) and (not cobranca_running):
         _force_main_boot = False
-        _last_cobranca_slot = _cobranca_key  # evita duplicar cobrança no mesmo horário logo após o boot
+        _last_cobranca_slot = _cobranca_key
         _cobranca_proc = start_job("dashboard_completo_cobranca_boot_publica_html", COBRANCA_CMD)
         cobranca_running = True
 
-    # PRIORIDADE 1: VENDAS/SERVIÇOS
-    # Só roda depois que o MAIN de boot terminar.
-    if (not _force_main_boot) and (not sales_running) and (not cobranca_running):
+    # PRIORIDADE 1: se chegou janela de cobrança/dashboard completo, MAIN passa na frente de vendas.
+    elif (
+        _cobranca_ok
+        and (not sales_running)
+        and (not cobranca_running)
+        and (_last_cobranca_slot != _cobranca_key)
+    ):
+        _last_cobranca_slot = _cobranca_key
+        _cobranca_proc = start_job("dashboard_completo_cobranca_prioridade", COBRANCA_CMD)
+        cobranca_running = True
+
+    # PRIORIDADE 2: vendas/serviços só roda quando MAIN não está rodando e não tem janela de cobrança pendente.
+    elif (not _force_main_boot) and (not sales_running) and (not cobranca_running):
         if _force_sales_boot:
             _force_sales_boot = False
             _last_sales_slot = _sales_key
@@ -104,22 +113,6 @@ while True:
             _last_sales_slot = _sales_key
             _sales_proc = start_job("vendas_servicos_caminhao", SALES_CMD)
             sales_running = True
-
-    # PRIORIDADE 2: COBRANÇA PROGRAMADA
-    _cobranca_ok = (
-        agora.hour in COBRANCA_HOURS
-        and 0 <= agora.minute <= COBRANCA_MINUTE_MAX
-    )
-
-    if (
-        _cobranca_ok
-        and (not sales_running)
-        and (not cobranca_running)
-        and (_last_cobranca_slot != _cobranca_key)
-    ):
-        _last_cobranca_slot = _cobranca_key
-        _cobranca_proc = start_job("dashboard_completo_cobranca", COBRANCA_CMD)
-        cobranca_running = True
 
     log(
         f"tick | sales={sales_running} | cobranca={cobranca_running} | "

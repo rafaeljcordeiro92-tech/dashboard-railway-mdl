@@ -7022,6 +7022,140 @@ function renderHistoricoMonthResults(){const monthVal=_histCurrentMonth(); const
 function renderHistoricoTerceiro(){const box=document.getElementById('histThirdResults'); if(!box) return; const logs=(COB_LOGS||[]).filter(x=>String(x.usuario||'').toLowerCase()===COBRANCA10_LOGIN || String(x.usuario||'').toLowerCase()===COBRANCA10_NOME.toLowerCase()).slice().reverse(); const ent=thirdChargeEntity(); const top=`<div class="kpis">${makeKpi('Títulos na carteira',String((CLIENTES_TERCEIRO?.grave?.length||0)+(CLIENTES_TERCEIRO?.alerta?.length||0)+(CLIENTES_TERCEIRO?.atencao?.length||0)),'var(--blue)')}${makeKpi('Pendente',R(ent.pendente||0),'var(--red)')}${makeKpi('Recebido',R(ent.pago||0),'var(--green)')}${makeKpi('Cobranças lançadas',String(logs.length),'var(--orange)')}</div>`; const comm=renderTerceiroCommission(ent); const rows=logs.length?logs.map(x=>`<div class="log-row"><div><strong>${esc(x.cliente||'')}</strong><div class="small muted">${esc(x.titulo||'')} · Parcela ${esc(x.parcela||'')}</div></div><div><strong>${R(x.pendente||0)}</strong><div class="small muted">${esc(x.filial||'')}</div></div><div><strong>${esc((x.server_time||'').replace('T',' ').slice(0,16))}</strong><div class="small muted">Data</div></div><div><strong>${esc(x.telefone||'')}</strong><div class="small muted">Telefone</div></div></div>`).join(''):'<div class="empty">Nenhuma cobrança do Cobrança10 encontrada.</div>'; box.innerHTML=top+comm+`<div class="glass panel"><div class="section-head"><div><h2 style="font-size:18px">🤝 Cobranças Terceiro</h2><div class="hint">Histórico apenas do usuário Cobrança10.</div></div></div><div class="logs-list">${rows}</div></div>`}
 function setHistMode(mode){window._histMode=mode; document.getElementById('histDailyPane')?.classList.toggle('hidden',mode!=='daily'); document.getElementById('histMonthPane')?.classList.toggle('hidden',mode!=='monthly'); document.getElementById('histSalesPane')?.classList.toggle('hidden',mode!=='sales'); document.getElementById('histThirdPane')?.classList.toggle('hidden',mode!=='third'); document.getElementById('histTabDaily')?.classList.toggle('active',mode==='daily'); document.getElementById('histTabMonthly')?.classList.toggle('active',mode==='monthly'); document.getElementById('histTabSales')?.classList.toggle('active',mode==='sales'); document.getElementById('histTabThird')?.classList.toggle('active',mode==='third'); if(mode==='daily'){updateHistEntityFilter(); renderHistoricoResults();} else if(mode==='monthly'){updateHistMonthEntityFilter(); renderHistoricoMonthResults();} else if(mode==='sales'){updateHistSalesEntityFilter(); updateHistSalesMonthEntityFilter(); renderHistoricoSalesResults(); renderHistoricoSalesMonthResults();} else {renderHistoricoTerceiro();}}
 function renderHistoricoTab(){const dates=_histDates(); const months=_histMonths(); const salesDates=_histSalesDates(); const salesMonths=_histSalesMonths(); histSection.innerHTML=`<div class="section-head"><div><h2>🗂️ Histórico</h2><div class="hint">Consulte o histórico diário, vendas e os fechamentos mensais travados do Master/Diretor.</div></div></div><div class="tabs" style="justify-content:flex-start;margin:0 0 14px"><button id="histTabDaily" class="tab active" onclick="setHistMode('daily')">📅 Diário</button><button id="histTabMonthly" class="tab" onclick="setHistMode('monthly')">📦 Fechamento mensal</button><button id="histTabSales" class="tab" onclick="setHistMode('sales')">🧡 Vendas</button><button id="histTabThird" class="tab" onclick="setHistMode('third')">🤝 Cobranças Terceiro</button></div><div id="histDailyPane"><div class="glass panel" style="margin-bottom:14px"><div class="search-row"><div class="input-card"><label>Data</label><select id="histDate" onchange="updateHistEntityFilter();renderHistoricoResults()">${dates.map(d=>`<option value="${d}">${d}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histScope" onchange="updateHistEntityFilter();renderHistoricoResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histEntity" onchange="renderHistoricoResults()"><option value="">Todos</option></select></div></div></div><div id="histResults"></div></div><div id="histMonthPane" class="hidden"><div class="glass panel" style="margin-bottom:14px"><div class="search-row"><div class="input-card"><label>Mês fechado</label><select id="histMonth" onchange="updateHistMonthEntityFilter();renderHistoricoMonthResults()">${months.map(m=>`<option value="${m}">${m}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histMonthScope" onchange="updateHistMonthEntityFilter();renderHistoricoMonthResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histMonthEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histMonthEntity" onchange="renderHistoricoMonthResults()"><option value="">Todos</option></select></div></div></div><div id="histMonthResults"></div></div><div id="histSalesPane" class="hidden"><div class="glass panel" style="margin-bottom:14px"><div class="search-row"><div class="input-card"><label>Data de vendas</label><select id="histSalesDate" onchange="updateHistSalesEntityFilter();renderHistoricoSalesResults()">${salesDates.map(d=>`<option value="${d}">${d}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histSalesScope" onchange="updateHistSalesEntityFilter();renderHistoricoSalesResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histSalesEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histSalesEntity" onchange="renderHistoricoSalesResults()"><option value="">Todos</option></select></div></div></div><div id="histSalesResults"></div><div class="glass panel" style="margin:14px 0"><div class="search-row"><div class="input-card"><label>Mês de vendas</label><select id="histSalesMonth" onchange="updateHistSalesMonthEntityFilter();renderHistoricoSalesMonthResults()">${salesMonths.map(m=>`<option value="${m}">${m}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histSalesMonthScope" onchange="updateHistSalesMonthEntityFilter();renderHistoricoSalesMonthResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histSalesMonthEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histSalesMonthEntity" onchange="renderHistoricoSalesMonthResults()"><option value="">Todos</option></select></div></div></div><div id="histSalesMonthResults"></div></div><div id="histThirdPane" class="hidden"><div id="histThirdResults"></div></div>`; if(dates.length){document.getElementById('histDate').value=dates[0]} if(months.length){document.getElementById('histMonth').value=months[0]} if(salesDates.length){document.getElementById('histSalesDate').value=salesDates[0]} if(salesMonths.length){document.getElementById('histSalesMonth').value=salesMonths[0]} setHistMode(window._histMode||'daily');}
+
+// ===== OVERRIDE HISTÓRICO COMISSIONAMENTO VISÍVEL =====
+
+function setHistMode(mode){
+  window._histMode=mode;
+  document.getElementById('histDailyPane')?.classList.toggle('hidden',mode!=='daily');
+  document.getElementById('histMonthPane')?.classList.toggle('hidden',mode!=='monthly');
+  document.getElementById('histSalesPane')?.classList.toggle('hidden',mode!=='sales');
+  document.getElementById('histThirdPane')?.classList.toggle('hidden',mode!=='third');
+  document.getElementById('histComPane')?.classList.toggle('hidden',mode!=='comissao');
+
+  document.getElementById('histTabDaily')?.classList.toggle('active',mode==='daily');
+  document.getElementById('histTabMonthly')?.classList.toggle('active',mode==='monthly');
+  document.getElementById('histTabSales')?.classList.toggle('active',mode==='sales');
+  document.getElementById('histTabThird')?.classList.toggle('active',mode==='third');
+  document.getElementById('histTabCom')?.classList.toggle('active',mode==='comissao');
+
+  if(mode==='daily'){
+    updateHistEntityFilter(); renderHistoricoResults();
+  } else if(mode==='monthly'){
+    updateHistMonthEntityFilter(); renderHistoricoMonthResults();
+  } else if(mode==='third'){
+    renderHistoricoTerceiro();
+  } else if(mode==='comissao'){
+    try{carregarHistoricoComissaoOnline().then(()=>renderHistoricoComissaoResults())}catch(e){renderHistoricoComissaoResults()}
+  } else {
+    updateHistSalesEntityFilter(); updateHistSalesMonthEntityFilter(); renderHistoricoSalesResults(); renderHistoricoSalesMonthResults();
+  }
+}
+
+
+function renderHistoricoTab(){
+  const dates=_histDates();
+  const months=_histMonths();
+  const salesDates=_histSalesDates();
+  const salesMonths=_histSalesMonths();
+  const comMonths=_histComMeses();
+  const currentComMonth=mesAtualComissao();
+
+  histSection.innerHTML=`
+    <div class="section-head">
+      <div>
+        <h2>🗂️ Histórico</h2>
+        <div class="hint">Consulte o histórico diário, vendas, fechamentos mensais e o histórico de comissionamento para folha.</div>
+      </div>
+    </div>
+
+    <div class="tabs" style="justify-content:flex-start;margin:0 0 14px">
+      <button id="histTabDaily" class="tab active" onclick="setHistMode('daily')">📅 Diário</button>
+      <button id="histTabMonthly" class="tab" onclick="setHistMode('monthly')">📦 Fechamento mensal</button>
+      <button id="histTabSales" class="tab" onclick="setHistMode('sales')">🧡 Vendas</button>
+      <button id="histTabThird" class="tab" onclick="setHistMode('third')">🤝 Cobranças Terceiro</button>
+      <button id="histTabCom" class="tab" onclick="setHistMode('comissao')">💰 Comissionamento</button>
+    </div>
+
+    <div id="histDailyPane">
+      <div class="glass panel" style="margin-bottom:14px">
+        <div class="search-row">
+          <div class="input-card"><label>Data</label><select id="histDate" onchange="updateHistEntityFilter();renderHistoricoResults()">${dates.map(d=>`<option value="${d}">${d}</option>`).join('')}</select></div>
+          <div class="input-card"><label>Escopo</label><select id="histScope" onchange="updateHistEntityFilter();renderHistoricoResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div>
+          <div id="histEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histEntity" onchange="renderHistoricoResults()"><option value="">Todos</option></select></div>
+        </div>
+      </div>
+      <div id="histResults"></div>
+    </div>
+
+    <div id="histMonthPane" class="hidden">
+      <div class="glass panel" style="margin-bottom:14px">
+        <div class="search-row">
+          <div class="input-card"><label>Mês fechado</label><select id="histMonth" onchange="updateHistMonthEntityFilter();renderHistoricoMonthResults()">${months.map(m=>`<option value="${m}">${m}</option>`).join('')}</select></div>
+          <div class="input-card"><label>Escopo</label><select id="histMonthScope" onchange="updateHistMonthEntityFilter();renderHistoricoMonthResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div>
+          <div id="histMonthEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histMonthEntity" onchange="renderHistoricoMonthResults()"><option value="">Todos</option></select></div>
+        </div>
+      </div>
+      <div id="histMonthResults"></div>
+    </div>
+
+    <div id="histSalesPane" class="hidden">
+      <div class="glass panel" style="margin-bottom:14px">
+        <div class="search-row">
+          <div class="input-card"><label>Data de vendas</label><select id="histSalesDate" onchange="updateHistSalesEntityFilter();renderHistoricoSalesResults()">${salesDates.map(d=>`<option value="${d}">${d}</option>`).join('')}</select></div>
+          <div class="input-card"><label>Escopo</label><select id="histSalesScope" onchange="updateHistSalesEntityFilter();renderHistoricoSalesResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div>
+          <div id="histSalesEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histSalesEntity" onchange="renderHistoricoSalesResults()"><option value="">Todos</option></select></div>
+        </div>
+      </div>
+      <div id="histSalesResults"></div>
+      <div class="glass panel" style="margin:14px 0">
+        <div class="search-row">
+          <div class="input-card"><label>Mês de vendas</label><select id="histSalesMonth" onchange="updateHistSalesMonthEntityFilter();renderHistoricoSalesMonthResults()">${salesMonths.map(m=>`<option value="${m}">${m}</option>`).join('')}</select></div>
+          <div class="input-card"><label>Escopo</label><select id="histSalesMonthScope" onchange="updateHistSalesMonthEntityFilter();renderHistoricoSalesMonthResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div>
+          <div id="histSalesMonthEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histSalesMonthEntity" onchange="renderHistoricoSalesMonthResults()"><option value="">Todos</option></select></div>
+        </div>
+      </div>
+      <div id="histSalesMonthResults"></div>
+    </div>
+
+    <div id="histThirdPane" class="hidden"><div id="histThirdResults"></div></div>
+
+    <div id="histComPane" class="hidden">
+      <div class="glass panel" style="margin-bottom:14px">
+        <div class="section-head" style="margin:0 0 10px">
+          <div>
+            <h2 style="font-size:18px">💰 Histórico mensal de comissionamento</h2>
+            <div class="hint">Use para fechar o mês e consultar depois os valores para a folha de pagamento.</div>
+          </div>
+        </div>
+        <div class="search-row">
+          <div class="input-card">
+            <label>Mês para consultar</label>
+            <select id="histComMonth" onchange="renderHistoricoComissaoResults()">
+              ${(comMonths.length?comMonths:[currentComMonth]).map(m=>`<option value="${m}">${m}</option>`).join('')}
+            </select>
+          </div>
+          <div class="input-card">
+            <label>Mês para salvar/atualizar</label>
+            <input id="histComMonthSave" value="${currentComMonth}" placeholder="AAAA-MM">
+          </div>
+          <div class="input-card" style="display:flex;align-items:end">
+            <button class="btn" onclick="salvarSnapshotComissionamentoMensal(false)">💾 Salvar fechamento do mês atual</button>
+          </div>
+        </div>
+      </div>
+      <div id="histComResults"></div>
+    </div>
+  `;
+
+  if(dates.length){document.getElementById('histDate').value=dates[0]}
+  if(months.length){document.getElementById('histMonth').value=months[0]}
+  if(salesDates.length){document.getElementById('histSalesDate').value=salesDates[0]}
+  if(salesMonths.length){document.getElementById('histSalesMonth').value=salesMonths[0]}
+  if(comMonths.length){document.getElementById('histComMonth').value=comMonths[0]}
+  setHistMode(window._histMode||'daily');
+}
+
 function renderSenhasTab(){
   const users=Object.values(AUTH_STATE?.users||{}).sort((a,b)=>String(a.nome||'').localeCompare(String(b.nome||''),'pt-BR'));
   const reqs=[...(AUTH_STATE?.password_reset_requests||[])].reverse();
