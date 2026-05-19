@@ -2,7 +2,7 @@ import os
 import sys
 import time
 import subprocess
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 BR_TZ = ZoneInfo("America/Sao_Paulo")
@@ -62,11 +62,15 @@ def sales_slot_key(dt_now):
 def cobranca_slot_key(dt_now):
     return dt_now.strftime("%Y-%m-%d %H")
 
+def is_last_day_23_window(dt_now):
+    tomorrow = dt_now + timedelta(days=1)
+    return tomorrow.day == 1 and dt_now.hour == 23 and 0 <= dt_now.minute <= COBRANCA_MINUTE_MAX
+
 
 log("Scheduler Railway ativo | TZ=America/Sao_Paulo")
 log("PRIORIDADE: MAIN/dashboard completo roda primeiro no boot e nas janelas de cobrança")
 log(f"Vendas configuradas: depois do MAIN de boot + a cada {SALES_INTERVAL_MIN} minutos")
-log("Cobrança/dashboard completo: a cada 2 horas, das 07:00 às 21:00")
+log("Cobrança/dashboard completo: a cada 2 horas, das 07:00 às 21:00 + fechamento automático no último dia às 23h")
 
 while True:
     _sales_proc = maybe_finish_logs("vendas_servicos_caminhao", _sales_proc)
@@ -80,8 +84,8 @@ while True:
     _cobranca_key = cobranca_slot_key(agora)
 
     _cobranca_ok = (
-        agora.hour in COBRANCA_HOURS
-        and 0 <= agora.minute <= COBRANCA_MINUTE_MAX
+        (agora.hour in COBRANCA_HOURS and 0 <= agora.minute <= COBRANCA_MINUTE_MAX)
+        or is_last_day_23_window(agora)
     )
 
     # PRIORIDADE 0: sempre publicar/gerar o dashboard completo primeiro ao subir o container.

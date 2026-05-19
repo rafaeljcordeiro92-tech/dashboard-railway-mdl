@@ -2113,17 +2113,47 @@ def _load_cobranca_global_rateio_pct():
 
 COBRANCA10_RATEIO = _load_cobranca_global_rateio_pct() / 100.0
 
-CREDIARISTAS_FILIAIS = {
-    "F2": "crediaristaf02",
-    "F3": "crediaristaf03",
-    "F4": "crediaristaf04",
-    "F5": "crediaristaf05",
-    "F6": "crediaristaf06",
-    "F8": "crediaristaf08",
-    "F9": "crediaristaf09",
-}
+def _load_crediaristas_config_do_meta():
+    default = [
+        {"login": "crediaristaf02_01", "nome": "Crediarista F2 01", "filial": "F2", "pct": 100},
+        {"login": "crediaristaf03_01", "nome": "Crediarista F3 01", "filial": "F3", "pct": 100},
+        {"login": "crediaristaf04_01", "nome": "Crediarista F4 01", "filial": "F4", "pct": 100},
+        {"login": "crediaristaf05_01", "nome": "Crediarista F5 01", "filial": "F5", "pct": 100},
+        {"login": "crediaristaf06_01", "nome": "Crediarista F6 01", "filial": "F6", "pct": 100},
+        {"login": "crediaristaf08_01", "nome": "Crediarista F8 01", "filial": "F8", "pct": 100},
+        {"login": "crediaristaf09_01", "nome": "Crediarista F9 01", "filial": "F9", "pct": 100},
+    ]
+    try:
+        _cfgp = os.path.join(pasta, "cache_historico", "config_meta.json")
+        if os.path.exists(_cfgp):
+            with open(_cfgp, "r", encoding="utf-8") as _fc:
+                _raw = json.load(_fc)
+            _glob = _raw.get("global", _raw) if isinstance(_raw, dict) else {}
+            rows = _glob.get("crediaristas_config") or []
+            clean = []
+            for r in rows:
+                if not isinstance(r, dict): continue
+                filial = str(r.get("filial") or "").upper().strip()
+                if filial and not filial.startswith("F"): filial = "F" + filial.zfill(2).lstrip("0")
+                if filial.startswith("F0"): filial = "F" + filial[2:]
+                login = str(r.get("login") or "").lower().strip()
+                nome = str(r.get("nome") or "").strip() or f"Crediarista {filial}"
+                try: pct = float(str(r.get("pct", 100)).replace(",", "."))
+                except Exception: pct = 100.0
+                pct = max(0.0, min(100.0, pct))
+                if filial and login and pct > 0: clean.append({"login": login, "nome": nome, "filial": filial, "pct": pct})
+            if clean: return clean
+    except Exception as e:
+        print(f"⚠️ Não consegui carregar crediaristas_config: {e}")
+    return default
 
-def nome_crediarista_filial(filial):
+CREDIARISTAS_CONFIG = _load_crediaristas_config_do_meta()
+CREDIARISTAS_FILIAIS = {r["filial"]: r["login"] for r in CREDIARISTAS_CONFIG}
+CREDIARISTAS_NOMES = {r["login"]: r.get("nome") or f"Crediarista {r['filial']}" for r in CREDIARISTAS_CONFIG}
+
+def nome_crediarista_filial(filial, login=None):
+    if login and str(login).lower() in CREDIARISTAS_NOMES:
+        return CREDIARISTAS_NOMES[str(login).lower()]
     return f"CREDIARISTA{str(filial).upper()}"
 
 def cobranca_row_key_py(r):
@@ -2491,8 +2521,8 @@ recebimentos_crediarista_js = {}
 
 # Usuários CREDIARISTAS por filial
 for _fil_cred, _login_cred in CREDIARISTAS_FILIAIS.items():
-    _nome_cred = nome_crediarista_filial(_fil_cred)
-    _senha_ini = creds_salvas.get(f"{_login_cred}_{_fil_cred}") or (_login_cred.upper() + str(random.randint(100,999)))
+    _nome_cred = nome_crediarista_filial(_fil_cred, _login_cred)
+    _senha_ini = creds_salvas.get(f"{_login_cred}_{_fil_cred}") or creds_salvas.get(_login_cred) or (_login_cred.upper() + str(random.randint(100,999)))
     _estado_cred = cred_state.get("users", {}).get(_login_cred, {})
     _senha_cred = _estado_cred.get("password") or _senha_ini
     _troca_cred = bool(_estado_cred.get("must_change_password", _senha_cred == _senha_ini))
@@ -2670,6 +2700,15 @@ _config_meta_default_global = {
     "cob_cred_rateio_filial_pct": 50.0,
     "cob_cred_rateio_cred_pct": 50.0,
     "cobranca_global_rateio_pct": 20.0,
+    "crediaristas_config": [
+        {"login": "crediaristaf02_01", "nome": "Crediarista F2 01", "filial": "F2", "pct": 100},
+        {"login": "crediaristaf03_01", "nome": "Crediarista F3 01", "filial": "F3", "pct": 100},
+        {"login": "crediaristaf04_01", "nome": "Crediarista F4 01", "filial": "F4", "pct": 100},
+        {"login": "crediaristaf05_01", "nome": "Crediarista F5 01", "filial": "F5", "pct": 100},
+        {"login": "crediaristaf06_01", "nome": "Crediarista F6 01", "filial": "F6", "pct": 100},
+        {"login": "crediaristaf08_01", "nome": "Crediarista F8 01", "filial": "F8", "pct": 100},
+        {"login": "crediaristaf09_01", "nome": "Crediarista F9 01", "filial": "F9", "pct": 100}
+    ],
 }
 if os.path.exists(_config_meta_path):
     with open(_config_meta_path, encoding="utf-8") as _f:
@@ -4596,32 +4635,21 @@ for f in clientes_js:
     for faixa in ["grave","alerta","atencao"]:
         clientes_js[f][faixa].sort(key=lambda x: x["pendente"], reverse=True)
 
-# ── CREDIARISTAS: espelho integral da base da filial ─────────────────────────
-# Regra nova:
-#   - o crediarista acessa a MESMA carteira da filial/gerente
-#   - não existe mais rateio 50% / 50%
-#   - gerente e crediarista podem cobrar simultaneamente sobre a mesma base
-#   - ao registrar cobrança, ambos enxergam a atualização porque a base é espelhada
+# ── CREDIARISTAS: configuráveis por usuário/filial/percentual ─────────────────
 clientes_crediarista_js = {}
 recebimentos_crediarista_js = {}
-for _fil_cred, _login_cred in CREDIARISTAS_FILIAIS.items():
+for _cred_cfg in CREDIARISTAS_CONFIG:
+    _fil_cred = str(_cred_cfg.get('filial', '')).upper()
+    _login_cred = str(_cred_cfg.get('login', '')).lower()
+    _pct_cred = max(0.0, min(100.0, float(_cred_cfg.get('pct', 100) or 100)))
     _src_cli = clientes_js.get(_fil_cred, {}) or {}
-    clientes_crediarista_js[_login_cred] = {
-        'grave': list(_src_cli.get('grave', []) or []),
-        'alerta': list(_src_cli.get('alerta', []) or []),
-        'atencao': list(_src_cli.get('atencao', []) or []),
-    }
-
-    _agg = {'grave': [], 'alerta': [], 'atencao': []}
-    for _rk, _rv in recebimentos_det_js.items():
-        if str(_rk).endswith('_' + _fil_cred):
-            for _fx in ['grave', 'alerta', 'atencao']:
-                _agg[_fx].extend(list((_rv or {}).get(_fx, []) or []))
-
-    for _fx in ['grave', 'alerta', 'atencao']:
-        _agg[_fx] = sorted(_agg[_fx], key=lambda x: float(x.get('pago', 0) or 0), reverse=True)
-
-    recebimentos_crediarista_js[_login_cred] = _agg
+    clientes_crediarista_js[_login_cred] = {'grave': [], 'alerta': [], 'atencao': []}
+    for _fx in ['grave','alerta','atencao']:
+        _base_fx = list(_src_cli.get(_fx, []) or [])
+        _base_fx = sorted(_base_fx, key=lambda r: _hashlib.md5((cobranca_row_key_py(r)+'|'+_login_cred).encode('utf-8')).hexdigest())
+        _n = int(round(len(_base_fx) * (_pct_cred/100.0)))
+        clientes_crediarista_js[_login_cred][_fx] = _base_fx[:_n]
+    recebimentos_crediarista_js[_login_cred] = {'grave': [], 'alerta': [], 'atencao': []}
 
 _historico_comissao_cobranca10()
 
@@ -4639,7 +4667,7 @@ js_clientes_vend = json.dumps(clientes_por_vend_js,  ensure_ascii=False)
 js_clientes_terceiro = json.dumps(clientes_terceiro_js, ensure_ascii=False)
 js_clientes_crediarista = json.dumps(clientes_crediarista_js, ensure_ascii=False)
 js_recebimentos_crediarista = json.dumps(recebimentos_crediarista_js, ensure_ascii=False)
-js_crediaristas_map = json.dumps(CREDIARISTAS_FILIAIS, ensure_ascii=False)
+js_crediaristas_map = json.dumps(CREDIARISTAS_CONFIG, ensure_ascii=False)
 js_destaque = json.dumps(destaque_semana or {}, ensure_ascii=False)
 js_hist_dash = json.dumps(hist_dash, ensure_ascii=False)
 js_quitados_180 = json.dumps((quitados_180_info.get('dados') or {}).get('quitados', []), ensure_ascii=False)
@@ -5217,7 +5245,12 @@ const RECEBIMENTOS_TERCEIRO=__JS_RECEBIMENTOS_TERCEIRO__;
 const RECEBIMENTOS_CREDIARISTA=__JS_RECEBIMENTOS_CREDIARISTA__||{};
 const QUITADOS_180=__JS_QUITADOS_180__||[];
 let RECEBIMENTOS_CONCILIADOS={};
-const CREDIARISTAS_MAP=__JS_CREDIARISTAS_MAP__||{};
+let CREDIARISTAS_CONFIG=Array.isArray(__JS_CREDIARISTAS_MAP__)?__JS_CREDIARISTAS_MAP__:[];
+if(!CREDIARISTAS_CONFIG.length && __JS_CREDIARISTAS_MAP__ && typeof __JS_CREDIARISTAS_MAP__==='object'){
+  CREDIARISTAS_CONFIG=Object.entries(__JS_CREDIARISTAS_MAP__).map(([filial,login])=>({filial,login,nome:`Crediarista ${filial}`,pct:100}));
+}
+function getCrediaristasConfig(){return Array.isArray(CONFIG_META?.crediaristas_config)&&CONFIG_META.crediaristas_config.length?CONFIG_META.crediaristas_config:CREDIARISTAS_CONFIG}
+const CREDIARISTAS_MAP=new Proxy({}, {get(t,k){const row=getCrediaristasConfig().find(r=>String(r.filial||'').toUpperCase()===String(k||'').toUpperCase());return row?String(row.login||'').toLowerCase():undefined}, ownKeys(){return getCrediaristasConfig().map(r=>r.filial)}, getOwnPropertyDescriptor(){return {enumerable:true,configurable:true}}});
 const COBRANCA10_LOGIN='cobranca10';
 const COBRANCA10_NOME='Cobrança10';
 const METAS_VENDAS=__JS_METAS_VENDAS__||{metas:{}};
@@ -5297,7 +5330,7 @@ async function tentarAtualizarOnlineDepoisLogin(){
       if(usuarioAtual?.tipo==='master'){
         if(!detailScreen.classList.contains('hidden') && currentDetailRef) openEntity(currentDetailRef);
         else renderList();
-        setTimeout(()=>salvarSnapshotComissionamentoMensal(true),900);
+        if(isUltimoDiaMes23()) setTimeout(()=>salvarSnapshotComissionamentoMensal(true),900);
       }
     }catch(e){}
   }catch(e){console.log('Falha atualização online pós-login',e);}
@@ -5356,34 +5389,28 @@ function recebimentosSomenteConciliados(ent){
   try{return mergeRecebimentosConciliados(emptyRec(), ent||{})}catch(e){return emptyRec()}
 }
 
-function crediaristaEntities(){return Object.entries(CREDIARISTAS_MAP||{}).map(([filial,login])=>{
-  const filialKey=String(filial||'').toUpperCase();
-  const loginKey=String(login||'').toLowerCase();
+function crediaristaEntities(){return getCrediaristasConfig().map((row)=>{
+  const filialKey=String(row.filial||'').toUpperCase();
+  const loginKey=String(row.login||'').toLowerCase();
   const filData=FILIAIS?.[filialKey]||{};
-  const nomeCred=`CREDIARISTA${filialKey}`;
+  const nomeCred=String(row.nome||`Crediarista ${filialKey}`);
   const recOwn=recebimentosSomenteConciliados({type:'crediarista',login:loginKey,filial:filialKey,nome:nomeCred,is_crediarista:true});
   const gRec=(recOwn.grave||[]).reduce((a,b)=>a+Number(b.pago||0),0);
   const aRec=(recOwn.alerta||[]).reduce((a,b)=>a+Number(b.pago||0),0);
   const tRec=(recOwn.atencao||[]).reduce((a,b)=>a+Number(b.pago||0),0);
-  const recTotalOwn=gRec+aRec+tRec;
-  return {
-    type:'crediarista',login:loginKey,filial:filialKey,nome:nomeCred,
-    is_crediarista:true,is_gerente:false,only_cobranca:true,
-    // O crediarista só recebe crédito quando ele mesmo cobrou e o título foi pago depois.
-    pendente:Number(filData.pendente||0),
-    pago:recTotalOwn,
-    total:Number(filData.pendente||0)+recTotalOwn,
-    perc_filial:100,
-    grave_pend:Number(filData.grave_pend||0),alerta_pend:Number(filData.alerta_pend||0),atencao_pend:Number(filData.atencao_pend||0),
-    grave_rec:gRec,alerta_rec:aRec,atencao_rec:tRec,
-    grave_alvo:Number(filData.grave_alvo||0),alerta_alvo:Number(filData.alerta_alvo||0),atencao_alvo:Number(filData.atencao_alvo||0),
-    grave_perc:Number(filData.grave_pend||0)>0?(gRec/(Number(filData.grave_pend||0)*Number((CONFIG_META||{}).grave_pct||20)/100)*100):0,
-    alerta_perc:Number(filData.alerta_pend||0)>0?(aRec/(Number(filData.alerta_pend||0)*Number((CONFIG_META||{}).alerta_pct||15)/100)*100):0,
-    atencao_perc:Number(filData.atencao_pend||0)>0?(tRec/(Number(filData.atencao_pend||0)*Number((CONFIG_META||{}).atencao_pct||10)/100)*100):0,
-    perc_meta:0,
-    rentabilidade_pct:Number(filData.rentabilidade_pct||0),
-    sem_ativo:Boolean(filData.sem_ativo||false),
-  };
+  const cli=CLIENTES_CREDIARISTA?.[loginKey]||{grave:[],alerta:[],atencao:[]};
+  const gp=(cli.grave||[]).reduce((a,b)=>a+Number(b.pendente||0),0);
+  const ap=(cli.alerta||[]).reduce((a,b)=>a+Number(b.pendente||0),0);
+  const tp=(cli.atencao||[]).reduce((a,b)=>a+Number(b.pendente||0),0);
+  const pendCred=gp+ap+tp; const recTotalOwn=gRec+aRec+tRec;
+  return {type:'crediarista',login:loginKey,filial:filialKey,nome:nomeCred,pct_base:Number(row.pct||100),is_crediarista:true,is_gerente:false,only_cobranca:true,
+    pendente:pendCred,pago:recTotalOwn,total:pendCred+recTotalOwn,perc_filial:100,
+    grave_pend:gp,alerta_pend:ap,atencao_pend:tp,grave_rec:gRec,alerta_rec:aRec,atencao_rec:tRec,
+    grave_alvo:gp*Number((CONFIG_META||{}).grave_pct||20)/100,alerta_alvo:ap*Number((CONFIG_META||{}).alerta_pct||15)/100,atencao_alvo:tp*Number((CONFIG_META||{}).atencao_pct||10)/100,
+    grave_perc:gp>0?(gRec/(gp*Number((CONFIG_META||{}).grave_pct||20)/100)*100):0,
+    alerta_perc:ap>0?(aRec/(ap*Number((CONFIG_META||{}).alerta_pct||15)/100)*100):0,
+    atencao_perc:tp>0?(tRec/(tp*Number((CONFIG_META||{}).atencao_pct||10)/100)*100):0,
+    perc_meta:0,rentabilidade_pct:Number(filData.rentabilidade_pct||0),sem_ativo:Boolean(filData.sem_ativo||false)};
 })}
 function crediaristaLoginByFilial(filial){const want=String(filial||'').toUpperCase(); for(const [f,l] of Object.entries(CREDIARISTAS_MAP||{})){ if(String(f||'').toUpperCase()===want) return String(l||'').toLowerCase(); } return ''}
 function crediaristaEntityByLogin(login){const key=String(login||'').toLowerCase(); return crediaristaEntities().find(x=>String(x.login||'').toLowerCase()===key || String(x.nome||'').toLowerCase()===key || String(x.filial||'').toLowerCase()===key)||null}
@@ -6737,7 +6764,7 @@ async function carregarCobrancasOnline(){try{const r=await fetchComTimeout(API_C
 
 async function removerCobranca(id,cliente='',titulo='',parcela=''){if(!confirm('Remover esta cobrança do histórico?')) return; try{const r=await fetch(API_COB,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete',id,cliente,titulo,parcela})}); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} if(j.ok){toast('Cobrança removida.','success'); await carregarCobrancasOnline(); renderLogsTab(); renderList(); if(currentDetailRef) openEntity(currentDetailRef);}else{console.log('Falha remover cobrança:', txt); toast('Não consegui remover.')}}catch(e){console.log(e); toast('Falha ao remover cobrança.')}}
 function toggleAcc(el){el.parentElement.classList.toggle('open')}
-async function carregarConfigOnline(){try{const r=await fetchComTimeout(API_CFG+'?_='+Date.now(),{},2500); const j=await r.json(); if(j.ok && j.data){CONFIG_META={...CONFIG_META,...(j.data.global||{})}; const ind=(j.data.individual && typeof j.data.individual==='object' && !Array.isArray(j.data.individual))?j.data.individual:{}; CONFIG_META_IND=ind;}}catch(e){console.log('Falha ao carregar config meta',e);}}
+async function carregarConfigOnline(){try{const r=await fetchComTimeout(API_CFG+'?_='+Date.now(),{},2500); const j=await r.json(); if(j.ok && j.data){CONFIG_META={...CONFIG_META,...(j.data.global||{})}; CREDIARISTAS_CONFIG=getCrediaristasConfig(); const ind=(j.data.individual && typeof j.data.individual==='object' && !Array.isArray(j.data.individual))?j.data.individual:{}; CONFIG_META_IND=ind;}}catch(e){console.log('Falha ao carregar config meta',e);}}
 
 function optionTargets(){let opts=''; flattenFiliais().forEach(f=>{opts+=`<option value="FILIAL::${f.filial}">🏬 ${filialLabel(f.filial)}</option>`}); opts+=`<option value="VEND::${COBRANCA10_NOME}_FTER">🤝 ${COBRANCA10_NOME} (Cobranças Terceiro)</option>`; crediaristaEntities().forEach(c=>{opts+=`<option value="VEND::${c.nome}_${c.filial}">🧾 ${c.nome} (${c.filial})</option>`}); flattenVendedores().forEach(v=>{opts+=`<option value="VEND::${v.nome}_${v.filial}">👤 ${v.nome} (${v.filial})</option>`}); return opts}
 function fillMetaForm(mode,val){const cfg=mode==='global'?{...CONFIG_META}:mergedMetaConfig(metaAliasesFromRaw(val)); ['grave_pct','alerta_pct','atencao_pct','peso_grave','peso_alerta','peso_atencao','bonus_50','bonus_75','bonus_85','bonus_100','vendas_min_pct','servicos_min_pct','gerente_vendas_min_pct','gerente_servicos_min_pct','cobranca_global_rateio_pct'].forEach(k=>{const el=document.getElementById('cfg_'+k); if(el) el.value=cfg[k]??''}); renderCommissionPanel(cfg)}
@@ -6759,10 +6786,42 @@ function renderSavedMetaList(){
   const lst=document.getElementById('metaSavedList');
   if(lst) lst.innerHTML=labels.length?('Individuais salvos: '+labels.map(k=>`<span class="mini-chip">${esc(k)}</span>`).join(' ')):'Nenhuma configuração individual salva.';
 }
-function renderMetasTab(){const cards=[...flattenVendedores(),...flattenFiliais()]; const currentMode=window._metaMode||'global'; const currentTarget=window._metaSelectedTarget||''; metaSection.innerHTML=`<div class="section-head"><div><h2>🎯 Configuração de metas e bônus</h2><div class="hint">Altere globalmente ou por vendedor/filial. Ao salvar, já fica online.</div></div></div><div class="meta-layout"><div class="glass panel"><div class="tabs" style="justify-content:flex-start;margin-top:0"><button id="btnModeGlobal" class="tab" onclick="setMetaMode('global')">🌐 Padrão global</button><button id="btnModeInd" class="tab" onclick="setMetaMode('individual')">👤 Por vendedor/filial</button></div><div id="metaSelectWrap" class="hidden" style="margin:8px 0 14px"><div class="input-card"><label>Selecionar alvo</label><select id="metaTarget" onchange="loadMetaSelected()"><option value="">Selecione...</option>${optionTargets()}</select></div></div><div class="section-head" style="margin-top:10px"><div><h2 style="font-size:18px">% de meta por faixa</h2></div></div><div class="form-grid"><div class="input-card"><label>Grave</label><input id="cfg_grave_pct" type="number" step="0.01"></div><div class="input-card"><label>Alerta</label><input id="cfg_alerta_pct" type="number" step="0.01"></div><div class="input-card"><label>Atenção</label><input id="cfg_atencao_pct" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">Pesos da meta geral</h2></div></div><div class="form-grid"><div class="input-card"><label>Peso Grave</label><input id="cfg_peso_grave" type="number" step="0.01"></div><div class="input-card"><label>Peso Alerta</label><input id="cfg_peso_alerta" type="number" step="0.01"></div><div class="input-card"><label>Peso Atenção</label><input id="cfg_peso_atencao" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">Bônus / mensagem da faixa <span class="note">· Não acumulativo</span></h2></div></div><div class="form-grid bonus"><div class="input-card"><label>50%</label><input id="cfg_bonus_50" placeholder="Ex: Parabéns, você ganhou R$ 100,00"></div><div class="input-card"><label>75%</label><input id="cfg_bonus_75"></div><div class="input-card"><label>85%</label><input id="cfg_bonus_85"></div><div class="input-card"><label>100%</label><input id="cfg_bonus_100"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">💲 Meta mínima Vendas e Serviços</h2><div class="hint">Configuração inicial para comissão de vendedor e gerente/filial.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Vendedor · mínimo vendas (%)</label><input id="cfg_vendas_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Vendedor · mínimo serviços (%)</label><input id="cfg_servicos_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial · mínimo vendas (%)</label><input id="cfg_gerente_vendas_min_pct" type="number" step="0.01" placeholder="90"></div><div class="input-card"><label>Gerente/Filial · mínimo serviços (%)</label><input id="cfg_gerente_servicos_min_pct" type="number" step="0.01" placeholder="90"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🤝 Rateio cobrança global</h2><div class="hint">Percentual do total único da cobrança geral distribuído para os usuários do tipo cobrança global (ex.: Cobrança10).</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Usuários de cobrança global (%)</label><input id="cfg_cobranca_global_rateio_pct" type="number" step="0.01" placeholder="20"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🧾 Crediarista espelhado</h2><div class="hint">Os usuários crediaristas acessam a mesma base completa da filial/gerente. Não existe mais rateio separado.</div></div></div><div id="commissionPanel"></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button class="btn primary" onclick="salvarMeta()">💾 Salvar configuração</button><button class="btn ghost" onclick="removerMetaIndividual()">🗑️ Remover individual</button></div><div id="metaSaveMsg" class="note" style="margin-top:10px"></div><div id="metaSavedList" class="note" style="margin-top:10px"></div></div></div>`; const sel=document.getElementById('metaTarget'); if(sel && currentTarget) sel.value=currentTarget; setMetaMode(currentMode); renderSavedMetaList();}
+
+function renderCrediaristasConfigPanel(){
+  const rows=getCrediaristasConfig();
+  return `<div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🧾 Crediaristas configuráveis</h2><div class="hint">Crie um usuário novo quando trocar a pessoa da filial. Ex.: CREDIARISTAF2_01, depois CREDIARISTAF2_02. O histórico antigo fica preservado.</div></div></div>
+  <div id="credConfigRows">${rows.map(r=>`<div class="glass" style="padding:10px;margin-bottom:8px;border-radius:14px"><div class="form-grid bonus">
+    <div class="input-card"><label>Login do usuário</label><input class="cred-login" value="${esc(r.login||'')}" placeholder="crediaristaf2_01"></div>
+    <div class="input-card"><label>Nome exibido</label><input class="cred-nome" value="${esc(r.nome||'')}" placeholder="Maria - crediarista F2"></div>
+    <div class="input-card"><label>Filial/base</label><select class="cred-filial">${ORDEM.map(f=>`<option value="${f}" ${String(r.filial||'').toUpperCase()===f?'selected':''}>${f}</option>`).join('')}</select></div>
+    <div class="input-card"><label>% da base</label><input class="cred-pct" type="number" step="0.01" value="${Number(r.pct||100)}"></div>
+  </div><button type="button" class="btn soft" onclick="this.closest('.glass').remove()">🗑️ Remover</button></div>`).join('')}</div>
+  <button type="button" class="btn soft" onclick="addCrediaristaConfigRow()">➕ Adicionar crediarista</button>`;
+}
+function addCrediaristaConfigRow(){
+  const box=document.getElementById('credConfigRows'); if(!box) return;
+  box.insertAdjacentHTML('beforeend', `<div class="glass" style="padding:10px;margin-bottom:8px;border-radius:14px"><div class="form-grid bonus">
+    <div class="input-card"><label>Login do usuário</label><input class="cred-login" placeholder="crediaristaf2_01"></div>
+    <div class="input-card"><label>Nome exibido</label><input class="cred-nome" placeholder="Nome da crediarista"></div>
+    <div class="input-card"><label>Filial/base</label><select class="cred-filial">${ORDEM.map(f=>`<option value="${f}">${f}</option>`).join('')}</select></div>
+    <div class="input-card"><label>% da base</label><input class="cred-pct" type="number" step="0.01" value="100"></div>
+  </div><button type="button" class="btn soft" onclick="this.closest('.glass').remove()">🗑️ Remover</button></div>`);
+}
+function readCrediaristasConfigFromUI(){
+  const box=document.getElementById('credConfigRows'); if(!box) return getCrediaristasConfig();
+  return Array.from(box.querySelectorAll(':scope > .glass')).map(row=>{
+    const login=String(row.querySelector('.cred-login')?.value||'').trim().toLowerCase();
+    const filial=String(row.querySelector('.cred-filial')?.value||'').toUpperCase();
+    const nome=String(row.querySelector('.cred-nome')?.value||'').trim()||`Crediarista ${filial}`;
+    const pct=Math.max(0,Math.min(100,Number(row.querySelector('.cred-pct')?.value||100)));
+    return {login,nome,filial,pct};
+  }).filter(r=>r.login&&r.filial&&r.pct>0);
+}
+
+function renderMetasTab(){const cards=[...flattenVendedores(),...flattenFiliais()]; const currentMode=window._metaMode||'global'; const currentTarget=window._metaSelectedTarget||''; metaSection.innerHTML=`<div class="section-head"><div><h2>🎯 Configuração de metas e bônus</h2><div class="hint">Altere globalmente ou por vendedor/filial. Ao salvar, já fica online.</div></div></div><div class="meta-layout"><div class="glass panel"><div class="tabs" style="justify-content:flex-start;margin-top:0"><button id="btnModeGlobal" class="tab" onclick="setMetaMode('global')">🌐 Padrão global</button><button id="btnModeInd" class="tab" onclick="setMetaMode('individual')">👤 Por vendedor/filial</button></div><div id="metaSelectWrap" class="hidden" style="margin:8px 0 14px"><div class="input-card"><label>Selecionar alvo</label><select id="metaTarget" onchange="loadMetaSelected()"><option value="">Selecione...</option>${optionTargets()}</select></div></div><div class="section-head" style="margin-top:10px"><div><h2 style="font-size:18px">% de meta por faixa</h2></div></div><div class="form-grid"><div class="input-card"><label>Grave</label><input id="cfg_grave_pct" type="number" step="0.01"></div><div class="input-card"><label>Alerta</label><input id="cfg_alerta_pct" type="number" step="0.01"></div><div class="input-card"><label>Atenção</label><input id="cfg_atencao_pct" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">Pesos da meta geral</h2></div></div><div class="form-grid"><div class="input-card"><label>Peso Grave</label><input id="cfg_peso_grave" type="number" step="0.01"></div><div class="input-card"><label>Peso Alerta</label><input id="cfg_peso_alerta" type="number" step="0.01"></div><div class="input-card"><label>Peso Atenção</label><input id="cfg_peso_atencao" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">Bônus / mensagem da faixa <span class="note">· Não acumulativo</span></h2></div></div><div class="form-grid bonus"><div class="input-card"><label>50%</label><input id="cfg_bonus_50" placeholder="Ex: Parabéns, você ganhou R$ 100,00"></div><div class="input-card"><label>75%</label><input id="cfg_bonus_75"></div><div class="input-card"><label>85%</label><input id="cfg_bonus_85"></div><div class="input-card"><label>100%</label><input id="cfg_bonus_100"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">💲 Meta mínima Vendas e Serviços</h2><div class="hint">Configuração inicial para comissão de vendedor e gerente/filial.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Vendedor · mínimo vendas (%)</label><input id="cfg_vendas_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Vendedor · mínimo serviços (%)</label><input id="cfg_servicos_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial · mínimo vendas (%)</label><input id="cfg_gerente_vendas_min_pct" type="number" step="0.01" placeholder="90"></div><div class="input-card"><label>Gerente/Filial · mínimo serviços (%)</label><input id="cfg_gerente_servicos_min_pct" type="number" step="0.01" placeholder="90"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🤝 Rateio cobrança global</h2><div class="hint">Percentual do total único da cobrança geral distribuído para os usuários do tipo cobrança global (ex.: Cobrança10).</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Usuários de cobrança global (%)</label><input id="cfg_cobranca_global_rateio_pct" type="number" step="0.01" placeholder="20"></div></div>${renderCrediaristasConfigPanel()}<div id="commissionPanel"></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button class="btn primary" onclick="salvarMeta()">💾 Salvar configuração</button><button class="btn ghost" onclick="removerMetaIndividual()">🗑️ Remover individual</button></div><div id="metaSaveMsg" class="note" style="margin-top:10px"></div><div id="metaSavedList" class="note" style="margin-top:10px"></div></div></div>`; const sel=document.getElementById('metaTarget'); if(sel && currentTarget) sel.value=currentTarget; setMetaMode(currentMode); renderSavedMetaList();}
 function setMetaMode(mode){window._metaMode=mode; const bg=document.getElementById('btnModeGlobal'); const bi=document.getElementById('btnModeInd'); if(bg) bg.classList.toggle('active',mode==='global'); if(bi) bi.classList.toggle('active',mode==='individual'); const wrap=document.getElementById('metaSelectWrap'); if(wrap) wrap.classList.toggle('hidden',mode!=='individual'); if(mode==='global'){fillMetaForm('global')} else {const raw=(document.getElementById('metaTarget')?.value)||window._metaSelectedTarget||''; if(raw){window._metaSelectedTarget=raw; fillMetaForm('individual',raw)} else {fillMetaForm('global')}}}
 function loadMetaSelected(){const val=document.getElementById('metaTarget').value; window._metaSelectedTarget=val; if(!val){fillMetaForm('global'); return;} fillMetaForm('individual',val)}
-function collectMetaForm(){const out={}; ['grave_pct','alerta_pct','atencao_pct','peso_grave','peso_alerta','peso_atencao','vendas_min_pct','servicos_min_pct','gerente_vendas_min_pct','gerente_servicos_min_pct','cobranca_global_rateio_pct'].forEach(k=>out[k]=Number(document.getElementById('cfg_'+k).value||0)); ['bonus_50','bonus_75','bonus_85','bonus_100'].forEach(k=>out[k]=document.getElementById('cfg_'+k).value||''); return {...out,...readCommissionPanel()}}
+function collectMetaForm(){const out={}; ['grave_pct','alerta_pct','atencao_pct','peso_grave','peso_alerta','peso_atencao','vendas_min_pct','servicos_min_pct','gerente_vendas_min_pct','gerente_servicos_min_pct','cobranca_global_rateio_pct'].forEach(k=>out[k]=Number(document.getElementById('cfg_'+k).value||0)); ['bonus_50','bonus_75','bonus_85','bonus_100'].forEach(k=>out[k]=document.getElementById('cfg_'+k).value||''); return {...out,crediaristas_config:readCrediaristasConfigFromUI(),...readCommissionPanel()}}
 async function salvarMeta(){
   const msgEl=document.getElementById('metaSaveMsg');
   const cfg=collectMetaForm();
@@ -6965,6 +7024,28 @@ function mesAtualComissao(){const d=new Date(); return `${d.getFullYear()}-${Str
 function _histComMeses(){return Object.keys(HIST_COMISSAO?.months||{}).sort().reverse()}
 function _comEntKey(ent){return `${ent.type||'ent'}::${ent.filial||''}::${ent.login||ent.nome||''}`}
 function _recebResumo(ent){const r=getRecebimentos(ent); const sum=(fx)=>(r[fx]||[]).reduce((a,b)=>a+Number(b.pago||0),0); return {grave:sum('grave'),alerta:sum('alerta'),atencao:sum('atencao'),total:sum('grave')+sum('alerta')+sum('atencao'),qtd:(r.grave||[]).length+(r.alerta||[]).length+(r.atencao||[]).length}}
+
+function snapshotEntityHTML(ent){
+  try{
+    const oldDetail=detailScreen.innerHTML;
+    const oldDetailHidden=detailScreen.classList.contains('hidden');
+    const main=document.getElementById('mainScreen');
+    const oldMainHidden=main?.classList.contains('hidden');
+    const oldRef=currentDetailRef;
+    openEntity(ent);
+    const html=detailScreen.innerHTML;
+    detailScreen.innerHTML=oldDetail;
+    detailScreen.classList.toggle('hidden',oldDetailHidden);
+    if(main) main.classList.toggle('hidden',!!oldMainHidden);
+    currentDetailRef=oldRef;
+    return html;
+  }catch(e){console.log('Falha ao congelar tela individual',e); return '';}
+}
+function isUltimoDiaMes23(){
+  const now=new Date(); const tomorrow=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1);
+  return tomorrow.getDate()===1 && now.getHours()>=23;
+}
+
 function snapshotComissaoEntidade(ent){
   const meta=calcMeta(ent); const rec=_recebResumo(ent); let c={};
   try{ if(ent.type==='vendedor'||ent.type==='filial') c=calcCommissionSummary(ent)||{}; }catch(e){c={erro:String(e)}}
@@ -6976,7 +7057,7 @@ function snapshotComissaoEntidade(ent){
     grave_alvo:Number(meta.grave?.alvo||0), alerta_alvo:Number(meta.alerta?.alvo||0), atencao_alvo:Number(meta.atencao?.alvo||0),
     venda_real:Number(c.vendaReal||0), servico_real:Number(c.servReal||0), caminhao_real:Number(c.camReal||0),
     faixa:String(c.faixaTxt||''), comissao_vendas:Number(c.vendasComissao||0), comissao_servicos:Number(c.servicosComissao||0), comissao_caminhao:Number(c.caminhaoComissao||0), bonus_meta:Number(c.bonusMeta||0), rent48:Number(c.rent48||0), rent52:Number(c.rent52||0), rent55:Number(c.rent55||0), total_previsto:totalPrev,
-    elegivel_mercantil:Boolean(c.elegivelMercantil), elegivel_servicos:Boolean(c.elegivelServicos), observacao:(ent.type==='crediarista'?'Crediarista: somente pagos conciliados após cobrança própria.':(ent.type==='terceiro'?'Cobrança terceiro.':''))
+    elegivel_mercantil:Boolean(c.elegivelMercantil), elegivel_servicos:Boolean(c.elegivelServicos), html_individual:snapshotEntityHTML(ent), observacao:(ent.type==='crediarista'?'Crediarista: somente pagos conciliados após cobrança própria.':(ent.type==='terceiro'?'Cobrança terceiro.':''))
   };
 }
 function buildSnapshotComissionamentoMensal(month=mesAtualComissao()){
@@ -7000,6 +7081,18 @@ function renderComissionamentoHistoricoTable(rows){
   if(!rows.length) return '<div class="empty">Nenhum comissionamento salvo para este mês.</div>';
   return `<div class="glass panel"><div class="tableish">${rows.map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.nome||'')}</div><div class="small muted">${esc(r.tipo||'')} · ${esc(r.filial||'')}</div></div><div><strong>${pct(r.meta_geral||0)}</strong><div class="small muted">Meta cobrança</div></div><div><strong>${R(r.recebido||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${R(r.comissao_vendas||0)}</strong><div class="small muted">Vendas</div></div><div><strong>${R(r.comissao_servicos||0)}</strong><div class="small muted">Serviços</div></div><div><strong>${R(r.bonus_meta||0)}</strong><div class="small muted">Bônus</div></div><div><strong>${R(r.total_previsto||0)}</strong><div class="small muted">Total previsto</div></div></div>${r.observacao?`<div class="small muted" style="margin-top:6px">${esc(r.observacao)}</div>`:''}</div>`).join('')}</div></div>`;
 }
+
+function abrirTelaComissionamentoCongeladaPorSelect(){
+  const month=document.getElementById('histComMonth')?.value || _histComMeses()[0] || mesAtualComissao();
+  const key=document.getElementById('histComEntityView')?.value||'';
+  const snap=HIST_COMISSAO?.months?.[month];
+  const row=(snap?.entidades||[]).find(x=>String(x.key)===String(key));
+  if(!row || !row.html_individual){toast('Tela congelada não encontrada.'); return;}
+  const w=window.open('', '_blank'); if(!w){toast('Pop-up bloqueado.'); return;}
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Comissionamento ${esc(row.nome)} ${esc(month)}</title><style>${document.querySelector('style')?.innerHTML||''}body{background:#0d0f14;color:#f0f2f8;padding:18px}.snapshot-wrap{max-width:1280px;margin:auto}</style></head><body><div class="snapshot-wrap"><div class="glass panel"><h2>📌 Tela congelada de comissionamento</h2><div class="hint">${esc(row.nome)} · ${esc(row.filial||'')} · ${esc(month)}</div></div>${row.html_individual}</div></body></html>`);
+  w.document.close();
+}
+
 function renderHistoricoComissaoResults(){
   const months=_histComMeses(); const current=document.getElementById('histComMonth')?.value || months[0] || mesAtualComissao();
   const box=document.getElementById('histComResults'); if(!box) return;
@@ -7007,7 +7100,7 @@ function renderHistoricoComissaoResults(){
   const saveInput=document.getElementById('histComMonthSave'); if(saveInput && !saveInput.value) saveInput.value=mesAtualComissao();
   if(!snap){box.innerHTML=`<div class="empty">Nenhum histórico salvo para ${esc(current)}. Clique em “Salvar fechamento do mês atual” para gravar o resultado visível agora.</div>`; return;}
   const rows=[...(snap.entidades||[])].sort((a,b)=>String(a.tipo).localeCompare(String(b.tipo),'pt-BR')||String(a.nome).localeCompare(String(b.nome),'pt-BR'));
-  box.innerHTML=`<div class="kpis">${makeKpi('Mês',esc(snap.month||current),'var(--blue)')}${makeKpi('Total previsto',R(snap.total_previsto||0),'var(--green)')}${makeKpi('Entidades',String(rows.length),'var(--orange)')}${makeKpi('Salvo em',esc((snap.atualizado_em_br||snap.gerado_em||'').replace('T',' ').slice(0,19)),'var(--blue)')}</div>`+renderComissionamentoHistoricoTable(rows);
+  box.innerHTML=`<div class="kpis">${makeKpi('Mês',esc(snap.month||current),'var(--blue)')}${makeKpi('Total previsto',R(snap.total_previsto||0),'var(--green)')}${makeKpi('Entidades',String(rows.length),'var(--orange)')}${makeKpi('Salvo em',esc((snap.atualizado_em_br||snap.gerado_em||'').replace('T',' ').slice(0,19)),'var(--blue)')}</div>`+`<div class="glass panel"><div class="form-grid"><div class="input-card"><label>Ver tela congelada individual</label><select id="histComEntityView">${rows.map(r=>`<option value="${esc(r.key||'')}">${esc(r.nome||'')} · ${esc(r.filial||'')}</option>`).join('')}</select></div><div style="display:flex;align-items:end"><button class="btn primary" onclick="abrirTelaComissionamentoCongeladaPorSelect()">Abrir tela congelada</button></div></div></div>`+renderComissionamentoHistoricoTable(rows);
 }
 
 function setHistMode(mode){window._histMode=mode; document.getElementById('histDailyPane')?.classList.toggle('hidden',mode!=='daily'); document.getElementById('histMonthPane')?.classList.toggle('hidden',mode!=='monthly'); document.getElementById('histSalesPane')?.classList.toggle('hidden',mode!=='sales'); document.getElementById('histThirdPane')?.classList.toggle('hidden',mode!=='third'); document.getElementById('histComPane')?.classList.toggle('hidden',mode!=='comissao'); document.getElementById('histTabDaily')?.classList.toggle('active',mode==='daily'); document.getElementById('histTabMonthly')?.classList.toggle('active',mode==='monthly'); document.getElementById('histTabSales')?.classList.toggle('active',mode==='sales'); document.getElementById('histTabThird')?.classList.toggle('active',mode==='third'); document.getElementById('histTabCom')?.classList.toggle('active',mode==='comissao'); if(mode==='daily'){updateHistEntityFilter(); renderHistoricoResults();} else if(mode==='monthly'){updateHistMonthEntityFilter(); renderHistoricoMonthResults();} else if(mode==='third'){renderHistoricoTerceiro();} else if(mode==='comissao'){renderHistoricoComissaoResults();} else {updateHistSalesEntityFilter(); updateHistSalesMonthEntityFilter(); renderHistoricoSalesResults(); renderHistoricoSalesMonthResults();}}
