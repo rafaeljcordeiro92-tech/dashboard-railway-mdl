@@ -6789,7 +6789,7 @@ function renderSavedMetaList(){
 
 function renderCrediaristasConfigPanel(){
   const rows=getCrediaristasConfig();
-  return `<div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🧾 Crediaristas configuráveis</h2><div class="hint">Crie um usuário novo quando trocar a pessoa da filial. Ex.: CREDIARISTAF2_01, depois CREDIARISTAF2_02. O histórico antigo fica preservado. O % é só da carteira que o crediarista enxerga; não altera o rateio 60% filial / 40% vendedores.</div></div></div>
+  return `<div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🧾 Crediaristas configuráveis</h2><div class="hint">Fluxo correto: primeiro crie o login em Senhas. Depois, aqui, vincule esse login à filial/base e ao %. Quando trocar a pessoa, crie novo login, exemplo CREDIARISTAF2_02, e remova o antigo daqui. O histórico antigo permanece salvo. O % é só da carteira que o crediarista enxerga; não altera o rateio 60% filial / 40% vendedores.</div></div></div>
   <div id="credConfigRows">${rows.map(r=>`<div class="glass" style="padding:10px;margin-bottom:8px;border-radius:14px"><div class="form-grid bonus">
     <div class="input-card"><label>Login do usuário</label><input class="cred-login" value="${esc(r.login||'')}" placeholder="crediaristaf2_01"></div>
     <div class="input-card"><label>Nome exibido</label><input class="cred-nome" value="${esc(r.nome||'')}" placeholder="Maria - crediarista F2"></div>
@@ -7099,29 +7099,57 @@ function findEntityBySnapshotRow(row){
       || null;
 }
 function abrirTelaComissionamentoCongeladaPorSelect(){
-  const month=document.getElementById('histComMonth')?.value || _histComMeses()[0] || mesAtualComissao();
-  const key=document.getElementById('histComEntityView')?.value||'';
-  const snap=HIST_COMISSAO?.months?.[month];
-  const row=(snap?.entidades||[]).find(x=>String(x.key)===String(key));
-  if(!row){toast('Registro não encontrado no histórico.'); return;}
+  try{
+    const month=document.getElementById('histComMonth')?.value || _histComMeses()[0] || mesAtualComissao();
+    const key=document.getElementById('histComEntityView')?.value||'';
+    const snap=HIST_COMISSAO?.months?.[month];
+    const row=(snap?.entidades||[]).find(x=>String(x.key)===String(key));
 
-  let html=row.html_individual||'';
-  let fonte='tela congelada salva no fechamento';
-
-  // Fechamentos salvos antes desta função não tinham html_individual.
-  // Nesse caso abre uma versão gerada agora da tela atual da entidade.
-  if(!html){
-    const ent=findEntityBySnapshotRow(row);
-    if(ent){
-      html=snapshotEntityHTML(ent);
-      fonte='gerada agora porque este fechamento antigo não tinha a tela salva';
+    if(!row){
+      toast('Registro não encontrado no histórico.');
+      return;
     }
-  }
-  if(!html){toast('Tela congelada não encontrada. Salve novamente o fechamento do mês para gerar a tela.'); return;}
 
-  const w=window.open('', '_blank'); if(!w){toast('Pop-up bloqueado.'); return;}
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Comissionamento ${esc(row.nome)} ${esc(month)}</title><style>${document.querySelector('style')?.innerHTML||''}body{background:#0d0f14;color:#f0f2f8;padding:18px}.snapshot-wrap{max-width:1280px;margin:auto}.snapshot-note{margin:0 0 12px 0;padding:10px 14px;border:1px solid rgba(255,255,255,.13);border-radius:14px;background:rgba(255,255,255,.05);color:#cbd3e3}</style></head><body><div class="snapshot-wrap"><div class="glass panel"><h2>📌 Tela congelada de comissionamento</h2><div class="hint">${esc(row.nome)} · ${esc(row.filial||'')} · ${esc(month)}</div></div><div class="snapshot-note">Fonte: ${esc(fonte)}</div>${html}</div></body></html>`);
-  w.document.close();
+    let html=String(row.html_individual||'');
+    let fonte='tela congelada salva no fechamento';
+
+    if(!html){
+      const ent=findEntityBySnapshotRow(row);
+      if(ent){
+        html=String(snapshotEntityHTML(ent)||'');
+        fonte='gerada agora porque este fechamento antigo não tinha a tela salva';
+      }
+    }
+
+    if(!html){
+      toast('Tela congelada não encontrada. Salve novamente o fechamento do mês para gerar a tela.');
+      return;
+    }
+
+    const cssBasico = `
+      body{margin:0;background:#0d0f14;color:#f0f2f8;font-family:Inter,Arial,sans-serif;padding:18px}
+      .snapshot-wrap{max-width:1320px;margin:auto}
+      .snapshot-head{border:1px solid rgba(255,255,255,.14);background:#171a22;border-radius:18px;padding:14px 18px;margin-bottom:14px}
+      .snapshot-head h2{margin:0 0 6px 0;color:#fff}
+      .snapshot-note{margin:0 0 14px 0;padding:10px 14px;border:1px solid rgba(255,255,255,.13);border-radius:14px;background:rgba(255,255,255,.05);color:#cbd3e3}
+      .btn,.back-row,.tabs,.top-actions{display:none!important}
+      a{color:inherit}
+    `;
+
+    const doc = `<!doctype html><html><head><meta charset="utf-8"><title>Comissionamento ${esc(row.nome)} ${esc(month)}</title><style>${cssBasico}</style></head><body><div class="snapshot-wrap"><div class="snapshot-head"><h2>📌 Tela congelada de comissionamento</h2><div>${esc(row.nome)} · ${esc(row.filial||'')} · ${esc(month)}</div></div><div class="snapshot-note">Fonte: ${esc(fonte)}</div>${html}</div></body></html>`;
+
+    const w=window.open('', '_blank');
+    if(!w){
+      toast('Pop-up bloqueado pelo navegador. Permita pop-ups para este site.');
+      return;
+    }
+    w.document.open();
+    w.document.write(doc);
+    w.document.close();
+  }catch(e){
+    console.error('Erro ao abrir tela congelada:', e);
+    toast('Erro ao abrir tela congelada. Veja o Console do navegador.');
+  }
 }
 
 function renderHistoricoComissaoResults(){
@@ -7131,7 +7159,7 @@ function renderHistoricoComissaoResults(){
   const saveInput=document.getElementById('histComMonthSave'); if(saveInput && !saveInput.value) saveInput.value=mesAtualComissao();
   if(!snap){box.innerHTML=`<div class="empty">Nenhum histórico salvo para ${esc(current)}. Clique em “Salvar fechamento do mês atual” para gravar o resultado visível agora.</div>`; return;}
   const rows=[...(snap.entidades||[])].sort((a,b)=>String(a.tipo).localeCompare(String(b.tipo),'pt-BR')||String(a.nome).localeCompare(String(b.nome),'pt-BR'));
-  box.innerHTML=`<div class="kpis">${makeKpi('Mês',esc(snap.month||current),'var(--blue)')}${makeKpi('Total previsto',R(snap.total_previsto||0),'var(--green)')}${makeKpi('Entidades',String(rows.length),'var(--orange)')}${makeKpi('Salvo em',esc((snap.atualizado_em_br||snap.gerado_em||'').replace('T',' ').slice(0,19)),'var(--blue)')}</div>`+`<div class="glass panel"><div class="form-grid"><div class="input-card"><label>Ver tela congelada individual</label><select id="histComEntityView">${rows.map(r=>`<option value="${esc(r.key||'')}">${esc(r.nome||'')} · ${esc(r.filial||'')}</option>`).join('')}</select></div><div style="display:flex;align-items:end"><button class="btn primary" onclick="abrirTelaComissionamentoCongeladaPorSelect()">Abrir tela congelada</button></div></div></div>`+renderComissionamentoHistoricoTable(rows);
+  box.innerHTML=`<div class="kpis">${makeKpi('Mês',esc(snap.month||current),'var(--blue)')}${makeKpi('Total previsto',R(snap.total_previsto||0),'var(--green)')}${makeKpi('Entidades',String(rows.length),'var(--orange)')}${makeKpi('Salvo em',esc((snap.atualizado_em_br||snap.gerado_em||'').replace('T',' ').slice(0,19)),'var(--blue)')}</div>`+`<div class="glass panel"><div class="form-grid"><div class="input-card"><label>Ver tela congelada individual</label><div class="hint">Se este mês foi salvo antes da versão de tela congelada, o sistema abre uma versão gerada agora. Para congelar de verdade, clique em Salvar fechamento do mês atual novamente.</div><select id="histComEntityView">${rows.map(r=>`<option value="${esc(r.key||'')}">${esc(r.nome||'')} · ${esc(r.filial||'')}</option>`).join('')}</select></div><div style="display:flex;align-items:end"><button class="btn primary" onclick="abrirTelaComissionamentoCongeladaPorSelect()">Abrir tela congelada</button></div></div></div>`+renderComissionamentoHistoricoTable(rows);
 }
 
 function setHistMode(mode){window._histMode=mode; document.getElementById('histDailyPane')?.classList.toggle('hidden',mode!=='daily'); document.getElementById('histMonthPane')?.classList.toggle('hidden',mode!=='monthly'); document.getElementById('histSalesPane')?.classList.toggle('hidden',mode!=='sales'); document.getElementById('histThirdPane')?.classList.toggle('hidden',mode!=='third'); document.getElementById('histComPane')?.classList.toggle('hidden',mode!=='comissao'); document.getElementById('histTabDaily')?.classList.toggle('active',mode==='daily'); document.getElementById('histTabMonthly')?.classList.toggle('active',mode==='monthly'); document.getElementById('histTabSales')?.classList.toggle('active',mode==='sales'); document.getElementById('histTabThird')?.classList.toggle('active',mode==='third'); document.getElementById('histTabCom')?.classList.toggle('active',mode==='comissao'); if(mode==='daily'){updateHistEntityFilter(); renderHistoricoResults();} else if(mode==='monthly'){updateHistMonthEntityFilter(); renderHistoricoMonthResults();} else if(mode==='third'){renderHistoricoTerceiro();} else if(mode==='comissao'){renderHistoricoComissaoResults();} else {updateHistSalesEntityFilter(); updateHistSalesMonthEntityFilter(); renderHistoricoSalesResults(); renderHistoricoSalesMonthResults();}}
@@ -7307,7 +7335,7 @@ function renderSenhasTab(){
     </div>`).join('')}</div>`:''}
   </div>
   <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">👑 Contas administrativas</h2></div></div>${renderSenhaCard(AUTH_STATE?.director||{login:'diretorcomercial',nome:'Diretor Comercial',must_change_password:true}, true)}</div>
-  <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">➕ Criar usuário de cobrança</h2><div class="hint">Crie novos usuários de cobrança/crediarista direto do dashboard.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Login</label><input id="newUserLogin" placeholder="ex: crediaristaf07"></div><div class="input-card"><label>Nome</label><input id="newUserNome" placeholder="ex: CREDIARISTAF07"></div><div class="input-card"><label>Filial</label><input id="newUserFilial" placeholder="ex: F7"></div><div class="input-card"><label>Senha inicial</label><input id="newUserSenha" placeholder="mín. 4 caracteres"></div></div><div class="form-grid bonus" style="margin-top:10px"><div class="input-card"><label>Tipo</label><select id="newUserTipo"><option value="crediarista">Crediarista</option><option value="cobranca">Cobrança</option></select></div></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="adminCriarUsuarioCobranca()">💾 Criar usuário</button></div><div id="newUserMsg" class="note" style="margin-top:10px"></div></div>
+  <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">➕ Criar usuário de acesso</h2><div class="hint">Aqui você cria apenas o login/senha de acesso. Depois vá em Metas > Crediaristas configuráveis para vincular esse usuário à filial/base e ao percentual.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Login</label><input id="newUserLogin" placeholder="ex: crediaristaf07"></div><div class="input-card"><label>Nome</label><input id="newUserNome" placeholder="ex: CREDIARISTAF07"></div><div class="input-card"><label>Filial</label><input id="newUserFilial" placeholder="ex: F7"></div><div class="input-card"><label>Senha inicial</label><input id="newUserSenha" placeholder="mín. 4 caracteres"></div></div><div class="form-grid bonus" style="margin-top:10px"><div class="input-card"><label>Tipo</label><select id="newUserTipo"><option value="crediarista">Crediarista</option><option value="cobranca">Cobrança</option></select></div></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="adminCriarUsuarioCobranca()">💾 Criar usuário</button></div><div id="newUserMsg" class="note" style="margin-top:10px"></div></div>
   <div class="section-head"><div><h2>👥 Usuários do dashboard</h2><div class="hint">As senhas permanecem congeladas e só mudam se você alterar aqui ou se surgir um usuário novo.</div></div></div>
   <div class="grid-cards">${users.map(u=>renderSenhaCard(u,false)).join('')}</div>`;
 }
