@@ -618,13 +618,30 @@ def _parse_quitados_xls_180d(caminho_quitados, colmap):
         s = str(v or "").strip()
         return "" if s in ("nan", "None") else s
 
+    def _limpar_nome_erp_local(txt):
+        try:
+            return limpar_nome_erp(txt)
+        except NameError:
+            s = re.sub(r"^Vendedor:\s*", "", str(txt).strip(), flags=re.IGNORECASE)
+            s = re.sub(r"^\d+\s*-\s*", "", s)
+            s = re.sub(r"^C\.\d+\s*-\s*", "", s, flags=re.IGNORECASE)
+            return s.strip()
+
+    def _limpar_nome_display_local(txt):
+        try:
+            return limpar_nome_display(txt)
+        except NameError:
+            s = re.sub(r"\s*\(GER\s*F\d+\)\s*$", "", str(txt).strip(), flags=re.IGNORECASE)
+            s = re.sub(r"\s*\(F\d+\)\s*$", "", s, flags=re.IGNORECASE)
+            return s.strip()
+
     for i in range(len(dfq)):
         row = dfq.iloc[i]
         c0 = _limpa(row[colmap["filial"]]) if len(row) > colmap["filial"] else ""
         c1 = _limpa(row[colmap["cliente"]]) if len(row) > colmap["cliente"] else ""
 
         if "Vendedor:" in c0:
-            vend_atual = limpar_nome_erp(c0)
+            vend_atual = _limpar_nome_erp_local(c0)
             continue
 
         if not vend_atual:
@@ -664,7 +681,7 @@ def _parse_quitados_xls_180d(caminho_quitados, colmap):
 
         quitados.append({
             "cliente": c1[:80],
-            "vendedor_erp": limpar_nome_display(vend_atual),
+            "vendedor_erp": _limpar_nome_display_local(vend_atual),
             "filial": filial_key,
             "filial_label": filial_txt,
             "lancamento": _limpa(row[colmap["num_lancamento"]]) if len(row) > colmap["num_lancamento"] else "",
@@ -1665,14 +1682,6 @@ COL = {
     "avalistas": 18,
 }
 
-# ===== RELATÓRIO COMPLEMENTAR: QUITADOS 180 DIAS
-quitados_180_info = {"json_path": None, "xlsx_path": None, "dados": {"quitados": []}}
-try:
-    quitados_180_info = coletar_quitados_180d_contas_receber()
-except Exception as e:
-    print(f"⚠️ Erro ao coletar quitados 180d: {e}")
-    quitados_180_info = {"json_path": None, "xlsx_path": None, "dados": {"quitados": [], "erro": str(e)}}
-
 
 # ===== HELPERS
 def tratar_valor(v):
@@ -1875,6 +1884,17 @@ def _parse_data(v):
         return _dt.strptime(s, "%d/%m/%Y")
     except:
         return None
+
+# ===== RELATÓRIO COMPLEMENTAR: QUITADOS 180 DIAS
+# IMPORTANTE: roda aqui porque neste ponto os helpers limpar_nome_erp, limpar_nome_display,
+# tratar_valor e _parse_data já foram definidos.
+quitados_180_info = {"json_path": None, "xlsx_path": None, "dados": {"quitados": []}}
+try:
+    quitados_180_info = coletar_quitados_180d_contas_receber()
+except Exception as e:
+    print(f"⚠️ Erro ao coletar quitados 180d: {e}")
+    quitados_180_info = {"json_path": None, "xlsx_path": None, "dados": {"quitados": [], "erro": str(e)}}
+
 
 clientes_cobrar   = []
 recebido_faixa    = {}   # {key: {grave, alerta, atencao, is_ativo, is_fdep, filial}}
