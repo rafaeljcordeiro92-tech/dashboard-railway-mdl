@@ -5918,7 +5918,7 @@ document.addEventListener('click', function(ev){
 window.openCrediaristaPanel=openCrediaristaPanel;
 window.openThirdChargePanel=openThirdChargePanel;
 
-function renderTerceiroDetail(ent){const src=getClientesEnt(ent); const totalTit=(src.grave?.length||0)+(src.alerta?.length||0)+(src.atencao?.length||0); detailScreen.innerHTML=`${renderUpdateStrip()}<div class="back-row"><button class="btn soft" onclick="backToMain()">⬅️ Voltar</button><div><h2>${esc(ent.nome)}</h2><div class="sub">${ent.is_crediarista?`Painel de cobrança espelhado da filial ${ent.filial} · mesma base do gerente/filial`:`Painel de cobrança terceirizada · percentual global sem duplicidade`}</div></div><div class="badge">${ent.is_crediarista?'🧾 Crediarista':'🤝 Cobrança terceiro'}</div></div><div class="detail-top"><div class="glass panel"><h3>🧾 Resumo da carteira</h3><div class="metrics-grid"><div class="metric"><div class="k">Títulos</div><div class="v">${totalTit}</div></div><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">Cobrado hoje</div><div class="v">${getCobradosHoje(ent).length}</div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave ${src.grave?.length||0}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta ${src.alerta?.length||0}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção ${src.atencao?.length||0}</span></div></div><div>${renderTerceiroCommission(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span>clique para abrir</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span>clique para abrir</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
+function renderTerceiroDetail(ent){const src=getClientesEnt(ent); const totalTit=(src.grave?.length||0)+(src.alerta?.length||0)+(src.atencao?.length||0); detailScreen.innerHTML=`${renderUpdateStrip()}<div class="back-row"><button class="btn soft" onclick="backToMain()">⬅️ Voltar</button><div><h2>${esc(ent.nome)}</h2><div class="sub">${ent.is_crediarista?`Painel de cobrança da filial ${ent.filial} · base configurada ${Number(ent.pct_base||100)}% · recebido só por cobrança própria paga`:`Painel de cobrança terceirizada · percentual global sem duplicidade`}</div></div><div class="badge">${ent.is_crediarista?'🧾 Crediarista':'🤝 Cobrança terceiro'}</div></div><div class="detail-top"><div class="glass panel"><h3>🧾 Resumo da carteira</h3><div class="metrics-grid"><div class="metric"><div class="k">Títulos</div><div class="v">${totalTit}</div></div><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">Cobrado hoje</div><div class="v">${getCobradosHoje(ent).length}</div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave ${src.grave?.length||0}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta ${src.alerta?.length||0}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção ${src.atencao?.length||0}</span></div></div><div>${renderTerceiroCommission(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span>clique para abrir</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span>clique para abrir</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
 
 // ── PAINEL CREDIARISTA ─────────────────────────────────────────────────────
 // Mostra: resumo da carteira espelhada + meta de cobrança + recebimentos + cobranças
@@ -6789,7 +6789,7 @@ function renderSavedMetaList(){
 
 function renderCrediaristasConfigPanel(){
   const rows=getCrediaristasConfig();
-  return `<div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🧾 Crediaristas configuráveis</h2><div class="hint">Crie um usuário novo quando trocar a pessoa da filial. Ex.: CREDIARISTAF2_01, depois CREDIARISTAF2_02. O histórico antigo fica preservado.</div></div></div>
+  return `<div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🧾 Crediaristas configuráveis</h2><div class="hint">Crie um usuário novo quando trocar a pessoa da filial. Ex.: CREDIARISTAF2_01, depois CREDIARISTAF2_02. O histórico antigo fica preservado. O % é só da carteira que o crediarista enxerga; não altera o rateio 60% filial / 40% vendedores.</div></div></div>
   <div id="credConfigRows">${rows.map(r=>`<div class="glass" style="padding:10px;margin-bottom:8px;border-radius:14px"><div class="form-grid bonus">
     <div class="input-card"><label>Login do usuário</label><input class="cred-login" value="${esc(r.login||'')}" placeholder="crediaristaf2_01"></div>
     <div class="input-card"><label>Nome exibido</label><input class="cred-nome" value="${esc(r.nome||'')}" placeholder="Maria - crediarista F2"></div>
@@ -7064,7 +7064,7 @@ function buildSnapshotComissionamentoMensal(month=mesAtualComissao()){
   const ents=[...flattenVendedores(),...flattenFiliais(),...crediaristaEntities(),thirdChargeEntity()].filter(Boolean);
   const entidades=ents.map(snapshotComissaoEntidade);
   const total=entidades.reduce((a,b)=>a+Number(b.total_previsto||0),0);
-  return {month, gerado_em:new Date().toISOString(), atualizado_em_br:new Date().toLocaleString('pt-BR'), total_previsto:total, entidades};
+  return {month, gerado_em:new Date().toISOString(), versao_snapshot:'html_individual_v1', atualizado_em_br:new Date().toLocaleString('pt-BR'), total_previsto:total, entidades};
 }
 async function salvarSnapshotComissionamentoMensal(auto=false){
   if(usuarioAtual?.tipo!=='master') return;
@@ -7082,14 +7082,45 @@ function renderComissionamentoHistoricoTable(rows){
   return `<div class="glass panel"><div class="tableish">${rows.map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.nome||'')}</div><div class="small muted">${esc(r.tipo||'')} · ${esc(r.filial||'')}</div></div><div><strong>${pct(r.meta_geral||0)}</strong><div class="small muted">Meta cobrança</div></div><div><strong>${R(r.recebido||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${R(r.comissao_vendas||0)}</strong><div class="small muted">Vendas</div></div><div><strong>${R(r.comissao_servicos||0)}</strong><div class="small muted">Serviços</div></div><div><strong>${R(r.bonus_meta||0)}</strong><div class="small muted">Bônus</div></div><div><strong>${R(r.total_previsto||0)}</strong><div class="small muted">Total previsto</div></div></div>${r.observacao?`<div class="small muted" style="margin-top:6px">${esc(r.observacao)}</div>`:''}</div>`).join('')}</div></div>`;
 }
 
+function findEntityBySnapshotRow(row){
+  if(!row) return null;
+  const key=String(row.key||'');
+  const nome=String(row.nome||'');
+  const filial=String(row.filial||'');
+  const buckets=[
+    ...vendedoresAtivosEntities(),
+    ...filiaisEntities(),
+    ...crediaristaEntities(),
+    ...terceiroEntities()
+  ];
+  return buckets.find(e=>String(entityKey(e))===key)
+      || buckets.find(e=>normName(e.nome)===normName(nome) && String(e.filial||'')===filial)
+      || buckets.find(e=>normName(e.nome)===normName(nome))
+      || null;
+}
 function abrirTelaComissionamentoCongeladaPorSelect(){
   const month=document.getElementById('histComMonth')?.value || _histComMeses()[0] || mesAtualComissao();
   const key=document.getElementById('histComEntityView')?.value||'';
   const snap=HIST_COMISSAO?.months?.[month];
   const row=(snap?.entidades||[]).find(x=>String(x.key)===String(key));
-  if(!row || !row.html_individual){toast('Tela congelada não encontrada.'); return;}
+  if(!row){toast('Registro não encontrado no histórico.'); return;}
+
+  let html=row.html_individual||'';
+  let fonte='tela congelada salva no fechamento';
+
+  // Fechamentos salvos antes desta função não tinham html_individual.
+  // Nesse caso abre uma versão gerada agora da tela atual da entidade.
+  if(!html){
+    const ent=findEntityBySnapshotRow(row);
+    if(ent){
+      html=snapshotEntityHTML(ent);
+      fonte='gerada agora porque este fechamento antigo não tinha a tela salva';
+    }
+  }
+  if(!html){toast('Tela congelada não encontrada. Salve novamente o fechamento do mês para gerar a tela.'); return;}
+
   const w=window.open('', '_blank'); if(!w){toast('Pop-up bloqueado.'); return;}
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Comissionamento ${esc(row.nome)} ${esc(month)}</title><style>${document.querySelector('style')?.innerHTML||''}body{background:#0d0f14;color:#f0f2f8;padding:18px}.snapshot-wrap{max-width:1280px;margin:auto}</style></head><body><div class="snapshot-wrap"><div class="glass panel"><h2>📌 Tela congelada de comissionamento</h2><div class="hint">${esc(row.nome)} · ${esc(row.filial||'')} · ${esc(month)}</div></div>${row.html_individual}</div></body></html>`);
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Comissionamento ${esc(row.nome)} ${esc(month)}</title><style>${document.querySelector('style')?.innerHTML||''}body{background:#0d0f14;color:#f0f2f8;padding:18px}.snapshot-wrap{max-width:1280px;margin:auto}.snapshot-note{margin:0 0 12px 0;padding:10px 14px;border:1px solid rgba(255,255,255,.13);border-radius:14px;background:rgba(255,255,255,.05);color:#cbd3e3}</style></head><body><div class="snapshot-wrap"><div class="glass panel"><h2>📌 Tela congelada de comissionamento</h2><div class="hint">${esc(row.nome)} · ${esc(row.filial||'')} · ${esc(month)}</div></div><div class="snapshot-note">Fonte: ${esc(fonte)}</div>${html}</div></body></html>`);
   w.document.close();
 }
 
