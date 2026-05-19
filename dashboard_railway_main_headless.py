@@ -535,6 +535,271 @@ def nome_arquivo_contas_valido(fname):
     return any(p in s for p in permitidos)
 
 
+def _set_input_by_id_safely(input_id, valor):
+    el = wait.until(EC.presence_of_element_located((By.ID, input_id)))
+    try:
+        driver.execute_script("arguments[0].removeAttribute('readonly'); arguments[0].removeAttribute('disabled');", el)
+    except Exception:
+        pass
+    driver.execute_script("arguments[0].value = '';", el)
+    if valor is not None and str(valor) != "":
+        el.send_keys(str(valor))
+    try:
+        driver.execute_script("arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", el)
+        driver.execute_script("arguments[0].dispatchEvent(new Event('blur',{bubbles:true}));", el)
+    except Exception:
+        pass
+    return el
+
+
+def _selecionar_situacao_quitados():
+    """
+    Tenta selecionar Situação = Quitados no relatório de Contas a Receber.
+    O SGI pode mudar id/name, então tentamos várias formas.
+    """
+    tentativas = [
+        (By.ID, "situacao"),
+        (By.ID, "situacao_titulo"),
+        (By.ID, "situacao_conta"),
+        (By.NAME, "filtros[situacao]"),
+        (By.NAME, "filtros[situacao_titulo]"),
+    ]
+    for by, sel in tentativas:
+        try:
+            el = driver.find_element(by, sel)
+            s = Select(el)
+            # tenta por value primeiro
+            for val in ["quitado", "quitados", "Q", "2", "3"]:
+                try:
+                    s.select_by_value(val)
+                    print(f"✅ Situação Quitados OK via {sel}={val}")
+                    return True
+                except Exception:
+                    pass
+            # tenta por texto
+            for opt in s.options:
+                txt = (opt.text or "").strip().lower()
+                if "quitad" in txt:
+                    s.select_by_visible_text(opt.text)
+                    print(f"✅ Situação Quitados OK via texto: {opt.text}")
+                    return True
+        except Exception:
+            pass
+
+    # fallback por label
+    try:
+        xp = "//label[contains(translate(normalize-space(.),'ÇÃÕÁÉÍÓÚÂÊÔÀÈÌÒÙ','CAOAEIOUAEOA EIOU'),'Situacao')]/following::select[1]"
+        el = driver.find_element(By.XPATH, xp)
+        s = Select(el)
+        for opt in s.options:
+            if "quitad" in (opt.text or "").lower():
+                s.select_by_visible_text(opt.text)
+                print(f"✅ Situação Quitados OK via label: {opt.text}")
+                return True
+    except Exception:
+        pass
+
+    print("⚠️ Não consegui confirmar Situação = Quitados automaticamente")
+    return False
+
+
+def _parse_quitados_xls_180d(caminho_quitados, colmap):
+    """
+    Lê o relatório de quitados e devolve lista de títulos quitados.
+    Mantém vendedor do ERP como referência, mas a atribuição do mérito será feita no dashboard
+    cruzando com cobrancas_log.json pelo último cobrador antes do pagamento.
+    """
+    dfq = pd.read_excel(caminho_quitados, header=None, engine="openpyxl")
+    quitados = []
+    vend_atual = None
+    agora = datetime.now()
+
+    def _limpa(v):
+        s = str(v or "").strip()
+        return "" if s in ("nan", "None") else s
+
+    for i in range(len(dfq)):
+        row = dfq.iloc[i]
+        c0 = _limpa(row[colmap["filial"]]) if len(row) > colmap["filial"] else ""
+        c1 = _limpa(row[colmap["cliente"]]) if len(row) > colmap["cliente"] else ""
+
+        if "Vendedor:" in c0:
+            vend_atual = limpar_nome_erp(c0)
+            continue
+
+        if not vend_atual:
+            continue
+        if c1 in ("", "Cliente", "Filial"):
+            continue
+        if c0.upper().startswith("TOTAL") or c1.upper().startswith("TOTAL"):
+            continue
+
+        venc = _parse_data(row[colmap["vencimento"]]) if len(row) > colmap["vencimento"] else None
+        pagto = _parse_data(row[colmap["pagamento"]]) if len(row) > colmap["pagamento"] else None
+        if not venc or not pagto:
+            continue
+
+        pago = tratar_valor(row[colmap["pago_total"]]) if len(row) > colmap["pago_total"] else 0.0
+        if pago <= 0:
+            continue
+
+        try:
+            dias_atraso_pg = max(0, (pagto - venc).days)
+        except Exception:
+            dias_atraso_pg = 0
+
+        if dias_atraso_pg >= 60:
+            faixa = "grave"
+        elif 30 <= dias_atraso_pg < 60:
+            faixa = "alerta"
+        elif 15 <= dias_atraso_pg < 30:
+            faixa = "atencao"
+        else:
+            # quitou antes de entrar na regra de cobrança
+            continue
+
+        filial_txt = c0
+        mfil = re.search(r"FILIAL\s*(\d+)", filial_txt.upper())
+        filial_key = f"F{int(mfil.group(1))}" if mfil else ""
+
+        quitados.append({
+            "cliente": c1[:80],
+            "vendedor_erp": limpar_nome_display(vend_atual),
+            "filial": filial_key,
+            "filial_label": filial_txt,
+            "lancamento": _limpa(row[colmap["num_lancamento"]]) if len(row) > colmap["num_lancamento"] else "",
+            "titulo": _limpa(row[colmap["num_titulo"]]) if len(row) > colmap["num_titulo"] else "",
+            "parcela": _limpa(row[colmap["num_parcela"]]) if len(row) > colmap["num_parcela"] else "",
+            "vencimento": _limpa(row[colmap["vencimento"]]) if len(row) > colmap["vencimento"] else "",
+            "pagamento": _limpa(row[colmap["pagamento"]]) if len(row) > colmap["pagamento"] else "",
+            "pago": round(float(pago), 2),
+            "dias_atraso_pagamento": dias_atraso_pg,
+            "faixa": faixa,
+            "forma_pagamento": _limpa(row[colmap["forma_pagamento"]]) if len(row) > colmap["forma_pagamento"] else "",
+            "conta_caixa": _limpa(row[colmap["conta_caixa"]]) if len(row) > colmap["conta_caixa"] else "",
+            "origem": "relatorio_quitados_180d",
+        })
+
+    print(f"✅ Quitados 180d lidos: {len(quitados)} título(s)")
+    return quitados
+
+
+def coletar_quitados_180d_contas_receber():
+    """
+    Relatório complementar para conciliar cobranças feitas com pagamentos que saíram da faixa 15-90.
+    Filtros:
+    - Vencimento inicial em branco
+    - Vencimento final = hoje
+    - Situação = Quitados
+    - + Data último pagamento inicial = hoje - 180 dias
+    - Data último pagamento final = hoje
+    - Formas de pagamento iguais ao relatório atual
+    """
+    data_hoje = datetime.now().strftime("%d/%m/%Y")
+    data_180 = (datetime.now() - timedelta(days=180)).strftime("%d/%m/%Y")
+
+    print("\n🔎 Iniciando relatório complementar de QUITADOS 180 dias...")
+    driver.get(URL + "/relatorio_contas_receber")
+    wait.until(EC.presence_of_element_located((By.ID, "data_vencimento_inicial")))
+    Select(driver.find_element(By.ID, "data_vencimento")).select_by_value("intervalo")
+    time.sleep(1.5)
+
+    # Vencimento inicial em branco / final hoje
+    _set_input_by_id_safely("data_vencimento_inicial", "")
+    _set_input_by_id_safely("data_vencimento_final", data_hoje)
+
+    # Situação = Quitados
+    _selecionar_situacao_quitados()
+
+    # Filiais
+    try:
+        driver.find_element(By.XPATH, "//label[contains(text(),'Filiais')]/following::button[1]").click()
+        time.sleep(1.5)
+        filiais_sel = ["1", "2", "3", "4", "5", "6", "7", "8", "10"]
+        container = driver.find_element(By.XPATH, "//label[contains(text(),'Filiais')]/following::ul[1]")
+        for c in container.find_elements(By.XPATH, ".//input[@type='checkbox']"):
+            if c.get_attribute("value") in filiais_sel:
+                driver.execute_script("arguments[0].click();", c)
+        print("✅ Filiais OK quitados")
+        time.sleep(1.5)
+    except Exception as e:
+        print(f"⚠️ Erro filiais quitados: {e}")
+
+    # Abre +
+    try:
+        clicar_seguro_xpath("//span[contains(@class,'glyphicon-plus')]", timeout=20)
+        print("✅ Mais filtros quitados")
+        time.sleep(1.5)
+    except Exception as e:
+        print(f"⚠️ Não abriu + quitados: {e}")
+
+    # Data último pagamento
+    try:
+        _set_input_by_id_safely("data_ultimo_pagamento_inicial", data_180)
+        _set_input_by_id_safely("data_ultimo_pagamento_final", data_hoje)
+        print(f"✅ Data último pagamento: {data_180} até {data_hoje}")
+    except Exception as e:
+        print(f"⚠️ Erro datas último pagamento: {e}")
+
+    # Formas de pagamento
+    try:
+        marcar_multiselect_por_label("Forma de Pagamento", ["3", "47", "17"], timeout=20, limpar_antes=True)
+        print("✅ Formas OK quitados")
+        time.sleep(1.5)
+    except Exception as e:
+        print(f"⚠️ Erro formas quitados: {e}")
+
+    try:
+        Select(wait.until(EC.presence_of_element_located((By.ID, "_formato")))).select_by_value("xls")
+        print("✅ Formato XLS quitados")
+        time.sleep(1.5)
+    except Exception as e:
+        print(f"⚠️ Erro formato XLS quitados: {e}")
+
+    arquivos_antes = set(f for f in os.listdir(download_dir) if nome_arquivo_contas_valido(f))
+    driver.find_element(By.ID, "gerar").click()
+    print("📥 Gerando XLS quitados... aguardando download...")
+
+    caminho_q = None
+    for tentativa in range(75):
+        time.sleep(2)
+        baixando = any(f.endswith(".crdownload") or f.endswith(".tmp") for f in os.listdir(download_dir))
+        if tentativa % 5 == 0:
+            print(f"⏳ Quitados tentativa {tentativa}/75 | baixando={baixando}")
+        if baixando:
+            continue
+        novos = set(f for f in os.listdir(download_dir) if nome_arquivo_contas_valido(f)) - arquivos_antes
+        if novos:
+            caminho_q = max([os.path.join(download_dir, f) for f in novos], key=os.path.getctime)
+            print(f"✅ Download quitados OK: {caminho_q}")
+            break
+
+    if not caminho_q:
+        print("⚠️ Nenhum XLS de quitados baixado. Seguindo sem conciliação extra.")
+        return {"xlsx_path": None, "json_path": None, "dados": {"quitados": [], "erro": "download_nao_encontrado"}}
+
+    quitados = _parse_quitados_xls_180d(caminho_q, COL)
+    out_json = os.path.join(pasta, "quitados_180d_contas_receber.json")
+    out_xlsx = os.path.join(pasta, "quitados_180d_contas_receber.xlsx")
+    with open(out_json, "w", encoding="utf-8") as f:
+        json.dump({
+            "gerado_em": datetime.now().isoformat(),
+            "periodo_pagamento": {"inicio": data_180, "fim": data_hoje},
+            "criterio": "quitados pagos em ate 180 dias apos cobranca, conciliados no dashboard pelo ultimo cobrador antes do pagamento",
+            "quitados": quitados,
+        }, f, ensure_ascii=False, indent=2)
+    try:
+        pd.DataFrame(quitados).to_excel(out_xlsx, index=False)
+    except Exception:
+        out_xlsx = None
+
+    print(f"💾 Quitados JSON: {out_json}")
+    if out_xlsx:
+        print(f"💾 Quitados XLSX: {out_xlsx}")
+
+    return {"xlsx_path": out_xlsx, "json_path": out_json, "dados": {"quitados": quitados}}
+
+
 def _is_total_row(reg):
     """Detecta se uma linha é a linha de Total (tfoot ou primeira coluna contém "Total")."""
     # Verifica colunas conhecidas de identificação
@@ -1399,6 +1664,15 @@ COL = {
     "juros_total": 17,
     "avalistas": 18,
 }
+
+# ===== RELATÓRIO COMPLEMENTAR: QUITADOS 180 DIAS
+quitados_180_info = {"json_path": None, "xlsx_path": None, "dados": {"quitados": []}}
+try:
+    quitados_180_info = coletar_quitados_180d_contas_receber()
+except Exception as e:
+    print(f"⚠️ Erro ao coletar quitados 180d: {e}")
+    quitados_180_info = {"json_path": None, "xlsx_path": None, "dados": {"quitados": [], "erro": str(e)}}
+
 
 # ===== HELPERS
 def tratar_valor(v):
@@ -4348,6 +4622,7 @@ js_recebimentos_crediarista = json.dumps(recebimentos_crediarista_js, ensure_asc
 js_crediaristas_map = json.dumps(CREDIARISTAS_FILIAIS, ensure_ascii=False)
 js_destaque = json.dumps(destaque_semana or {}, ensure_ascii=False)
 js_hist_dash = json.dumps(hist_dash, ensure_ascii=False)
+js_quitados_180 = json.dumps((quitados_180_info.get('dados') or {}).get('quitados', []), ensure_ascii=False)
 
 total_dash_p  = round(total_final_p,  2)
 total_dash_pg = round(total_final_pg, 2)
@@ -4920,6 +5195,8 @@ const CLIENTES_CREDIARISTA=__JS_CLIENTES_CREDIARISTA__||{};
 const RECEBIMENTOS=__JS_RECEBIMENTOS__;
 const RECEBIMENTOS_TERCEIRO=__JS_RECEBIMENTOS_TERCEIRO__;
 const RECEBIMENTOS_CREDIARISTA=__JS_RECEBIMENTOS_CREDIARISTA__||{};
+const QUITADOS_180=__JS_QUITADOS_180__||[];
+let RECEBIMENTOS_CONCILIADOS={};
 const CREDIARISTAS_MAP=__JS_CREDIARISTAS_MAP__||{};
 const COBRANCA10_LOGIN='cobranca10';
 const COBRANCA10_NOME='Cobrança10';
@@ -6110,7 +6387,123 @@ function renderMetaBox(title,color,obj){return `<div class="meta-card"><div clas
 function renderBonusBox(cfg,geral){const achieved=(geral>=100&&cfg.bonus_100)?100:(geral>=85&&cfg.bonus_85)?85:(geral>=75&&cfg.bonus_75)?75:(geral>=50&&cfg.bonus_50)?50:0; const items=[[50,cfg.bonus_50||'-'],[75,cfg.bonus_75||'-'],[85,cfg.bonus_85||'-'],[100,cfg.bonus_100||'-']];return `<div class="bonus-box"><h4>Faixas configuradas</h4><div class="bonus-list">${items.map(([p,t])=>`<div class="bonus-item ${achieved===p?'active':''}" style="${achieved===p?'box-shadow:0 0 0 2px rgba(59,130,246,.18),0 0 26px rgba(59,130,246,.2);animation:liquid 1.6s ease-in-out infinite alternate':''}"><div class="left"><span>🎯</span><span>${p}%</span></div><div style="display:flex;align-items:center;gap:10px">${achieved===p?`<img src="${LARANJITO}" alt="laranjito" style="width:34px;height:34px;border-radius:10px;object-fit:cover">`:''}<span>${esc(t)}</span></div></div>`).join('')}</div></div>`}
 function renderSingleBars(ent,meta,big=false){const vals=[['Grave',meta.grave.pend,'var(--red)'],['Alerta',meta.alerta.pend,'var(--orange)'],['Atenção',meta.atencao.pend,'var(--yellow)'],['Recebido',Number(ent.pago||0),'var(--green)']]; const max=Math.max(1,...vals.map(v=>v[1])); return `<div class="glass big-chart-card" style="margin-top:0"><div class="legend-inline"><span><i class="dot" style="background:var(--red)"></i>Grave</span><span><i class="dot" style="background:var(--orange)"></i>Alerta</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção</span><span><i class="dot" style="background:var(--green)"></i>Recebido</span></div><div class="groupbars" style="justify-content:center"><div class="group" style="min-width:100%"><div class="bars" style="height:${big?320:260}px;justify-content:space-around;border-left:none">${vals.map(v=>`<div style="text-align:center"><div class="bar" style="width:${big?72:54}px;height:${Math.max(18,(v[1]/max)*(big?250:200))}px;background:linear-gradient(180deg,rgba(255,255,255,.18),transparent),linear-gradient(180deg,${v[2]},${v[2]})"><span class="wave one"></span><span class="wave two"></span><span class="bubble b1"></span><span class="bubble b2"></span><span class="bubble b3"></span></div><div class="glabel" style="margin-top:10px">${v[0]}<br><strong>${R(v[1])}</strong></div></div>`).join('')}</div></div></div></div>`}
 function recebKeyVend(ent){return `${ent.nome}_${ent.filial}`}
-function getRecebimentos(ent){if(ent.type==='terceiro' || ent.is_terceiro) return RECEBIMENTOS_TERCEIRO||{grave:[],alerta:[],atencao:[]}; if(ent.type==='crediarista' || ent.is_crediarista){ const filialKey=String(ent.filial||'').toUpperCase(); const base={grave:[],alerta:[],atencao:[]}; Object.entries(RECEBIMENTOS||{}).forEach(([k,v])=>{if(k.endsWith('_'+filialKey)){['grave','alerta','atencao'].forEach(fx=>base[fx].push(...(v[fx]||[])))}}); ['grave','alerta','atencao'].forEach(fx=>base[fx].sort((a,b)=>Number(b.pago||0)-Number(a.pago||0))); return base} if(ent.type==='vendedor') return RECEBIMENTOS[recebKeyVend(ent)]||{grave:[],alerta:[],atencao:[]}; const base={grave:[],alerta:[],atencao:[]}; Object.entries(RECEBIMENTOS||{}).forEach(([k,v])=>{if(k.endsWith('_'+ent.filial)){['grave','alerta','atencao'].forEach(fx=>base[fx].push(...(v[fx]||[])))}}); ['grave','alerta','atencao'].forEach(fx=>base[fx].sort((a,b)=>Number(b.pago||0)-Number(a.pago||0))); return base}
+
+function normConc(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim()}
+function parseDataBRjs(s){
+  const m=String(s||'').match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if(!m) return null;
+  return new Date(Number(m[3]), Number(m[2])-1, Number(m[1]));
+}
+function similarCliente(a,b){
+  const x=normConc(a), y=normConc(b);
+  if(!x || !y) return false;
+  return x===y || x.includes(y.slice(0,18)) || y.includes(x.slice(0,18));
+}
+function getQuitadosConciliados(){
+  const out={};
+  const logs=(COB_LOGS||[]).slice().filter(l=>String(l.acao||'')==='whatsapp' || l.telefone || l.titulo || l.parcela);
+  const byTitulo={};
+  logs.forEach(l=>{
+    const k=`${String(l.titulo||'').trim()}|${String(l.parcela||'').trim()}`;
+    if(!byTitulo[k]) byTitulo[k]=[];
+    byTitulo[k].push(l);
+  });
+
+  (QUITADOS_180||[]).forEach(q=>{
+    const k=`${String(q.titulo||'').trim()}|${String(q.parcela||'').trim()}`;
+    const cand=(byTitulo[k]||[]).filter(l=>similarCliente(l.cliente,q.cliente));
+    if(!cand.length) return;
+
+    const pagto=parseDataBRjs(q.pagamento);
+    if(!pagto) return;
+
+    const antes=cand.filter(l=>{
+      const raw=String(l.server_time||l.criado_em||l.data||'');
+      const d=raw ? new Date(raw.replace(' ', 'T')) : null;
+      if(!d || isNaN(d.getTime())) return true;
+      const diffDias=(pagto-d)/(1000*60*60*24);
+      return diffDias>=0 && diffDias<=180;
+    });
+    if(!antes.length) return;
+
+    antes.sort((a,b)=>String(a.server_time||'').localeCompare(String(b.server_time||'')));
+    const l=antes[antes.length-1];
+
+    const usuarioKey=normConc(l.usuario||l.destino_nome||'');
+    const destinoKey=normConc(l.destino_nome||'');
+    const filialKey=String(l.filial||q.filial||'').toUpperCase();
+    const faixa=q.faixa||'grave';
+    const rec={
+      cliente:q.cliente,
+      dias:q.dias_atraso_pagamento,
+      pago:Number(q.pago||0),
+      vencimento:q.vencimento,
+      pagamento:q.pagamento,
+      parcela:q.parcela,
+      titulo:q.titulo,
+      vendedor:l.usuario||l.destino_nome||'',
+      origem:'conciliado_quitados_180d',
+      cobrador:l.usuario||'',
+      destino_nome:l.destino_nome||'',
+      destino_tipo:l.destino_tipo||'',
+      filial:filialKey
+    };
+
+    [usuarioKey,destinoKey,normConc(`${l.destino_nome||''}_${filialKey}`),normConc(`${l.usuario||''}_${filialKey}`),normConc(filialKey)].forEach(key=>{
+      if(!key) return;
+      if(!out[key]) out[key]={grave:[],alerta:[],atencao:[]};
+      if(!out[key][faixa]) out[key][faixa]=[];
+      // evita duplicar no mesmo key
+      const exists=out[key][faixa].some(x=>String(x.titulo)===String(rec.titulo)&&String(x.parcela)===String(rec.parcela)&&similarCliente(x.cliente,rec.cliente));
+      if(!exists) out[key][faixa].push(rec);
+    });
+  });
+
+  return out;
+}
+function mergeRecebimentosConciliados(base, ent){
+  const result={
+    grave:[...((base||{}).grave||[])],
+    alerta:[...((base||{}).alerta||[])],
+    atencao:[...((base||{}).atencao||[])]
+  };
+  const keys=[
+    normConc(ent?.nome),
+    normConc(ent?.login),
+    normConc(ent?.filial),
+    normConc(`${ent?.nome||''}_${ent?.filial||''}`),
+    normConc(`${ent?.login||''}_${ent?.filial||''}`)
+  ].filter(Boolean);
+  keys.forEach(k=>{
+    const extra=RECEBIMENTOS_CONCILIADOS[k];
+    if(!extra) return;
+    ['grave','alerta','atencao'].forEach(fx=>{
+      (extra[fx]||[]).forEach(r=>{
+        const exists=result[fx].some(x=>String(x.titulo)===String(r.titulo)&&String(x.parcela)===String(r.parcela)&&similarCliente(x.cliente,r.cliente));
+        if(!exists) result[fx].push(r);
+      });
+    });
+  });
+  ['grave','alerta','atencao'].forEach(fx=>result[fx].sort((a,b)=>Number(b.pago||0)-Number(a.pago||0)));
+  return result;
+}
+
+function getRecebimentos(ent){
+  let base;
+  if(ent.type==='terceiro' || ent.is_terceiro) base=RECEBIMENTOS_TERCEIRO||{grave:[],alerta:[],atencao:[]};
+  else if(ent.type==='crediarista' || ent.is_crediarista){
+    const filialKey=String(ent.filial||'').toUpperCase();
+    base={grave:[],alerta:[],atencao:[]};
+    Object.entries(RECEBIMENTOS||{}).forEach(([k,v])=>{if(k.endsWith('_'+filialKey)){['grave','alerta','atencao'].forEach(fx=>base[fx].push(...(v[fx]||[])))}}); 
+  } else if(ent.type==='vendedor') base=RECEBIMENTOS[recebKeyVend(ent)]||{grave:[],alerta:[],atencao:[]};
+  else {
+    base={grave:[],alerta:[],atencao:[]};
+    Object.entries(RECEBIMENTOS||{}).forEach(([k,v])=>{if(k.endsWith('_'+ent.filial)){['grave','alerta','atencao'].forEach(fx=>base[fx].push(...(v[fx]||[])))}}); 
+  }
+  base=mergeRecebimentosConciliados(base, ent||{});
+  ['grave','alerta','atencao'].forEach(fx=>base[fx].sort((a,b)=>Number(b.pago||0)-Number(a.pago||0)));
+  return base;
+}
 function renderRecebimentos(ent){const src=getRecebimentos(ent); let out=''; ['grave','alerta','atencao'].forEach(fx=>{const arr=src[fx]||[]; const label=fx==='grave'?'Grave':fx==='alerta'?'Alerta':'Atenção'; if(!arr.length){out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>Sem recebimentos</span></div></div>`; return} out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${arr.length} títulos · ${R(arr.reduce((a,b)=>a+Number(b.pago||0),0))}</span></div><div class="tableish">${arr.slice(0,80).map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · Parcela ${esc(r.parcela||'')}</div></div><div><strong>${esc(r.pagamento||'')}</strong><div class="small muted">Pagamento</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${R(r.pago||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${esc(r.vendedor||'')}</strong><div class="small muted">Origem</div></div></div></div>`).join('')}</div></div>`}); return out}
 function cobrancaRowKey(r){return [String(r.cliente||r.nome||'').trim().toUpperCase(),String(r.titulo||'').trim(),String(r.parcela||'').trim(),String(r.vencimento||'').trim()].join('|')}
 function dedupeCobrancaBuckets(src){const out={grave:[],alerta:[],atencao:[]}; const seen=new Set(); ['grave','alerta','atencao'].forEach(fx=>{(src?.[fx]||[]).forEach(r=>{const k=cobrancaRowKey(r); if(!seen.has(k)){seen.add(k); out[fx].push(r);}})}); return out}
@@ -6300,7 +6693,7 @@ async function registrarCobrancaOnline(r,entRef,numero){
     } else toast('Não consegui gravar a cobrança online.');
   }catch(e){toast('Falha ao salvar cobrança online.');}
 }
-async function carregarCobrancasOnline(){try{const r=await fetchComTimeout(API_COB+'?_='+Date.now(),{},3000); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} COB_LOGS=(j.ok&&Array.isArray(j.data))?j.data:[]; if(!j.ok && txt) console.log('cobrancas_api retorno:', txt);}catch(e){console.log(e); COB_LOGS=[]}}
+async function carregarCobrancasOnline(){try{const r=await fetchComTimeout(API_COB+'?_='+Date.now(),{},3000); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} COB_LOGS=(j.ok&&Array.isArray(j.data))?j.data:[]; RECEBIMENTOS_CONCILIADOS=getQuitadosConciliados(); console.log('🔗 Quitados conciliados:', RECEBIMENTOS_CONCILIADOS); if(!j.ok && txt) console.log('cobrancas_api retorno:', txt);}catch(e){console.log(e); COB_LOGS=[]}}
 
 async function removerCobranca(id,cliente='',titulo='',parcela=''){if(!confirm('Remover esta cobrança do histórico?')) return; try{const r=await fetch(API_COB,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete',id,cliente,titulo,parcela})}); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} if(j.ok){toast('Cobrança removida.','success'); await carregarCobrancasOnline(); renderLogsTab(); renderList(); if(currentDetailRef) openEntity(currentDetailRef);}else{console.log('Falha remover cobrança:', txt); toast('Não consegui remover.')}}catch(e){console.log(e); toast('Falha ao remover cobrança.')}}
 function toggleAcc(el){el.parentElement.classList.toggle('open')}
@@ -7083,6 +7476,16 @@ if FTP_USER and FTP_PASS:
                 ftp.storbinary('STOR fechamentos_mensais.json', f_fech)
         except Exception:
             ftp.storbinary('STOR fechamentos_mensais.json', BytesIO(b'{"months":{}}'))
+        try:
+            if quitados_180_info.get('json_path') and os.path.exists(quitados_180_info['json_path']):
+                with open(quitados_180_info['json_path'], 'rb') as f_q_json:
+                    ftp.storbinary('STOR quitados_180d_contas_receber.json', f_q_json)
+            if quitados_180_info.get('xlsx_path') and os.path.exists(quitados_180_info['xlsx_path']):
+                with open(quitados_180_info['xlsx_path'], 'rb') as f_q_xlsx:
+                    ftp.storbinary('STOR quitados_180d_contas_receber.xlsx', f_q_xlsx)
+        except Exception as e_q_ftp:
+            print(f'⚠️ Erro ao enviar quitados 180d ao FTP: {e_q_ftp}')
+
         try:
             if metas_vendas_info.get('json_path') and os.path.exists(metas_vendas_info['json_path']):
                 with open(metas_vendas_info['json_path'], 'rb') as f_meta_json:
