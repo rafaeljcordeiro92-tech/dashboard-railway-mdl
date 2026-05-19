@@ -7025,22 +7025,122 @@ function _histComMeses(){return Object.keys(HIST_COMISSAO?.months||{}).sort().re
 function _comEntKey(ent){return `${ent.type||'ent'}::${ent.filial||''}::${ent.login||ent.nome||''}`}
 function _recebResumo(ent){const r=getRecebimentos(ent); const sum=(fx)=>(r[fx]||[]).reduce((a,b)=>a+Number(b.pago||0),0); return {grave:sum('grave'),alerta:sum('alerta'),atencao:sum('atencao'),total:sum('grave')+sum('alerta')+sum('atencao'),qtd:(r.grave||[]).length+(r.alerta||[]).length+(r.atencao||[]).length}}
 
+function snapKV(label,value,color=''){
+  return `<div class="snap-kv"><div>${esc(label)}</div><strong style="${color?`color:${color}`:''}">${value}</strong></div>`;
+}
+function snapMetric(title,value,sub='',color=''){
+  return `<div class="snap-card"><div class="snap-title">${esc(title)}</div><div class="snap-value" style="${color?`color:${color}`:''}">${value}</div>${sub?`<div class="snap-sub">${sub}</div>`:''}</div>`;
+}
+function snapMiniBox(title, perc, alvo, rec, color){
+  return `<div class="snap-mini"><div class="snap-title">${title}</div><div class="snap-percent" style="color:${color}">${pct(perc||0)}</div><div class="snap-sub">Alvo: ${R(alvo||0)}</div><div class="snap-sub">Recebido: ${R(rec||0)}</div></div>`;
+}
+function snapSalesRows(ent, key, label){
+  let rows=getSalesRows(ent,key);
+  if(String(key||'').includes('servico') && servicosEntidadeTotal(ent)>0 && rows.length) rows=[rows[0]];
+  if(!rows.length) return '';
+  return `<div class="snap-box"><h3>${label}</h3>${rows.slice(0,1).map(r=>{
+    const srv=serviceOfficialOverride(ent,key,r);
+    const ating=srv ? srv.atingidoTotal : salesCell(r,['Atingido Total']);
+    const atingPeriodo=srv ? srv.atingidoPeriodo : salesCell(r,['Atingido Período']);
+    const realizadoTotal=srv ? srv.realizado : esc(salesCell(r,['Realizado (R$) Total','Realizado(R$) Total']));
+    const realizadoPeriodo=srv ? srv.realizado : esc(salesCell(r,['Realizado (R$) Período','Realizado(R$) Período']));
+    const proj=salesCell(r,['Projetado (R$)','Projetado(R$)']);
+    const title=srv ? `${salesTitleForRow(ent,r,key)} · relatório serviços` : salesTitleForRow(ent,r,key);
+    return `<div class="snap-sales-title">${esc(title)}</div><div class="snap-grid4">
+      ${snapKV('Meta total',esc(salesCell(r,['Meta (R$) Total','Meta(R$) Total'])))}
+      ${snapKV('Realizado total',realizadoTotal,'#34d399')}
+      ${snapKV('Atingido total',esc(ating),'#f59e0b')}
+      ${snapKV('Meta período',esc(salesCell(r,['Meta (R$) Período','Meta(R$) Período'])))}
+      ${snapKV('Realizado período',realizadoPeriodo,'#34d399')}
+      ${snapKV('Atingido período',esc(atingPeriodo),'#f59e0b')}
+      ${snapKV('Projetado',esc(proj),'#fb7185')}
+      ${snapKV(ent.type==='filial'?'Filial':'Vendedor',esc(salesCell(r, ent.type==='filial'?['Filial']:['Vendedor_2','Vendedor'])))} 
+    </div>`;
+  }).join('')}</div>`;
+}
+function snapServices(ent){
+  const rows=servicosEntidade(ent).filter(x=>Number(x.real_total||0)>0);
+  const total=rows.reduce((a,b)=>a+Number(b.real_total||0),0);
+  return `<div class="snap-box"><h3>🛠️ Serviços por tipo</h3><div class="snap-sub">Relatório real de serviços · total oficial ${R(total)}</div><div class="snap-grid3">${rows.slice(0,6).map(r=>snapKV(String(r.servico||'Serviço').slice(0,36),R(r.real_total||0),'#60a5fa')).join('') || '<div class="snap-sub">Sem serviços localizados.</div>'}</div></div>`;
+}
+function snapCommission(ent){
+  if(!(ent.type==='vendedor'||ent.type==='filial')) return '';
+  let c={}; try{c=calcCommissionSummary(ent)||{}}catch(e){return ''}
+  const totalLiberado = c.elegivelMercantil && c.elegivelServicos;
+  const totalExibido = totalLiberado ? c.totalPrevisto : 0;
+  const cell=(t,v,color='')=>snapKV(t, v, color);
+  return `<div class="snap-box"><h3>💵 Comissionamento previsto</h3><div class="snap-grid3">
+    ${cell('Faixa aplicada',esc(c.faixaTxt||'-'))}
+    ${cell('% comissão mercantil',`${String(Number(c.comPerc||0).toFixed(2)).replace('.',',')}%`)}
+    ${cell('% serviços',`${String(Number(c.servPct||0).toFixed(2)).replace('.',',')}%`)}
+    ${cell('Comissão vendas',R(c.vendasComissao||0),'#34d399')}
+    ${cell('Comissão serviços',R(c.servicosComissao||0),'#34d399')}
+    ${cell('Comissão caminhão',R(c.caminhaoComissao||0),'#34d399')}
+    ${cell('Bônus por meta',R(c.bonusMeta||0),'#fbbf24')}
+    ${cell('Rentab 48%',R(c.rent48||0),'#fbbf24')}
+    ${cell('Rentab 52,15%',R(c.rent52||0),'#fbbf24')}
+    ${cell('Rentab 55,50%',R(c.rent55||0),'#fbbf24')}
+    ${cell('Total previsto',R(totalExibido),'#fff')}
+  </div><div class="snap-sub">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Serviço: ${R(c.servReal||0)}.</div></div>`;
+}
 function snapshotEntityHTML(ent){
   try{
-    const oldDetail=detailScreen.innerHTML;
-    const oldDetailHidden=detailScreen.classList.contains('hidden');
-    const main=document.getElementById('mainScreen');
-    const oldMainHidden=main?.classList.contains('hidden');
-    const oldRef=currentDetailRef;
-    openEntity(ent);
-    const html=detailScreen.innerHTML;
-    detailScreen.innerHTML=oldDetail;
-    detailScreen.classList.toggle('hidden',oldDetailHidden);
-    if(main) main.classList.toggle('hidden',!!oldMainHidden);
-    currentDetailRef=oldRef;
-    return html;
-  }catch(e){console.log('Falha ao congelar tela individual',e); return '';}
+    if(ent && (ent.type==='crediarista'||ent.is_crediarista)){
+      ent=findEntityBySnapshotRow({key:entityKey(ent),nome:ent.nome,filial:ent.filial}) || ent;
+    }
+    const meta=calcMeta(ent);
+    const nome=ent.type==='filial'?filialLabel(ent.filial):esc(ent.nome||'');
+    const sub=ent.type==='filial'?'Painel individual da filial':(ent.type==='crediarista'?'Painel de crediarista':'Painel individual do vendedor');
+    const bonus=getBonus(meta.cfg,meta.geral);
+    const salesBlocks = ent.type==='filial'
+      ? [['venda_filial_meta','📈 Venda · Meta Filial'],['servico_filial_ouro_fob','🛠️ Serviço · Ouro / FOB'],['venda_filial_subgrupo_20k','🚚 Venda · Caminhão 20K']]
+      : [['venda_filial_vendedor_meta','📈 Venda · Meta Vendedor'],['servico_filial_vendedor_ouro_fob','🛠️ Serviço · Ouro / FOB Vendedor'],['venda_vendedor_subgrupo_20k','🚚 Venda · Caminhão 20K']];
+    const vendasHtml=(ent.type==='crediarista'||ent.is_crediarista)?'':salesBlocks.map(([k,l])=>snapSalesRows(ent,k,l)).join('');
+    const bonusItems=[[50,meta.cfg.bonus_50||'-'],[75,meta.cfg.bonus_75||'-'],[85,meta.cfg.bonus_85||'-'],[100,meta.cfg.bonus_100||'-']];
+    return `<div class="snap-sheet">
+      <style>
+      .snap-sheet{width:1180px;max-width:100%;margin:0 auto;background:#0d0f14;color:#f3f6ff;font-family:Inter,Arial,sans-serif;padding:22px;border-radius:22px}
+      .snap-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;border:1px solid rgba(255,255,255,.12);background:#161922;border-radius:18px;padding:16px 18px}
+      .snap-head h1{font-size:28px;margin:0;color:#fff}.snap-head .snap-sub{margin-top:6px}
+      .snap-two{display:grid;grid-template-columns:1.04fr .96fr;gap:18px;align-items:start}
+      .snap-box,.snap-card,.snap-mini,.snap-kv{border:1px solid rgba(255,255,255,.12);background:#151821;border-radius:16px;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,.22)}
+      .snap-box{margin-bottom:16px}.snap-box h2,.snap-box h3{margin:0 0 12px 0;font-size:19px;color:#fff}
+      .snap-topmeta{display:grid;grid-template-columns:210px 1fr;gap:18px;align-items:center}.snap-ring{display:flex;align-items:center;justify-content:center}
+      .snap-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.snap-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.snap-grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+      .snap-title{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#8c96ab;font-weight:800}.snap-value{font-size:26px;font-weight:900;margin-top:6px}.snap-sub{color:#aeb7ca;font-size:13px;line-height:1.35}
+      .snap-mini{text-align:center}.snap-percent{font-size:30px;font-weight:950;margin:8px 0}
+      .snap-kv strong{display:block;font-size:18px;margin-top:6px;color:#fff}.snap-sales-title{font-weight:900;color:#fff;margin-bottom:10px}
+      .snap-chart-bars{height:230px;display:flex;align-items:end;gap:36px;justify-content:center;padding:16px 10px}.snap-barwrap{text-align:center}.snap-bar{width:58px;border-radius:12px 12px 8px 8px;background:linear-gradient(180deg,rgba(255,255,255,.25),transparent),var(--c);box-shadow:0 0 22px color-mix(in srgb,var(--c),transparent 65%)}.snap-barlabel{font-size:12px;color:#c7d0e1;margin-top:8px}
+      .snap-bonus{display:grid;gap:8px}.snap-bonus-item{display:flex;justify-content:space-between;gap:12px;border:1px solid rgba(255,255,255,.1);background:#10131a;border-radius:12px;padding:10px 12px;font-size:13px}.snap-bonus-item.active{outline:2px solid rgba(245,158,11,.45)}
+      @media print{body{background:#0d0f14}.snap-sheet{width:1180px}}
+      </style>
+      <div class="snap-head"><div><h1>${nome}</h1><div class="snap-sub">${sub} · ${esc(ent.filial||'')} · ${mesAtualComissao()}</div></div><div class="snap-sub">🕒 ${esc(ULTIMA_ATUALIZACAO_DASHBOARD_BR||'')}</div></div>
+      <div class="snap-two">
+        <div>
+          <div class="snap-box"><h2>🎯 Meta do mês · Não acumulativo</h2><div class="snap-topmeta"><div class="snap-ring">${renderPiggyBank(meta.geral)}</div><div><div class="snap-grid2">
+            ${snapMetric('Pendente',R(ent.pendente||0),'','#ff5a6a')}
+            ${snapMetric('Recebido',R(ent.pago||0),'','#34d399')}
+            ${snapMetric('% da filial',pct(ent.perc_filial||100))}
+            ${snapMetric('Configuração usada',`${Number(meta.cfg.grave_pct||0)}/${Number(meta.cfg.alerta_pct||0)}/${Number(meta.cfg.atencao_pct||0)}`)}
+          </div><div style="height:12px"></div><div class="snap-sub">🔴 Grave alvo ${R(meta.grave.alvo)} · recebido ${R(meta.grave.rec)}<br>🟠 Alerta alvo ${R(meta.alerta.alvo)} · recebido ${R(meta.alerta.rec)}<br>🟡 Atenção alvo ${R(meta.atencao.alvo)} · recebido ${R(meta.atencao.rec)}</div></div></div><div style="height:14px"></div><div class="snap-grid4">
+            ${snapMiniBox('Grave',meta.grave.perc,meta.grave.alvo,meta.grave.rec,'#ff5a6a')}
+            ${snapMiniBox('Alerta',meta.alerta.perc,meta.alerta.alvo,meta.alerta.rec,'#fb923c')}
+            ${snapMiniBox('Atenção',meta.atencao.perc,meta.atencao.alvo,meta.atencao.rec,'#facc15')}
+            ${snapMiniBox('Meta geral',meta.geral,meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,meta.grave.rec+meta.alerta.rec+meta.atencao.rec,'#60a5fa')}
+          </div></div>
+          <div class="snap-box"><h3>🌊 Gráfico Geral Contas a Receber</h3>${(()=>{const vals=[['Grave',meta.grave.pend,'#ff5a6a'],['Alerta',meta.alerta.pend,'#fb923c'],['Atenção',meta.atencao.pend,'#facc15'],['Recebido',Number(ent.pago||0),'#34d399']]; const max=Math.max(1,...vals.map(v=>v[1])); return `<div class="snap-chart-bars">${vals.map(v=>`<div class="snap-barwrap"><div class="snap-bar" style="--c:${v[2]};height:${Math.max(24,(v[1]/max)*190)}px"></div><div class="snap-barlabel">${v[0]}<br><strong>${R(v[1])}</strong></div></div>`).join('')}</div>`})()}</div>
+          <div class="snap-box"><h3>🏆 Bônus e premiações · Não acumulativo</h3><div class="snap-bonus">${bonusItems.map(([p,t])=>`<div class="snap-bonus-item ${bonus?.perc===p?'active':''}"><strong>🎯 ${p}%</strong><span>${esc(t)}</span></div>`).join('')}</div></div>
+        </div>
+        <div>
+          ${vendasHtml}
+          ${snapServices(ent)}
+          ${snapCommission(ent)}
+        </div>
+      </div>
+    </div>`;
+  }catch(e){console.log('Falha ao montar snapshot compacto',e); return '';}
 }
+
 function isUltimoDiaMes23(){
   const now=new Date(); const tomorrow=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1);
   return tomorrow.getDate()===1 && now.getHours()>=23;
@@ -7064,7 +7164,7 @@ function buildSnapshotComissionamentoMensal(month=mesAtualComissao()){
   const ents=[...flattenVendedores(),...flattenFiliais(),...crediaristaEntities(),thirdChargeEntity()].filter(Boolean);
   const entidades=ents.map(snapshotComissaoEntidade);
   const total=entidades.reduce((a,b)=>a+Number(b.total_previsto||0),0);
-  return {month, gerado_em:new Date().toISOString(), versao_snapshot:'html_individual_v1', atualizado_em_br:new Date().toLocaleString('pt-BR'), total_previsto:total, entidades};
+  return {month, gerado_em:new Date().toISOString(), versao_snapshot:'snapshot_visual_compacto_v2', atualizado_em_br:new Date().toLocaleString('pt-BR'), total_previsto:total, entidades};
 }
 async function salvarSnapshotComissionamentoMensal(auto=false){
   if(usuarioAtual?.tipo!=='master') return;
@@ -7104,52 +7204,25 @@ function abrirTelaComissionamentoCongeladaPorSelect(){
     const key=document.getElementById('histComEntityView')?.value||'';
     const snap=HIST_COMISSAO?.months?.[month];
     const row=(snap?.entidades||[]).find(x=>String(x.key)===String(key));
-
-    if(!row){
-      toast('Registro não encontrado no histórico.');
-      return;
-    }
-
+    if(!row){toast('Registro não encontrado no histórico.'); return;}
     let html=String(row.html_individual||'');
     let fonte='tela congelada salva no fechamento';
-
     if(!html){
       const ent=findEntityBySnapshotRow(row);
-      if(ent){
-        html=String(snapshotEntityHTML(ent)||'');
-        fonte='gerada agora porque este fechamento antigo não tinha a tela salva';
-      }
+      if(ent){html=String(snapshotEntityHTML(ent)||''); fonte='gerada agora porque este fechamento antigo não tinha a tela salva';}
     }
-
-    if(!html){
-      toast('Tela congelada não encontrada. Salve novamente o fechamento do mês para gerar a tela.');
-      return;
-    }
-
-    const cssBasico = `
-      body{margin:0;background:#0d0f14;color:#f0f2f8;font-family:Inter,Arial,sans-serif;padding:18px}
-      .snapshot-wrap{max-width:1320px;margin:auto}
-      .snapshot-head{border:1px solid rgba(255,255,255,.14);background:#171a22;border-radius:18px;padding:14px 18px;margin-bottom:14px}
-      .snapshot-head h2{margin:0 0 6px 0;color:#fff}
-      .snapshot-note{margin:0 0 14px 0;padding:10px 14px;border:1px solid rgba(255,255,255,.13);border-radius:14px;background:rgba(255,255,255,.05);color:#cbd3e3}
-      .btn,.back-row,.tabs,.top-actions{display:none!important}
-      a{color:inherit}
-    `;
-
-    const doc = `<!doctype html><html><head><meta charset="utf-8"><title>Comissionamento ${esc(row.nome)} ${esc(month)}</title><style>${cssBasico}</style></head><body><div class="snapshot-wrap"><div class="snapshot-head"><h2>📌 Tela congelada de comissionamento</h2><div>${esc(row.nome)} · ${esc(row.filial||'')} · ${esc(month)}</div></div><div class="snapshot-note">Fonte: ${esc(fonte)}</div>${html}</div></body></html>`;
-
+    if(!html){toast('Tela congelada não encontrada. Salve novamente o fechamento do mês.'); return;}
+    const doc = `<!doctype html><html><head><meta charset="utf-8"><title>Comissionamento ${esc(row.nome)} ${esc(month)}</title><style>
+      body{margin:0;background:#080a0f;color:#f4f6fb;font-family:Inter,Arial,sans-serif;padding:20px}
+      .snapshot-toolbar{position:sticky;top:0;z-index:999;display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0 auto 14px auto;max-width:1180px;padding:12px 14px;border:1px solid rgba(255,255,255,.14);background:rgba(15,18,26,.96);border-radius:16px}
+      .snapshot-toolbar button{border:0;border-radius:12px;padding:10px 14px;background:#ff8a00;color:#111;font-weight:900;cursor:pointer}
+      .snapshot-toolbar .hint{color:#b9c2d3;font-size:13px}
+      @media print{.snapshot-toolbar{display:none}body{padding:0;background:#080a0f}}
+    </style></head><body><div class="snapshot-toolbar"><div><strong>📌 Fechamento ${esc(month)}</strong><div class="hint">${esc(row.nome)} · Fonte: ${esc(fonte)}</div></div><button onclick="window.print()">🖨️ Imprimir / Salvar PDF</button></div>${html}</body></html>`;
     const w=window.open('', '_blank');
-    if(!w){
-      toast('Pop-up bloqueado pelo navegador. Permita pop-ups para este site.');
-      return;
-    }
-    w.document.open();
-    w.document.write(doc);
-    w.document.close();
-  }catch(e){
-    console.error('Erro ao abrir tela congelada:', e);
-    toast('Erro ao abrir tela congelada. Veja o Console do navegador.');
-  }
+    if(!w){toast('Pop-up bloqueado pelo navegador. Permita pop-ups para este site.'); return;}
+    w.document.open(); w.document.write(doc); w.document.close();
+  }catch(e){console.error('Erro ao abrir tela congelada:', e); toast('Erro ao abrir tela congelada. Veja o Console do navegador.');}
 }
 
 function renderHistoricoComissaoResults(){
@@ -7159,7 +7232,7 @@ function renderHistoricoComissaoResults(){
   const saveInput=document.getElementById('histComMonthSave'); if(saveInput && !saveInput.value) saveInput.value=mesAtualComissao();
   if(!snap){box.innerHTML=`<div class="empty">Nenhum histórico salvo para ${esc(current)}. Clique em “Salvar fechamento do mês atual” para gravar o resultado visível agora.</div>`; return;}
   const rows=[...(snap.entidades||[])].sort((a,b)=>String(a.tipo).localeCompare(String(b.tipo),'pt-BR')||String(a.nome).localeCompare(String(b.nome),'pt-BR'));
-  box.innerHTML=`<div class="kpis">${makeKpi('Mês',esc(snap.month||current),'var(--blue)')}${makeKpi('Total previsto',R(snap.total_previsto||0),'var(--green)')}${makeKpi('Entidades',String(rows.length),'var(--orange)')}${makeKpi('Salvo em',esc((snap.atualizado_em_br||snap.gerado_em||'').replace('T',' ').slice(0,19)),'var(--blue)')}</div>`+`<div class="glass panel"><div class="form-grid"><div class="input-card"><label>Ver tela congelada individual</label><div class="hint">Se este mês foi salvo antes da versão de tela congelada, o sistema abre uma versão gerada agora. Para congelar de verdade, clique em Salvar fechamento do mês atual novamente.</div><select id="histComEntityView">${rows.map(r=>`<option value="${esc(r.key||'')}">${esc(r.nome||'')} · ${esc(r.filial||'')}</option>`).join('')}</select></div><div style="display:flex;align-items:end"><button class="btn primary" onclick="abrirTelaComissionamentoCongeladaPorSelect()">Abrir tela congelada</button></div></div></div>`+renderComissionamentoHistoricoTable(rows);
+  box.innerHTML=`<div class="kpis">${makeKpi('Mês',esc(snap.month||current),'var(--blue)')}${makeKpi('Total previsto',R(snap.total_previsto||0),'var(--green)')}${makeKpi('Entidades',String(rows.length),'var(--orange)')}${makeKpi('Salvo em',esc((snap.atualizado_em_br||snap.gerado_em||'').replace('T',' ').slice(0,19)),'var(--blue)')}</div>`+`<div class="glass panel"><div class="form-grid"><div class="input-card"><label>Ver tela congelada individual</label><div class="hint">Agora a tela congelada salva um resumo visual compacto, sem a lista enorme de recebimentos/cobranças. Para atualizar este mês com o novo modelo, clique em Salvar fechamento do mês atual novamente.</div><select id="histComEntityView">${rows.map(r=>`<option value="${esc(r.key||'')}">${esc(r.nome||'')} · ${esc(r.filial||'')}</option>`).join('')}</select></div><div style="display:flex;align-items:end"><button class="btn primary" onclick="abrirTelaComissionamentoCongeladaPorSelect()">Abrir tela congelada</button></div></div></div>`+renderComissionamentoHistoricoTable(rows);
 }
 
 function setHistMode(mode){window._histMode=mode; document.getElementById('histDailyPane')?.classList.toggle('hidden',mode!=='daily'); document.getElementById('histMonthPane')?.classList.toggle('hidden',mode!=='monthly'); document.getElementById('histSalesPane')?.classList.toggle('hidden',mode!=='sales'); document.getElementById('histThirdPane')?.classList.toggle('hidden',mode!=='third'); document.getElementById('histComPane')?.classList.toggle('hidden',mode!=='comissao'); document.getElementById('histTabDaily')?.classList.toggle('active',mode==='daily'); document.getElementById('histTabMonthly')?.classList.toggle('active',mode==='monthly'); document.getElementById('histTabSales')?.classList.toggle('active',mode==='sales'); document.getElementById('histTabThird')?.classList.toggle('active',mode==='third'); document.getElementById('histTabCom')?.classList.toggle('active',mode==='comissao'); if(mode==='daily'){updateHistEntityFilter(); renderHistoricoResults();} else if(mode==='monthly'){updateHistMonthEntityFilter(); renderHistoricoMonthResults();} else if(mode==='third'){renderHistoricoTerceiro();} else if(mode==='comissao'){renderHistoricoComissaoResults();} else {updateHistSalesEntityFilter(); updateHistSalesMonthEntityFilter(); renderHistoricoSalesResults(); renderHistoricoSalesMonthResults();}}
