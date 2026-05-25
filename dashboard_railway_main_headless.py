@@ -5207,6 +5207,45 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
   font-weight:700 !important;
 }
 
+
+/* ===== FIX LEGIBILIDADE AVISOS NO MODAL DO SINO ===== */
+.modal-card .modal-list .msg-card.campaign-banner,
+#bellList .msg-card.campaign-banner{
+  background:linear-gradient(180deg,#f7f1df,#f2ead7) !important;
+  border:1px solid #e4d8b2 !important;
+  color:#1f2937 !important;
+}
+.modal-card .modal-list .msg-card.campaign-banner *,
+#bellList .msg-card.campaign-banner *{
+  text-shadow:none !important;
+}
+.modal-card .modal-list .msg-card.campaign-banner strong,
+#bellList .msg-card.campaign-banner strong{
+  color:#111827 !important;
+}
+.modal-card .modal-list .msg-card.campaign-banner .small,
+.modal-card .modal-list .msg-card.campaign-banner .muted,
+#bellList .msg-card.campaign-banner .small,
+#bellList .msg-card.campaign-banner .muted{
+  color:#475569 !important;
+}
+.modal-card .modal-list .msg-card.campaign-banner [style*="white-space:pre-wrap"],
+#bellList .msg-card.campaign-banner [style*="white-space:pre-wrap"]{
+  color:#1f2937 !important;
+  font-weight:700 !important;
+}
+.modal-card .modal-list .msg-card.campaign-banner .unread-chip,
+#bellList .msg-card.campaign-banner .unread-chip{
+  background:#fff7ed !important;
+  border-color:#fb923c !important;
+  color:#9a3412 !important;
+}
+#bellList .msg-card.campaign-banner .mini-chip{
+  background:#fff7ed !important;
+  border-color:#fdba74 !important;
+  color:#c2410c !important;
+}
+
 </style>
 </head>
 <body>
