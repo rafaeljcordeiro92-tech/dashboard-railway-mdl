@@ -5246,6 +5246,51 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
   color:#c2410c !important;
 }
 
+
+/* ===== COBRANÇA INTELIGENTE: RECOBRANÇA / CONTADOR ===== */
+.cob-history-chip{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  margin-left:6px;
+  padding:4px 8px;
+  border-radius:999px;
+  border:1px solid rgba(251,146,60,.55);
+  background:rgba(251,146,60,.13);
+  color:#fed7aa;
+  font-size:11px;
+  font-weight:900;
+}
+.cob-retry-chip{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  margin-left:6px;
+  padding:4px 8px;
+  border-radius:999px;
+  border:1px solid rgba(248,113,113,.62);
+  background:rgba(248,113,113,.14);
+  color:#fecaca;
+  font-size:11px;
+  font-weight:900;
+  animation:pulse 1.35s infinite;
+}
+.cob-info-box{
+  margin-top:7px;
+  padding:8px 10px;
+  border-radius:12px;
+  border:1px solid rgba(251,146,60,.32);
+  background:rgba(251,146,60,.08);
+  color:#ffd6a3;
+  font-size:12px;
+  font-weight:800;
+}
+.cob-info-box.waiting{
+  border-color:rgba(96,165,250,.32);
+  background:rgba(96,165,250,.08);
+  color:#bfdbfe;
+}
+
 </style>
 </head>
 <body>
@@ -5372,7 +5417,13 @@ function getRentEmpresa(){
 }
 
 let SERVICOS_RELATORIO=__JS_SERVICOS_RELATORIO__||{empresa:{},servicos:{},filiais:{},vendedores:{},detalhes:[]};
-let CONFIG_META={grave_pct:20,alerta_pct:15,atencao_pct:10,peso_grave:60,peso_alerta:30,peso_atencao:10,bonus_50:'',bonus_75:'',bonus_85:'',bonus_100:'',cob_cred_rateio_filial_pct:50,cob_cred_rateio_cred_pct:50,cobranca_global_rateio_pct:20,cobranca_msg_template:`Olá, {primeiro_nome} tudo bem?\nAqui é da Lojas MDL - Móveis do Lar.\nPassando para lembrar que tem uma parcelinha vencida na data de {vencimento}, no valor de {valor}.\nCaso o pagamento já tenha sido realizado, por gentileza, desconsidere esta mensagem.\nSe precisar do boleto, chave PIX ou tiver qualquer dúvida, fico à disposição para ajudar.`,...(__CONFIG_META__||{})};
+let CONFIG_META={grave_pct:20,alerta_pct:15,atencao_pct:10,peso_grave:60,peso_alerta:30,peso_atencao:10,bonus_50:'',bonus_75:'',bonus_85:'',bonus_100:'',cob_cred_rateio_filial_pct:50,cob_cred_rateio_cred_pct:50,cobranca_global_rateio_pct:20,cobranca_msg_template_terceira:`Olá, {primeiro_nome}. Tudo bem?
+Aqui é da Lojas MDL - Móveis do Lar.
+
+Já tentamos contato sobre a parcela vencida em {vencimento}, no valor de {valor}, referente ao título {titulo}/{parcela}.
+
+Para evitar novos encargos e restrições, pedimos que regularize o pagamento o quanto antes.
+Caso já tenha pago, por gentileza desconsidere esta mensagem.`,cobranca_msg_template:`Olá, {primeiro_nome} tudo bem?\nAqui é da Lojas MDL - Móveis do Lar.\nPassando para lembrar que tem uma parcelinha vencida na data de {vencimento}, no valor de {valor}.\nCaso o pagamento já tenha sido realizado, por gentileza, desconsidere esta mensagem.\nSe precisar do boleto, chave PIX ou tiver qualquer dúvida, fico à disposição para ajudar.`,...(__CONFIG_META__||{})};
 let CONFIG_META_IND=__CONFIG_META_IND__||{};
 const LOGIN_MASTER=String(__LOGIN_MASTER__);
 const SENHA_MASTER=String(__SENHA_MASTER__);
@@ -6706,8 +6757,90 @@ function primeiroNomeClienteJs(nome){
 function valorBR(v){
   return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 }
+
+function parseCobDate(raw){
+  if(!raw) return null;
+  const s=String(raw).trim();
+  let d=null;
+  // aceita ISO, "YYYY-MM-DD HH:mm:ss", ou data local
+  d=new Date(s.replace(' ', 'T'));
+  if(!d || isNaN(d.getTime())){
+    const m=s.match(/(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?/);
+    if(m) d=new Date(Number(m[3]),Number(m[2])-1,Number(m[1]),Number(m[4]||0),Number(m[5]||0));
+  }
+  return (d && !isNaN(d.getTime()))?d:null;
+}
+function fmtCobDate(raw){
+  const d=parseCobDate(raw);
+  if(!d) return String(raw||'');
+  return d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+}
+function daysSinceCob(raw){
+  const d=parseCobDate(raw);
+  if(!d) return 9999;
+  return Math.floor((Date.now()-d.getTime())/(1000*60*60*24));
+}
+function sameCobTitle(a,b){
+  return String(a?.titulo||'').trim()===String(b?.titulo||'').trim()
+      && String(a?.parcela||'').trim()===String(b?.parcela||'').trim()
+      && similarCliente(a?.cliente||a?.nome||'', b?.cliente||b?.nome||'');
+}
+function entMatchesCobLog(log,ent){
+  if(!ent) return true;
+  const usuario=String(log.usuario||'').toLowerCase();
+  const destinoNome=String(log.destino_nome||'');
+  const destinoTipo=String(log.destino_tipo||'').toLowerCase();
+  const filial=String(log.filial||'').toUpperCase();
+  if(ent.type==='terceiro'||ent.is_terceiro) return destinoTipo==='terceiro' || usuario.includes('terceiro') || String(ent.nome||'')===destinoNome;
+  if(ent.type==='crediarista'||ent.is_crediarista){
+    const login=String(ent.login||ent.nome||'').toLowerCase();
+    return usuario===login || destinoNome===String(ent.nome||'') || (destinoTipo==='crediarista' && filial===String(ent.filial||'').toUpperCase());
+  }
+  if(ent.type==='filial') return filial===String(ent.filial||'').toUpperCase() && (destinoTipo==='filial' || destinoNome===String(ent.nome||'') || !destinoTipo);
+  return destinoNome===String(ent.nome||'') || usuario===String(ent.nome||'').toLowerCase();
+}
+function cobLogsTitulo(reg,ent=null){
+  return (COB_LOGS||[]).filter(x=>String(x.acao||'')==='whatsapp' && sameCobTitle(x,reg) && entMatchesCobLog(x,ent))
+    .sort((a,b)=>(parseCobDate(a.server_time||a.data)||0)-(parseCobDate(b.server_time||b.data)||0));
+}
+function pagamentoAposCobranca(reg,log){
+  const dtLog=parseCobDate(log?.server_time||log?.data);
+  if(!dtLog) return false;
+  return (QUITADOS_180||[]).some(q=>{
+    if(!sameCobTitle(q,reg)) return false;
+    const dp=parseDataBRjs(q.pagamento);
+    return dp && dp.getTime()>=dtLog.getTime();
+  });
+}
+function cobStatusTitulo(reg,ent=null){
+  const logs=cobLogsTitulo(reg,ent);
+  const last=logs.length?logs[logs.length-1]:null;
+  const pago=last?pagamentoAposCobranca(reg,last):false;
+  const dias=last?daysSinceCob(last.server_time||last.data):9999;
+  const qtd=logs.length;
+  return {
+    logs,last,pago,dias,qtd,
+    ultima:last?(last.server_time||last.data||''):'',
+    ultima_fmt:last?fmtCobDate(last.server_time||last.data):'',
+    bloqueado: Boolean(last && !pago && dias<3),
+    deve_voltar: Boolean(last && !pago && dias>=3),
+    proxima_tentativa: qtd+1
+  };
+}
+function cobrancaTemplateTerceiraAtual(){
+  return String(CONFIG_META?.cobranca_msg_template_terceira || `Olá, {primeiro_nome}. Tudo bem?
+Aqui é da Lojas MDL - Móveis do Lar.
+
+Já tentamos contato sobre a parcela vencida em {vencimento}, no valor de {valor}, referente ao título {titulo}/{parcela}.
+
+Para evitar novos encargos e restrições, pedimos que regularize o pagamento o quanto antes.
+Caso já tenha pago, por gentileza desconsidere esta mensagem.`);
+}
+
 function montarMensagemCobranca(reg){
-  let tpl=cobrancaTemplateAtual();
+  const st=reg?._cob_status||cobStatusTitulo(reg, phoneContext?.entRef||null);
+  const tentativa=Number(st?.proxima_tentativa||1);
+  let tpl=(tentativa>=3)?cobrancaTemplateTerceiraAtual():cobrancaTemplateAtual();
   const dados={
     primeiro_nome: primeiroNomeClienteJs(reg.cliente||reg.nome||''),
     cliente: String(reg.cliente||reg.nome||''),
@@ -6717,7 +6850,10 @@ function montarMensagemCobranca(reg){
     parcela: String(reg.parcela||''),
     filial: String(reg.filial||''),
     vendedor: String(reg.vendedor||''),
-    dias: String(reg.dias||'')
+    dias: String(reg.dias||''),
+    qtd_cobrancas: String(st?.qtd||0),
+    ultima_cobranca: String(st?.ultima_fmt||''),
+    tentativa: String(tentativa)
   };
   Object.entries(dados).forEach(([k,v])=>{
     tpl=tpl.replaceAll(`{${k}}`, v);
@@ -6738,20 +6874,31 @@ function exemploMensagemCobranca(){
 }
 function atualizarPreviewCobranca(){
   const tpl=document.getElementById('cobMsgTemplate')?.value;
+  const tpl3=document.getElementById('cobMsgTemplate3')?.value;
   const oldTpl=CONFIG_META.cobranca_msg_template;
+  const oldTpl3=CONFIG_META.cobranca_msg_template_terceira;
   CONFIG_META.cobranca_msg_template=tpl || DEFAULT_COBRANCA_TEMPLATE;
+  CONFIG_META.cobranca_msg_template_terceira=tpl3 || cobrancaTemplateTerceiraAtual();
   const el=document.getElementById('cobMsgPreview');
   if(el) el.textContent=exemploMensagemCobranca();
+  const el3=document.getElementById('cobMsgPreview3');
+  if(el3){
+    const exemplo={cliente:'MARIA APARECIDA DA SILVA',vencimento:'10/05/2026',pendente:199.90,titulo:'123456',parcela:'03',filial:'F1',vendedor:'VENDEDOR EXEMPLO',dias:25,_cob_status:{qtd:2,proxima_tentativa:3,ultima_fmt:'20/05/2026 10:30'}};
+    el3.textContent=montarMensagemCobranca(exemplo);
+  }
   CONFIG_META.cobranca_msg_template=oldTpl;
+  CONFIG_META.cobranca_msg_template_terceira=oldTpl3;
 }
 async function salvarMensagemCobrancaGlobal(){
   const msgEl=document.getElementById('cobMsgSaveStatus');
   const tpl=String(document.getElementById('cobMsgTemplate')?.value||'').trim();
+  const tpl3=String(document.getElementById('cobMsgTemplate3')?.value||'').trim();
   if(!tpl){
     if(msgEl) msgEl.textContent='⚠️ A mensagem não pode ficar vazia.';
     return;
   }
   CONFIG_META.cobranca_msg_template=tpl;
+  if(tpl3) CONFIG_META.cobranca_msg_template_terceira=tpl3;
   try{
     const payload={global:CONFIG_META,individual:CONFIG_META_IND};
     const resp=await fetch(API_CFG,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
@@ -6772,30 +6919,37 @@ async function salvarMensagemCobrancaGlobal(){
 function restaurarMensagemCobrancaPadrao(){
   const t=document.getElementById('cobMsgTemplate');
   if(t) t.value=DEFAULT_COBRANCA_TEMPLATE;
+  const t3=document.getElementById('cobMsgTemplate3'); if(t3) t3.value=cobrancaTemplateTerceiraAtual();
   atualizarPreviewCobranca();
 }
 
 function renderCobrancaConfigPanel(){
   const tpl=esc(cobrancaTemplateAtual());
+  const tpl3=esc(cobrancaTemplateTerceiraAtual());
   return `<div class="glass panel" style="margin-bottom:14px">
     <div class="section-head" style="margin:0 0 10px">
       <div>
-        <h2 style="margin:0">💬 Mensagem padrão de cobrança</h2>
-        <div class="hint">Configuração global usada ao abrir WhatsApp nos clientes. Os campos entre chaves são preenchidos automaticamente.</div>
+        <h2 style="margin:0">💬 Mensagens de cobrança</h2>
+        <div class="hint">Configuração global usada ao abrir WhatsApp. O sistema usa a mensagem padrão na 1ª e 2ª cobrança. A partir da 3ª, usa a Terceira Mensagem.</div>
       </div>
       <button class="btn primary" onclick="salvarMensagemCobrancaGlobal()">Salvar global</button>
     </div>
     <div class="cobranca-config-grid">
       <div>
         <div class="input-card">
-          <label>Texto da mensagem</label>
+          <label>Mensagem padrão de cobrança</label>
           <textarea id="cobMsgTemplate" class="cobranca-template" oninput="atualizarPreviewCobranca()">${tpl}</textarea>
+        </div>
+        <div class="input-card" style="margin-top:12px">
+          <label>Terceira Mensagem de Cobrança</label>
+          <textarea id="cobMsgTemplate3" class="cobranca-template" oninput="atualizarPreviewCobranca()">${tpl3}</textarea>
         </div>
         <div class="placeholder-list">
           <code>{primeiro_nome}</code><code>{cliente}</code>
           <code>{vencimento}</code><code>{valor}</code>
           <code>{titulo}</code><code>{parcela}</code>
           <code>{filial}</code><code>{vendedor}</code>
+          <code>{qtd_cobrancas}</code><code>{ultima_cobranca}</code><code>{tentativa}</code>
         </div>
         <div style="display:flex;gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap">
           <button class="btn primary" onclick="salvarMensagemCobrancaGlobal()">Salvar global</button>
@@ -6805,8 +6959,12 @@ function renderCobrancaConfigPanel(){
       </div>
       <div>
         <div class="input-card">
-          <label>Prévia com dados de exemplo</label>
+          <label>Prévia mensagem padrão</label>
           <div id="cobMsgPreview" class="preview-whats">${esc(exemploMensagemCobranca())}</div>
+        </div>
+        <div class="input-card" style="margin-top:12px">
+          <label>Prévia terceira mensagem</label>
+          <div id="cobMsgPreview3" class="preview-whats">${esc((()=>{const old=CONFIG_META.cobranca_msg_template_terceira; const ex={cliente:'MARIA APARECIDA DA SILVA',vencimento:'10/05/2026',pendente:199.90,titulo:'123456',parcela:'03',filial:'F1',vendedor:'VENDEDOR EXEMPLO',dias:25,_cob_status:{qtd:2,proxima_tentativa:3,ultima_fmt:'20/05/2026 10:30'}}; return montarMensagemCobranca(ex);})())}</div>
         </div>
       </div>
     </div>
@@ -6815,10 +6973,66 @@ function renderCobrancaConfigPanel(){
 
 
 function normalizarListaTelefones(contatos){let base=[]; if(Array.isArray(contatos)) base=contatos; else if(typeof contatos==='string') base=contatos.split(/[;,/|]+/); const out=[]; const seen=new Set(); base.forEach(item=>{const num=String(item||'').replace(/\D/g,''); if(num.length>=10){const finalNum=num.startsWith('55')?num:'55'+num; if(!seen.has(finalNum)){seen.add(finalNum); out.push(finalNum);}}}); return out}
-function matchCob(r){return COB_LOGS.some(x=>String(x.cliente||'')===String(r.cliente||r.nome||'') && String(x.titulo||'')===String(r.titulo||'') && String(x.parcela||'')===String(r.parcela||''))}
-function renderCobrancasEnt(ent){const src=getClientesEnt(ent); const cobradosHoje=getCobradosHoje(ent); const allHoje=[...(src.grave||[]),...(src.alerta||[]),...(src.atencao||[])].filter(r=>r.novo); const renderRows=(arr,showFaixa)=>!arr.length?'<div class="empty">Nada nesta aba.</div>':arr.slice(0,150).map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')} ${r.novo?'<span class="mini-chip" style="margin-left:6px;background:#eef7ff;color:#1e3a8a;border-color:#93c5fd">Novo hoje</span>':''} ${matchCob(r)?'<span class="mini-chip" style="margin-left:6px">Cobrado</span>':''}</div><div class="small muted">✍️ Avalista: ${esc((r.avalista && String(r.avalista).toLowerCase()!=='nan')?r.avalista:'Sem Aval')}</div>${(r.avalista && String(r.avalista).toLowerCase()!=='nan')?'<div class="small avalista-alert">⚠️ Atenção, lembre de cobrar o AVALISTA</div>':''}<div class="small muted">🔒 Restrição crédito: ${/sem restr/i.test(String(r.restricao||''))?`<span class="restr-ok">${esc(r.restricao||'Sem Restrição')}</span>`:esc(r.restricao||'Sem informação')}</div><div class="small muted">👤 ${esc(r.vendedor||'')}</div><div class="small muted">☎️ ${esc(Array.isArray(r.telefones)?r.telefones.join(', '):(r.contato||''))}</div></div><div><strong>${esc(r.titulo||'')}</strong><div class="small muted">Título</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${R(r.pendente||0)}</strong><div class="small muted">Pendente</div></div><div>${showFaixa?`<div class="small muted">${esc(r.faixa_label||'')}</div>`:''}<button class="btn wa" onclick='abrirWhats(${JSON.stringify(r)}, ${JSON.stringify({type:ent.type,filial:ent.filial,nome:ent.nome})})'>💬 WhatsApp</button></div></div></div>`).join(''); const faixas=['grave','alerta','atencao']; const tabs=`<div class="tabs" style="justify-content:flex-start;margin:0 0 12px"><button class="tab active" data-cobtab="geral" onclick="switchCobTab(this,'geral')">Todos</button><button class="tab" data-cobtab="novos" onclick="switchCobTab(this,'novos')">Novos Hoje</button><button class="tab" data-cobtab="cobrados" onclick="switchCobTab(this,'cobrados')">Cobrados Hoje</button></div>`; let geral=''; faixas.forEach(fx=>{const arr=(src[fx]||[]).map(r=>({...r,faixa_label:fx})); const label=fx==='grave'?'Grave':fx==='alerta'?'Alerta':'Atenção'; geral+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${arr.length} títulos · ${R(arr.reduce((a,b)=>a+Number(b.pendente||0),0))}</span></div><div class="tableish">${renderRows(arr,false)}</div></div>`}); const srcAll=[...(src.grave||[]),...(src.alerta||[]),...(src.atencao||[])]; const cobradosRows=(cobradosHoje||[]).map(x=>{const m=srcAll.find(r=>cobrancaRowKey(r)===cobrancaRowKey(x))||{}; return {cliente:x.cliente,titulo:x.titulo,parcela:x.parcela,vencimento:x.vencimento,pendente:x.pendente,vendedor:x.usuario||m.vendedor||'',dias:'',telefones:Array.isArray(m.telefones)&&m.telefones.length?m.telefones:[x.telefone],contato:m.contato||x.telefone,avalista:m.avalista||'',restricao:m.restricao||'',faixa_label:m.faixa||'',novo:false,pagamento:m.pagamento||'',lancamento:m.lancamento||''};}); return `${tabs}<div class="cob-pane" data-cobpane="geral">${geral}</div><div class="cob-pane hidden" data-cobpane="novos">${renderRows(allHoje.map(r=>({...r,faixa_label:r.faixa||''})),true)}</div><div class="cob-pane hidden" data-cobpane="cobrados">${renderRows(cobradosRows,true)}</div>`}
+function matchCob(r,ent=null){return cobLogsTitulo(r,ent).length>0}
+function renderCobrancasEnt(ent){
+  const src=getClientesEnt(ent);
+  const cobradosHoje=getCobradosHoje(ent);
+  const allHoje=[...(src.grave||[]),...(src.alerta||[]),...(src.atencao||[])].filter(r=>r.novo);
+
+  const srcAll=[...(src.grave||[]),...(src.alerta||[]),...(src.atencao||[])];
+
+  function decorateRow(r){
+    const st=cobStatusTitulo(r,ent);
+    return {...r,_cob_status:st};
+  }
+
+  function shouldShowInGeral(r){
+    const st=r._cob_status||cobStatusTitulo(r,ent);
+    if(!st.last) return true;
+    if(st.pago) return false;
+    return st.deve_voltar; // volta somente depois de 3 dias sem pagamento
+  }
+
+  const renderRows=(arr,showFaixa)=>!arr.length?'<div class="empty">Nada nesta aba.</div>':arr.slice(0,150).map(raw=>{
+    const r=raw._cob_status?raw:decorateRow(raw);
+    const st=r._cob_status||{};
+    const cobrado=Boolean(st.last);
+    const bloqueado=Boolean(st.bloqueado);
+    const retry=Boolean(st.deve_voltar);
+    const tentativa=Number(st.proxima_tentativa||1);
+    const statusChip = retry
+      ? `<span class="cob-retry-chip">🔁 Cobrar novamente · ${tentativa}ª tentativa</span>`
+      : (cobrado ? `<span class="cob-history-chip">🕒 Cobrado ${st.qtd}x</span>` : '');
+    const info = cobrado
+      ? `<div class="cob-info-box ${bloqueado?'waiting':''}">${retry?'⚠️ Cliente já foi cobrado e não pagou em 3 dias.':'✅ Cliente cobrado recentemente.'} Última cobrança: <strong>${esc(st.ultima_fmt||'')}</strong> · Total de cobranças: <strong>${st.qtd||0}</strong>${tentativa>=3?' · A próxima mensagem será a <strong>Terceira Mensagem de Cobrança</strong>.':''}</div>`
+      : '';
+    const btn = bloqueado
+      ? `<button class="btn soft" title="Só volta para cobrança após 3 dias sem pagamento" disabled>⏳ Aguardando 3 dias</button>`
+      : `<button class="btn wa" onclick='abrirWhats(${JSON.stringify(r)}, ${JSON.stringify({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''})})'>💬 ${retry?'Cobrar novamente':'WhatsApp'}</button>`;
+    return `<div class="row-item ${retry?'retry-due':''}"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')} ${r.novo?'<span class="mini-chip" style="margin-left:6px;background:#eef7ff;color:#1e3a8a;border-color:#93c5fd">Novo hoje</span>':''} ${statusChip}</div>${info}<div class="small muted">✍️ Avalista: ${esc((r.avalista && String(r.avalista).toLowerCase()!=='nan')?r.avalista:'Sem Aval')}</div>${(r.avalista && String(r.avalista).toLowerCase()!=='nan')?'<div class="small avalista-alert">⚠️ Atenção, lembre de cobrar o AVALISTA</div>':''}<div class="small muted">🔒 Restrição crédito: ${/sem restr/i.test(String(r.restricao||''))?`<span class="restr-ok">${esc(r.restricao||'Sem Restrição')}</span>`:esc(r.restricao||'Sem informação')}</div><div class="small muted">👤 ${esc(r.vendedor||'')}</div><div class="small muted">☎️ ${esc(Array.isArray(r.telefones)?r.telefones.join(', '):(r.contato||''))}</div></div><div><strong>${esc(r.titulo||'')}</strong><div class="small muted">Título</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${R(r.pendente||0)}</strong><div class="small muted">Pendente</div></div><div>${showFaixa?`<div class="small muted">${esc(r.faixa_label||'')}</div>`:''}${btn}</div></div></div>`;
+  }).join('');
+
+  const faixas=['grave','alerta','atencao'];
+  const tabs=`<div class="tabs" style="justify-content:flex-start;margin:0 0 12px"><button class="tab active" data-cobtab="geral" onclick="switchCobTab(this,'geral')">Para cobrar</button><button class="tab" data-cobtab="novos" onclick="switchCobTab(this,'novos')">Novos Hoje</button><button class="tab" data-cobtab="cobrados" onclick="switchCobTab(this,'cobrados')">Cobrados Hoje</button><button class="tab" data-cobtab="aguardando" onclick="switchCobTab(this,'aguardando')">Aguardando 3 dias</button></div>`;
+  let geral='';
+  let aguardando=[];
+  faixas.forEach(fx=>{
+    const arr=(src[fx]||[]).map(r=>decorateRow({...r,faixa_label:fx}));
+    aguardando.push(...arr.filter(r=>r._cob_status?.bloqueado));
+    const vis=arr.filter(shouldShowInGeral);
+    const label=fx==='grave'?'Grave':fx==='alerta'?'Alerta':'Atenção';
+    geral+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${vis.length} títulos · ${R(vis.reduce((a,b)=>a+Number(b.pendente||0),0))}</span></div><div class="tableish">${renderRows(vis,false)}</div></div>`;
+  });
+
+  const cobradosRows=(cobradosHoje||[]).map(x=>{
+    const m=srcAll.find(r=>cobrancaRowKey(r)===cobrancaRowKey(x))||{};
+    return decorateRow({cliente:x.cliente,titulo:x.titulo,parcela:x.parcela,vencimento:x.vencimento,pendente:x.pendente,vendedor:x.usuario||m.vendedor||'',dias:m.dias||'',telefones:Array.isArray(m.telefones)&&m.telefones.length?m.telefones:[x.telefone],contato:m.contato||x.telefone,avalista:m.avalista||'',restricao:m.restricao||'',faixa_label:m.faixa||'',novo:false,pagamento:m.pagamento||'',lancamento:m.lancamento||''});
+  });
+
+  return `${tabs}<div class="cob-pane" data-cobpane="geral">${geral}</div><div class="cob-pane hidden" data-cobpane="novos">${renderRows(allHoje.map(r=>decorateRow({...r,faixa_label:r.faixa||''})).filter(shouldShowInGeral),true)}</div><div class="cob-pane hidden" data-cobpane="cobrados">${renderRows(cobradosRows,true)}</div><div class="cob-pane hidden" data-cobpane="aguardando">${renderRows(aguardando,true)}</div>`;
+}
 function switchCobTab(btn,name){const box=btn.closest('.acc-body'); box.querySelectorAll('[data-cobtab]').forEach(b=>b.classList.toggle('active',b===btn)); box.querySelectorAll('[data-cobpane]').forEach(p=>p.classList.toggle('hidden',p.dataset.cobpane!==name));}
-function abrirWhats(reg,entRef){const nums=normalizarListaTelefones((reg.telefones&&reg.telefones.length)?reg.telefones:reg.contato); if(!nums.length){toast('Cliente sem telefone válido.'); return} phoneContext={reg,entRef}; if(nums.length===1){enviarWhats(nums[0]); return} const phoneList=document.getElementById('phoneList'); phoneList.innerHTML=nums.map(n=>`<button class="btn soft" style="width:100%" onclick="enviarWhats('${n}')">${n}</button>`).join(''); document.getElementById('phoneModal').classList.add('show')}
+function abrirWhats(reg,entRef){const nums=normalizarListaTelefones((reg.telefones&&reg.telefones.length)?reg.telefones:reg.contato); if(!nums.length){toast('Cliente sem telefone válido.'); return} reg._cob_status=cobStatusTitulo(reg,entRef); phoneContext={reg,entRef}; if(nums.length===1){enviarWhats(nums[0]); return} const phoneList=document.getElementById('phoneList'); phoneList.innerHTML=nums.map(n=>`<button class="btn soft" style="width:100%" onclick="enviarWhats('${n}')">${n}</button>`).join(''); document.getElementById('phoneModal').classList.add('show')}
 function closePhoneModal(){document.getElementById('phoneModal').classList.remove('show'); phoneContext=null}
 function enviarWhats(numero){if(!phoneContext) return; const {reg,entRef}=phoneContext; const msg=montarMensagemCobranca(reg); window.open(`https://wa.me/${numero}?text=${encodeURIComponent(msg)}`,'_blank'); registrarCobrancaOnline(reg,entRef,numero); closePhoneModal()}
 async function registrarCobrancaOnline(r,entRef,numero){
@@ -6830,7 +7044,7 @@ async function registrarCobrancaOnline(r,entRef,numero){
     cliente:r.cliente||r.nome||'',titulo:r.titulo||'',parcela:r.parcela||'',
     vencimento:r.vencimento||'',pendente:Number(r.pendente||0),telefone:numero,
     usuario:usuarioLog,filial:entRef.filial||'',
-    destino_tipo:entRef.type||'',destino_nome:entRef.nome||'',acao:'whatsapp'
+    destino_tipo:entRef.type||'',destino_nome:entRef.nome||'',acao:'whatsapp',tentativa:Number(r._cob_status?.proxima_tentativa||1),qtd_cobrancas_antes:Number(r._cob_status?.qtd||0),ultima_cobranca_anterior:String(r._cob_status?.ultima_fmt||'')
   };
   try{
     const resp=await fetch(API_COB,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
