@@ -5441,6 +5441,59 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
   margin-top:4px;
 }
 
+
+/* ===== AJUSTE FINAL LARANJITO ALERTAS ===== */
+#laranjitoNotify.has-notes{
+  display:flex;
+  animation:laranjitoPulse 1.25s infinite;
+}
+@keyframes laranjitoPulse{
+  0%{transform:scale(1); box-shadow:0 0 0 0 rgba(255,138,0,.42),0 14px 38px rgba(0,0,0,.42),0 0 28px rgba(255,138,0,.25)}
+  60%{transform:scale(1.055); box-shadow:0 0 0 14px rgba(255,138,0,0),0 18px 45px rgba(0,0,0,.48),0 0 38px rgba(255,138,0,.38)}
+  100%{transform:scale(1); box-shadow:0 0 0 0 rgba(255,138,0,0),0 14px 38px rgba(0,0,0,.42),0 0 28px rgba(255,138,0,.25)}
+}
+#laranjitoNotify.no-new{
+  animation:none!important;
+}
+#laranjitoNotify img{
+  width:58px!important;
+  height:58px!important;
+  object-fit:contain!important;
+  border-radius:999px!important;
+  display:block!important;
+}
+#laranjitoNotifyPanel .btn.soft{
+  color:#fff!important;
+}
+
+
+/* ===== VISUALIZADOR INLINE DA TELA CONGELADA ===== */
+#snapshotInlineViewer{
+  margin-top:14px;
+  border:1px solid rgba(255,138,0,.35);
+  background:rgba(9,12,18,.96);
+  border-radius:22px;
+  padding:14px;
+  display:none;
+}
+#snapshotInlineViewer.show{display:block}
+.snapshot-inline-toolbar{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  margin-bottom:12px;
+  padding:10px 12px;
+  border-radius:14px;
+  background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.10);
+}
+.snapshot-inline-body{
+  overflow:auto;
+  max-height:78vh;
+  border-radius:18px;
+}
+
 </style>
 </head>
 <body>
@@ -5516,7 +5569,7 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 
 
 <div id="laranjitoNotify" onclick="toggleLaranjitoNotifyPanel()" title="Alertas e parabéns">
-  <img src="https://webftp.locaweb.com.br/view/public_html/colaborador/mascote%20feliz1.png" alt="Laranjito">
+  <img src="https://moveisdolar.com.br/colaborador/mascote%20feliz1.png" alt="Laranjito">
   <span id="laranjitoNotifyBadge">0</span>
 </div>
 <div id="laranjitoNotifyPanel"></div>
@@ -5654,13 +5707,23 @@ async function carregarHistoricoComissaoOnline(){try{const r=await fetchComTimeo
 
 
 let LARANJITO_NOTES=[];
+let LARANJITO_UNREAD=0;
 function currentSessionNoticeKey(){
   return 'mdl_laranjito_seen_'+(usuarioAtual?.login||usuarioAtual?.nome||usuarioAtual?.tipo||'anon')+'_'+new Date().toISOString().slice(0,10);
+}
+function shouldShowLaranjitoBubble(){
+  // Só aparece dentro da tela individual do colaborador/entidade.
+  // No Master/Diretor, não fica seguindo a navegação inteira.
+  try{
+    const detail=document.getElementById('detailScreen');
+    return !!(detail && !detail.classList.contains('hidden') && currentDetailRef);
+  }catch(e){return false}
 }
 function addLaranjitoNote(title,msg,kind='info'){
   const key=String(title||'')+'|'+String(msg||'');
   if(LARANJITO_NOTES.some(n=>n.key===key)) return;
   LARANJITO_NOTES.push({key,title,msg,kind,dt:new Date().toLocaleString('pt-BR')});
+  LARANJITO_UNREAD++;
   renderLaranjitoNotify();
 }
 function renderLaranjitoNotify(){
@@ -5668,12 +5731,19 @@ function renderLaranjitoNotify(){
   const badge=document.getElementById('laranjitoNotifyBadge');
   const panel=document.getElementById('laranjitoNotifyPanel');
   if(!btn||!badge||!panel) return;
-  if(!LARANJITO_NOTES.length){btn.style.display='none';panel.classList.remove('show');return;}
-  btn.style.display='flex';
-  badge.textContent=String(LARANJITO_NOTES.length);
+
+  const visible = shouldShowLaranjitoBubble() && LARANJITO_NOTES.length>0;
+  btn.style.display = visible ? 'flex' : 'none';
+  if(!visible){panel.classList.remove('show'); return;}
+
+  btn.classList.toggle('has-notes', LARANJITO_UNREAD>0);
+  btn.classList.toggle('no-new', LARANJITO_UNREAD<=0);
+  badge.textContent=String(LARANJITO_UNREAD||0);
+  badge.style.display=(LARANJITO_UNREAD>0)?'flex':'none';
+
   panel.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px">
     <strong>🍊 Alertas do Laranjito</strong>
-    <button class="btn soft" onclick="clearLaranjitoNotes()">Limpar</button>
+    <button class="btn soft" onclick="clearLaranjitoNotes()">Marcar lidas</button>
   </div>` + LARANJITO_NOTES.map(n=>`<div class="laranjito-note"><div>${esc(n.title||'Aviso')}</div><div class="small">${esc(n.msg||'')}</div><div class="small">${esc(n.dt||'')}</div></div>`).join('');
 }
 function toggleLaranjitoNotifyPanel(){
@@ -5681,7 +5751,8 @@ function toggleLaranjitoNotifyPanel(){
   if(panel) panel.classList.toggle('show');
 }
 function clearLaranjitoNotes(){
-  LARANJITO_NOTES=[];
+  // Não apaga as mensagens. Apenas limpa o contador vermelho da bolinha.
+  LARANJITO_UNREAD=0;
   try{localStorage.setItem(currentSessionNoticeKey(),'1')}catch(e){}
   renderLaranjitoNotify();
 }
@@ -7715,56 +7786,78 @@ function findEntityBySnapshotRow(row){
       || buckets.find(e=>normName(e.nome)===normName(nome))
       || null;
 }
+function getSnapshotHtmlFromSelection(){
+  const month=document.getElementById('histComMonth')?.value || _histComMeses()[0] || mesAtualComissao();
+  const key=document.getElementById('histComEntityView')?.value||'';
+  const snap=HIST_COMISSAO?.months?.[month];
+  const row=(snap?.entidades||[]).find(x=>String(x.key)===String(key));
+  if(!row) return {ok:false,msg:'Registro não encontrado no histórico.'};
+
+  let html=String(row.html_individual||'');
+  let fonte='tela congelada salva no fechamento';
+  if(!html){
+    const ent=findEntityBySnapshotRow(row);
+    if(ent){
+      html=String(snapshotEntityHTML(ent)||'');
+      fonte='gerada agora porque este fechamento antigo não tinha a tela salva';
+    }
+  }
+  if(!html) return {ok:false,msg:'Tela congelada não encontrada. Salve novamente o fechamento do mês.'};
+  return {ok:true,html,row,month,fonte};
+}
 function abrirTelaComissionamentoCongeladaPorSelect(){
   try{
-    const month=document.getElementById('histComMonth')?.value || _histComMeses()[0] || mesAtualComissao();
-    const key=document.getElementById('histComEntityView')?.value||'';
-    const snap=HIST_COMISSAO?.months?.[month];
-    const row=(snap?.entidades||[]).find(x=>String(x.key)===String(key));
-    if(!row){toast('Registro não encontrado no histórico.'); return;}
+    const data=getSnapshotHtmlFromSelection();
+    if(!data.ok){toast(data.msg); return;}
 
-    let html=String(row.html_individual||'');
-    let fonte='tela congelada salva no fechamento';
-    if(!html){
-      const ent=findEntityBySnapshotRow(row);
-      if(ent){
-        html=String(snapshotEntityHTML(ent)||'');
-        fonte='gerada agora porque este fechamento antigo não tinha a tela salva';
-      }
+    let viewer=document.getElementById('snapshotInlineViewer');
+    if(!viewer){
+      const box=document.getElementById('histComResults') || document.querySelector('.hist-results') || document.body;
+      viewer=document.createElement('div');
+      viewer.id='snapshotInlineViewer';
+      box.prepend(viewer);
     }
-    if(!html){toast('Tela congelada não encontrada. Salve novamente o fechamento do mês.'); return;}
 
-    const safeTitle=`Comissionamento ${String(row.nome||'')} ${month}`;
-    const docParts=[
-      '<!doctype html><html><head><meta charset="utf-8"><title>',
-      safeTitle.replace(/[<>&]/g, m=>({ '<':'&lt;','>':'&gt;','&':'&amp;' }[m])),
-      '</title><style>',
-      'body{margin:0;background:#080a0f;color:#f4f6fb;font-family:Inter,Arial,sans-serif;padding:20px}',
-      '.snapshot-toolbar{position:sticky;top:0;z-index:999;display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0 auto 14px auto;max-width:1180px;padding:12px 14px;border:1px solid rgba(255,255,255,.14);background:rgba(15,18,26,.96);border-radius:16px}',
-      '.snapshot-toolbar button{border:0;border-radius:12px;padding:10px 14px;background:#ff8a00;color:#111;font-weight:900;cursor:pointer}',
-      '.snapshot-toolbar .hint{color:#b9c2d3;font-size:13px}',
-      '@media print{.snapshot-toolbar{display:none}body{padding:0;background:#080a0f}}',
-      '</style></head><body><div class="snapshot-toolbar"><div><strong>📌 Fechamento ',
-      esc(month),
-      '</strong><div class="hint">',
-      esc(row.nome||''),' · Fonte: ',esc(fonte),
-      '</div></div><button onclick="window.print()">🖨️ Imprimir / Salvar PDF</button></div>',
-      html,
-      '</body></html>'
-    ];
-    const blob=new Blob(docParts,{type:'text/html;charset=utf-8'});
-    const url=URL.createObjectURL(blob);
-    const w=window.open(url,'_blank');
-    if(!w){
-      URL.revokeObjectURL(url);
-      toast('Pop-up bloqueado pelo navegador. Permita pop-ups para este site.');
-      return;
-    }
-    setTimeout(()=>{try{URL.revokeObjectURL(url)}catch(e){}},15000);
+    viewer.innerHTML=`<div class="snapshot-inline-toolbar">
+      <div><strong>📌 Tela congelada</strong><div class="hint">${esc(data.row.nome||'')} · ${esc(data.row.filial||'')} · ${esc(data.month)} · ${esc(data.fonte)}</div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn primary" onclick="imprimirSnapshotInline()">🖨️ Imprimir / Salvar PDF</button>
+        <button class="btn soft" onclick="abrirSnapshotNovaAba()">Abrir em nova aba</button>
+        <button class="btn soft" onclick="fecharSnapshotInline()">Fechar</button>
+      </div>
+    </div><div class="snapshot-inline-body" id="snapshotInlineBody">${data.html}</div>`;
+    viewer.classList.add('show');
+    viewer.scrollIntoView({behavior:'smooth',block:'start'});
   }catch(e){
-    console.error('Erro ao abrir tela congelada:', e);
+    console.error('Erro ao abrir tela congelada inline:', e);
     toast('Erro ao abrir tela congelada. Veja o Console do navegador.');
   }
+}
+function fecharSnapshotInline(){
+  const v=document.getElementById('snapshotInlineViewer');
+  if(v){v.classList.remove('show');v.innerHTML='';}
+}
+function imprimirSnapshotInline(){
+  try{
+    const data=getSnapshotHtmlFromSelection();
+    if(!data.ok){toast(data.msg);return;}
+    const w=window.open('','_blank');
+    if(!w){toast('Pop-up bloqueado pelo navegador.');return;}
+    w.document.open();
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Comissionamento</title><style>body{margin:0;background:#080a0f;color:#f4f6fb;font-family:Inter,Arial,sans-serif;padding:12px}@media print{body{padding:0}}</style></head><body>${data.html}<script>setTimeout(()=>window.print(),700)<\/script></body></html>`);
+    w.document.close();
+  }catch(e){console.error(e);toast('Erro ao imprimir tela congelada.');}
+}
+function abrirSnapshotNovaAba(){
+  try{
+    const data=getSnapshotHtmlFromSelection();
+    if(!data.ok){toast(data.msg);return;}
+    const w=window.open('','_blank');
+    if(!w){toast('Pop-up bloqueado pelo navegador.');return;}
+    w.document.open();
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Comissionamento</title><style>body{margin:0;background:#080a0f;color:#f4f6fb;font-family:Inter,Arial,sans-serif;padding:12px}</style></head><body>${data.html}</body></html>`);
+    w.document.close();
+  }catch(e){console.error(e);toast('Erro ao abrir nova aba.');}
 }
 
 function renderHistoricoComissaoResults(){
