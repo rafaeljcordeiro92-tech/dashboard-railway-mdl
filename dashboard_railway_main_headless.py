@@ -5158,6 +5158,55 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 .sem-cobranca-chip{display:flex;align-items:center;gap:8px;border:1px solid rgba(239,68,68,.18);background:rgba(239,68,68,.06);border-radius:12px;padding:8px 10px;font-size:12px;font-weight:700}
 .sem-cobranca-chip small{display:block;color:var(--text-muted);font-weight:600;margin-top:2px}
 
+
+/* ===== FIX LEGIBILIDADE AVISOS/CAMPANHAS EM FUNDO CLARO ===== */
+.campaign-banner{
+  color:#1f2937 !important;
+}
+.campaign-banner h1,
+.campaign-banner h2,
+.campaign-banner h3,
+.campaign-banner strong,
+.campaign-banner .msg-head strong{
+  color:#111827 !important;
+  text-shadow:none !important;
+}
+.campaign-banner .hint,
+.campaign-banner .small,
+.campaign-banner .muted,
+.campaign-banner .msg-card,
+.campaign-banner .msg-card div{
+  color:#334155 !important;
+  text-shadow:none !important;
+}
+.campaign-banner .msg-card.campaign-banner,
+.campaign-banner .msg-card{
+  background:rgba(255,255,255,.58) !important;
+  border:1px solid rgba(180,130,40,.22) !important;
+  box-shadow:0 8px 24px rgba(120,80,20,.08) !important;
+}
+.campaign-banner .btn.soft{
+  color:#111827 !important;
+  background:rgba(255,255,255,.72) !important;
+  border-color:rgba(120,80,20,.22) !important;
+}
+.campaign-banner .unread-chip{
+  background:#fff7ed !important;
+  border-color:#fb923c !important;
+  color:#9a3412 !important;
+}
+.campaign-banner .mini-chip{
+  font-weight:800 !important;
+}
+.campaign-banner .msg-head .small,
+.campaign-banner .msg-head .muted{
+  color:#475569 !important;
+}
+.campaign-banner [style*="white-space:pre-wrap"]{
+  color:#1f2937 !important;
+  font-weight:700 !important;
+}
+
 </style>
 </head>
 <body>
@@ -6926,7 +6975,7 @@ function closeBell(){document.getElementById('bellModal').classList.remove('show
 function renderCampaignStrip(){
   const arr=(MSGS||[]).filter(m=>msgMatchesUser(m) && isCampaign(m) && !isExpiredCampaign(m)).reverse();
   if(!arr.length) return '';
-  return `<div class="campaign-banner highlight-pulse" style="background:linear-gradient(180deg,#f7f1df,#f2ead7);border:1px solid #e4d8b2"><div class="section-head" style="margin:0 0 8px"><div><h2 style="margin:0;font-size:22px">📣 Campanha ativa</h2><div class="hint">Mensagem destacada do Master</div></div><button class="btn soft" onclick="openBell()">Ver detalhes</button></div>${arr.map(m=>renderMsgCard(m,false,false,true)).join('')}</div>`;
+  return `<div class="campaign-banner highlight-pulse" style="background:linear-gradient(180deg,#f7f1df,#f2ead7);border:1px solid #e4d8b2;color:#1f2937"><div class="section-head" style="margin:0 0 8px"><div><h2 style="margin:0;font-size:22px">📣 Campanha ativa</h2><div class="hint">Mensagem destacada do Master</div></div><button class="btn soft" onclick="openBell()">Ver detalhes</button></div>${arr.map(m=>renderMsgCard(m,false,false,true)).join('')}</div>`;
 }
 function renderInboxBanner(){
   const arr=(MSGS||[]).filter(m=>msgMatchesUser(m) && !isExpiredCampaign(m));
