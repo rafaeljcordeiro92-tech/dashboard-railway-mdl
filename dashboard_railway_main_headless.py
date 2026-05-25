@@ -4744,7 +4744,7 @@ total_dash_pg = round(total_final_pg, 2)
 # =========================================
 import re as _re, base64 as _b64
 
-_laranjito = "https://moveisdolar.com.br/colaborador/Captura%20de%20tela%202026-04-13%20142009.jpg"
+_laranjito = "https://moveisdolar.com.br/colaborador/mascote%20feliz1.png"
 _logo      = "https://moveisdolar.com.br/colaborador/Captura%20de%20tela%202026-04-13%20142059.jpg"
 
 
@@ -5572,6 +5572,29 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 }
 #laranjitoNotify.only-current-user-hidden{display:none!important;}
 
+
+/* ===== FIX DEFINITIVO BOLINHA LARANJITO ===== */
+#laranjitoNotify{
+  overflow:hidden!important;
+  font-size:0!important;
+}
+#laranjitoNotify img#laranjitoNotifyImg{
+  width:60px!important;
+  height:60px!important;
+  object-fit:contain!important;
+  display:block!important;
+  border-radius:999px!important;
+  background:transparent!important;
+}
+#laranjitoNotifyFallback{
+  display:none;
+  font-size:38px;
+  line-height:1;
+}
+#laranjitoNotify.img-fail #laranjitoNotifyImg{display:none!important}
+#laranjitoNotify.img-fail #laranjitoNotifyFallback{display:block!important}
+body.master-view #laranjitoNotify, body.diretor-view #laranjitoNotify{display:none!important}
+
 </style>
 </head>
 <body>
@@ -5647,7 +5670,8 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 
 
 <div id="laranjitoNotify" onclick="toggleLaranjitoNotifyPanel()" title="Alertas e parabéns">
-  <img id="laranjitoNotifyImg" src="" alt="Laranjito">
+  <img id="laranjitoNotifyImg" src="" alt="" referrerpolicy="no-referrer">
+  <span id="laranjitoNotifyFallback">🍊</span>
   <span id="laranjitoNotifyBadge">0</span>
 </div>
 <div id="laranjitoNotifyPanel"></div>
@@ -5790,20 +5814,22 @@ function currentSessionNoticeKey(){
   return 'mdl_laranjito_seen_'+(usuarioAtual?.login||usuarioAtual?.nome||usuarioAtual?.tipo||'anon')+'_'+new Date().toISOString().slice(0,10);
 }
 function shouldShowLaranjitoBubble(){
-  // Só aparece para o próprio colaborador logado dentro do painel individual.
-  // Master/Diretor não vê a bolinha seguindo enquanto navega em outras telas.
+  // Aparece somente para colaborador logado olhando o próprio painel individual.
+  // Master/Diretor nunca veem essa bolinha, mesmo abrindo painel de alguém.
   try{
     const tipo=String(usuarioAtual?.tipo||'').toLowerCase();
-    if(tipo==='master' || tipo==='diretor') return false;
+    if(tipo==='master' || tipo==='diretor' || tipo==='painel') return false;
     const detail=document.getElementById('detailScreen');
     if(!(detail && !detail.classList.contains('hidden') && currentDetailRef)) return false;
-    // Se tiver nome/filial do usuário, garante que está vendo o próprio painel.
+    const login=String(usuarioAtual?.login||'').toLowerCase();
+    const refLogin=String(currentDetailRef?.login||'').toLowerCase();
     const uNome=normName(usuarioAtual?.nome||'');
     const rNome=normName(currentDetailRef?.nome||'');
     const uFil=String(usuarioAtual?.filial||'').toUpperCase();
     const rFil=String(currentDetailRef?.filial||'').toUpperCase();
-    if(uNome && rNome && uNome!==rNome && tipo!=='filial' && tipo!=='crediarista' && tipo!=='cobranca') return false;
-    if(uFil && rFil && uFil!==rFil && (tipo==='filial'||tipo==='crediarista')) return false;
+    if(login && refLogin && login!==refLogin) return false;
+    if(uNome && rNome && uNome!==rNome && tipo==='vendedor') return false;
+    if(uFil && rFil && uFil!==rFil && (tipo==='filial'||tipo==='crediarista'||tipo==='cobranca')) return false;
     return true;
   }catch(e){return false}
 }
@@ -5823,12 +5849,22 @@ function renderLaranjitoNotify(){
 
   try{
     const img=document.getElementById('laranjitoNotifyImg');
-    if(img && !img.getAttribute('src')){
+    const btn=document.getElementById('laranjitoNotify');
+    if(img && !img.dataset.ready){
+      img.dataset.ready='1';
+      const urls=[
+        '/colaborador/mascote%20feliz1.png',
+        'https://moveisdolar.com.br/colaborador/mascote%20feliz1.png',
+        (typeof LARANJITO!=='undefined' && LARANJITO)?LARANJITO:''
+      ].filter(Boolean);
+      let ix=0;
       img.onerror=function(){
-        this.onerror=null;
-        this.src='/colaborador/mascote%20feliz1.png';
+        ix++;
+        if(ix<urls.length){ this.src=urls[ix]; }
+        else{ if(btn) btn.classList.add('img-fail'); }
       };
-      img.src=(typeof LARANJITO!=='undefined' && LARANJITO)?LARANJITO:'/colaborador/mascote%20feliz1.png';
+      img.onload=function(){ if(btn) btn.classList.remove('img-fail'); };
+      img.src=urls[0];
     }
   }catch(e){}
 
@@ -7845,7 +7881,7 @@ function snapshotComissaoEntidade(ent){
     grave_alvo:Number(meta.grave?.alvo||0), alerta_alvo:Number(meta.alerta?.alvo||0), atencao_alvo:Number(meta.atencao?.alvo||0),
     venda_real:Number(c.vendaReal||0), servico_real:Number(c.servReal||0), caminhao_real:Number(c.camReal||0),
     faixa:String(c.faixaTxt||''), comissao_vendas:Number(c.vendasComissao||0), comissao_servicos:Number(c.servicosComissao||0), comissao_caminhao:Number(c.caminhaoComissao||0), bonus_meta:Number(c.bonusMeta||0), rent48:Number(c.rent48||0), rent52:Number(c.rent52||0), rent55:Number(c.rent55||0), total_previsto:totalPrev,
-    elegivel_mercantil:Boolean(c.elegivelMercantil), elegivel_servicos:Boolean(c.elegivelServicos), html_individual:snapshotEntityHTML(ent), observacao:(ent.type==='crediarista'?'Crediarista: somente pagos conciliados após cobrança própria.':(ent.type==='terceiro'?'Cobrança terceiro.':''))
+    elegivel_mercantil:Boolean(c.elegivelMercantil), elegivel_servicos:Boolean(c.elegivelServicos), html_individual:(()=>{try{return snapshotEntityHTML(ent)||''}catch(e){console.error('snapshot individual erro',e);return ''}})(), observacao:(ent.type==='crediarista'?'Crediarista: somente pagos conciliados após cobrança própria.':(ent.type==='terceiro'?'Cobrança terceiro.':''))
   };
 }
 function buildSnapshotComissionamentoMensal(month=mesAtualComissao()){
@@ -7886,6 +7922,28 @@ function findEntityBySnapshotRow(row){
       || buckets.find(e=>normName(e.nome)===normName(nome))
       || null;
 }
+function snapshotHtmlFallbackFromRow(row,month){
+  try{
+    const R2=(v)=>typeof R==='function'?R(Number(v||0)):('R$ '+Number(v||0).toFixed(2).replace('.',','));
+    const pct2=(v)=>typeof pct==='function'?pct(Number(v||0)):(Number(v||0).toFixed(0)+'%');
+    return `<div class="snap-sheet"><style>
+      .snap-sheet{width:1120px;max-width:100%;margin:0 auto;background:#0d0f14;color:#f3f6ff;font-family:Inter,Arial,sans-serif;padding:22px;border-radius:22px}
+      .snap-head{border:1px solid rgba(255,255,255,.12);background:#161922;border-radius:18px;padding:16px 18px;margin-bottom:16px}.snap-head h1{margin:0;font-size:28px;color:#fff}.snap-sub{color:#aeb7ca;font-size:13px;margin-top:6px}
+      .snap-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.snap-card{border:1px solid rgba(255,255,255,.12);background:#151821;border-radius:16px;padding:16px}.snap-title{font-size:12px;text-transform:uppercase;color:#8c96ab;font-weight:900;letter-spacing:.08em}.snap-value{font-size:25px;font-weight:950;margin-top:8px}.green{color:#34d399}.orange{color:#f59e0b}.blue{color:#60a5fa}.red{color:#fb7185}
+      .snap-note{margin-top:14px;border:1px solid rgba(245,158,11,.35);background:rgba(245,158,11,.08);border-radius:16px;padding:14px;color:#fde68a;font-weight:800}
+    </style><div class="snap-head"><h1>${esc(row.nome||'')}</h1><div class="snap-sub">${esc(row.tipo||'')} · ${esc(row.filial||'')} · fechamento ${esc(month||'')}</div></div><div class="snap-grid">
+      <div class="snap-card"><div class="snap-title">Meta cobrança</div><div class="snap-value blue">${pct2(row.meta_geral||0)}</div></div>
+      <div class="snap-card"><div class="snap-title">Recebido</div><div class="snap-value green">${R2(row.recebido||0)}</div></div>
+      <div class="snap-card"><div class="snap-title">Vendas</div><div class="snap-value orange">${R2(row.comissao_vendas||0)}</div></div>
+      <div class="snap-card"><div class="snap-title">Serviços</div><div class="snap-value orange">${R2(row.comissao_servicos||0)}</div></div>
+      <div class="snap-card"><div class="snap-title">Bônus meta</div><div class="snap-value green">${R2(row.bonus_meta||0)}</div></div>
+      <div class="snap-card"><div class="snap-title">Comissão caminhão</div><div class="snap-value orange">${R2(row.comissao_caminhao||0)}</div></div>
+      <div class="snap-card"><div class="snap-title">Faixa</div><div class="snap-value blue">${esc(row.faixa||'-')}</div></div>
+      <div class="snap-card"><div class="snap-title">Total previsto</div><div class="snap-value green">${R2(row.total_previsto||0)}</div></div>
+    </div><div class="snap-note">Resumo reconstruído automaticamente porque a tela visual completa não estava salva neste fechamento. Clique em salvar fechamento novamente para gerar o modelo visual completo.</div></div>`;
+  }catch(e){return `<div style="padding:20px;background:#111;color:#fff">Resumo indisponível: ${esc(String(e))}</div>`}
+}
+
 function getSnapshotHtmlFromSelection(){
   const month=document.getElementById('histComMonth')?.value || _histComMeses()[0] || mesAtualComissao();
   const key=document.getElementById('histComEntityView')?.value||'';
@@ -7898,11 +7956,14 @@ function getSnapshotHtmlFromSelection(){
   if(!html){
     const ent=findEntityBySnapshotRow(row);
     if(ent){
-      html=String(snapshotEntityHTML(ent)||'');
+      try{html=String(snapshotEntityHTML(ent)||'');}catch(e){console.error('snapshotEntityHTML falhou',e); html='';}
       fonte='gerada agora porque este fechamento antigo não tinha a tela salva';
     }
   }
-  if(!html) return {ok:false,msg:'Tela congelada não encontrada. Salve novamente o fechamento do mês.'};
+  if(!html){
+    html=snapshotHtmlFallbackFromRow(row,month);
+    fonte='resumo reconstruído do histórico salvo';
+  }
   return {ok:true,html,row,month,fonte};
 }
 function abrirTelaComissionamentoCongeladaPorSelect(){
@@ -8280,7 +8341,9 @@ async function fazerLogin(){
 
   msg.textContent='Login ou senha inválidos.';
 }
-async function abrirApp(){ loginScreen.classList.add('hidden'); app.classList.remove('hidden'); if(usuarioAtual.tipo==='master'){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); const isDiretor=usuarioAtual?.roleLabel==='Diretor Comercial'; userBadge.textContent=isDiretor?'👑 Diretor Comercial':'👑 Master'; masterTabs.classList.remove('hidden'); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{const t=btn.dataset.tab; btn.classList.toggle('hidden', isDiretor && ['cobrancas','senhas'].includes(t));}); setMainTab('vendedores')} else if(usuarioAtual.is_viewer){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); userBadge.textContent='📺 Painel'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); listSection.classList.add('hidden'); metaSection.classList.add('hidden'); logSection.classList.add('hidden'); avisosSection.classList.add('hidden'); senhasSection.classList.add('hidden'); histSection.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden');} else {document.getElementById('kpis').classList.add('hidden'); userBadge.textContent=usuarioAtual.is_terceiro?`🤝 ${usuarioAtual.nome}`:(usuarioAtual.is_crediarista?`🧾 ${usuarioAtual.nome}`:(usuarioAtual.is_gerente?`🏬 ${usuarioAtual.filial}`:`👤 ${usuarioAtual.nome}`)); masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(usuarioAtual.is_terceiro){openThirdChargePanel()} else if(usuarioAtual.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login}) }
+async function abrirApp(){
+  try{document.body.classList.toggle('master-view', String(usuarioAtual?.tipo||'').toLowerCase()==='master'); document.body.classList.toggle('diretor-view', String(usuarioAtual?.tipo||'').toLowerCase()==='diretor');}catch(e){}
+ loginScreen.classList.add('hidden'); app.classList.remove('hidden'); if(usuarioAtual.tipo==='master'){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); const isDiretor=usuarioAtual?.roleLabel==='Diretor Comercial'; userBadge.textContent=isDiretor?'👑 Diretor Comercial':'👑 Master'; masterTabs.classList.remove('hidden'); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{const t=btn.dataset.tab; btn.classList.toggle('hidden', isDiretor && ['cobrancas','senhas'].includes(t));}); setMainTab('vendedores')} else if(usuarioAtual.is_viewer){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); userBadge.textContent='📺 Painel'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); listSection.classList.add('hidden'); metaSection.classList.add('hidden'); logSection.classList.add('hidden'); avisosSection.classList.add('hidden'); senhasSection.classList.add('hidden'); histSection.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden');} else {document.getElementById('kpis').classList.add('hidden'); userBadge.textContent=usuarioAtual.is_terceiro?`🤝 ${usuarioAtual.nome}`:(usuarioAtual.is_crediarista?`🧾 ${usuarioAtual.nome}`:(usuarioAtual.is_gerente?`🏬 ${usuarioAtual.filial}`:`👤 ${usuarioAtual.nome}`)); masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(usuarioAtual.is_terceiro){openThirdChargePanel()} else if(usuarioAtual.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login}) }
   setTimeout(()=>{tentarAtualizarOnlineDepoisLogin();}, 80);
 }
 function logout(){clearSession(); location.reload()}
