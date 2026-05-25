@@ -17,6 +17,7 @@ import unicodedata
 import urllib.request
 import urllib.error
 import tempfile
+import shutil
 from zoneinfo import ZoneInfo
 
 LOGIN = "administrativo01.moveisdolar"
@@ -33,78 +34,139 @@ data_inicio = (hoje - timedelta(days=90)).strftime("%d/%m/%Y")
 data_fim    = (hoje - timedelta(days=15)).strftime("%d/%m/%Y")
 
 # ===== CHROME
-options = Options()
 IS_RAILWAY = bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RUN_ON_RAILWAY") == "1")
 pasta = os.path.dirname(os.path.abspath(__file__))
 download_dir = pasta if not IS_RAILWAY else tempfile.gettempdir()
 
-if IS_RAILWAY:
-    options.page_load_strategy = 'eager'
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--window-size=1920,1080")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument("--remote-debugging-port=9222")
-    options.add_argument("--disable-software-rasterizer")
-    options.add_argument("--disable-extensions")
-    options.add_argument("--disable-background-networking")
-    options.add_argument("--disable-background-timer-throttling")
-    options.add_argument("--disable-backgrounding-occluded-windows")
-    options.add_argument("--disable-renderer-backgrounding")
-    options.add_argument("--hide-scrollbars")
-    options.add_argument("--mute-audio")
-    options.add_argument("--no-first-run")
-    options.add_argument("--no-default-browser-check")
-    options.add_argument("--disable-features=VizDisplayCompositor")
-    options.add_argument("--disable-setuid-sandbox")
-    options.add_argument("--disable-infobars")
-    options.add_argument("--ignore-certificate-errors")
-    options.add_argument("--allow-insecure-localhost")
-else:
-    options.add_argument("--start-maximized")
-
-prefs = {
-    "download.default_directory": download_dir,
-    "download.prompt_for_download": False,
-    "download.directory_upgrade": True,
-}
-options.add_experimental_option("prefs", prefs)
 from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import WebDriverException
+from selenium.common.exceptions import WebDriverException, SessionNotCreatedException
 
-chrome_bin = (
-    os.getenv("GOOGLE_CHROME_BIN")
-    or os.getenv("CHROME_BIN")
-    or "/usr/bin/google-chrome"
-    or "/usr/bin/chromium"
-)
 
-chrome_driver_bin = (
-    os.getenv("CHROMEDRIVER")
-    or os.getenv("CHROMEDRIVER_PATH")
-)
+def _resolve_bin(env_names, candidates):
+    """Resolve binário por variável de ambiente, caminho fixo ou PATH."""
+    for env in env_names:
+        val = os.getenv(env)
+        if val and os.path.exists(val):
+            return val
+    for cand in candidates:
+        if cand and os.path.exists(cand):
+            return cand
+    for name in ["chromium", "chromium-browser", "google-chrome", "google-chrome-stable", "chromedriver"]:
+        found = shutil.which(name)
+        if found:
+            if "driver" in name and "CHROMEDRIVER" not in env_names:
+                continue
+            if "driver" not in name and "CHROME" not in "".join(env_names):
+                continue
+            return found
+    return None
 
-if os.path.exists(chrome_bin):
-    options.binary_location = chrome_bin
 
-try:
-    if chrome_driver_bin and os.path.exists(chrome_driver_bin):
-        driver = webdriver.Chrome(service=Service(chrome_driver_bin), options=options)
+def _make_chrome_options(profile_dir):
+    opts = Options()
+
+    if IS_RAILWAY:
+        opts.page_load_strategy = "eager"
+        # Headless deixa o Chrome mais estável no Railway, mesmo com Xvfb disponível.
+        if os.getenv("DISABLE_CHROME_HEADLESS", "0") != "1":
+            opts.add_argument("--headless=new")
+        opts.add_argument("--no-sandbox")
+        opts.add_argument("--disable-dev-shm-usage")
+        opts.add_argument("--disable-gpu")
+        opts.add_argument("--window-size=1920,1080")
+        opts.add_argument("--disable-blink-features=AutomationControlled")
+        # NÃO usar porta fixa 9222: em Railway pode dar conflito e o Chrome fecha.
+        opts.add_argument("--remote-debugging-port=0")
+        opts.add_argument("--remote-debugging-address=127.0.0.1")
+        opts.add_argument("--disable-software-rasterizer")
+        opts.add_argument("--disable-extensions")
+        opts.add_argument("--disable-background-networking")
+        opts.add_argument("--disable-background-timer-throttling")
+        opts.add_argument("--disable-backgrounding-occluded-windows")
+        opts.add_argument("--disable-renderer-backgrounding")
+        opts.add_argument("--hide-scrollbars")
+        opts.add_argument("--mute-audio")
+        opts.add_argument("--no-first-run")
+        opts.add_argument("--no-default-browser-check")
+        opts.add_argument("--disable-features=VizDisplayCompositor,TranslateUI")
+        opts.add_argument("--disable-setuid-sandbox")
+        opts.add_argument("--disable-infobars")
+        opts.add_argument("--ignore-certificate-errors")
+        opts.add_argument("--allow-insecure-localhost")
+        opts.add_argument("--disable-crash-reporter")
+        opts.add_argument("--disable-sync")
+        opts.add_argument("--metrics-recording-only")
+        opts.add_argument("--disable-default-apps")
+        # Perfil único por execução: evita "Chrome instance exited" por profile lock.
+        opts.add_argument(f"--user-data-dir={profile_dir}")
+        opts.add_argument(f"--data-path={os.path.join(profile_dir, 'data')}")
+        opts.add_argument(f"--disk-cache-dir={os.path.join(profile_dir, 'cache')}")
     else:
-        driver = webdriver.Chrome(options=options)
-except WebDriverException as e:
-    print(f"❌ Erro ao iniciar Chrome/Chromedriver: {e}")
-    print(f"   binary_location={getattr(options, 'binary_location', '')}")
+        opts.add_argument("--start-maximized")
+
+    prefs = {
+        "download.default_directory": download_dir,
+        "download.prompt_for_download": False,
+        "download.directory_upgrade": True,
+        "safebrowsing.enabled": True,
+        "profile.default_content_settings.popups": 0,
+    }
+    opts.add_experimental_option("prefs", prefs)
+
+    chrome_bin = _resolve_bin(
+        ["GOOGLE_CHROME_BIN", "CHROME_BIN"],
+        ["/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable"]
+    )
+    if chrome_bin and os.path.exists(chrome_bin):
+        opts.binary_location = chrome_bin
+
+    return opts
+
+
+def iniciar_driver_chrome():
+    chrome_driver_bin = _resolve_bin(
+        ["CHROMEDRIVER", "CHROMEDRIVER_PATH"],
+        ["/usr/bin/chromedriver", "/usr/local/bin/chromedriver"]
+    )
+
+    ultimo_erro = None
+    for tentativa in range(1, 4):
+        profile_dir = os.path.join(
+            tempfile.gettempdir(),
+            f"chrome-profile-mdl-{os.getpid()}-{int(time.time()*1000)}-{tentativa}"
+        )
+        os.makedirs(profile_dir, exist_ok=True)
+        opts = _make_chrome_options(profile_dir)
+
+        try:
+            print(f"🧭 Iniciando Chrome tentativa {tentativa}/3")
+            print(f"   IS_RAILWAY={IS_RAILWAY} DISPLAY={os.getenv('DISPLAY')}")
+            print(f"   Chrome binary={getattr(opts, 'binary_location', '')}")
+            print(f"   ChromeDriver={chrome_driver_bin or 'Selenium Manager'}")
+            print(f"   Profile={profile_dir}")
+
+            if chrome_driver_bin and os.path.exists(chrome_driver_bin):
+                drv = webdriver.Chrome(service=Service(chrome_driver_bin), options=opts)
+            else:
+                drv = webdriver.Chrome(options=opts)
+            return drv
+
+        except (SessionNotCreatedException, WebDriverException) as e:
+            ultimo_erro = e
+            print(f"⚠️ Falha ao iniciar Chrome na tentativa {tentativa}/3: {e}")
+            time.sleep(2)
+
+    print("❌ Não foi possível iniciar Chrome/Chromedriver após 3 tentativas.")
     print(f"   GOOGLE_CHROME_BIN={os.getenv('GOOGLE_CHROME_BIN')}")
     print(f"   CHROME_BIN={os.getenv('CHROME_BIN')}")
     print(f"   CHROMEDRIVER={os.getenv('CHROMEDRIVER')}")
     print(f"   CHROMEDRIVER_PATH={os.getenv('CHROMEDRIVER_PATH')}")
-    raise
+    raise ultimo_erro
 
+
+driver = iniciar_driver_chrome()
 driver.set_page_load_timeout(120)
-wait   = WebDriverWait(driver, 40)
+wait = WebDriverWait(driver, 40)
 
 
 # ===== SELENIUM HELPERS
@@ -5494,6 +5556,22 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
   border-radius:18px;
 }
 
+
+/* ===== HOTFIX FINAL LARANJITO BOLINHA ===== */
+#laranjitoNotify{
+  overflow:hidden!important;
+  font-size:0!important;
+  line-height:0!important;
+}
+#laranjitoNotify img#laranjitoNotifyImg{
+  width:58px!important;
+  height:58px!important;
+  object-fit:contain!important;
+  display:block!important;
+  border-radius:999px!important;
+}
+#laranjitoNotify.only-current-user-hidden{display:none!important;}
+
 </style>
 </head>
 <body>
@@ -5569,7 +5647,7 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 
 
 <div id="laranjitoNotify" onclick="toggleLaranjitoNotifyPanel()" title="Alertas e parabéns">
-  <img src="https://moveisdolar.com.br/colaborador/mascote%20feliz1.png" alt="Laranjito">
+  <img id="laranjitoNotifyImg" src="" alt="Laranjito">
   <span id="laranjitoNotifyBadge">0</span>
 </div>
 <div id="laranjitoNotifyPanel"></div>
@@ -5712,11 +5790,21 @@ function currentSessionNoticeKey(){
   return 'mdl_laranjito_seen_'+(usuarioAtual?.login||usuarioAtual?.nome||usuarioAtual?.tipo||'anon')+'_'+new Date().toISOString().slice(0,10);
 }
 function shouldShowLaranjitoBubble(){
-  // Só aparece dentro da tela individual do colaborador/entidade.
-  // No Master/Diretor, não fica seguindo a navegação inteira.
+  // Só aparece para o próprio colaborador logado dentro do painel individual.
+  // Master/Diretor não vê a bolinha seguindo enquanto navega em outras telas.
   try{
+    const tipo=String(usuarioAtual?.tipo||'').toLowerCase();
+    if(tipo==='master' || tipo==='diretor') return false;
     const detail=document.getElementById('detailScreen');
-    return !!(detail && !detail.classList.contains('hidden') && currentDetailRef);
+    if(!(detail && !detail.classList.contains('hidden') && currentDetailRef)) return false;
+    // Se tiver nome/filial do usuário, garante que está vendo o próprio painel.
+    const uNome=normName(usuarioAtual?.nome||'');
+    const rNome=normName(currentDetailRef?.nome||'');
+    const uFil=String(usuarioAtual?.filial||'').toUpperCase();
+    const rFil=String(currentDetailRef?.filial||'').toUpperCase();
+    if(uNome && rNome && uNome!==rNome && tipo!=='filial' && tipo!=='crediarista' && tipo!=='cobranca') return false;
+    if(uFil && rFil && uFil!==rFil && (tipo==='filial'||tipo==='crediarista')) return false;
+    return true;
   }catch(e){return false}
 }
 function addLaranjitoNote(title,msg,kind='info'){
@@ -5731,6 +5819,18 @@ function renderLaranjitoNotify(){
   const badge=document.getElementById('laranjitoNotifyBadge');
   const panel=document.getElementById('laranjitoNotifyPanel');
   if(!btn||!badge||!panel) return;
+
+
+  try{
+    const img=document.getElementById('laranjitoNotifyImg');
+    if(img && !img.getAttribute('src')){
+      img.onerror=function(){
+        this.onerror=null;
+        this.src='/colaborador/mascote%20feliz1.png';
+      };
+      img.src=(typeof LARANJITO!=='undefined' && LARANJITO)?LARANJITO:'/colaborador/mascote%20feliz1.png';
+    }
+  }catch(e){}
 
   const visible = shouldShowLaranjitoBubble() && LARANJITO_NOTES.length>0;
   btn.style.display = visible ? 'flex' : 'none';
@@ -6403,7 +6503,7 @@ function renderCrediaristaDetail(ent){
   `;
 }
 
-function openEntity(ref){if(ref && (ref.type==='crediarista' || ref.is_crediarista)){return openCrediaristaPanel(ref.login||'', ref.filial||'', ref.nome||'')} const ent=findEntity(ref); if(!ent) return; currentDetailRef={type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''}; mascotCongrats(ent); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(ent.is_terceiro || ent.type==='terceiro'){return renderTerceiroDetail(ent)} if(ent.is_crediarista || ent.type==='crediarista'){return openCrediaristaPanel(ent.login||'', ent.filial||'', ent.nome||'')} const meta=calcMeta(ent); const bonus=getBonus(meta.cfg,meta.geral); const deltaVal=Number(ent.var_pago_delta||0); const prevBase=Math.max(Math.abs(Number(ent.pago||0)-deltaVal),1); const pctFallback=(Math.abs(deltaVal)/prevBase)*100; const compPerc=(ent.var_pago_perc==null || Math.abs(Number(ent.var_pago_perc||0))<0.01)?pctFallback:Math.abs(Number(ent.var_pago_perc||0)); detailScreen.innerHTML=`${usuarioAtual && usuarioAtual.tipo!=='master' ? renderInboxBanner() : ''}${renderUpdateStrip()}<div class="back-row"><button class="btn soft" onclick="backToMain()">⬅️ Voltar</button><div><h2>${ent.type==='filial'?filialLabel(ent.filial):esc(ent.nome)}</h2><div class="sub">${ent.type==='filial'?'Painel individual da filial':'Painel individual do vendedor'} · ${ent.filial}</div></div><div class="badge">${ent.type==='filial'?'🏬 Filial':'👤 Vendedor'}</div></div><div class="detail-top"><div class="glass panel"><h3>🎯 Meta do mês <span class="note">· Não acumulativo</span></h3><div class="mega-progress"><div class="ring-wrap">${renderPiggyBank(meta.geral)}</div><div><div class="metrics-grid"><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">% da filial</div><div class="v">${pct(ent.perc_filial||100)}</div></div><div class="metric"><div class="k">Configuração usada</div><div class="v">${Number(meta.cfg.grave_pct||0)}/${Number(meta.cfg.alerta_pct||0)}/${Number(meta.cfg.atencao_pct||0)}</div></div><div class="metric"><div class="k">Comparado a ontem</div><div class="v" style="font-size:16px">${renderDeltaPill(ent.var_pago_delta,compPerc)} <span>${R(Math.abs(Number(ent.var_pago_delta||0)))}</span></div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave alvo ${R(meta.grave.alvo)} · recebido ${R(meta.grave.rec)}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta alvo ${R(meta.alerta.alvo)} · recebido ${R(meta.alerta.rec)}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção alvo ${R(meta.atencao.alvo)} · recebido ${R(meta.atencao.rec)}</span></div></div></div><div class="meta-grid">${renderMetaBox('Grave','var(--red)',meta.grave)}${renderMetaBox('Alerta','var(--orange)',meta.alerta)}${renderMetaBox('Atenção','var(--yellow)',meta.atencao)}${renderMetaBox('Meta geral','var(--blue)',{perc:meta.geral,alvo:meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,rec:meta.grave.rec+meta.alerta.rec+meta.atencao.rec})}</div><div style="height:18px"></div><h3>🌊 Gráfico Geral Contas a Receber</h3>${renderSingleBars(ent,meta,true)}<div style="height:16px"></div><div class="glass panel"><h3>🏆 Bônus e premiações <span class="note">· Não acumulativo</span></h3>${renderBonusBox(meta.cfg,meta.geral)}</div></div><div>${renderSalesPanel(ent)}<div style="height:16px"></div>${renderCommissionSummary(ent)}<div style="height:16px"></div>${renderCampaignSummary(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span>clique para ${'abrir'}</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span>clique para ${'abrir'}</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
+function openEntity(ref){if(ref && (ref.type==='crediarista' || ref.is_crediarista)){return openCrediaristaPanel(ref.login||'', ref.filial||'', ref.nome||'')} const ent=findEntity(ref); if(!ent) return; currentDetailRef={type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''}; mascotCongrats(ent); try{renderLaranjitoNotify(); showLaranjitoOncePerAccess()}catch(e){}; document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(ent.is_terceiro || ent.type==='terceiro'){return renderTerceiroDetail(ent)} if(ent.is_crediarista || ent.type==='crediarista'){return openCrediaristaPanel(ent.login||'', ent.filial||'', ent.nome||'')} const meta=calcMeta(ent); const bonus=getBonus(meta.cfg,meta.geral); const deltaVal=Number(ent.var_pago_delta||0); const prevBase=Math.max(Math.abs(Number(ent.pago||0)-deltaVal),1); const pctFallback=(Math.abs(deltaVal)/prevBase)*100; const compPerc=(ent.var_pago_perc==null || Math.abs(Number(ent.var_pago_perc||0))<0.01)?pctFallback:Math.abs(Number(ent.var_pago_perc||0)); detailScreen.innerHTML=`${usuarioAtual && usuarioAtual.tipo!=='master' ? renderInboxBanner() : ''}${renderUpdateStrip()}<div class="back-row"><button class="btn soft" onclick="backToMain()">⬅️ Voltar</button><div><h2>${ent.type==='filial'?filialLabel(ent.filial):esc(ent.nome)}</h2><div class="sub">${ent.type==='filial'?'Painel individual da filial':'Painel individual do vendedor'} · ${ent.filial}</div></div><div class="badge">${ent.type==='filial'?'🏬 Filial':'👤 Vendedor'}</div></div><div class="detail-top"><div class="glass panel"><h3>🎯 Meta do mês <span class="note">· Não acumulativo</span></h3><div class="mega-progress"><div class="ring-wrap">${renderPiggyBank(meta.geral)}</div><div><div class="metrics-grid"><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">% da filial</div><div class="v">${pct(ent.perc_filial||100)}</div></div><div class="metric"><div class="k">Configuração usada</div><div class="v">${Number(meta.cfg.grave_pct||0)}/${Number(meta.cfg.alerta_pct||0)}/${Number(meta.cfg.atencao_pct||0)}</div></div><div class="metric"><div class="k">Comparado a ontem</div><div class="v" style="font-size:16px">${renderDeltaPill(ent.var_pago_delta,compPerc)} <span>${R(Math.abs(Number(ent.var_pago_delta||0)))}</span></div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave alvo ${R(meta.grave.alvo)} · recebido ${R(meta.grave.rec)}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta alvo ${R(meta.alerta.alvo)} · recebido ${R(meta.alerta.rec)}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção alvo ${R(meta.atencao.alvo)} · recebido ${R(meta.atencao.rec)}</span></div></div></div><div class="meta-grid">${renderMetaBox('Grave','var(--red)',meta.grave)}${renderMetaBox('Alerta','var(--orange)',meta.alerta)}${renderMetaBox('Atenção','var(--yellow)',meta.atencao)}${renderMetaBox('Meta geral','var(--blue)',{perc:meta.geral,alvo:meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,rec:meta.grave.rec+meta.alerta.rec+meta.atencao.rec})}</div><div style="height:18px"></div><h3>🌊 Gráfico Geral Contas a Receber</h3>${renderSingleBars(ent,meta,true)}<div style="height:16px"></div><div class="glass panel"><h3>🏆 Bônus e premiações <span class="note">· Não acumulativo</span></h3>${renderBonusBox(meta.cfg,meta.geral)}</div></div><div>${renderSalesPanel(ent)}<div style="height:16px"></div>${renderCommissionSummary(ent)}<div style="height:16px"></div>${renderCampaignSummary(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span>clique para ${'abrir'}</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span>clique para ${'abrir'}</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
 function canVerComissionamento(){return usuarioAtual?.tipo==='master'}
 function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';
   const c=calcCommissionSummary(ent);
@@ -6417,7 +6517,7 @@ function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';
   return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,!(c.rentUnlocked && c.rentAtual>=48))}${moneyCell('Rentab 52,15%',c.rent52,!(c.rentUnlocked && c.rentAtual>=52.15))}${moneyCell('Rentab 55,50%',c.rent55,!(c.rentUnlocked && c.rentAtual>=55.50))}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo vendas ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)} · rentabilidades liberam ao bater 50% da meta de cobrança. ${rentNote}</div></div>`
 }
 
-function backToMain(){currentDetailRef=null; detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden')}
+function backToMain(){currentDetailRef=null; try{renderLaranjitoNotify()}catch(e){}; detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden')}
 function renderMetaBox(title,color,obj){return `<div class="meta-card"><div class="meta-title">${title}</div><div class="meta-main" style="color:${color}">${pct(obj.perc||0)}</div><div class="meta-sub">Alvo: ${R(obj.alvo||0)}</div><div class="meta-sub">Recebido: ${R(obj.rec||0)}</div></div>`}
 function normSalesText(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9 ]/gi,' ').replace(/\s+/g,' ').trim().toUpperCase()}
 function salesCell(row, keys){for(const k of keys){if(row && row[k]!=null && String(row[k]).trim()!=='') return String(row[k]).trim()} return ''}
@@ -6875,7 +6975,7 @@ function renderCampaignSummary(ent){
 }
 
 function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';const c=calcCommissionSummary(ent); const totalLiberado = c.elegivelMercantil && c.elegivelServicos; const totalExibido = totalLiberado ? c.totalPrevisto : 0; const moneyCell=(title,val,locked=false,extra='')=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''} ${extra}"><div class="k">${title}</div><div class="v">${R(val||0)}</div></div>`; const pctCell=(title,val,locked=false)=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''}"><div class="k">${title}</div><div class="v">${String(Number(val||0).toFixed(2)).replace('.',',')}%</div></div>`; return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,!c.rentUnlocked)}${moneyCell('Rentab 52,15%',c.rent52,!c.rentUnlocked)}${moneyCell('Rentab 55,50%',c.rent55,!c.rentUnlocked)}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo vendas ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)} · rentabilidades liberam ao bater 50% da meta de cobrança.</div></div>`}
-function backToMain(){currentDetailRef=null; detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden')}
+function backToMain(){currentDetailRef=null; try{renderLaranjitoNotify()}catch(e){}; detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden')}
 function renderMetaBox(title,color,obj){return `<div class="meta-card"><div class="meta-title">${title}</div><div class="meta-main" style="color:${color}">${pct(obj.perc||0)}</div><div class="meta-sub">Alvo: ${R(obj.alvo||0)}</div><div class="meta-sub">Recebido: ${R(obj.rec||0)}</div></div>`}
 function renderBonusBox(cfg,geral){const achieved=(geral>=100&&cfg.bonus_100)?100:(geral>=85&&cfg.bonus_85)?85:(geral>=75&&cfg.bonus_75)?75:(geral>=50&&cfg.bonus_50)?50:0; const items=[[50,cfg.bonus_50||'-'],[75,cfg.bonus_75||'-'],[85,cfg.bonus_85||'-'],[100,cfg.bonus_100||'-']];return `<div class="bonus-box"><h4>Faixas configuradas</h4><div class="bonus-list">${items.map(([p,t])=>`<div class="bonus-item ${achieved===p?'active':''}" style="${achieved===p?'box-shadow:0 0 0 2px rgba(59,130,246,.18),0 0 26px rgba(59,130,246,.2);animation:liquid 1.6s ease-in-out infinite alternate':''}"><div class="left"><span>🎯</span><span>${p}%</span></div><div style="display:flex;align-items:center;gap:10px">${achieved===p?`<img src="${LARANJITO}" alt="laranjito" style="width:34px;height:34px;border-radius:10px;object-fit:cover">`:''}<span>${esc(t)}</span></div></div>`).join('')}</div></div>`}
 function renderSingleBars(ent,meta,big=false){const vals=[['Grave',meta.grave.pend,'var(--red)'],['Alerta',meta.alerta.pend,'var(--orange)'],['Atenção',meta.atencao.pend,'var(--yellow)'],['Recebido',Number(ent.pago||0),'var(--green)']]; const max=Math.max(1,...vals.map(v=>v[1])); return `<div class="glass big-chart-card" style="margin-top:0"><div class="legend-inline"><span><i class="dot" style="background:var(--red)"></i>Grave</span><span><i class="dot" style="background:var(--orange)"></i>Alerta</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção</span><span><i class="dot" style="background:var(--green)"></i>Recebido</span></div><div class="groupbars" style="justify-content:center"><div class="group" style="min-width:100%"><div class="bars" style="height:${big?320:260}px;justify-content:space-around;border-left:none">${vals.map(v=>`<div style="text-align:center"><div class="bar" style="width:${big?72:54}px;height:${Math.max(18,(v[1]/max)*(big?250:200))}px;background:linear-gradient(180deg,rgba(255,255,255,.18),transparent),linear-gradient(180deg,${v[2]},${v[2]})"><span class="wave one"></span><span class="wave two"></span><span class="bubble b1"></span><span class="bubble b2"></span><span class="bubble b3"></span></div><div class="glabel" style="margin-top:10px">${v[0]}<br><strong>${R(v[1])}</strong></div></div>`).join('')}</div></div></div></div>`}
@@ -7674,7 +7774,7 @@ function snapCommission(ent){
 function snapshotEntityHTML(ent){
   try{
     if(ent && (ent.type==='crediarista'||ent.is_crediarista)){
-      ent=findEntityBySnapshotRow({key:entityKey(ent),nome:ent.nome,filial:ent.filial}) || ent;
+      ent=findEntityBySnapshotRow({key:(typeof _comEntKey==='function'?_comEntKey(ent):`${ent.type||'ent'}::${ent.filial||''}::${ent.login||ent.nome||''}`),nome:ent.nome,filial:ent.filial}) || ent;
     }
     const meta=calcMeta(ent);
     const nome=ent.type==='filial'?filialLabel(ent.filial):esc(ent.nome||'');
@@ -7775,13 +7875,13 @@ function findEntityBySnapshotRow(row){
   const key=String(row.key||'');
   const nome=String(row.nome||'');
   const filial=String(row.filial||'');
-  const buckets=[
-    ...vendedoresAtivosEntities(),
-    ...filiaisEntities(),
-    ...crediaristaEntities(),
-    ...terceiroEntities()
-  ];
-  return buckets.find(e=>String(entityKey(e))===key)
+  let buckets=[];
+  try{buckets=[...buckets,...flattenVendedores()]}catch(e){}
+  try{buckets=[...buckets,...flattenFiliais()]}catch(e){}
+  try{buckets=[...buckets,...crediaristaEntities()]}catch(e){}
+  try{buckets=[...buckets,thirdChargeEntity()]}catch(e){}
+  const getKey=(e)=>{try{return (typeof _comEntKey==='function')?_comEntKey(e):`${e.type||'ent'}::${e.filial||''}::${e.login||e.nome||''}`}catch(_){return ''}};
+  return buckets.find(e=>String(getKey(e))===key)
       || buckets.find(e=>normName(e.nome)===normName(nome) && String(e.filial||'')===filial)
       || buckets.find(e=>normName(e.nome)===normName(nome))
       || null;
@@ -7830,7 +7930,7 @@ function abrirTelaComissionamentoCongeladaPorSelect(){
     viewer.scrollIntoView({behavior:'smooth',block:'start'});
   }catch(e){
     console.error('Erro ao abrir tela congelada inline:', e);
-    toast('Erro ao abrir tela congelada. Veja o Console do navegador.');
+    toast('Erro ao abrir tela congelada: '+(e && e.message ? e.message : 'erro desconhecido'));
   }
 }
 function fecharSnapshotInline(){
