@@ -5291,6 +5291,156 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
   color:#bfdbfe;
 }
 
+
+/* ===== FIX GLOBAL: CAMPANHAS CLARAS EM QUALQUER MODAL/LISTA ===== */
+.msg-card.campaign-banner,
+.campaign-banner .msg-card,
+#bellList .msg-card.campaign-banner,
+.modal-card .msg-card.campaign-banner,
+.modal-list .msg-card.campaign-banner{
+  background:linear-gradient(180deg,#f7f1df,#f2ead7) !important;
+  border:1px solid #e4d8b2 !important;
+  color:#1f2937 !important;
+  text-shadow:none !important;
+}
+.msg-card.campaign-banner *,
+.campaign-banner .msg-card *,
+#bellList .msg-card.campaign-banner *,
+.modal-card .msg-card.campaign-banner *,
+.modal-list .msg-card.campaign-banner *{
+  text-shadow:none !important;
+}
+.msg-card.campaign-banner strong,
+.campaign-banner .msg-card strong,
+#bellList .msg-card.campaign-banner strong,
+.modal-card .msg-card.campaign-banner strong,
+.modal-list .msg-card.campaign-banner strong{
+  color:#111827 !important;
+}
+.msg-card.campaign-banner .small,
+.msg-card.campaign-banner .muted,
+.campaign-banner .msg-card .small,
+.campaign-banner .msg-card .muted,
+#bellList .msg-card.campaign-banner .small,
+#bellList .msg-card.campaign-banner .muted,
+.modal-card .msg-card.campaign-banner .small,
+.modal-card .msg-card.campaign-banner .muted,
+.modal-list .msg-card.campaign-banner .small,
+.modal-list .msg-card.campaign-banner .muted{
+  color:#475569 !important;
+}
+.msg-card.campaign-banner [style*="white-space:pre-wrap"],
+.campaign-banner .msg-card [style*="white-space:pre-wrap"],
+#bellList .msg-card.campaign-banner [style*="white-space:pre-wrap"],
+.modal-card .msg-card.campaign-banner [style*="white-space:pre-wrap"],
+.modal-list .msg-card.campaign-banner [style*="white-space:pre-wrap"]{
+  color:#1f2937 !important;
+  font-weight:800 !important;
+}
+.msg-card.campaign-banner .btn.soft,
+.campaign-banner .msg-card .btn.soft{
+  color:#111827 !important;
+  background:rgba(255,255,255,.78) !important;
+  border-color:rgba(120,80,20,.22) !important;
+}
+.msg-card.campaign-banner .btn.danger,
+.campaign-banner .msg-card .btn.danger{
+  color:#7f1d1d !important;
+  background:#fee2e2 !important;
+  border-color:#fecaca !important;
+}
+.msg-card.campaign-banner .unread-chip,
+#bellList .msg-card.campaign-banner .unread-chip,
+.modal-card .msg-card.campaign-banner .unread-chip{
+  background:#fff7ed !important;
+  border-color:#fb923c !important;
+  color:#9a3412 !important;
+}
+.msg-card.campaign-banner .mini-chip,
+#bellList .msg-card.campaign-banner .mini-chip{
+  background:#fff7ed !important;
+  border-color:#fdba74 !important;
+  color:#c2410c !important;
+}
+
+/* ===== LARANJITO NOTIFICAÇÕES FIXO ===== */
+#laranjitoNotify{
+  position:fixed;
+  top:92px;
+  right:22px;
+  z-index:9998;
+  width:66px;
+  height:66px;
+  border-radius:999px;
+  border:2px solid rgba(255,138,0,.65);
+  background:radial-gradient(circle at 35% 25%,rgba(255,255,255,.35),transparent 35%),rgba(17,24,39,.92);
+  box-shadow:0 0 0 4px rgba(255,138,0,.12),0 14px 38px rgba(0,0,0,.42),0 0 28px rgba(255,138,0,.25);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  transition:.18s transform ease,.18s filter ease;
+}
+#laranjitoNotify:hover{transform:scale(1.06);filter:brightness(1.08)}
+#laranjitoNotify img{width:54px;height:54px;object-fit:contain;border-radius:999px}
+#laranjitoNotifyBadge{
+  position:absolute;
+  top:-6px;
+  right:-5px;
+  min-width:22px;
+  height:22px;
+  border-radius:999px;
+  background:#ef4444;
+  color:#fff;
+  font-size:12px;
+  font-weight:950;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border:2px solid #111827;
+}
+#laranjitoNotifyPanel{
+  position:fixed;
+  top:166px;
+  right:22px;
+  z-index:9999;
+  width:min(420px,calc(100vw - 34px));
+  max-height:70vh;
+  overflow:auto;
+  display:none;
+  border:1px solid rgba(255,138,0,.35);
+  background:rgba(17,20,29,.98);
+  border-radius:22px;
+  padding:14px;
+  box-shadow:0 22px 55px rgba(0,0,0,.55);
+}
+#laranjitoNotifyPanel.show{display:block}
+.laranjito-note{
+  padding:11px 12px;
+  border-radius:15px;
+  border:1px solid rgba(255,255,255,.11);
+  background:rgba(255,255,255,.05);
+  margin-bottom:10px;
+  color:#e5e7eb;
+  font-weight:800;
+}
+.laranjito-note .small{color:#aab4c8!important;margin-top:4px}
+
+/* ===== COBRANÇA INTELIGENTE: CONTADOR NO HISTÓRICO ===== */
+.log-cob-count{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:4px 9px;
+  border-radius:999px;
+  background:rgba(251,146,60,.12);
+  border:1px solid rgba(251,146,60,.45);
+  color:#fed7aa;
+  font-size:11px;
+  font-weight:900;
+  margin-top:4px;
+}
+
 </style>
 </head>
 <body>
@@ -5363,6 +5513,13 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 <div id="bellModal" class="modal"><div class="glass modal-card" style="width:min(760px,100%)"><h3 style="margin:0">🔔 Avisos e mensagens</h3><div class="sub">Atualizações enviadas pelo Master para você.</div><div id="bellList" class="modal-list" style="max-height:70vh;overflow:auto"></div><button class="btn soft" style="width:100%;margin-top:10px" onclick="closeBell()">Fechar</button></div></div>
 <div id="firstAccessModal" class="modal"><div class="glass modal-card" style="width:min(560px,100%)"><h3 style="margin:0">🔑 Primeiro acesso / troca de senha</h3><div class="sub">Defina sua nova senha para entrar no dashboard.</div><div class="modal-list"><div class="input-card"><label>Usuário</label><input id="faLogin" placeholder="Ex: joaodasilva"></div><div class="input-card"><label>Senha atual</label><input id="faCurrentPass" type="password" placeholder="Senha atual"></div><div class="input-card"><label>Nova senha</label><input id="faNewPass" type="password" placeholder="Nova senha"></div><div class="input-card"><label>Confirmar nova senha</label><input id="faNewPass2" type="password" placeholder="Confirmar nova senha"></div><div id="faMsg" class="note"></div></div><div style="display:flex;gap:10px;margin-top:10px"><button class="btn primary" style="flex:1" onclick="salvarPrimeiroAcesso()">💾 Salvar nova senha</button><button class="btn soft" style="flex:1" onclick="closeFirstAccess()">Fechar</button></div></div></div>
 <div id="recoverModal" class="modal"><div class="glass modal-card" style="width:min(560px,100%)"><h3 style="margin:0">📩 Recuperar senha</h3><div class="sub">O pedido será enviado para o Master no dashboard e também pode ser registrado em sac@moveisdolar.com.br.</div><div class="modal-list"><div class="input-card"><label>Usuário</label><input id="recLogin" placeholder="Seu usuário"></div><div class="input-card"><label>Nome / observação</label><input id="recObs" placeholder="Ex: sou da filial F4"></div><div id="recMsg" class="note"></div></div><div style="display:flex;gap:10px;margin-top:10px"><button class="btn primary" style="flex:1" onclick="enviarRecuperacaoSenha()">📨 Enviar solicitação</button><button class="btn soft" style="flex:1" onclick="closeRecover()">Fechar</button></div></div></div>
+
+
+<div id="laranjitoNotify" onclick="toggleLaranjitoNotifyPanel()" title="Alertas e parabéns">
+  <img src="https://webftp.locaweb.com.br/view/public_html/colaborador/mascote%20feliz1.png" alt="Laranjito">
+  <span id="laranjitoNotifyBadge">0</span>
+</div>
+<div id="laranjitoNotifyPanel"></div>
 
 <script>
 const CREDS=__JS_CREDS__;
@@ -5464,7 +5621,7 @@ async function tentarAtualizarOnlineDepoisLogin(){
       carregarMsgsOnline()
     ]);
     try{renderKPIs()}catch(e){}
-    try{refreshBell()}catch(e){}
+    try{refreshBell()}catch(e){}; try{renderLaranjitoNotify(); showLaranjitoOncePerAccess()}catch(e){}
     try{
       if(usuarioAtual?.tipo==='master'){
         if(!detailScreen.classList.contains('hidden') && currentDetailRef) openEntity(currentDetailRef);
@@ -5494,6 +5651,52 @@ async function carregarCredenciaisOnline(){try{const r=await fetchComTimeout(API
 async function carregarHistoricoOnline(){try{const r=await fetchComTimeout(API_HIST+'?_='+Date.now(),{},2500); const j=await r.json(); if(j.ok && j.data){HIST_DASH=j.data;}}catch(e){console.log('Falha ao carregar histórico online',e);}}
 async function carregarHistoricoComissaoOnline(){try{const r=await fetchComTimeout(API_COMIS+'?_='+Date.now(),{},3000); const j=await r.json(); if(j.ok && j.data){HIST_COMISSAO=j.data;}}catch(e){console.log('Falha ao carregar histórico de comissionamento',e);}}
 
+
+
+let LARANJITO_NOTES=[];
+function currentSessionNoticeKey(){
+  return 'mdl_laranjito_seen_'+(usuarioAtual?.login||usuarioAtual?.nome||usuarioAtual?.tipo||'anon')+'_'+new Date().toISOString().slice(0,10);
+}
+function addLaranjitoNote(title,msg,kind='info'){
+  const key=String(title||'')+'|'+String(msg||'');
+  if(LARANJITO_NOTES.some(n=>n.key===key)) return;
+  LARANJITO_NOTES.push({key,title,msg,kind,dt:new Date().toLocaleString('pt-BR')});
+  renderLaranjitoNotify();
+}
+function renderLaranjitoNotify(){
+  const btn=document.getElementById('laranjitoNotify');
+  const badge=document.getElementById('laranjitoNotifyBadge');
+  const panel=document.getElementById('laranjitoNotifyPanel');
+  if(!btn||!badge||!panel) return;
+  if(!LARANJITO_NOTES.length){btn.style.display='none';panel.classList.remove('show');return;}
+  btn.style.display='flex';
+  badge.textContent=String(LARANJITO_NOTES.length);
+  panel.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px">
+    <strong>🍊 Alertas do Laranjito</strong>
+    <button class="btn soft" onclick="clearLaranjitoNotes()">Limpar</button>
+  </div>` + LARANJITO_NOTES.map(n=>`<div class="laranjito-note"><div>${esc(n.title||'Aviso')}</div><div class="small">${esc(n.msg||'')}</div><div class="small">${esc(n.dt||'')}</div></div>`).join('');
+}
+function toggleLaranjitoNotifyPanel(){
+  const panel=document.getElementById('laranjitoNotifyPanel');
+  if(panel) panel.classList.toggle('show');
+}
+function clearLaranjitoNotes(){
+  LARANJITO_NOTES=[];
+  try{localStorage.setItem(currentSessionNoticeKey(),'1')}catch(e){}
+  renderLaranjitoNotify();
+}
+function showLaranjitoOncePerAccess(){
+  // A bolinha aparece uma vez por acesso/login. Não joga mais toast sozinho toda hora.
+  try{
+    const k=currentSessionNoticeKey();
+    if(localStorage.getItem(k)==='1') return;
+    const panel=document.getElementById('laranjitoNotifyPanel');
+    if(panel && LARANJITO_NOTES.length){
+      setTimeout(()=>panel.classList.add('show'),700);
+      localStorage.setItem(k,'1');
+    }
+  }catch(e){}
+}
 
 function saveSession(){try{const data={usuarioAtual,exp:Date.now()+60*60*1000}; localStorage.setItem(SESSION_KEY, JSON.stringify(data));}catch(e){}}
 function clearSession(){try{localStorage.removeItem(SESSION_KEY);}catch(e){}}
@@ -5595,6 +5798,18 @@ function renderPiggyBank(perc){
   return `<div class="piggy-bank" style="--pct:${p}"><div class="piggy-glow"></div><div class="piggy-shell"><div class="piggy-slot"></div><div class="piggy-falling">${fallingCoins}</div><div class="piggy-fill">${baseCoins}</div><div class="piggy-glass"></div></div><div class="piggy-label"><div class="pct">${pct(p)}</div><div class="small">Meta geral</div></div></div>`;
 }
 function toast(msg, type='info'){const host=document.getElementById('toast'); const el=document.createElement('div'); el.className='toast-item'; el.innerHTML=`<img src="${LARANJITO}" alt="ok"><div><div style="font-weight:900">${type==='success'?'Tudo certo!':'Aviso'}</div><div class="small">${esc(msg)}</div></div>`; host.appendChild(el); setTimeout(()=>{el.remove();},4200)}
+const _toastOriginalLaranjito = toast;
+toast = function(msg, type='info'){
+  try{
+    const s=String(msg||'');
+    if(/parab[eé]ns|ganhou|meta|laranjito|comemorando|liberada|ótimo ritmo|otimo ritmo/i.test(s)){
+      addLaranjitoNote('Tudo certo!', s, type);
+      return;
+    }
+  }catch(e){}
+  return _toastOriginalLaranjito(msg,type);
+};
+
 function mascotCongrats(ent){const meta=calcMeta(ent);const b=getBonus(meta.cfg,meta.geral);if(!b) return;toast(`Parabéns, ${ent.type==='vendedor'?ent.nome:filialLabel(ent.filial)}! Meta em ${pct(meta.geral)}. ${b.text||''}`,'success')}
 function makeKpi(label,val,accent,sub='',extraClass='',mascote='',iconHtml=''){
   const raw=String(label||'').trim();
@@ -6783,7 +6998,7 @@ function daysSinceCob(raw){
 function sameCobTitle(a,b){
   return String(a?.titulo||'').trim()===String(b?.titulo||'').trim()
       && String(a?.parcela||'').trim()===String(b?.parcela||'').trim()
-      && similarCliente(a?.cliente||a?.nome||'', b?.cliente||b?.nome||'');
+      && (typeof similarCliente==='function' ? similarCliente(a?.cliente||a?.nome||'', b?.cliente||b?.nome||'') : normName(a?.cliente||a?.nome||'')===normName(b?.cliente||b?.nome||''));
 }
 function entMatchesCobLog(log,ent){
   if(!ent) return true;
@@ -7507,24 +7722,49 @@ function abrirTelaComissionamentoCongeladaPorSelect(){
     const snap=HIST_COMISSAO?.months?.[month];
     const row=(snap?.entidades||[]).find(x=>String(x.key)===String(key));
     if(!row){toast('Registro não encontrado no histórico.'); return;}
+
     let html=String(row.html_individual||'');
     let fonte='tela congelada salva no fechamento';
     if(!html){
       const ent=findEntityBySnapshotRow(row);
-      if(ent){html=String(snapshotEntityHTML(ent)||''); fonte='gerada agora porque este fechamento antigo não tinha a tela salva';}
+      if(ent){
+        html=String(snapshotEntityHTML(ent)||'');
+        fonte='gerada agora porque este fechamento antigo não tinha a tela salva';
+      }
     }
     if(!html){toast('Tela congelada não encontrada. Salve novamente o fechamento do mês.'); return;}
-    const doc = `<!doctype html><html><head><meta charset="utf-8"><title>Comissionamento ${esc(row.nome)} ${esc(month)}</title><style>
-      body{margin:0;background:#080a0f;color:#f4f6fb;font-family:Inter,Arial,sans-serif;padding:20px}
-      .snapshot-toolbar{position:sticky;top:0;z-index:999;display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0 auto 14px auto;max-width:1180px;padding:12px 14px;border:1px solid rgba(255,255,255,.14);background:rgba(15,18,26,.96);border-radius:16px}
-      .snapshot-toolbar button{border:0;border-radius:12px;padding:10px 14px;background:#ff8a00;color:#111;font-weight:900;cursor:pointer}
-      .snapshot-toolbar .hint{color:#b9c2d3;font-size:13px}
-      @media print{.snapshot-toolbar{display:none}body{padding:0;background:#080a0f}}
-    </style></head><body><div class="snapshot-toolbar"><div><strong>📌 Fechamento ${esc(month)}</strong><div class="hint">${esc(row.nome)} · Fonte: ${esc(fonte)}</div></div><button onclick="window.print()">🖨️ Imprimir / Salvar PDF</button></div>${html}</body></html>`;
-    const w=window.open('', '_blank');
-    if(!w){toast('Pop-up bloqueado pelo navegador. Permita pop-ups para este site.'); return;}
-    w.document.open(); w.document.write(doc); w.document.close();
-  }catch(e){console.error('Erro ao abrir tela congelada:', e); toast('Erro ao abrir tela congelada. Veja o Console do navegador.');}
+
+    const safeTitle=`Comissionamento ${String(row.nome||'')} ${month}`;
+    const docParts=[
+      '<!doctype html><html><head><meta charset="utf-8"><title>',
+      safeTitle.replace(/[<>&]/g, m=>({ '<':'&lt;','>':'&gt;','&':'&amp;' }[m])),
+      '</title><style>',
+      'body{margin:0;background:#080a0f;color:#f4f6fb;font-family:Inter,Arial,sans-serif;padding:20px}',
+      '.snapshot-toolbar{position:sticky;top:0;z-index:999;display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0 auto 14px auto;max-width:1180px;padding:12px 14px;border:1px solid rgba(255,255,255,.14);background:rgba(15,18,26,.96);border-radius:16px}',
+      '.snapshot-toolbar button{border:0;border-radius:12px;padding:10px 14px;background:#ff8a00;color:#111;font-weight:900;cursor:pointer}',
+      '.snapshot-toolbar .hint{color:#b9c2d3;font-size:13px}',
+      '@media print{.snapshot-toolbar{display:none}body{padding:0;background:#080a0f}}',
+      '</style></head><body><div class="snapshot-toolbar"><div><strong>📌 Fechamento ',
+      esc(month),
+      '</strong><div class="hint">',
+      esc(row.nome||''),' · Fonte: ',esc(fonte),
+      '</div></div><button onclick="window.print()">🖨️ Imprimir / Salvar PDF</button></div>',
+      html,
+      '</body></html>'
+    ];
+    const blob=new Blob(docParts,{type:'text/html;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const w=window.open(url,'_blank');
+    if(!w){
+      URL.revokeObjectURL(url);
+      toast('Pop-up bloqueado pelo navegador. Permita pop-ups para este site.');
+      return;
+    }
+    setTimeout(()=>{try{URL.revokeObjectURL(url)}catch(e){}},15000);
+  }catch(e){
+    console.error('Erro ao abrir tela congelada:', e);
+    toast('Erro ao abrir tela congelada. Veja o Console do navegador.');
+  }
 }
 
 function renderHistoricoComissaoResults(){
