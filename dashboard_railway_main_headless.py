@@ -2460,6 +2460,25 @@ EMAIL_RECUPERACAO = "sac@moveisdolar.com.br"
 cred_path    = os.path.join(pasta, "credenciais_vendedores.txt")
 cred_state_path = os.path.join(pasta, "credenciais_dashboard.json")
 
+# Senha padrão de primeiro acesso para todos os usuários comuns.
+# Master e Diretor Comercial continuam preservados separadamente.
+SENHA_PADRAO_COLABORADOR = "teste10"
+
+def _resolver_senha_colaborador(estado_ant):
+    """
+    Regra nova:
+    - usuário comum sem senha definitiva entra com teste10 e troca no primeiro acesso;
+    - se o Master definiu uma senha e must_change_password=False, preserva essa senha;
+    - se o usuário já trocou a senha no primeiro acesso, preserva essa senha;
+    - Master/Diretor não passam por esta função.
+    """
+    try:
+        if isinstance(estado_ant, dict) and estado_ant.get("password") and estado_ant.get("must_change_password") is False:
+            return str(estado_ant.get("password")), False
+    except Exception:
+        pass
+    return SENHA_PADRAO_COLABORADOR, True
+
 def _load_json_safe(path, default):
     try:
         if os.path.exists(path):
@@ -2509,14 +2528,13 @@ for _, row in df_vend.iterrows():
     is_ger    = bool(row["is_gerente"])
     login     = normalizar_login(nome_exib)
     chave     = f"{login}_{filial}"
-    senha_inicial = creds_salvas.get(chave) or (login.upper() + str(random.randint(100,999)))
+    senha_inicial = SENHA_PADRAO_COLABORADOR
     login_fin = login
     if login in credenciais and credenciais[login]["filial"] != filial:
         login_fin = f"{login}_{filial.lower()}"
 
     estado_ant = cred_state.get("users", {}).get(login_fin, {})
-    senha_atual = estado_ant.get("password") or senha_inicial
-    precisa_trocar = bool(estado_ant.get("must_change_password", senha_atual == senha_inicial))
+    senha_atual, precisa_trocar = _resolver_senha_colaborador(estado_ant)
 
     credenciais[login_fin] = {
         "senha":      senha_atual,
@@ -2544,10 +2562,9 @@ for _, row in df_vend.iterrows():
 
 # Usuário especial de cobrança terceirizada
 _chave_cob10 = COBRANCA10_LOGIN
-_senha_cob10_inicial = creds_salvas.get(f"{COBRANCA10_LOGIN}_{COBRANCA10_FILIAL}") or ("COB10" + str(random.randint(100,999)))
+_senha_cob10_inicial = SENHA_PADRAO_COLABORADOR
 _estado_cob10 = cred_state.get("users", {}).get(_chave_cob10, {})
-_senha_cob10 = _estado_cob10.get("password") or _senha_cob10_inicial
-_precisa_cob10 = bool(_estado_cob10.get("must_change_password", _senha_cob10 == _senha_cob10_inicial))
+_senha_cob10, _precisa_cob10 = _resolver_senha_colaborador(_estado_cob10)
 _terceiro_pendente = sum(float(x.get("pendente", 0) or 0) for x in _clientes_terceiro_lista)
 credenciais[_chave_cob10] = {
     "senha": _senha_cob10,
@@ -2584,10 +2601,9 @@ recebimentos_crediarista_js = {}
 # Usuários CREDIARISTAS por filial
 for _fil_cred, _login_cred in CREDIARISTAS_FILIAIS.items():
     _nome_cred = nome_crediarista_filial(_fil_cred, _login_cred)
-    _senha_ini = creds_salvas.get(f"{_login_cred}_{_fil_cred}") or creds_salvas.get(_login_cred) or (_login_cred.upper() + str(random.randint(100,999)))
+    _senha_ini = SENHA_PADRAO_COLABORADOR
     _estado_cred = cred_state.get("users", {}).get(_login_cred, {})
-    _senha_cred = _estado_cred.get("password") or _senha_ini
-    _troca_cred = bool(_estado_cred.get("must_change_password", _senha_cred == _senha_ini))
+    _senha_cred, _troca_cred = _resolver_senha_colaborador(_estado_cred)
     _pend_cred = sum(float(x.get("pendente", 0) or 0) for _fx in ['grave','alerta','atencao'] for x in clientes_crediarista_js.get(_login_cred, {}).get(_fx, []))
     _pago_cred = sum(float(x.get("pago", 0) or 0) for _fx in ['grave','alerta','atencao'] for x in recebimentos_crediarista_js.get(_login_cred, {}).get(_fx, []))
     credenciais[_login_cred] = {
@@ -5595,65 +5611,6 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 #laranjitoNotify.img-fail #laranjitoNotifyFallback{display:block!important}
 body.master-view #laranjitoNotify, body.diretor-view #laranjitoNotify{display:none!important}
 
-
-/* ===== HOTFIX BOLINHA LARANJITO + SNAPSHOT CARDS ===== */
-#laranjitoNotify{
-  overflow:visible!important;
-  font-size:0!important;
-  line-height:0!important;
-  background:rgba(17,24,39,.92)!important;
-}
-#laranjitoNotify img#laranjitoNotifyImg{
-  width:62px!important;
-  height:62px!important;
-  object-fit:contain!important;
-  object-position:center!important;
-  display:block!important;
-  border-radius:0!important;
-  background:transparent!important;
-  box-shadow:none!important;
-}
-#laranjitoNotify.img-fail img#laranjitoNotifyImg{display:none!important}
-#laranjitoNotifyFallback{
-  display:none;
-  font-size:38px;
-  line-height:1;
-}
-#laranjitoNotify.img-fail #laranjitoNotifyFallback{display:block!important}
-#laranjitoNotify.has-notes{
-  display:flex;
-  animation:laranjitoPulse 1.25s infinite;
-}
-#laranjitoNotify.no-new{animation:none!important}
-body.master-view #laranjitoNotify,
-body.diretor-view #laranjitoNotify,
-body.painel-view #laranjitoNotify{display:none!important}
-.frozen-cards-sheet{
-  max-width:1220px;
-  margin:0 auto;
-  padding:18px;
-  background:#0d0f14;
-  color:#f0f2f8;
-  font-family:'DM Sans',Arial,sans-serif;
-}
-.frozen-cards-head{
-  margin-bottom:16px;
-  padding:14px 16px;
-  border-radius:18px;
-  border:1px solid rgba(255,255,255,.12);
-  background:rgba(255,255,255,.05);
-}
-.frozen-cards-head h1{margin:0;font-size:24px;color:#fff}
-.frozen-cards-grid{display:grid;grid-template-columns:1fr;gap:16px}
-.frozen-cards-grid>.glass.panel,
-.frozen-cards-grid>.commission-card,
-.frozen-cards-grid>.mega-progress,
-.frozen-cards-grid>.meta-grid{width:100%!important}
-@media print{
-  .snapshot-toolbar{display:none!important}
-  .frozen-cards-sheet{padding:0;background:#0d0f14}
-}
-
 </style>
 </head>
 <body>
@@ -5724,12 +5681,12 @@ body.painel-view #laranjitoNotify{display:none!important}
 <div id="toast" class="toast"></div>
 <div id="phoneModal" class="modal"><div class="glass modal-card"><h3 style="margin:0">Escolher contato</h3><div class="sub">Selecione para abrir o WhatsApp</div><div id="phoneList" class="modal-list"></div><button class="btn soft" style="width:100%;margin-top:10px" onclick="closePhoneModal()">Fechar</button></div></div>
 <div id="bellModal" class="modal"><div class="glass modal-card" style="width:min(760px,100%)"><h3 style="margin:0">🔔 Avisos e mensagens</h3><div class="sub">Atualizações enviadas pelo Master para você.</div><div id="bellList" class="modal-list" style="max-height:70vh;overflow:auto"></div><button class="btn soft" style="width:100%;margin-top:10px" onclick="closeBell()">Fechar</button></div></div>
-<div id="firstAccessModal" class="modal"><div class="glass modal-card" style="width:min(560px,100%)"><h3 style="margin:0">🔑 Primeiro acesso / troca de senha</h3><div class="sub">Defina sua nova senha para entrar no dashboard.</div><div class="modal-list"><div class="input-card"><label>Usuário</label><input id="faLogin" placeholder="Ex: joaodasilva"></div><div class="input-card"><label>Senha atual</label><input id="faCurrentPass" type="password" placeholder="Senha atual"></div><div class="input-card"><label>Nova senha</label><input id="faNewPass" type="password" placeholder="Nova senha"></div><div class="input-card"><label>Confirmar nova senha</label><input id="faNewPass2" type="password" placeholder="Confirmar nova senha"></div><div id="faMsg" class="note"></div></div><div style="display:flex;gap:10px;margin-top:10px"><button class="btn primary" style="flex:1" onclick="salvarPrimeiroAcesso()">💾 Salvar nova senha</button><button class="btn soft" style="flex:1" onclick="closeFirstAccess()">Fechar</button></div></div></div>
+<div id="firstAccessModal" class="modal"><div class="glass modal-card" style="width:min(560px,100%)"><h3 style="margin:0">🔑 Primeiro acesso / troca de senha</h3><div class="sub">Defina sua nova senha para entrar no dashboard. Senha padrão inicial: <b>teste10</b>.</div><div class="modal-list"><div class="input-card"><label>Usuário</label><input id="faLogin" placeholder="Ex: joaodasilva"></div><div class="input-card"><label>Senha atual</label><input id="faCurrentPass" type="password" placeholder="Senha atual"></div><div class="input-card"><label>Nova senha</label><input id="faNewPass" type="password" placeholder="Nova senha"></div><div class="input-card"><label>Confirmar nova senha</label><input id="faNewPass2" type="password" placeholder="Confirmar nova senha"></div><div id="faMsg" class="note"></div></div><div style="display:flex;gap:10px;margin-top:10px"><button class="btn primary" style="flex:1" onclick="salvarPrimeiroAcesso()">💾 Salvar nova senha</button><button class="btn soft" style="flex:1" onclick="closeFirstAccess()">Fechar</button></div></div></div>
 <div id="recoverModal" class="modal"><div class="glass modal-card" style="width:min(560px,100%)"><h3 style="margin:0">📩 Recuperar senha</h3><div class="sub">O pedido será enviado para o Master no dashboard e também pode ser registrado em sac@moveisdolar.com.br.</div><div class="modal-list"><div class="input-card"><label>Usuário</label><input id="recLogin" placeholder="Seu usuário"></div><div class="input-card"><label>Nome / observação</label><input id="recObs" placeholder="Ex: sou da filial F4"></div><div id="recMsg" class="note"></div></div><div style="display:flex;gap:10px;margin-top:10px"><button class="btn primary" style="flex:1" onclick="enviarRecuperacaoSenha()">📨 Enviar solicitação</button><button class="btn soft" style="flex:1" onclick="closeRecover()">Fechar</button></div></div></div>
 
 
 <div id="laranjitoNotify" onclick="toggleLaranjitoNotifyPanel()" title="Alertas e parabéns">
-  <img id="laranjitoNotifyImg" src="https://moveisdolar.com.br/colaborador/mascote%20feliz1.png" alt="Laranjito" referrerpolicy="no-referrer" crossorigin="anonymous">
+  <img id="laranjitoNotifyImg" src="" alt="" referrerpolicy="no-referrer">
   <span id="laranjitoNotifyFallback">🍊</span>
   <span id="laranjitoNotifyBadge">0</span>
 </div>
@@ -5859,8 +5816,34 @@ let _pendingFirstAccess=null;
 let HIST_DASH=__JS_HIST_DASH__||{dates:{}};
 let HIST_COMISSAO={months:{}};
 const SESSION_KEY='mdl_dashboard_session_v1';
-function getAuthUser(login){const k=String(login||'').trim().toLowerCase(); if(k===LOGIN_DIRETOR.toLowerCase()) return AUTH_STATE?.director||null; return (AUTH_STATE?.users||{})[k]||null}
-async function carregarCredenciaisOnline(){try{const r=await fetchComTimeout(API_CRED+'?_='+Date.now(),{},2500); const j=await r.json(); if(j.ok && j.data){AUTH_STATE=j.data;}}catch(e){console.log('Falha ao carregar credenciais online',e);}}
+function normalizeLoginAlias(login){
+  let k=String(login||'').trim().toLowerCase();
+  // tolerância para erro comum de digitação da YASMIM
+  if(k==='yasmin' && (CREDS?.yasmim || AUTH_STATE?.users?.yasmim)) k='yasmim';
+  return k;
+}
+function getAuthUser(login){
+  const k=normalizeLoginAlias(login);
+  if(k===LOGIN_DIRETOR.toLowerCase()) return AUTH_STATE?.director||null;
+  let u=(AUTH_STATE?.users||{})[k]||null;
+  if(!u && CREDS?.[k]){
+    u={login:k,password:CREDS[k].senha||'teste10',initial_password:CREDS[k].senha_inicial||'teste10',must_change_password:String(CREDS[k].senha||'')==='teste10',nome:CREDS[k].nome,filial:CREDS[k].filial,is_gerente:!!CREDS[k].is_gerente,is_crediarista:!!CREDS[k].is_crediarista,is_terceiro:!!CREDS[k].is_terceiro,only_cobranca:!!CREDS[k].only_cobranca};
+    AUTH_STATE.users=AUTH_STATE.users||{}; AUTH_STATE.users[k]=u;
+  }
+  return u;
+}
+function aplicarSenhaLocal(login,senha,mustChange=false){
+  const k=normalizeLoginAlias(login);
+  AUTH_STATE=AUTH_STATE||{users:{},director:{},password_reset_requests:[]};
+  if(k===LOGIN_DIRETOR.toLowerCase()){
+    AUTH_STATE.director=Object.assign({},AUTH_STATE.director||{}, {login:LOGIN_DIRETOR,password:senha,must_change_password:!!mustChange,nome:'Diretor Comercial'});
+  }else{
+    AUTH_STATE.users=AUTH_STATE.users||{};
+    AUTH_STATE.users[k]=Object.assign({},AUTH_STATE.users[k]||{}, CREDS?.[k]||{}, {login:k,password:senha,must_change_password:!!mustChange});
+    if(CREDS?.[k]){CREDS[k].senha=senha; CREDS[k].senha_inicial=CREDS[k].senha_inicial||'teste10';}
+  }
+}
+async function carregarCredenciaisOnline(){try{const r=await fetchComTimeout(API_CRED+'?_='+Date.now(),{},2500); const j=await r.json(); if(j.ok && j.data){AUTH_STATE=j.data; AUTH_STATE.users=AUTH_STATE.users||{}; Object.keys(CREDS||{}).forEach(k=>{if(!AUTH_STATE.users[k] && !CREDS[k].is_viewer){AUTH_STATE.users[k]={login:k,password:CREDS[k].senha||'teste10',initial_password:CREDS[k].senha_inicial||'teste10',must_change_password:String(CREDS[k].senha||'')==='teste10',nome:CREDS[k].nome,filial:CREDS[k].filial,is_gerente:!!CREDS[k].is_gerente,is_crediarista:!!CREDS[k].is_crediarista,is_terceiro:!!CREDS[k].is_terceiro,only_cobranca:!!CREDS[k].only_cobranca};}});}}catch(e){console.log('Falha ao carregar credenciais online',e);}}
 
 async function carregarHistoricoOnline(){try{const r=await fetchComTimeout(API_HIST+'?_='+Date.now(),{},2500); const j=await r.json(); if(j.ok && j.data){HIST_DASH=j.data;}}catch(e){console.log('Falha ao carregar histórico online',e);}}
 async function carregarHistoricoComissaoOnline(){try{const r=await fetchComTimeout(API_COMIS+'?_='+Date.now(),{},3000); const j=await r.json(); if(j.ok && j.data){HIST_COMISSAO=j.data;}}catch(e){console.log('Falha ao carregar histórico de comissionamento',e);}}
@@ -5869,55 +5852,28 @@ async function carregarHistoricoComissaoOnline(){try{const r=await fetchComTimeo
 
 let LARANJITO_NOTES=[];
 let LARANJITO_UNREAD=0;
-
-function normalizeLaranjitoURL(u){
-  const s=String(u||'').trim();
-  if(!s || s.includes('webftp.locaweb.com.br/view/')) return 'https://moveisdolar.com.br/colaborador/mascote%20feliz1.png';
-  return s;
-}
-function initLaranjitoNotifyImage(){
-  try{
-    const img=document.getElementById('laranjitoNotifyImg');
-    const btn=document.getElementById('laranjitoNotify');
-    if(!img||!btn) return;
-    const candidatos=[
-      normalizeLaranjitoURL(typeof LARANJITO!=='undefined'?LARANJITO:''),
-      'https://moveisdolar.com.br/colaborador/mascote%20feliz1.png',
-      '/colaborador/mascote%20feliz1.png',
-      'mascote%20feliz1.png'
-    ].filter(Boolean);
-    let i=0;
-    btn.classList.remove('img-fail');
-    img.onerror=function(){
-      i++;
-      if(i<candidatos.length){
-        img.src=candidatos[i]+'?v=20260526';
-      }else{
-        btn.classList.add('img-fail');
-      }
-    };
-    img.onload=function(){btn.classList.remove('img-fail');};
-    img.src=candidatos[0]+'?v=20260526';
-  }catch(e){}
-}
 function currentSessionNoticeKey(){
   return 'mdl_laranjito_seen_'+(usuarioAtual?.login||usuarioAtual?.nome||usuarioAtual?.tipo||'anon')+'_'+new Date().toISOString().slice(0,10);
 }
 function shouldShowLaranjitoBubble(){
+  // Aparece somente para colaborador logado olhando o próprio painel individual.
+  // Master/Diretor nunca veem essa bolinha, mesmo abrindo painel de alguém.
   try{
-    if(!usuarioAtual) return false;
-    const tipo=String(usuarioAtual.tipo||'').toLowerCase();
-    if(['master','diretor','painel'].includes(tipo)) return false;
+    const tipo=String(usuarioAtual?.tipo||'').toLowerCase();
+    if(tipo==='master' || tipo==='diretor' || tipo==='painel') return false;
     const detail=document.getElementById('detailScreen');
-    return !!(detail && !detail.classList.contains('hidden'));
+    if(!(detail && !detail.classList.contains('hidden') && currentDetailRef)) return false;
+    const login=String(usuarioAtual?.login||'').toLowerCase();
+    const refLogin=String(currentDetailRef?.login||'').toLowerCase();
+    const uNome=normName(usuarioAtual?.nome||'');
+    const rNome=normName(currentDetailRef?.nome||'');
+    const uFil=String(usuarioAtual?.filial||'').toUpperCase();
+    const rFil=String(currentDetailRef?.filial||'').toUpperCase();
+    if(login && refLogin && login!==refLogin) return false;
+    if(uNome && rNome && uNome!==rNome && tipo==='vendedor') return false;
+    if(uFil && rFil && uFil!==rFil && (tipo==='filial'||tipo==='crediarista'||tipo==='cobranca')) return false;
+    return true;
   }catch(e){return false}
-}
-function updateBodyRoleClass(){
-  try{
-    document.body.classList.toggle('master-view', String(usuarioAtual?.tipo||'').toLowerCase()==='master');
-    document.body.classList.toggle('diretor-view', String(usuarioAtual?.tipo||'').toLowerCase()==='diretor');
-    document.body.classList.toggle('painel-view', String(usuarioAtual?.tipo||'').toLowerCase()==='painel');
-  }catch(e){}
 }
 function addLaranjitoNote(title,msg,kind='info'){
   const key=String(title||'')+'|'+String(msg||'');
@@ -5927,19 +5883,42 @@ function addLaranjitoNote(title,msg,kind='info'){
   renderLaranjitoNotify();
 }
 function renderLaranjitoNotify(){
-  initLaranjitoNotifyImage();
-  updateBodyRoleClass();
   const btn=document.getElementById('laranjitoNotify');
   const badge=document.getElementById('laranjitoNotifyBadge');
   const panel=document.getElementById('laranjitoNotifyPanel');
   if(!btn||!badge||!panel) return;
+
+
+  try{
+    const img=document.getElementById('laranjitoNotifyImg');
+    const btn=document.getElementById('laranjitoNotify');
+    if(img && !img.dataset.ready){
+      img.dataset.ready='1';
+      const urls=[
+        '/colaborador/mascote%20feliz1.png',
+        'https://moveisdolar.com.br/colaborador/mascote%20feliz1.png',
+        (typeof LARANJITO!=='undefined' && LARANJITO)?LARANJITO:''
+      ].filter(Boolean);
+      let ix=0;
+      img.onerror=function(){
+        ix++;
+        if(ix<urls.length){ this.src=urls[ix]; }
+        else{ if(btn) btn.classList.add('img-fail'); }
+      };
+      img.onload=function(){ if(btn) btn.classList.remove('img-fail'); };
+      img.src=urls[0];
+    }
+  }catch(e){}
+
   const visible = shouldShowLaranjitoBubble() && LARANJITO_NOTES.length>0;
   btn.style.display = visible ? 'flex' : 'none';
   if(!visible){panel.classList.remove('show'); return;}
+
   btn.classList.toggle('has-notes', LARANJITO_UNREAD>0);
   btn.classList.toggle('no-new', LARANJITO_UNREAD<=0);
   badge.textContent=String(LARANJITO_UNREAD||0);
   badge.style.display=(LARANJITO_UNREAD>0)?'flex':'none';
+
   panel.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px">
     <strong>🍊 Alertas do Laranjito</strong>
     <button class="btn soft" onclick="clearLaranjitoNotes()">Marcar lidas</button>
@@ -5950,19 +5929,18 @@ function toggleLaranjitoNotifyPanel(){
   if(panel) panel.classList.toggle('show');
 }
 function clearLaranjitoNotes(){
-  // Não apaga as mensagens; limpa apenas o contador vermelho.
+  // Não apaga as mensagens. Apenas limpa o contador vermelho da bolinha.
   LARANJITO_UNREAD=0;
   try{localStorage.setItem(currentSessionNoticeKey(),'1')}catch(e){}
   renderLaranjitoNotify();
 }
 function showLaranjitoOncePerAccess(){
+  // A bolinha aparece uma vez por acesso/login. Não joga mais toast sozinho toda hora.
   try{
-    initLaranjitoNotifyImage();
-    renderLaranjitoNotify();
     const k=currentSessionNoticeKey();
     if(localStorage.getItem(k)==='1') return;
     const panel=document.getElementById('laranjitoNotifyPanel');
-    if(panel && LARANJITO_NOTES.length && shouldShowLaranjitoBubble()){
+    if(panel && LARANJITO_NOTES.length){
       setTimeout(()=>panel.classList.add('show'),700);
       localStorage.setItem(k,'1');
     }
@@ -5971,7 +5949,7 @@ function showLaranjitoOncePerAccess(){
 
 function saveSession(){try{const data={usuarioAtual,exp:Date.now()+60*60*1000}; localStorage.setItem(SESSION_KEY, JSON.stringify(data));}catch(e){}}
 function clearSession(){try{localStorage.removeItem(SESSION_KEY);}catch(e){}}
-function restoreSession(){try{const raw=localStorage.getItem(SESSION_KEY); if(!raw) return false; const data=JSON.parse(raw); if(!data || !data.usuarioAtual || !data.exp || Date.now()>data.exp){localStorage.removeItem(SESSION_KEY); return false;} usuarioAtual=data.usuarioAtual; try{updateBodyRoleClass();initLaranjitoNotifyImage()}catch(e){} return true;}catch(e){return false;}}
+function restoreSession(){try{const raw=localStorage.getItem(SESSION_KEY); if(!raw) return false; const data=JSON.parse(raw); if(!data || !data.usuarioAtual || !data.exp || Date.now()>data.exp){localStorage.removeItem(SESSION_KEY); return false;} usuarioAtual=data.usuarioAtual; return true;}catch(e){return false;}}
 function currentUserKey(){return usuarioAtual?.tipo==='master'?'MASTER':(usuarioAtual?.login || `${usuarioAtual?.nome||''}_${usuarioAtual?.filial||''}`)}
 
 const loginScreen=document.getElementById('loginScreen');
@@ -6520,7 +6498,7 @@ function openCrediaristaPanel(login, filial, nome){
   detailScreen.classList.remove('hidden');
   return renderCrediaristaDetail(ent);
 }
-function openThirdChargePanel(){const ent=thirdChargeEntity(); currentDetailRef={type:'terceiro',filial:'FTER',nome:ent.nome}; mascotCongrats(ent); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); try{renderLaranjitoNotify(); showLaranjitoOncePerAccess()}catch(e){}; renderTerceiroDetail(ent)}
+function openThirdChargePanel(){const ent=thirdChargeEntity(); currentDetailRef={type:'terceiro',filial:'FTER',nome:ent.nome}; mascotCongrats(ent); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); renderTerceiroDetail(ent)}
 
 // Clique blindado dos cards especiais: não depende de onclick inline.
 document.addEventListener('click', function(ev){
@@ -7934,92 +7912,6 @@ function isUltimoDiaMes23(){
   return tomorrow.getDate()===1 && now.getHours()>=23;
 }
 
-
-function getCurrentDashboardCSSForSnapshot(){
-  try{
-    return Array.from(document.querySelectorAll('style')).map(s=>s.textContent||'').join('\n');
-  }catch(e){return ''}
-}
-function captureFrozenCommissionCards(ent){
-  try{
-    if(!ent) return '';
-    const prevDetailHTML=detailScreen.innerHTML;
-    const prevDetailClass=detailScreen.className;
-    const prevMainClass=document.getElementById('mainScreen')?.className||'';
-    const prevCurrent=currentDetailRef ? {...currentDetailRef} : null;
-    const prevScrollX=window.scrollX, prevScrollY=window.scrollY;
-    let html='';
-    try{
-      // Renderiza temporariamente a tela individual para capturar exatamente os cards atuais.
-      document.getElementById('mainScreen')?.classList.add('hidden');
-      detailScreen.classList.remove('hidden');
-      openEntity(ent);
-
-      const selectors=[
-        '.glass.panel.sales-panel',
-        '#detailScreen > div.detail-top > div:nth-child(2) > div.glass.panel.commission-card',
-        '#detailScreen > div.detail-top > div.glass.panel > div.mega-progress',
-        '#detailScreen > div.detail-top > div.glass.panel > div.meta-grid',
-        '#detailScreen > div.detail-top > div.glass.panel > div.glass.panel > div'
-      ];
-      const seen=new Set();
-      const parts=[];
-      selectors.forEach(sel=>{
-        document.querySelectorAll(sel).forEach(node=>{
-          if(!node || seen.has(node)) return;
-          seen.add(node);
-          parts.push(node.cloneNode(true).outerHTML);
-        });
-      });
-      const nome=ent.type==='filial'?filialLabel(ent.filial):esc(ent.nome||ent.login||'');
-      html=`<div class="frozen-cards-sheet">
-        <div class="frozen-cards-head">
-          <h1>📌 Comissionamento congelado — ${nome}</h1>
-          <div class="small muted">Salvo em ${new Date().toLocaleString('pt-BR')} · Filial ${esc(ent.filial||'')}</div>
-        </div>
-        <div class="frozen-cards-grid">${parts.join('')}</div>
-      </div>`;
-    }finally{
-      detailScreen.innerHTML=prevDetailHTML;
-      detailScreen.className=prevDetailClass;
-      const main=document.getElementById('mainScreen'); if(main) main.className=prevMainClass;
-      currentDetailRef=prevCurrent;
-      try{window.scrollTo(prevScrollX,prevScrollY)}catch(e){}
-      try{renderLaranjitoNotify()}catch(e){}
-    }
-    return html || '';
-  }catch(e){
-    console.error('Erro ao capturar cards congelados:',e);
-    return '';
-  }
-}
-function fallbackSnapshotCardsHTML(row){
-  try{
-    if(!row) return '';
-    const cells=[
-      ['Pendente', R(row.pendente||0)],
-      ['Recebido', R(row.recebido||0)],
-      ['Meta geral', pct(row.meta_geral||0)],
-      ['Grave recebido', R(row.grave_rec||0)],
-      ['Alerta recebido', R(row.alerta_rec||0)],
-      ['Atenção recebido', R(row.atencao_rec||0)],
-      ['Venda realizada', R(row.venda_real||0)],
-      ['Serviço realizado', R(row.servico_real||0)],
-      ['Caminhão realizado', R(row.caminhao_real||0)],
-      ['Comissão vendas', R(row.comissao_vendas||0)],
-      ['Comissão serviços', R(row.comissao_servicos||0)],
-      ['Comissão caminhão', R(row.comissao_caminhao||0)],
-      ['Bônus meta', R(row.bonus_meta||0)],
-      ['Total previsto', R(row.total_previsto||0)]
-    ];
-    return `<div class="frozen-cards-sheet">
-      <div class="frozen-cards-head"><h1>📌 Comissionamento congelado — ${esc(row.nome||'')}</h1><div class="small muted">${esc(row.tipo||'')} · ${esc(row.filial||'')}</div></div>
-      <div class="meta-grid">${cells.map(([k,v])=>`<div class="metric"><div class="k">${esc(k)}</div><div class="v">${v}</div></div>`).join('')}</div>
-    </div>`;
-  }catch(e){return ''}
-}
-
-
 function snapshotComissaoEntidade(ent){
   const meta=calcMeta(ent); const rec=_recebResumo(ent); let c={};
   try{ if(ent.type==='vendedor'||ent.type==='filial') c=calcCommissionSummary(ent)||{}; }catch(e){c={erro:String(e)}}
@@ -8061,63 +7953,114 @@ function findEntityBySnapshotRow(row){
   const key=String(row.key||'');
   const nome=String(row.nome||'');
   const filial=String(row.filial||'');
-  const buckets=[
-    ...flattenVendedores(),
-    ...flattenFiliais(),
-    ...crediaristaEntities(),
-    thirdChargeEntity()
-  ].filter(Boolean);
-  return buckets.find(e=>String(_comEntKey(e))===key)
-      || buckets.find(e=>normName(e.nome||'')===normName(nome) && String(e.filial||'')===filial)
-      || buckets.find(e=>normName(e.nome||'')===normName(nome))
+  let buckets=[];
+  try{buckets=[...buckets,...flattenVendedores()]}catch(e){}
+  try{buckets=[...buckets,...flattenFiliais()]}catch(e){}
+  try{buckets=[...buckets,...crediaristaEntities()]}catch(e){}
+  try{buckets=[...buckets,thirdChargeEntity()]}catch(e){}
+  const getKey=(e)=>{try{return (typeof _comEntKey==='function')?_comEntKey(e):`${e.type||'ent'}::${e.filial||''}::${e.login||e.nome||''}`}catch(_){return ''}};
+  return buckets.find(e=>String(getKey(e))===key)
+      || buckets.find(e=>normName(e.nome)===normName(nome) && String(e.filial||'')===filial)
+      || buckets.find(e=>normName(e.nome)===normName(nome))
       || null;
+}
+function snapshotHtmlFallbackFromRow(row,month){
+  try{
+    const R2=(v)=>typeof R==='function'?R(Number(v||0)):('R$ '+Number(v||0).toFixed(2).replace('.',','));
+    const pct2=(v)=>typeof pct==='function'?pct(Number(v||0)):(Number(v||0).toFixed(0)+'%');
+    return `<div class="snap-sheet"><style>
+      .snap-sheet{width:1120px;max-width:100%;margin:0 auto;background:#0d0f14;color:#f3f6ff;font-family:Inter,Arial,sans-serif;padding:22px;border-radius:22px}
+      .snap-head{border:1px solid rgba(255,255,255,.12);background:#161922;border-radius:18px;padding:16px 18px;margin-bottom:16px}.snap-head h1{margin:0;font-size:28px;color:#fff}.snap-sub{color:#aeb7ca;font-size:13px;margin-top:6px}
+      .snap-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.snap-card{border:1px solid rgba(255,255,255,.12);background:#151821;border-radius:16px;padding:16px}.snap-title{font-size:12px;text-transform:uppercase;color:#8c96ab;font-weight:900;letter-spacing:.08em}.snap-value{font-size:25px;font-weight:950;margin-top:8px}.green{color:#34d399}.orange{color:#f59e0b}.blue{color:#60a5fa}.red{color:#fb7185}
+      .snap-note{margin-top:14px;border:1px solid rgba(245,158,11,.35);background:rgba(245,158,11,.08);border-radius:16px;padding:14px;color:#fde68a;font-weight:800}
+    </style><div class="snap-head"><h1>${esc(row.nome||'')}</h1><div class="snap-sub">${esc(row.tipo||'')} · ${esc(row.filial||'')} · fechamento ${esc(month||'')}</div></div><div class="snap-grid">
+      <div class="snap-card"><div class="snap-title">Meta cobrança</div><div class="snap-value blue">${pct2(row.meta_geral||0)}</div></div>
+      <div class="snap-card"><div class="snap-title">Recebido</div><div class="snap-value green">${R2(row.recebido||0)}</div></div>
+      <div class="snap-card"><div class="snap-title">Vendas</div><div class="snap-value orange">${R2(row.comissao_vendas||0)}</div></div>
+      <div class="snap-card"><div class="snap-title">Serviços</div><div class="snap-value orange">${R2(row.comissao_servicos||0)}</div></div>
+      <div class="snap-card"><div class="snap-title">Bônus meta</div><div class="snap-value green">${R2(row.bonus_meta||0)}</div></div>
+      <div class="snap-card"><div class="snap-title">Comissão caminhão</div><div class="snap-value orange">${R2(row.comissao_caminhao||0)}</div></div>
+      <div class="snap-card"><div class="snap-title">Faixa</div><div class="snap-value blue">${esc(row.faixa||'-')}</div></div>
+      <div class="snap-card"><div class="snap-title">Total previsto</div><div class="snap-value green">${R2(row.total_previsto||0)}</div></div>
+    </div><div class="snap-note">Resumo reconstruído automaticamente porque a tela visual completa não estava salva neste fechamento. Clique em salvar fechamento novamente para gerar o modelo visual completo.</div></div>`;
+  }catch(e){return `<div style="padding:20px;background:#111;color:#fff">Resumo indisponível: ${esc(String(e))}</div>`}
+}
+
+function getSnapshotHtmlFromSelection(){
+  const month=document.getElementById('histComMonth')?.value || _histComMeses()[0] || mesAtualComissao();
+  const key=document.getElementById('histComEntityView')?.value||'';
+  const snap=HIST_COMISSAO?.months?.[month];
+  const row=(snap?.entidades||[]).find(x=>String(x.key)===String(key));
+  if(!row) return {ok:false,msg:'Registro não encontrado no histórico.'};
+
+  let html=String(row.html_individual||'');
+  let fonte='tela congelada salva no fechamento';
+  if(!html){
+    const ent=findEntityBySnapshotRow(row);
+    if(ent){
+      try{html=String(snapshotEntityHTML(ent)||'');}catch(e){console.error('snapshotEntityHTML falhou',e); html='';}
+      fonte='gerada agora porque este fechamento antigo não tinha a tela salva';
+    }
+  }
+  if(!html){
+    html=snapshotHtmlFallbackFromRow(row,month);
+    fonte='resumo reconstruído do histórico salvo';
+  }
+  return {ok:true,html,row,month,fonte};
 }
 function abrirTelaComissionamentoCongeladaPorSelect(){
   try{
-    const month=document.getElementById('histComMonth')?.value || _histComMeses()[0] || mesAtualComissao();
-    const key=document.getElementById('histComEntityView')?.value||'';
-    const snap=HIST_COMISSAO?.months?.[month];
-    const row=(snap?.entidades||[]).find(x=>String(x.key)===String(key));
-    if(!row){toast('Registro não encontrado no histórico.'); return;}
+    const data=getSnapshotHtmlFromSelection();
+    if(!data.ok){toast(data.msg); return;}
 
-    let html=String(row.html_individual||'');
-    let fonte='cards congelados salvos no fechamento';
-    if(!html){
-      const ent=findEntityBySnapshotRow(row);
-      if(ent){
-        html=String(captureFrozenCommissionCards(ent)||'');
-        fonte='cards reconstruídos agora com os dados atuais';
-      }
+    let viewer=document.getElementById('snapshotInlineViewer');
+    if(!viewer){
+      const box=document.getElementById('histComResults') || document.querySelector('.hist-results') || document.body;
+      viewer=document.createElement('div');
+      viewer.id='snapshotInlineViewer';
+      box.prepend(viewer);
     }
-    if(!html){
-      html=fallbackSnapshotCardsHTML(row);
-      fonte='resumo reconstruído do histórico';
-    }
-    if(!html){toast('Tela congelada não encontrada para este registro.'); return;}
 
-    const css=getCurrentDashboardCSSForSnapshot();
-    const safeTitle=`Comissionamento ${String(row.nome||'')} ${month}`.replace(/[<>&]/g, m=>({ '<':'&lt;','>':'&gt;','&':'&amp;' }[m]));
-    const doc=`<!doctype html><html><head><meta charset="utf-8"><title>${safeTitle}</title>
-      <style>${css}</style>
-      <style>
-        body{margin:0;background:#080a0f;color:#f4f6fb;font-family:'DM Sans',Inter,Arial,sans-serif;padding:20px}
-        .snapshot-toolbar{position:sticky;top:0;z-index:999;display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0 auto 14px auto;max-width:1220px;padding:12px 14px;border:1px solid rgba(255,255,255,.14);background:rgba(15,18,26,.96);border-radius:16px}
-        .snapshot-toolbar button{border:0;border-radius:12px;padding:10px 14px;background:#ff8a00;color:#111;font-weight:900;cursor:pointer}
-        .snapshot-toolbar .hint{color:#b9c2d3;font-size:13px}
-        @media print{.snapshot-toolbar{display:none!important}body{padding:0;background:#080a0f}}
-      </style></head><body>
-      <div class="snapshot-toolbar"><div><strong>📌 Fechamento ${esc(month)}</strong><div class="hint">${esc(row.nome||'')} · Fonte: ${esc(fonte)}</div></div><button onclick="window.print()">🖨️ Imprimir / Salvar PDF</button></div>
-      ${html}
-      </body></html>`;
-    const w=window.open('','_blank');
-    if(!w){toast('Pop-up bloqueado pelo navegador. Permita pop-ups para este site.'); return;}
-    w.document.open();
-    w.document.write(doc);
-    w.document.close();
+    viewer.innerHTML=`<div class="snapshot-inline-toolbar">
+      <div><strong>📌 Tela congelada</strong><div class="hint">${esc(data.row.nome||'')} · ${esc(data.row.filial||'')} · ${esc(data.month)} · ${esc(data.fonte)}</div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn primary" onclick="imprimirSnapshotInline()">🖨️ Imprimir / Salvar PDF</button>
+        <button class="btn soft" onclick="abrirSnapshotNovaAba()">Abrir em nova aba</button>
+        <button class="btn soft" onclick="fecharSnapshotInline()">Fechar</button>
+      </div>
+    </div><div class="snapshot-inline-body" id="snapshotInlineBody">${data.html}</div>`;
+    viewer.classList.add('show');
+    viewer.scrollIntoView({behavior:'smooth',block:'start'});
   }catch(e){
-    console.error('Erro ao abrir tela congelada:', e);
-    toast('Erro ao abrir tela congelada: '+(e?.message||e));
+    console.error('Erro ao abrir tela congelada inline:', e);
+    toast('Erro ao abrir tela congelada: '+(e && e.message ? e.message : 'erro desconhecido'));
   }
+}
+function fecharSnapshotInline(){
+  const v=document.getElementById('snapshotInlineViewer');
+  if(v){v.classList.remove('show');v.innerHTML='';}
+}
+function imprimirSnapshotInline(){
+  try{
+    const data=getSnapshotHtmlFromSelection();
+    if(!data.ok){toast(data.msg);return;}
+    const w=window.open('','_blank');
+    if(!w){toast('Pop-up bloqueado pelo navegador.');return;}
+    w.document.open();
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Comissionamento</title><style>body{margin:0;background:#080a0f;color:#f4f6fb;font-family:Inter,Arial,sans-serif;padding:12px}@media print{body{padding:0}}</style></head><body>${data.html}<script>setTimeout(()=>window.print(),700)<\/script></body></html>`);
+    w.document.close();
+  }catch(e){console.error(e);toast('Erro ao imprimir tela congelada.');}
+}
+function abrirSnapshotNovaAba(){
+  try{
+    const data=getSnapshotHtmlFromSelection();
+    if(!data.ok){toast(data.msg);return;}
+    const w=window.open('','_blank');
+    if(!w){toast('Pop-up bloqueado pelo navegador.');return;}
+    w.document.open();
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Comissionamento</title><style>body{margin:0;background:#080a0f;color:#f4f6fb;font-family:Inter,Arial,sans-serif;padding:12px}</style></head><body>${data.html}</body></html>`);
+    w.document.close();
+  }catch(e){console.error(e);toast('Erro ao abrir nova aba.');}
 }
 
 function renderHistoricoComissaoResults(){
@@ -8307,8 +8250,8 @@ function renderSenhasTab(){
   <div class="section-head"><div><h2>👥 Usuários do dashboard</h2><div class="hint">As senhas permanecem congeladas e só mudam se você alterar aqui ou se surgir um usuário novo.</div></div></div>
   <div class="grid-cards">${users.map(u=>renderSenhaCard(u,false)).join('')}</div>`;
 }
-async function adminSalvarSenha(login){const box=document.getElementById(`pwd_msg_${login}`); const senha=(document.getElementById(`pwd_${login}`)?.value||'').trim(); if(!senha || senha.length<4){if(box) box.textContent='Digite uma senha com pelo menos 4 caracteres.'; return;} try{const fd=new FormData(); fd.append('action','admin_set_password'); fd.append('login',login); fd.append('new_password',senha); fd.append('must_change_password','0'); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(box) box.textContent=j.ok?'✅ Senha atualizada online.':'⚠️ Não consegui atualizar a senha.'; if(j.ok){await carregarCredenciaisOnline(); renderSenhasTab();}}catch(e){if(box) box.textContent='⚠️ Não consegui atualizar a senha.';}}
-async function adminMarcarTroca(login){const box=document.getElementById(`pwd_msg_${login}`); try{const fd=new FormData(); fd.append('action','admin_force_change'); fd.append('login',login); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(box) box.textContent=j.ok?'✅ Usuário marcado para trocar a senha no próximo acesso.':'⚠️ Não consegui marcar troca de senha.'; if(j.ok){await carregarCredenciaisOnline(); renderSenhasTab();}}catch(e){if(box) box.textContent='⚠️ Não consegui marcar troca de senha.';}}
+async function adminSalvarSenha(login){const k=normalizeLoginAlias(login); const box=document.getElementById(`pwd_msg_${login}`)||document.getElementById(`pwd_msg_${k}`); const senha=(document.getElementById(`pwd_${login}`)?.value||document.getElementById(`pwd_${k}`)?.value||'').trim(); if(!senha || senha.length<4){if(box) box.textContent='Digite uma senha com pelo menos 4 caracteres.'; return;} try{const fd=new FormData(); fd.append('action','admin_set_password'); fd.append('login',k); fd.append('new_password',senha); fd.append('must_change_password','0'); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){aplicarSenhaLocal(k,senha,false); await carregarCredenciaisOnline(); aplicarSenhaLocal(k,senha,false); if(box) box.textContent='✅ Senha atualizada. O usuário já pode entrar com a nova senha.'; renderSenhasTab();}else{if(box) box.textContent='⚠️ Não consegui atualizar a senha online.';}}catch(e){if(box) box.textContent='⚠️ Não consegui atualizar a senha online.';}}
+async function adminMarcarTroca(login){const k=normalizeLoginAlias(login); const box=document.getElementById(`pwd_msg_${login}`)||document.getElementById(`pwd_msg_${k}`); try{const fd=new FormData(); fd.append('action','admin_force_change'); fd.append('login',k); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){const atual=(getAuthUser(k)?.password||'teste10'); aplicarSenhaLocal(k,atual,true); await carregarCredenciaisOnline(); aplicarSenhaLocal(k,atual,true); if(box) box.textContent='✅ Usuário marcado para trocar a senha no próximo acesso.'; renderSenhasTab();}else{if(box) box.textContent='⚠️ Não consegui marcar troca de senha.';}}catch(e){if(box) box.textContent='⚠️ Não consegui marcar troca de senha.';}}
 async function adminResolverReset(login){try{const fd=new FormData(); fd.append('action','resolve_reset'); fd.append('login',login); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){toast('Solicitação resolvida. Usuário terá que criar nova senha no próximo acesso.','success'); await carregarCredenciaisOnline(); renderSenhasTab();}else{toast('Não consegui resolver a solicitação.')}}catch(e){toast('Não consegui resolver a solicitação.')}}
 async function adminLimparHistoricoReset(mode='resolved'){try{const fd=new FormData(); fd.append('action','clear_reset_history'); fd.append('mode',mode); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){toast(mode==='all'?'Solicitações limpas da tela.':'Histórico de solicitações limpo.','success'); await carregarCredenciaisOnline(); renderSenhasTab();}else{toast('Não consegui limpar o histórico.')}}catch(e){toast('Não consegui limpar o histórico.')}}
 
@@ -8395,9 +8338,9 @@ function closeFirstAccess(){document.getElementById('firstAccessModal').classLis
 function openRecuperarSenha(){document.getElementById('recLogin').value=document.getElementById('loginUser').value||''; document.getElementById('recObs').value=''; document.getElementById('recMsg').textContent=''; document.getElementById('recoverModal').classList.add('show')}
 function closeRecover(){document.getElementById('recoverModal').classList.remove('show')}
 async function enviarRecuperacaoSenha(){const login=(document.getElementById('recLogin').value||'').trim().toLowerCase(); const obs=(document.getElementById('recObs').value||'').trim(); const box=document.getElementById('recMsg'); if(!login){box.textContent='Informe o usuário.'; return;} try{const fd=new FormData(); fd.append('action','request_reset'); fd.append('login',login); fd.append('obs',obs); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); box.textContent=j.ok?'✅ Solicitação enviada ao Master.':'⚠️ Não consegui enviar a solicitação.';}catch(e){box.textContent='⚠️ Não consegui enviar a solicitação.';}}
-async function salvarPrimeiroAcesso(){const login=(document.getElementById('faLogin').value||'').trim().toLowerCase(); const atual=(document.getElementById('faCurrentPass').value||'').trim(); const nova=(document.getElementById('faNewPass').value||'').trim(); const nova2=(document.getElementById('faNewPass2').value||'').trim(); const box=document.getElementById('faMsg'); box.textContent=''; if(!login||!atual||!nova||!nova2){box.textContent='Preencha todos os campos.'; return;} if(nova.length<4){box.textContent='A nova senha deve ter pelo menos 4 caracteres.'; return;} if(nova!==nova2){box.textContent='A confirmação da senha não confere.'; return;} const auth=getAuthUser(login); if(!auth || String(auth.password)!==atual){box.textContent='Usuário ou senha atual inválidos.'; return;} try{const fd=new FormData(); fd.append('action','change_password'); fd.append('login',login); fd.append('current_password',atual); fd.append('new_password',nova); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); box.textContent=j.ok?'✅ Senha alterada com sucesso. Entre com a nova senha.':'⚠️ Não consegui alterar a senha.'; if(j.ok){await carregarCredenciaisOnline(); document.getElementById('loginPass').value=''; setTimeout(()=>{closeFirstAccess();},700);}}catch(e){box.textContent='⚠️ Não consegui alterar a senha.';}}
+async function salvarPrimeiroAcesso(){const login=normalizeLoginAlias(document.getElementById('faLogin').value||''); const atual=(document.getElementById('faCurrentPass').value||'').trim(); const nova=(document.getElementById('faNewPass').value||'').trim(); const nova2=(document.getElementById('faNewPass2').value||'').trim(); const box=document.getElementById('faMsg'); box.textContent=''; if(!login||!atual||!nova||!nova2){box.textContent='Preencha todos os campos. A senha padrão inicial é teste10.'; return;} if(nova.length<4){box.textContent='A nova senha deve ter pelo menos 4 caracteres.'; return;} if(nova!==nova2){box.textContent='A confirmação da senha não confere.'; return;} const auth=getAuthUser(login); if(!auth || String(auth.password)!==atual){box.textContent='Usuário ou senha atual inválidos. No primeiro acesso, use a senha padrão teste10 ou a senha definida pelo Master.'; return;} try{const fd=new FormData(); fd.append('action','change_password'); fd.append('login',login); fd.append('current_password',atual); fd.append('new_password',nova); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){aplicarSenhaLocal(login,nova,false); await carregarCredenciaisOnline(); aplicarSenhaLocal(login,nova,false); box.textContent='✅ Senha alterada com sucesso. Entre com a nova senha.'; document.getElementById('loginPass').value=''; setTimeout(()=>{closeFirstAccess();},700);}else{box.textContent='⚠️ Não consegui alterar a senha online.';}}catch(e){box.textContent='⚠️ Não consegui alterar a senha online.';}}
 async function fazerLogin(){
-  const u=(document.getElementById('loginUser').value||'').trim().toLowerCase();
+  const u=normalizeLoginAlias(document.getElementById('loginUser').value||'');
   const s=(document.getElementById('loginPass').value||'').trim();
   const msg=document.getElementById('loginMsg');
   msg.textContent='';
@@ -8441,7 +8384,7 @@ async function fazerLogin(){
   msg.textContent='Login ou senha inválidos.';
 }
 async function abrirApp(){
-  try{updateBodyRoleClass();initLaranjitoNotifyImage()}catch(e){}
+  try{document.body.classList.toggle('master-view', String(usuarioAtual?.tipo||'').toLowerCase()==='master'); document.body.classList.toggle('diretor-view', String(usuarioAtual?.tipo||'').toLowerCase()==='diretor');}catch(e){}
  loginScreen.classList.add('hidden'); app.classList.remove('hidden'); if(usuarioAtual.tipo==='master'){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); const isDiretor=usuarioAtual?.roleLabel==='Diretor Comercial'; userBadge.textContent=isDiretor?'👑 Diretor Comercial':'👑 Master'; masterTabs.classList.remove('hidden'); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{const t=btn.dataset.tab; btn.classList.toggle('hidden', isDiretor && ['cobrancas','senhas'].includes(t));}); setMainTab('vendedores')} else if(usuarioAtual.is_viewer){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); userBadge.textContent='📺 Painel'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); listSection.classList.add('hidden'); metaSection.classList.add('hidden'); logSection.classList.add('hidden'); avisosSection.classList.add('hidden'); senhasSection.classList.add('hidden'); histSection.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden');} else {document.getElementById('kpis').classList.add('hidden'); userBadge.textContent=usuarioAtual.is_terceiro?`🤝 ${usuarioAtual.nome}`:(usuarioAtual.is_crediarista?`🧾 ${usuarioAtual.nome}`:(usuarioAtual.is_gerente?`🏬 ${usuarioAtual.filial}`:`👤 ${usuarioAtual.nome}`)); masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(usuarioAtual.is_terceiro){openThirdChargePanel()} else if(usuarioAtual.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login}) }
   setTimeout(()=>{tentarAtualizarOnlineDepoisLogin();}, 80);
 }
