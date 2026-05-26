@@ -2460,25 +2460,6 @@ EMAIL_RECUPERACAO = "sac@moveisdolar.com.br"
 cred_path    = os.path.join(pasta, "credenciais_vendedores.txt")
 cred_state_path = os.path.join(pasta, "credenciais_dashboard.json")
 
-# Senha padrão de primeiro acesso para todos os usuários comuns.
-# Master e Diretor Comercial continuam preservados separadamente.
-SENHA_PADRAO_COLABORADOR = "teste10"
-
-def _resolver_senha_colaborador(estado_ant):
-    """
-    Regra nova:
-    - usuário comum sem senha definitiva entra com teste10 e troca no primeiro acesso;
-    - se o Master definiu uma senha e must_change_password=False, preserva essa senha;
-    - se o usuário já trocou a senha no primeiro acesso, preserva essa senha;
-    - Master/Diretor não passam por esta função.
-    """
-    try:
-        if isinstance(estado_ant, dict) and estado_ant.get("password") and estado_ant.get("must_change_password") is False:
-            return str(estado_ant.get("password")), False
-    except Exception:
-        pass
-    return SENHA_PADRAO_COLABORADOR, True
-
 def _load_json_safe(path, default):
     try:
         if os.path.exists(path):
@@ -2528,13 +2509,14 @@ for _, row in df_vend.iterrows():
     is_ger    = bool(row["is_gerente"])
     login     = normalizar_login(nome_exib)
     chave     = f"{login}_{filial}"
-    senha_inicial = SENHA_PADRAO_COLABORADOR
+    senha_inicial = creds_salvas.get(chave) or (login.upper() + str(random.randint(100,999)))
     login_fin = login
     if login in credenciais and credenciais[login]["filial"] != filial:
         login_fin = f"{login}_{filial.lower()}"
 
     estado_ant = cred_state.get("users", {}).get(login_fin, {})
-    senha_atual, precisa_trocar = _resolver_senha_colaborador(estado_ant)
+    senha_atual = estado_ant.get("password") or senha_inicial
+    precisa_trocar = bool(estado_ant.get("must_change_password", senha_atual == senha_inicial))
 
     credenciais[login_fin] = {
         "senha":      senha_atual,
@@ -2562,9 +2544,10 @@ for _, row in df_vend.iterrows():
 
 # Usuário especial de cobrança terceirizada
 _chave_cob10 = COBRANCA10_LOGIN
-_senha_cob10_inicial = SENHA_PADRAO_COLABORADOR
+_senha_cob10_inicial = creds_salvas.get(f"{COBRANCA10_LOGIN}_{COBRANCA10_FILIAL}") or ("COB10" + str(random.randint(100,999)))
 _estado_cob10 = cred_state.get("users", {}).get(_chave_cob10, {})
-_senha_cob10, _precisa_cob10 = _resolver_senha_colaborador(_estado_cob10)
+_senha_cob10 = _estado_cob10.get("password") or _senha_cob10_inicial
+_precisa_cob10 = bool(_estado_cob10.get("must_change_password", _senha_cob10 == _senha_cob10_inicial))
 _terceiro_pendente = sum(float(x.get("pendente", 0) or 0) for x in _clientes_terceiro_lista)
 credenciais[_chave_cob10] = {
     "senha": _senha_cob10,
@@ -2601,9 +2584,10 @@ recebimentos_crediarista_js = {}
 # Usuários CREDIARISTAS por filial
 for _fil_cred, _login_cred in CREDIARISTAS_FILIAIS.items():
     _nome_cred = nome_crediarista_filial(_fil_cred, _login_cred)
-    _senha_ini = SENHA_PADRAO_COLABORADOR
+    _senha_ini = creds_salvas.get(f"{_login_cred}_{_fil_cred}") or creds_salvas.get(_login_cred) or (_login_cred.upper() + str(random.randint(100,999)))
     _estado_cred = cred_state.get("users", {}).get(_login_cred, {})
-    _senha_cred, _troca_cred = _resolver_senha_colaborador(_estado_cred)
+    _senha_cred = _estado_cred.get("password") or _senha_ini
+    _troca_cred = bool(_estado_cred.get("must_change_password", _senha_cred == _senha_ini))
     _pend_cred = sum(float(x.get("pendente", 0) or 0) for _fx in ['grave','alerta','atencao'] for x in clientes_crediarista_js.get(_login_cred, {}).get(_fx, []))
     _pago_cred = sum(float(x.get("pago", 0) or 0) for _fx in ['grave','alerta','atencao'] for x in recebimentos_crediarista_js.get(_login_cred, {}).get(_fx, []))
     credenciais[_login_cred] = {
@@ -5611,6 +5595,29 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 #laranjitoNotify.img-fail #laranjitoNotifyFallback{display:block!important}
 body.master-view #laranjitoNotify, body.diretor-view #laranjitoNotify{display:none!important}
 
+
+/* ===== AJUSTE: sem bolinha fixa; prêmio ativo pulsando ===== */
+#laranjitoNotify,
+#laranjitoNotifyPanel{
+  display:none!important;
+  visibility:hidden!important;
+  pointer-events:none!important;
+}
+@keyframes bonusPremiacaoPulse{
+  0%{transform:translateY(0) scale(1); box-shadow:0 0 0 1px rgba(249,168,50,.30),0 0 12px rgba(249,168,50,.18); background:rgba(249,168,50,.07)}
+  50%{transform:translateY(-1px) scale(1.012); box-shadow:0 0 0 2px rgba(249,168,50,.50),0 0 30px rgba(249,168,50,.40); background:rgba(249,168,50,.14)}
+  100%{transform:translateY(0) scale(1); box-shadow:0 0 0 1px rgba(249,168,50,.30),0 0 12px rgba(249,168,50,.18); background:rgba(249,168,50,.07)}
+}
+.bonus-box .bonus-item.active{
+  border-color:rgba(249,168,50,.70)!important;
+  animation:bonusPremiacaoPulse 1.15s ease-in-out infinite!important;
+}
+.bonus-box .bonus-item.active span:last-child{
+  color:#fff7d6!important;
+  text-shadow:0 0 14px rgba(249,168,50,.45);
+  font-weight:950;
+}
+
 </style>
 </head>
 <body>
@@ -5681,7 +5688,7 @@ body.master-view #laranjitoNotify, body.diretor-view #laranjitoNotify{display:no
 <div id="toast" class="toast"></div>
 <div id="phoneModal" class="modal"><div class="glass modal-card"><h3 style="margin:0">Escolher contato</h3><div class="sub">Selecione para abrir o WhatsApp</div><div id="phoneList" class="modal-list"></div><button class="btn soft" style="width:100%;margin-top:10px" onclick="closePhoneModal()">Fechar</button></div></div>
 <div id="bellModal" class="modal"><div class="glass modal-card" style="width:min(760px,100%)"><h3 style="margin:0">🔔 Avisos e mensagens</h3><div class="sub">Atualizações enviadas pelo Master para você.</div><div id="bellList" class="modal-list" style="max-height:70vh;overflow:auto"></div><button class="btn soft" style="width:100%;margin-top:10px" onclick="closeBell()">Fechar</button></div></div>
-<div id="firstAccessModal" class="modal"><div class="glass modal-card" style="width:min(560px,100%)"><h3 style="margin:0">🔑 Primeiro acesso / troca de senha</h3><div class="sub">Defina sua nova senha para entrar no dashboard. Senha padrão inicial: <b>teste10</b>.</div><div class="modal-list"><div class="input-card"><label>Usuário</label><input id="faLogin" placeholder="Ex: joaodasilva"></div><div class="input-card"><label>Senha atual</label><input id="faCurrentPass" type="password" placeholder="Senha atual"></div><div class="input-card"><label>Nova senha</label><input id="faNewPass" type="password" placeholder="Nova senha"></div><div class="input-card"><label>Confirmar nova senha</label><input id="faNewPass2" type="password" placeholder="Confirmar nova senha"></div><div id="faMsg" class="note"></div></div><div style="display:flex;gap:10px;margin-top:10px"><button class="btn primary" style="flex:1" onclick="salvarPrimeiroAcesso()">💾 Salvar nova senha</button><button class="btn soft" style="flex:1" onclick="closeFirstAccess()">Fechar</button></div></div></div>
+<div id="firstAccessModal" class="modal"><div class="glass modal-card" style="width:min(560px,100%)"><h3 style="margin:0">🔑 Primeiro acesso / troca de senha</h3><div class="sub">Defina sua nova senha para entrar no dashboard.</div><div class="modal-list"><div class="input-card"><label>Usuário</label><input id="faLogin" placeholder="Ex: joaodasilva"></div><div class="input-card"><label>Senha atual</label><input id="faCurrentPass" type="password" placeholder="Senha atual"></div><div class="input-card"><label>Nova senha</label><input id="faNewPass" type="password" placeholder="Nova senha"></div><div class="input-card"><label>Confirmar nova senha</label><input id="faNewPass2" type="password" placeholder="Confirmar nova senha"></div><div id="faMsg" class="note"></div></div><div style="display:flex;gap:10px;margin-top:10px"><button class="btn primary" style="flex:1" onclick="salvarPrimeiroAcesso()">💾 Salvar nova senha</button><button class="btn soft" style="flex:1" onclick="closeFirstAccess()">Fechar</button></div></div></div>
 <div id="recoverModal" class="modal"><div class="glass modal-card" style="width:min(560px,100%)"><h3 style="margin:0">📩 Recuperar senha</h3><div class="sub">O pedido será enviado para o Master no dashboard e também pode ser registrado em sac@moveisdolar.com.br.</div><div class="modal-list"><div class="input-card"><label>Usuário</label><input id="recLogin" placeholder="Seu usuário"></div><div class="input-card"><label>Nome / observação</label><input id="recObs" placeholder="Ex: sou da filial F4"></div><div id="recMsg" class="note"></div></div><div style="display:flex;gap:10px;margin-top:10px"><button class="btn primary" style="flex:1" onclick="enviarRecuperacaoSenha()">📨 Enviar solicitação</button><button class="btn soft" style="flex:1" onclick="closeRecover()">Fechar</button></div></div></div>
 
 
@@ -5816,34 +5823,8 @@ let _pendingFirstAccess=null;
 let HIST_DASH=__JS_HIST_DASH__||{dates:{}};
 let HIST_COMISSAO={months:{}};
 const SESSION_KEY='mdl_dashboard_session_v1';
-function normalizeLoginAlias(login){
-  let k=String(login||'').trim().toLowerCase();
-  // tolerância para erro comum de digitação da YASMIM
-  if(k==='yasmin' && (CREDS?.yasmim || AUTH_STATE?.users?.yasmim)) k='yasmim';
-  return k;
-}
-function getAuthUser(login){
-  const k=normalizeLoginAlias(login);
-  if(k===LOGIN_DIRETOR.toLowerCase()) return AUTH_STATE?.director||null;
-  let u=(AUTH_STATE?.users||{})[k]||null;
-  if(!u && CREDS?.[k]){
-    u={login:k,password:CREDS[k].senha||'teste10',initial_password:CREDS[k].senha_inicial||'teste10',must_change_password:String(CREDS[k].senha||'')==='teste10',nome:CREDS[k].nome,filial:CREDS[k].filial,is_gerente:!!CREDS[k].is_gerente,is_crediarista:!!CREDS[k].is_crediarista,is_terceiro:!!CREDS[k].is_terceiro,only_cobranca:!!CREDS[k].only_cobranca};
-    AUTH_STATE.users=AUTH_STATE.users||{}; AUTH_STATE.users[k]=u;
-  }
-  return u;
-}
-function aplicarSenhaLocal(login,senha,mustChange=false){
-  const k=normalizeLoginAlias(login);
-  AUTH_STATE=AUTH_STATE||{users:{},director:{},password_reset_requests:[]};
-  if(k===LOGIN_DIRETOR.toLowerCase()){
-    AUTH_STATE.director=Object.assign({},AUTH_STATE.director||{}, {login:LOGIN_DIRETOR,password:senha,must_change_password:!!mustChange,nome:'Diretor Comercial'});
-  }else{
-    AUTH_STATE.users=AUTH_STATE.users||{};
-    AUTH_STATE.users[k]=Object.assign({},AUTH_STATE.users[k]||{}, CREDS?.[k]||{}, {login:k,password:senha,must_change_password:!!mustChange});
-    if(CREDS?.[k]){CREDS[k].senha=senha; CREDS[k].senha_inicial=CREDS[k].senha_inicial||'teste10';}
-  }
-}
-async function carregarCredenciaisOnline(){try{const r=await fetchComTimeout(API_CRED+'?_='+Date.now(),{},2500); const j=await r.json(); if(j.ok && j.data){AUTH_STATE=j.data; AUTH_STATE.users=AUTH_STATE.users||{}; Object.keys(CREDS||{}).forEach(k=>{if(!AUTH_STATE.users[k] && !CREDS[k].is_viewer){AUTH_STATE.users[k]={login:k,password:CREDS[k].senha||'teste10',initial_password:CREDS[k].senha_inicial||'teste10',must_change_password:String(CREDS[k].senha||'')==='teste10',nome:CREDS[k].nome,filial:CREDS[k].filial,is_gerente:!!CREDS[k].is_gerente,is_crediarista:!!CREDS[k].is_crediarista,is_terceiro:!!CREDS[k].is_terceiro,only_cobranca:!!CREDS[k].only_cobranca};}});}}catch(e){console.log('Falha ao carregar credenciais online',e);}}
+function getAuthUser(login){const k=String(login||'').trim().toLowerCase(); if(k===LOGIN_DIRETOR.toLowerCase()) return AUTH_STATE?.director||null; return (AUTH_STATE?.users||{})[k]||null}
+async function carregarCredenciaisOnline(){try{const r=await fetchComTimeout(API_CRED+'?_='+Date.now(),{},2500); const j=await r.json(); if(j.ok && j.data){AUTH_STATE=j.data;}}catch(e){console.log('Falha ao carregar credenciais online',e);}}
 
 async function carregarHistoricoOnline(){try{const r=await fetchComTimeout(API_HIST+'?_='+Date.now(),{},2500); const j=await r.json(); if(j.ok && j.data){HIST_DASH=j.data;}}catch(e){console.log('Falha ao carregar histórico online',e);}}
 async function carregarHistoricoComissaoOnline(){try{const r=await fetchComTimeout(API_COMIS+'?_='+Date.now(),{},3000); const j=await r.json(); if(j.ok && j.data){HIST_COMISSAO=j.data;}}catch(e){console.log('Falha ao carregar histórico de comissionamento',e);}}
@@ -5883,69 +5864,17 @@ function addLaranjitoNote(title,msg,kind='info'){
   renderLaranjitoNotify();
 }
 function renderLaranjitoNotify(){
+  // Bolinha fixa de notificação desativada a pedido.
   const btn=document.getElementById('laranjitoNotify');
+  const panel=document.getElementById('laranjitoNotifyPanel');
   const badge=document.getElementById('laranjitoNotifyBadge');
-  const panel=document.getElementById('laranjitoNotifyPanel');
-  if(!btn||!badge||!panel) return;
-
-
-  try{
-    const img=document.getElementById('laranjitoNotifyImg');
-    const btn=document.getElementById('laranjitoNotify');
-    if(img && !img.dataset.ready){
-      img.dataset.ready='1';
-      const urls=[
-        '/colaborador/mascote%20feliz1.png',
-        'https://moveisdolar.com.br/colaborador/mascote%20feliz1.png',
-        (typeof LARANJITO!=='undefined' && LARANJITO)?LARANJITO:''
-      ].filter(Boolean);
-      let ix=0;
-      img.onerror=function(){
-        ix++;
-        if(ix<urls.length){ this.src=urls[ix]; }
-        else{ if(btn) btn.classList.add('img-fail'); }
-      };
-      img.onload=function(){ if(btn) btn.classList.remove('img-fail'); };
-      img.src=urls[0];
-    }
-  }catch(e){}
-
-  const visible = shouldShowLaranjitoBubble() && LARANJITO_NOTES.length>0;
-  btn.style.display = visible ? 'flex' : 'none';
-  if(!visible){panel.classList.remove('show'); return;}
-
-  btn.classList.toggle('has-notes', LARANJITO_UNREAD>0);
-  btn.classList.toggle('no-new', LARANJITO_UNREAD<=0);
-  badge.textContent=String(LARANJITO_UNREAD||0);
-  badge.style.display=(LARANJITO_UNREAD>0)?'flex':'none';
-
-  panel.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px">
-    <strong>🍊 Alertas do Laranjito</strong>
-    <button class="btn soft" onclick="clearLaranjitoNotes()">Marcar lidas</button>
-  </div>` + LARANJITO_NOTES.map(n=>`<div class="laranjito-note"><div>${esc(n.title||'Aviso')}</div><div class="small">${esc(n.msg||'')}</div><div class="small">${esc(n.dt||'')}</div></div>`).join('');
+  if(btn){btn.style.display='none'; btn.classList.remove('has-notes','no-new','show');}
+  if(panel){panel.classList.remove('show'); panel.innerHTML='';}
+  if(badge){badge.textContent='0'; badge.style.display='none';}
 }
-function toggleLaranjitoNotifyPanel(){
-  const panel=document.getElementById('laranjitoNotifyPanel');
-  if(panel) panel.classList.toggle('show');
-}
-function clearLaranjitoNotes(){
-  // Não apaga as mensagens. Apenas limpa o contador vermelho da bolinha.
-  LARANJITO_UNREAD=0;
-  try{localStorage.setItem(currentSessionNoticeKey(),'1')}catch(e){}
-  renderLaranjitoNotify();
-}
-function showLaranjitoOncePerAccess(){
-  // A bolinha aparece uma vez por acesso/login. Não joga mais toast sozinho toda hora.
-  try{
-    const k=currentSessionNoticeKey();
-    if(localStorage.getItem(k)==='1') return;
-    const panel=document.getElementById('laranjitoNotifyPanel');
-    if(panel && LARANJITO_NOTES.length){
-      setTimeout(()=>panel.classList.add('show'),700);
-      localStorage.setItem(k,'1');
-    }
-  }catch(e){}
-}
+function toggleLaranjitoNotifyPanel(){ renderLaranjitoNotify(); }
+function clearLaranjitoNotes(){ LARANJITO_UNREAD=0; renderLaranjitoNotify(); }
+function showLaranjitoOncePerAccess(){ renderLaranjitoNotify(); }
 
 function saveSession(){try{const data={usuarioAtual,exp:Date.now()+60*60*1000}; localStorage.setItem(SESSION_KEY, JSON.stringify(data));}catch(e){}}
 function clearSession(){try{localStorage.removeItem(SESSION_KEY);}catch(e){}}
@@ -7055,7 +6984,15 @@ function renderCampaignSummary(ent){
 function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';const c=calcCommissionSummary(ent); const totalLiberado = c.elegivelMercantil && c.elegivelServicos; const totalExibido = totalLiberado ? c.totalPrevisto : 0; const moneyCell=(title,val,locked=false,extra='')=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''} ${extra}"><div class="k">${title}</div><div class="v">${R(val||0)}</div></div>`; const pctCell=(title,val,locked=false)=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''}"><div class="k">${title}</div><div class="v">${String(Number(val||0).toFixed(2)).replace('.',',')}%</div></div>`; return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,!c.rentUnlocked)}${moneyCell('Rentab 52,15%',c.rent52,!c.rentUnlocked)}${moneyCell('Rentab 55,50%',c.rent55,!c.rentUnlocked)}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo vendas ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)} · rentabilidades liberam ao bater 50% da meta de cobrança.</div></div>`}
 function backToMain(){currentDetailRef=null; try{renderLaranjitoNotify()}catch(e){}; detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden')}
 function renderMetaBox(title,color,obj){return `<div class="meta-card"><div class="meta-title">${title}</div><div class="meta-main" style="color:${color}">${pct(obj.perc||0)}</div><div class="meta-sub">Alvo: ${R(obj.alvo||0)}</div><div class="meta-sub">Recebido: ${R(obj.rec||0)}</div></div>`}
-function renderBonusBox(cfg,geral){const achieved=(geral>=100&&cfg.bonus_100)?100:(geral>=85&&cfg.bonus_85)?85:(geral>=75&&cfg.bonus_75)?75:(geral>=50&&cfg.bonus_50)?50:0; const items=[[50,cfg.bonus_50||'-'],[75,cfg.bonus_75||'-'],[85,cfg.bonus_85||'-'],[100,cfg.bonus_100||'-']];return `<div class="bonus-box"><h4>Faixas configuradas</h4><div class="bonus-list">${items.map(([p,t])=>`<div class="bonus-item ${achieved===p?'active':''}" style="${achieved===p?'box-shadow:0 0 0 2px rgba(59,130,246,.18),0 0 26px rgba(59,130,246,.2);animation:liquid 1.6s ease-in-out infinite alternate':''}"><div class="left"><span>🎯</span><span>${p}%</span></div><div style="display:flex;align-items:center;gap:10px">${achieved===p?`<img src="${LARANJITO}" alt="laranjito" style="width:34px;height:34px;border-radius:10px;object-fit:cover">`:''}<span>${esc(t)}</span></div></div>`).join('')}</div></div>`}
+function renderBonusBox(cfg,geral){
+  const items=[[50,cfg.bonus_50||'-'],[75,cfg.bonus_75||'-'],[85,cfg.bonus_85||'-'],[100,cfg.bonus_100||'-']];
+  return `<div class="bonus-box"><h4>Faixas configuradas</h4><div class="bonus-list">${items.map(([p,t])=>{
+    const ativo = Number(geral||0)>=p && String(t||'-')!=='-';
+    const laranjito = ativo ? `<img src="${LARANJITO}" alt="laranjito" style="width:34px;height:34px;border-radius:10px;object-fit:contain;background:transparent">` : '';
+    return `<div class="bonus-item ${ativo?'active':''}"><div class="left"><span>🎯</span><span>${p}%</span></div><div style="display:flex;align-items:center;gap:10px">${laranjito}<span>${esc(t)}</span></div></div>`;
+  }).join('')}</div></div>`
+}
+
 function renderSingleBars(ent,meta,big=false){const vals=[['Grave',meta.grave.pend,'var(--red)'],['Alerta',meta.alerta.pend,'var(--orange)'],['Atenção',meta.atencao.pend,'var(--yellow)'],['Recebido',Number(ent.pago||0),'var(--green)']]; const max=Math.max(1,...vals.map(v=>v[1])); return `<div class="glass big-chart-card" style="margin-top:0"><div class="legend-inline"><span><i class="dot" style="background:var(--red)"></i>Grave</span><span><i class="dot" style="background:var(--orange)"></i>Alerta</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção</span><span><i class="dot" style="background:var(--green)"></i>Recebido</span></div><div class="groupbars" style="justify-content:center"><div class="group" style="min-width:100%"><div class="bars" style="height:${big?320:260}px;justify-content:space-around;border-left:none">${vals.map(v=>`<div style="text-align:center"><div class="bar" style="width:${big?72:54}px;height:${Math.max(18,(v[1]/max)*(big?250:200))}px;background:linear-gradient(180deg,rgba(255,255,255,.18),transparent),linear-gradient(180deg,${v[2]},${v[2]})"><span class="wave one"></span><span class="wave two"></span><span class="bubble b1"></span><span class="bubble b2"></span><span class="bubble b3"></span></div><div class="glabel" style="margin-top:10px">${v[0]}<br><strong>${R(v[1])}</strong></div></div>`).join('')}</div></div></div></div>`}
 function recebKeyVend(ent){return `${ent.nome}_${ent.filial}`}
 
@@ -8025,6 +7962,7 @@ function abrirTelaComissionamentoCongeladaPorSelect(){
       <div><strong>📌 Tela congelada</strong><div class="hint">${esc(data.row.nome||'')} · ${esc(data.row.filial||'')} · ${esc(data.month)} · ${esc(data.fonte)}</div></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn primary" onclick="imprimirSnapshotInline()">🖨️ Imprimir / Salvar PDF</button>
+        <button class="btn soft" onclick="exportarComissionamentoIndividualXLS()">📊 Exportar XLS individual</button>
         <button class="btn soft" onclick="abrirSnapshotNovaAba()">Abrir em nova aba</button>
         <button class="btn soft" onclick="fecharSnapshotInline()">Fechar</button>
       </div>
@@ -8063,6 +8001,100 @@ function abrirSnapshotNovaAba(){
   }catch(e){console.error(e);toast('Erro ao abrir nova aba.');}
 }
 
+
+function _numXls(v){
+  const n=Number(v||0);
+  return isNaN(n)?0:n;
+}
+function _moneyPlain(v){
+  return Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function _pctPlain(v){
+  return Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'%';
+}
+function _safeFileName(txt){
+  return String(txt||'relatorio').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9_-]+/g,'_').replace(/^_+|_+$/g,'').slice(0,90)||'relatorio';
+}
+function _comissaoXlsRows(rows){
+  return (rows||[]).map(r=>`<tr>
+    <td>${esc(r.tipo||'')}</td>
+    <td>${esc(r.nome||'')}</td>
+    <td>${esc(r.filial||'')}</td>
+    <td>${esc(r.login||'')}</td>
+    <td>${_pctPlain(r.meta_geral||0)}</td>
+    <td>${_moneyPlain(r.pendente||0)}</td>
+    <td>${_moneyPlain(r.recebido||0)}</td>
+    <td>${_moneyPlain(r.recebido_conciliado||0)}</td>
+    <td>${Number(r.qtd_recebidos||0)}</td>
+    <td>${_moneyPlain(r.grave_alvo||0)}</td>
+    <td>${_moneyPlain(r.grave_rec||0)}</td>
+    <td>${_moneyPlain(r.alerta_alvo||0)}</td>
+    <td>${_moneyPlain(r.alerta_rec||0)}</td>
+    <td>${_moneyPlain(r.atencao_alvo||0)}</td>
+    <td>${_moneyPlain(r.atencao_rec||0)}</td>
+    <td>${_moneyPlain(r.venda_real||0)}</td>
+    <td>${_moneyPlain(r.servico_real||0)}</td>
+    <td>${_moneyPlain(r.caminhao_real||0)}</td>
+    <td>${esc(r.faixa||'')}</td>
+    <td>${_moneyPlain(r.comissao_vendas||0)}</td>
+    <td>${_moneyPlain(r.comissao_servicos||0)}</td>
+    <td>${_moneyPlain(r.comissao_caminhao||0)}</td>
+    <td>${_moneyPlain(r.bonus_meta||0)}</td>
+    <td>${_moneyPlain(r.rent48||0)}</td>
+    <td>${_moneyPlain(r.rent52||0)}</td>
+    <td>${_moneyPlain(r.rent55||0)}</td>
+    <td>${_moneyPlain(r.total_previsto||0)}</td>
+    <td>${r.elegivel_mercantil?'Sim':'Não'}</td>
+    <td>${r.elegivel_servicos?'Sim':'Não'}</td>
+    <td>${esc(r.observacao||'')}</td>
+  </tr>`).join('');
+}
+function _downloadHtmlXls(filename, html){
+  const full=`<!doctype html><html><head><meta charset="utf-8"><style>
+    body{font-family:Arial,sans-serif;color:#111827} h1{font-size:20px} h2{font-size:16px;margin-top:18px}
+    table{border-collapse:collapse;width:100%;margin-top:10px} th{background:#f59e0b;color:#111827;font-weight:bold}
+    th,td{border:1px solid #cbd5e1;padding:6px 8px;font-size:12px;vertical-align:top} .total{font-weight:bold;background:#ecfdf5}
+  </style></head><body>${html}</body></html>`;
+  const blob=new Blob(['\ufeff',full],{type:'application/vnd.ms-excel;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),15000);
+}
+function _comissaoXlsHtml(rows,month,titulo){
+  const totalPrev=(rows||[]).reduce((a,b)=>a+Number(b.total_previsto||0),0);
+  const totalVenda=(rows||[]).reduce((a,b)=>a+Number(b.comissao_vendas||0),0);
+  const totalServ=(rows||[]).reduce((a,b)=>a+Number(b.comissao_servicos||0),0);
+  const totalCam=(rows||[]).reduce((a,b)=>a+Number(b.comissao_caminhao||0),0);
+  const totalBonus=(rows||[]).reduce((a,b)=>a+Number(b.bonus_meta||0),0);
+  return `<h1>${esc(titulo)}</h1><div><strong>Mês:</strong> ${esc(month||'')} &nbsp; <strong>Gerado em:</strong> ${esc(new Date().toLocaleString('pt-BR'))}</div>
+  <h2>Resumo geral</h2><table><tr><th>Entidades</th><th>Comissão vendas</th><th>Comissão serviços</th><th>Comissão caminhão</th><th>Bônus meta</th><th>Total previsto</th></tr>
+  <tr class="total"><td>${(rows||[]).length}</td><td>${_moneyPlain(totalVenda)}</td><td>${_moneyPlain(totalServ)}</td><td>${_moneyPlain(totalCam)}</td><td>${_moneyPlain(totalBonus)}</td><td>${_moneyPlain(totalPrev)}</td></tr></table>
+  <h2>Detalhamento</h2><table><thead><tr>
+    <th>Tipo</th><th>Nome</th><th>Filial</th><th>Login</th><th>Meta cobrança</th><th>Pendente</th><th>Recebido</th><th>Recebido conciliado</th><th>Qtd recebidos</th>
+    <th>Alvo grave</th><th>Recebido grave</th><th>Alvo alerta</th><th>Recebido alerta</th><th>Alvo atenção</th><th>Recebido atenção</th>
+    <th>Venda real</th><th>Serviço real</th><th>Caminhão real</th><th>Faixa aplicada</th><th>Comissão vendas</th><th>Comissão serviços</th><th>Comissão caminhão</th><th>Bônus meta</th><th>Rentab 48%</th><th>Rentab 52,15%</th><th>Rentab 55,50%</th><th>Total previsto</th><th>Elegível mercantil</th><th>Elegível serviços</th><th>Observação</th>
+  </tr></thead><tbody>${_comissaoXlsRows(rows)}</tbody></table>`;
+}
+function exportarComissionamentoIndividualXLS(){
+  try{
+    const data=getSnapshotHtmlFromSelection();
+    if(!data.ok){toast(data.msg);return;}
+    const rows=[data.row];
+    const file=`comissionamento_${_safeFileName(data.month)}_${_safeFileName(data.row.nome||'individual')}.xls`;
+    _downloadHtmlXls(file,_comissaoXlsHtml(rows,data.month,`Relatório individual de comissionamento - ${data.row.nome||''}`));
+  }catch(e){console.error(e);toast('Erro ao exportar XLS individual.');}
+}
+function exportarComissionamentoTodosXLS(){
+  try{
+    const month=document.getElementById('histComMonth')?.value || _histComMeses()[0] || mesAtualComissao();
+    const snap=HIST_COMISSAO?.months?.[month];
+    const rows=[...(snap?.entidades||[])].sort((a,b)=>String(a.tipo).localeCompare(String(b.tipo),'pt-BR')||String(a.nome).localeCompare(String(b.nome),'pt-BR'));
+    if(!rows.length){toast('Nenhum comissionamento salvo para exportar.');return;}
+    const file=`comissionamento_todos_${_safeFileName(month)}.xls`;
+    _downloadHtmlXls(file,_comissaoXlsHtml(rows,month,'Relatório geral de comissionamento'));
+  }catch(e){console.error(e);toast('Erro ao exportar XLS geral.');}
+}
+
 function renderHistoricoComissaoResults(){
   const months=_histComMeses(); const current=document.getElementById('histComMonth')?.value || months[0] || mesAtualComissao();
   const box=document.getElementById('histComResults'); if(!box) return;
@@ -8070,7 +8102,7 @@ function renderHistoricoComissaoResults(){
   const saveInput=document.getElementById('histComMonthSave'); if(saveInput && !saveInput.value) saveInput.value=mesAtualComissao();
   if(!snap){box.innerHTML=`<div class="empty">Nenhum histórico salvo para ${esc(current)}. Clique em “Salvar fechamento do mês atual” para gravar o resultado visível agora.</div>`; return;}
   const rows=[...(snap.entidades||[])].sort((a,b)=>String(a.tipo).localeCompare(String(b.tipo),'pt-BR')||String(a.nome).localeCompare(String(b.nome),'pt-BR'));
-  box.innerHTML=`<div class="kpis">${makeKpi('Mês',esc(snap.month||current),'var(--blue)')}${makeKpi('Total previsto',R(snap.total_previsto||0),'var(--green)')}${makeKpi('Entidades',String(rows.length),'var(--orange)')}${makeKpi('Salvo em',esc((snap.atualizado_em_br||snap.gerado_em||'').replace('T',' ').slice(0,19)),'var(--blue)')}</div>`+`<div class="glass panel"><div class="form-grid"><div class="input-card"><label>Ver tela congelada individual</label><div class="hint">Agora a tela congelada salva um resumo visual compacto, sem a lista enorme de recebimentos/cobranças. Para atualizar este mês com o novo modelo, clique em Salvar fechamento do mês atual novamente.</div><select id="histComEntityView">${rows.map(r=>`<option value="${esc(r.key||'')}">${esc(r.nome||'')} · ${esc(r.filial||'')}</option>`).join('')}</select></div><div style="display:flex;align-items:end"><button class="btn primary" onclick="abrirTelaComissionamentoCongeladaPorSelect()">Abrir tela congelada</button></div></div></div>`+renderComissionamentoHistoricoTable(rows);
+  box.innerHTML=`<div class="kpis">${makeKpi('Mês',esc(snap.month||current),'var(--blue)')}${makeKpi('Total previsto',R(snap.total_previsto||0),'var(--green)')}${makeKpi('Entidades',String(rows.length),'var(--orange)')}${makeKpi('Salvo em',esc((snap.atualizado_em_br||snap.gerado_em||'').replace('T',' ').slice(0,19)),'var(--blue)')}</div>`+`<div class="glass panel"><div class="form-grid"><div class="input-card"><label>Ver tela congelada individual</label><div class="hint">Agora a tela congelada salva um resumo visual compacto, sem a lista enorme de recebimentos/cobranças. Para atualizar este mês com o novo modelo, clique em Salvar fechamento do mês atual novamente.</div><select id="histComEntityView">${rows.map(r=>`<option value="${esc(r.key||'')}">${esc(r.nome||'')} · ${esc(r.filial||'')}</option>`).join('')}</select></div><div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap"><button class="btn primary" onclick="abrirTelaComissionamentoCongeladaPorSelect()">Abrir tela congelada</button><button class="btn soft" onclick="exportarComissionamentoIndividualXLS()">📊 XLS individual</button><button class="btn soft" onclick="exportarComissionamentoTodosXLS()">📚 XLS todos</button></div></div></div>`+renderComissionamentoHistoricoTable(rows);
 }
 
 function setHistMode(mode){window._histMode=mode; document.getElementById('histDailyPane')?.classList.toggle('hidden',mode!=='daily'); document.getElementById('histMonthPane')?.classList.toggle('hidden',mode!=='monthly'); document.getElementById('histSalesPane')?.classList.toggle('hidden',mode!=='sales'); document.getElementById('histThirdPane')?.classList.toggle('hidden',mode!=='third'); document.getElementById('histComPane')?.classList.toggle('hidden',mode!=='comissao'); document.getElementById('histTabDaily')?.classList.toggle('active',mode==='daily'); document.getElementById('histTabMonthly')?.classList.toggle('active',mode==='monthly'); document.getElementById('histTabSales')?.classList.toggle('active',mode==='sales'); document.getElementById('histTabThird')?.classList.toggle('active',mode==='third'); document.getElementById('histTabCom')?.classList.toggle('active',mode==='comissao'); if(mode==='daily'){updateHistEntityFilter(); renderHistoricoResults();} else if(mode==='monthly'){updateHistMonthEntityFilter(); renderHistoricoMonthResults();} else if(mode==='third'){renderHistoricoTerceiro();} else if(mode==='comissao'){renderHistoricoComissaoResults();} else {updateHistSalesEntityFilter(); updateHistSalesMonthEntityFilter(); renderHistoricoSalesResults(); renderHistoricoSalesMonthResults();}}
@@ -8250,8 +8282,8 @@ function renderSenhasTab(){
   <div class="section-head"><div><h2>👥 Usuários do dashboard</h2><div class="hint">As senhas permanecem congeladas e só mudam se você alterar aqui ou se surgir um usuário novo.</div></div></div>
   <div class="grid-cards">${users.map(u=>renderSenhaCard(u,false)).join('')}</div>`;
 }
-async function adminSalvarSenha(login){const k=normalizeLoginAlias(login); const box=document.getElementById(`pwd_msg_${login}`)||document.getElementById(`pwd_msg_${k}`); const senha=(document.getElementById(`pwd_${login}`)?.value||document.getElementById(`pwd_${k}`)?.value||'').trim(); if(!senha || senha.length<4){if(box) box.textContent='Digite uma senha com pelo menos 4 caracteres.'; return;} try{const fd=new FormData(); fd.append('action','admin_set_password'); fd.append('login',k); fd.append('new_password',senha); fd.append('must_change_password','0'); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){aplicarSenhaLocal(k,senha,false); await carregarCredenciaisOnline(); aplicarSenhaLocal(k,senha,false); if(box) box.textContent='✅ Senha atualizada. O usuário já pode entrar com a nova senha.'; renderSenhasTab();}else{if(box) box.textContent='⚠️ Não consegui atualizar a senha online.';}}catch(e){if(box) box.textContent='⚠️ Não consegui atualizar a senha online.';}}
-async function adminMarcarTroca(login){const k=normalizeLoginAlias(login); const box=document.getElementById(`pwd_msg_${login}`)||document.getElementById(`pwd_msg_${k}`); try{const fd=new FormData(); fd.append('action','admin_force_change'); fd.append('login',k); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){const atual=(getAuthUser(k)?.password||'teste10'); aplicarSenhaLocal(k,atual,true); await carregarCredenciaisOnline(); aplicarSenhaLocal(k,atual,true); if(box) box.textContent='✅ Usuário marcado para trocar a senha no próximo acesso.'; renderSenhasTab();}else{if(box) box.textContent='⚠️ Não consegui marcar troca de senha.';}}catch(e){if(box) box.textContent='⚠️ Não consegui marcar troca de senha.';}}
+async function adminSalvarSenha(login){const box=document.getElementById(`pwd_msg_${login}`); const senha=(document.getElementById(`pwd_${login}`)?.value||'').trim(); if(!senha || senha.length<4){if(box) box.textContent='Digite uma senha com pelo menos 4 caracteres.'; return;} try{const fd=new FormData(); fd.append('action','admin_set_password'); fd.append('login',login); fd.append('new_password',senha); fd.append('must_change_password','0'); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(box) box.textContent=j.ok?'✅ Senha atualizada online.':'⚠️ Não consegui atualizar a senha.'; if(j.ok){await carregarCredenciaisOnline(); renderSenhasTab();}}catch(e){if(box) box.textContent='⚠️ Não consegui atualizar a senha.';}}
+async function adminMarcarTroca(login){const box=document.getElementById(`pwd_msg_${login}`); try{const fd=new FormData(); fd.append('action','admin_force_change'); fd.append('login',login); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(box) box.textContent=j.ok?'✅ Usuário marcado para trocar a senha no próximo acesso.':'⚠️ Não consegui marcar troca de senha.'; if(j.ok){await carregarCredenciaisOnline(); renderSenhasTab();}}catch(e){if(box) box.textContent='⚠️ Não consegui marcar troca de senha.';}}
 async function adminResolverReset(login){try{const fd=new FormData(); fd.append('action','resolve_reset'); fd.append('login',login); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){toast('Solicitação resolvida. Usuário terá que criar nova senha no próximo acesso.','success'); await carregarCredenciaisOnline(); renderSenhasTab();}else{toast('Não consegui resolver a solicitação.')}}catch(e){toast('Não consegui resolver a solicitação.')}}
 async function adminLimparHistoricoReset(mode='resolved'){try{const fd=new FormData(); fd.append('action','clear_reset_history'); fd.append('mode',mode); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){toast(mode==='all'?'Solicitações limpas da tela.':'Histórico de solicitações limpo.','success'); await carregarCredenciaisOnline(); renderSenhasTab();}else{toast('Não consegui limpar o histórico.')}}catch(e){toast('Não consegui limpar o histórico.')}}
 
@@ -8338,9 +8370,9 @@ function closeFirstAccess(){document.getElementById('firstAccessModal').classLis
 function openRecuperarSenha(){document.getElementById('recLogin').value=document.getElementById('loginUser').value||''; document.getElementById('recObs').value=''; document.getElementById('recMsg').textContent=''; document.getElementById('recoverModal').classList.add('show')}
 function closeRecover(){document.getElementById('recoverModal').classList.remove('show')}
 async function enviarRecuperacaoSenha(){const login=(document.getElementById('recLogin').value||'').trim().toLowerCase(); const obs=(document.getElementById('recObs').value||'').trim(); const box=document.getElementById('recMsg'); if(!login){box.textContent='Informe o usuário.'; return;} try{const fd=new FormData(); fd.append('action','request_reset'); fd.append('login',login); fd.append('obs',obs); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); box.textContent=j.ok?'✅ Solicitação enviada ao Master.':'⚠️ Não consegui enviar a solicitação.';}catch(e){box.textContent='⚠️ Não consegui enviar a solicitação.';}}
-async function salvarPrimeiroAcesso(){const login=normalizeLoginAlias(document.getElementById('faLogin').value||''); const atual=(document.getElementById('faCurrentPass').value||'').trim(); const nova=(document.getElementById('faNewPass').value||'').trim(); const nova2=(document.getElementById('faNewPass2').value||'').trim(); const box=document.getElementById('faMsg'); box.textContent=''; if(!login||!atual||!nova||!nova2){box.textContent='Preencha todos os campos. A senha padrão inicial é teste10.'; return;} if(nova.length<4){box.textContent='A nova senha deve ter pelo menos 4 caracteres.'; return;} if(nova!==nova2){box.textContent='A confirmação da senha não confere.'; return;} const auth=getAuthUser(login); if(!auth || String(auth.password)!==atual){box.textContent='Usuário ou senha atual inválidos. No primeiro acesso, use a senha padrão teste10 ou a senha definida pelo Master.'; return;} try{const fd=new FormData(); fd.append('action','change_password'); fd.append('login',login); fd.append('current_password',atual); fd.append('new_password',nova); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){aplicarSenhaLocal(login,nova,false); await carregarCredenciaisOnline(); aplicarSenhaLocal(login,nova,false); box.textContent='✅ Senha alterada com sucesso. Entre com a nova senha.'; document.getElementById('loginPass').value=''; setTimeout(()=>{closeFirstAccess();},700);}else{box.textContent='⚠️ Não consegui alterar a senha online.';}}catch(e){box.textContent='⚠️ Não consegui alterar a senha online.';}}
+async function salvarPrimeiroAcesso(){const login=(document.getElementById('faLogin').value||'').trim().toLowerCase(); const atual=(document.getElementById('faCurrentPass').value||'').trim(); const nova=(document.getElementById('faNewPass').value||'').trim(); const nova2=(document.getElementById('faNewPass2').value||'').trim(); const box=document.getElementById('faMsg'); box.textContent=''; if(!login||!atual||!nova||!nova2){box.textContent='Preencha todos os campos.'; return;} if(nova.length<4){box.textContent='A nova senha deve ter pelo menos 4 caracteres.'; return;} if(nova!==nova2){box.textContent='A confirmação da senha não confere.'; return;} const auth=getAuthUser(login); if(!auth || String(auth.password)!==atual){box.textContent='Usuário ou senha atual inválidos.'; return;} try{const fd=new FormData(); fd.append('action','change_password'); fd.append('login',login); fd.append('current_password',atual); fd.append('new_password',nova); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); box.textContent=j.ok?'✅ Senha alterada com sucesso. Entre com a nova senha.':'⚠️ Não consegui alterar a senha.'; if(j.ok){await carregarCredenciaisOnline(); document.getElementById('loginPass').value=''; setTimeout(()=>{closeFirstAccess();},700);}}catch(e){box.textContent='⚠️ Não consegui alterar a senha.';}}
 async function fazerLogin(){
-  const u=normalizeLoginAlias(document.getElementById('loginUser').value||'');
+  const u=(document.getElementById('loginUser').value||'').trim().toLowerCase();
   const s=(document.getElementById('loginPass').value||'').trim();
   const msg=document.getElementById('loginMsg');
   msg.textContent='';
