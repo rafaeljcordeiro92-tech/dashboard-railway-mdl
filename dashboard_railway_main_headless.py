@@ -1526,39 +1526,88 @@ def coletar_venda_diaria_painel_gerencial(data_ref):
         const normNum=(v)=>{
           if(v==null) return 0;
           if(typeof v==='number') return Number(v)||0;
+          if(typeof v==='object'){
+            if(v.y!=null) return normNum(v.y);
+            if(v.value!=null) return normNum(v.value);
+            if(v.v!=null) return normNum(v.v);
+          }
           let s=String(v).replace(/R\$|\s/g,'').trim();
+          s=s.replace(/[^0-9,\.\-]/g,'');
           if(s.includes(',') && s.includes('.')) s=s.replace(/\./g,'').replace(',','.');
           else if(s.includes(',')) s=s.replace(',','.');
           return Number(s)||0;
         };
+        const pickFaturamentoFromChart=(chart)=>{
+          if(!chart) return null;
+          const dataObj=(chart.data || chart.config?.data || chart.config?._config?.data || {});
+          const labels=(dataObj.labels || []).map(x=>String(x||''));
+          const datasets=(dataObj.datasets || []).filter(Boolean);
+          const rows=[];
+          // Caso comum do Painel Gerencial: labels ['Meta','Faturamento'] e 1 dataset com os dois valores.
+          const idxFat=labels.findIndex(l=>/fatur/i.test(l));
+          if(idxFat>=0){
+            for(const ds of datasets){
+              const arr=Array.isArray(ds.data)?ds.data:[];
+              const val=normNum(arr[idxFat]);
+              rows.push({modo:'label_index',label:labels[idxFat],dataset:String(ds.label||''),valor:val,data:arr.map(normNum)});
+              if(val>0) return {valor:val, rows, labels};
+            }
+          }
+          // Caso alternativo: cada dataset tem label Meta/Faturamento.
+          for(const ds of datasets){
+            const label=String(ds.label||'');
+            const arr=Array.isArray(ds.data)?ds.data:[];
+            const total=arr.reduce((a,b)=>a+normNum(b),0);
+            rows.push({modo:'dataset_label',label,total,data:arr.map(normNum)});
+            if(/fatur/i.test(label) && total>=0) return {valor:total, rows, labels};
+          }
+          // Se não achou pelo nome, em gráfico Meta/Faturamento normalmente o menor positivo é o faturamento do dia.
+          let vals=[];
+          datasets.forEach(ds=>(Array.isArray(ds.data)?ds.data:[]).forEach((v,i)=>vals.push({i,label:labels[i]||String(ds.label||''),valor:normNum(v)})));
+          vals=vals.filter(x=>x.valor>0).sort((a,b)=>a.valor-b.valor);
+          const naoMeta=vals.filter(x=>!/meta/i.test(String(x.label||'')));
+          const chosen=(naoMeta[0]||vals[0]||null);
+          if(chosen) return {valor:chosen.valor, rows, labels, chosen};
+          return {valor:0, rows, labels};
+        };
         const canvas=document.getElementById('vendas_empresa') || document.querySelector('canvas#vendas_empresa') || document.querySelector('canvas');
-        let chart=null;
-        try{ if(window.Chart && window.Chart.getChart && canvas) chart=window.Chart.getChart(canvas); }catch(e){}
-        try{ if(!chart && canvas && canvas.chart) chart=canvas.chart; }catch(e){}
+        const charts=[];
+        try{ if(window.Chart && window.Chart.getChart && canvas){ const c=window.Chart.getChart(canvas); if(c) charts.push(c); } }catch(e){}
+        try{ if(canvas && canvas.chart) charts.push(canvas.chart); }catch(e){}
+        try{ if(canvas && canvas.__chartjs) charts.push(canvas.__chartjs); }catch(e){}
         try{
-          if(!chart && window.Chart && window.Chart.instances){
-            const vals=Object.values(window.Chart.instances||{});
-            chart=vals.find(c=>c && c.canvas===canvas) || vals[0];
+          if(window.Chart && window.Chart.instances){
+            const inst=window.Chart.instances;
+            const vals=Array.isArray(inst)?inst:Object.values(inst||{});
+            vals.forEach(c=>{ if(c) charts.push(c); });
           }
         }catch(e){}
-        if(chart && chart.data && Array.isArray(chart.data.datasets)){
-          const rows=chart.data.datasets.map(ds=>{
-            const label=String(ds.label||'');
-            const data=Array.isArray(ds.data)?ds.data:[];
-            const total=data.reduce((a,b)=>a+normNum(b),0);
-            return {label,total,data};
-          });
-          let fat=rows.find(r=>/fatur/i.test(r.label));
-          if(!fat){
-            const notMeta=rows.filter(r=>!/meta/i.test(r.label));
-            fat=(notMeta.sort((a,b)=>b.total-a.total)[0]||rows.sort((a,b)=>b.total-a.total)[0]);
+        try{
+          // Chart.js v3/v4 mantém instâncias em registry privada em alguns builds
+          if(window.Chart && window.Chart.registry && window.Chart.registry.items){
+            Object.values(window.Chart.registry.items||{}).forEach(c=>{ if(c) charts.push(c); });
           }
-          return {ok:true,valor:Number((fat&&fat.total)||0),datasets:rows};
+        }catch(e){}
+        const unique=[]; const seen=new Set();
+        charts.forEach(c=>{ const id=c.id || c._id || (c.canvas&&c.canvas.id) || Math.random(); if(!seen.has(id)){seen.add(id); unique.push(c);} });
+        for(const c of unique){
+          try{
+            if(canvas && c.canvas && c.canvas!==canvas && c.canvas.id!=='vendas_empresa') continue;
+            const got=pickFaturamentoFromChart(c);
+            if(got && Number(got.valor||0)>=0){ return {ok:Number(got.valor||0)>0, valor:Number(got.valor||0), debug:got, chart_id:c.id||c._id||'', canvas_id:(c.canvas&&c.canvas.id)||''}; }
+          }catch(e){}
         }
+        // Fallback: procura dados serializados no JS da página.
+        try{
+          const scripts=[...document.scripts].map(s=>s.textContent||'').join('\n');
+          const around=(scripts.match(/Faturamento[\s\S]{0,600}/i)||[''])[0];
+          const nums=[...around.matchAll(/([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2}|[0-9]+\.?[0-9]*)/g)].map(m=>normNum(m[1])).filter(n=>n>0);
+          if(nums.length){ nums.sort((a,b)=>a-b); return {ok:true,valor:nums[0],debug:{modo:'script_fallback',around:around.slice(0,300),nums}}; }
+        }catch(e){}
         const bodyText=document.body ? document.body.innerText : '';
         const m=bodyText.match(/Faturamento\s*:\s*R\$\s*([0-9\.]+,[0-9]{2})/i);
-        if(m) return {ok:true,valor:normNum(m[1]),datasets:[]};
-        return {ok:false,valor:0,datasets:[],erro:'chart_nao_encontrado'};
+        if(m) return {ok:true,valor:normNum(m[1]),datasets:[],debug:{modo:'body_text'}};
+        return {ok:false,valor:0,datasets:[],erro:'chart_nao_encontrado_ou_sem_dados',canvas:!!canvas,chart_count:unique.length};
         """
         ret = driver.execute_script(js) or {}
         valor = round(float((ret or {}).get('valor') or 0), 2)
@@ -8038,7 +8087,7 @@ function snapshotHtmlFallbackFromRow(row,month){
       <div class="snap-card"><div class="snap-title">Comissão caminhão</div><div class="snap-value orange">${R2(row.comissao_caminhao||0)}</div></div>
       <div class="snap-card"><div class="snap-title">Faixa</div><div class="snap-value blue">${esc(row.faixa||'-')}</div></div>
       <div class="snap-card"><div class="snap-title">Total previsto</div><div class="snap-value green">${R2(row.total_previsto||0)}</div></div>
-    </div><div class="snap-note">Resumo visual reconstruído com os dados salvos do fechamento mensal.</div></div>`;
+    </div><div class="snap-note">Tela congelada visual montada com os cards principais do fechamento mensal.</div></div>`;
   }catch(e){return `<div style="padding:20px;background:#111;color:#fff">Resumo indisponível: ${esc(String(e))}</div>`}
 }
 
@@ -8047,30 +8096,29 @@ function buildSnapshotFromHistoricRow(row,month){
   const nome=esc(row?.nome||'');
   const filial=esc(row?.filial||'');
   const tipo=esc(row?.tipo||'');
-  const cards=[
-    ['Meta cobrança', pct(row?.meta_geral||row?.meta_cobranca||0), '#60a5fa'],
-    ['Recebido', R(row?.recebido||0), '#34d399'],
-    ['Comissão vendas', R(row?.comissao_vendas||row?.vendas||0), '#f59e0b'],
-    ['Comissão serviços', R(row?.comissao_servicos||row?.servicos||0), '#f59e0b'],
-    ['Comissão caminhão', R(row?.comissao_caminhao||0), '#f59e0b'],
-    ['Bônus meta', R(row?.bonus_meta||row?.bonus||0), '#34d399'],
-    ['Rentabilidade', R((row?.rent48||0)+(row?.rent52||0)+(row?.rent55||0)), '#34d399'],
-    ['Total previsto', R(row?.total_previsto||0), '#34d399']
-  ];
-  return `<div class="snap-sheet">
+  const metaG=Number(row?.meta_cobranca||row?.meta_geral||0);
+  const recebido=Number(row?.recebido||0);
+  const pendente=Number(row?.pendente||0);
+  const vendas=Number(row?.vendas||row?.venda_real||0);
+  const servicos=Number(row?.servicos||row?.servico_real||0);
+  const caminhao=Number(row?.caminhao||row?.caminhao_real||0);
+  const totalPrev=Number(row?.total_previsto||0);
+  const bonus=Number(row?.bonus||row?.bonus_meta||0);
+  const comV=Number(row?.comissao_vendas||0);
+  const comS=Number(row?.comissao_servicos||0);
+  const comC=Number(row?.comissao_caminhao||0);
+  const rent=Number(row?.rent48||0)+Number(row?.rent52||0)+Number(row?.rent55||0);
+  const kv=(t,v,color='')=>`<div class="metric"><div class="k">${esc(t)}</div><div class="v" ${color?`style="color:${color}"`:''}>${v}</div></div>`;
+  const mini=(t,v,color='')=>`<div class="sales-cell"><div class="k">${esc(t)}</div><div class="v" ${color?`style="color:${color}"`:''}>${v}</div></div>`;
+  return `<div class="snapshot-real-cards snap-sheet">
     <style>
-      .snap-sheet{max-width:1180px;margin:0 auto;background:#0d0f14;color:#f3f6ff;font-family:Inter,Arial,sans-serif;padding:22px;border-radius:22px}
-      .snap-head{border:1px solid rgba(255,255,255,.12);background:#161922;border-radius:18px;padding:18px;margin-bottom:16px}
-      .snap-head h1{font-size:30px;margin:0 0 8px 0;color:#fff}.snap-sub{color:#aeb7ca;font-size:14px}
-      .snap-grid{display:grid;grid-template-columns:repeat(4,minmax(170px,1fr));gap:12px}
-      .snap-card{border:1px solid rgba(255,255,255,.12);background:#151821;border-radius:16px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.22)}
-      .snap-title{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:#8c96ab;font-weight:900}.snap-value{font-size:28px;font-weight:950;margin-top:8px}
-      .snap-note{margin-top:16px;padding:12px 14px;border:1px solid rgba(245,158,11,.35);background:rgba(245,158,11,.10);border-radius:15px;color:#fde68a;font-weight:800}
-      @media(max-width:900px){.snap-grid{grid-template-columns:repeat(2,1fr)}}
+      body{background:#080a0f;color:#f4f6fb}.snap-sheet{max-width:1220px;margin:0 auto;background:#0b0d12;color:#f3f6ff;font-family:Inter,Arial,sans-serif;padding:22px;border-radius:22px}.snap-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;border:1px solid rgba(255,255,255,.12);background:#151821;border-radius:18px;padding:18px;margin-bottom:16px}.snap-head h1{font-size:30px;margin:0 0 8px;color:#fff}.snap-sub{color:#aeb7ca;font-size:14px}.detail-top{display:grid;grid-template-columns:1.15fr .85fr;gap:16px}.glass.panel,.snap-box{border:1px solid rgba(255,255,255,.12);background:#141720;border-radius:20px;padding:18px;box-shadow:0 10px 28px rgba(0,0,0,.25);margin-bottom:14px}.glass.panel h3,.snap-box h3{margin:0 0 14px;color:#fff;font-size:18px}.mega-progress{display:grid;grid-template-columns:210px 1fr;gap:20px;align-items:center}.fake-ring{width:190px;height:190px;border-radius:50%;background:conic-gradient(#f59e0b calc(var(--p)*1%), #293041 0);display:flex;align-items:center;justify-content:center;box-shadow:inset 0 0 0 28px #202536}.fake-ring strong{font-size:42px}.metrics-grid,.meta-grid,.sales-metrics,.commission-grid{display:grid;grid-template-columns:repeat(2,minmax(130px,1fr));gap:10px}.metric,.sales-cell,.commission-cell{border:1px solid rgba(255,255,255,.11);background:#0e1118;border-radius:14px;padding:13px}.k{font-size:11px;text-transform:uppercase;letter-spacing:.10em;color:#7d879b;font-weight:900}.v{font-size:22px;font-weight:950;margin-top:7px}.meta-grid{grid-template-columns:repeat(4,1fr);margin-top:14px}.meta-grid .v{font-size:26px}.sales-panel{border-color:rgba(245,158,11,.25)}.commission-card{border-color:rgba(245,158,11,.35);background:linear-gradient(180deg,rgba(245,158,11,.08),rgba(20,23,32,.98))}.bonus-box{border:1px solid rgba(255,255,255,.12);background:#171a22;border-radius:18px;padding:14px}.bonus-item{display:flex;justify-content:space-between;align-items:center;gap:12px;border:1px solid rgba(255,255,255,.12);background:#10131a;border-radius:14px;padding:10px 12px;margin-top:8px}.bonus-item.active{border-color:#f59e0b;box-shadow:0 0 0 2px rgba(245,158,11,.18),0 0 26px rgba(245,158,11,.20);animation:pulseBonus 1.4s ease-in-out infinite alternate}@keyframes pulseBonus{from{filter:brightness(1)}to{filter:brightness(1.22)}}@media(max-width:980px){.detail-top,.mega-progress{grid-template-columns:1fr}.meta-grid{grid-template-columns:repeat(2,1fr)}}
     </style>
-    <div class="snap-head"><h1>${nome}</h1><div class="snap-sub">${tipo} · ${filial} · fechamento ${esc(month||'')}</div></div>
-    <div class="snap-grid">${cards.map(c=>`<div class="snap-card"><div class="snap-title">${c[0]}</div><div class="snap-value" style="color:${c[2]}">${c[1]}</div></div>`).join('')}</div>
-    <div class="snap-note">Resumo visual reconstruído com os dados salvos do fechamento mensal.</div>
+    <div class="snap-head"><div><h1>${nome}</h1><div class="snap-sub">${tipo} · ${filial} · fechamento ${esc(month||'')}</div></div><div class="snap-sub">🧊 Tela congelada do comissionamento</div></div>
+    <div class="detail-top">
+      <div class="glass panel"><h3>🎯 Meta do mês <span class="snap-sub">· Não acumulativo</span></h3><div class="mega-progress"><div class="fake-ring" style="--p:${Math.max(0,Math.min(100,metaG))}"><strong>${pct(metaG)}</strong></div><div class="metrics-grid">${kv('Pendente',R(pendente),'#f87171')}${kv('Recebido',R(recebido),'#34d399')}${kv('% da filial',pct(row?.perc_filial||100))}${kv('Configuração usada',esc(row?.config||'10/30/80'))}</div></div><div class="meta-grid">${kv('Grave',pct(row?.grave_pct||0),'#f87171')}${kv('Alerta',pct(row?.alerta_pct||0),'#fb923c')}${kv('Atenção',pct(row?.atencao_pct||0),'#facc15')}${kv('Meta geral',pct(metaG),'#60a5fa')}</div><div class="bonus-box" style="margin-top:14px"><h4>🏆 Bônus e premiações</h4><div class="bonus-list"><div class="bonus-item ${bonus>0?'active':''}"><div><strong>🎯 Bônus/meta</strong></div><div><strong>${R(bonus)}</strong></div></div><div class="bonus-item ${rent>0?'active':''}"><div><strong>📊 Rentabilidade</strong></div><div><strong>${R(rent)}</strong></div></div></div></div></div>
+      <div><div class="glass panel sales-panel"><h3>💲 Vendas e metas</h3><div class="sales-metrics">${mini('Venda realizada',R(vendas),'#f59e0b')}${mini('Serviço realizado',R(servicos),'#f59e0b')}${mini('Caminhão realizado',R(caminhao),'#f59e0b')}${mini('Total vendas/serviços',R(vendas+servicos),'#34d399')}</div></div><div class="glass panel"><h3>🛠️ Serviços</h3><div class="sales-metrics">${mini('Serviços total',R(servicos),'#60a5fa')}${mini('Comissão serviços',R(comS),'#34d399')}</div></div><div class="glass panel commission-card"><h3>💵 Comissionamento previsto</h3><div class="commission-grid">${mini('Comissão vendas',R(comV),'#f59e0b')}${mini('Comissão serviços',R(comS),'#f59e0b')}${mini('Comissão caminhão',R(comC),'#f59e0b')}${mini('Bônus por meta',R(bonus),'#34d399')}${mini('Rentabilidade',R(rent),'#34d399')}${mini('Total previsto',R(totalPrev),'#34d399')}</div></div></div>
+    </div>
   </div>`;
 }
 function ensureSnapshotHtmlForMonth(month){
