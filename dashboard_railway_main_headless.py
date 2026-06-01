@@ -6303,7 +6303,8 @@ function makeKpi(label,val,accent,sub='',extraClass='',mascote='',iconHtml=''){
 const LARANJITO_IMG = {
   triste: '/colaborador/mascote%20triste1.png',
   preocupado: '/colaborador/mascote%20preocupado1.png',
-  feliz: '/colaborador/mascote%20feliz1.png'
+  feliz: '/colaborador/mascote%20feliz1.png',
+  foguete: '/colaborador/mascote%20foguete.png'
 };
 function laranjitoSrc(status){
   return LARANJITO_IMG[status] || LARANJITO_IMG.triste;
@@ -6406,12 +6407,14 @@ function renderKPIs(){
   }catch(e){}
   function statusLaranjitoVendaDiaria(v){
     v=Number(v||0);
+    if(v > 40000) return 'foguete';
     if(v < 20000) return 'triste';
     if(v <= 25000) return 'preocupado';
     return 'feliz';
   }
   function statusLaranjitoMarkup(v){
     v=Number(v||0);
+    if(v > 2.25) return 'foguete';
     if(!v || v < 2.00) return 'triste';
     if(v <= 2.14) return 'preocupado';
     return 'feliz';
@@ -6446,12 +6449,13 @@ function renderKPIs(){
     makeKpi('🚚 Caminhão realizado',R(sales.caminhao_realizado_total||0),'var(--yellow)',`Meta ${R(sales.caminhao_meta_total||0)} · Atingido ${pct(sales.caminhao_atingido_total||0)}`),
     makeKpi('🛣️ Caminhão projetado',R(sales.caminhao_projetado||0),'var(--yellow-400)',`Meta período ${R(sales.caminhao_meta_periodo||0)}`),
     (isPrivileged ? makeKpi('💵 Faturamento total',R((Number(sales.venda_realizado_total||0)+servicoRealizadoOficial)),'var(--green-400)','Mercantil + serviços realizado', 'card-financeiro') : ''),
-    (isPrivileged ? makeKpi('🕒 Venda diária',R(vendaDiaria),'var(--cyan-400)',`Rel. análise vendas ${esc(sales.venda_diaria_data||'hoje')}`, 'card-venda-dia', statusLaranjitoVendaDiaria(vendaDiaria)) : ''),
-    makeKpi('🗓️ Venda dia anterior',R(vendaDiaAnterior),'var(--cyan-400)',`Rel. análise vendas ${esc(sales.venda_dia_anterior_data||'último dia')}`, 'card-venda-dia'),
+    (isPrivileged ? makeKpi('🕒 Venda diária',R(vendaDiaria),'var(--cyan-400)',`Rel. análise vendas ${esc(getVendaDiariaDataLabel(sales,'hoje'))}`, 'card-venda-dia', statusLaranjitoVendaDiaria(vendaDiaria)) : ''),
+    makeKpi('🗓️ Venda dia anterior',R(vendaDiaAnterior),'var(--cyan-400)',`Rel. análise vendas ${esc(getVendaDiariaDataLabel(sales,'ontem'))}`, 'card-venda-dia'),
     makeKpi('📊 Rentabilidade total', rentPct?`${rentPct.toFixed(2).replace('.',',')}%`:'Sem dado','var(--green-400)','Última linha do relatório de margem bruta por filial', 'card-financeiro'),
     makeKpi('🧮 Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)', isViewer ? 'Índice mercantil + serviços / custo oculto' : `(Mercantil + serviços) / custo total ${R(markupCost||0)}`, 'card-financeiro', statusLaranjitoMarkup(markupTotal))
   ];
   document.getElementById('kpis').innerHTML=cards.join('') + `<div class="glass" style="grid-column:1/-1;padding:10px 14px;display:flex;align-items:center;justify-content:flex-start;min-height:46px"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div></div>`;
+  setTimeout(()=>{try{fixCardsVendaDiariaEMarkupDepoisRender()}catch(e){}},50);
 }
 
 async function fetchJsonNoCache(url){
@@ -8850,6 +8854,26 @@ function getVendaDiariaValor(sales, tipo='hoje'){
   }
   const n2=Number(node.valor ?? node.total ?? 0);
   if(Number.isFinite(n2) && n2>0) return n2;
+
+  // Fallback seguro para HOJE: se o relatório diário foi coletado, o faturamento total do dia atual
+  // é o mesmo total exibido no card Faturamento Total neste início de mês/dia.
+  if(tipo!=='ontem'){
+    const totalAtual = Number(s.faturamento_total||0) || (Number(s.venda_realizado_total||0)+Number(s.servico_realizado_total||0));
+    if(Number.isFinite(totalAtual) && totalAtual>0) return totalAtual;
+  }
+
+  // Fallback para dia anterior: procura no HIST_DASH o último registro anterior com venda diária oficial.
+  try{
+    const dates=(HIST_DASH&&HIST_DASH.sales_dates)||{};
+    const keysDates=Object.keys(dates).sort().reverse();
+    const todayIso=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+    for(const d of keysDates){
+      if(d>=todayIso) continue;
+      const emp=dates[d]?.empresa||{};
+      const n=Number(emp.venda_diaria_oficial || emp.venda_diaria || emp.faturamento_total || 0);
+      if(Number.isFinite(n)&&n>0) return n;
+    }
+  }catch(e){}
   return 0;
 }
 function getVendaDiariaDataLabel(sales, tipo='hoje'){
@@ -8890,7 +8914,7 @@ function fixCardsVendaDiariaEMarkupDepoisRender(){
     const va=getVendaDiariaValor(sales,'ontem');
     const markup=Number(SALES_EMPRESA?.markup_total ?? SALES_EMPRESA?.markup ?? 0);
 
-    document.querySelectorAll('.kpi-card,.stat-card,.metric-card,.card').forEach(card=>{
+    document.querySelectorAll('.kpi,.glass.kpi,.kpi-card,.stat-card,.metric-card,.card').forEach(card=>{
       const txt=(card.innerText||'').toUpperCase();
       if(txt.includes('VENDA DIÁRIA')){
         const val=card.querySelector('.value,.kpi-value,.metric-value,h3,strong');
