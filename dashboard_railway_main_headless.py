@@ -1506,7 +1506,15 @@ def _dt_br(d):
     return d.strftime("%d/%m/%Y")
 
 def coletar_venda_diaria_painel_gerencial(data_ref):
-    """Coleta faturamento do Painel Gerencial (/paineis_gerenciais) para uma data."""
+    """Coleta faturamento do Painel Gerencial (/paineis_gerenciais) para uma data.
+
+    O gráfico de Empresa é canvas (Chart.js antigo/novo). Em algumas versões o valor só aparece
+    no tooltip visual. Por isso a coleta tenta, nessa ordem:
+      1) Chart.js/objetos do canvas;
+      2) varredura profunda de objetos globais procurando label Faturamento;
+      3) scripts inline + externos da página, perto de vendas_empresa/Faturamento;
+      4) texto do body se o tooltip virar DOM.
+    """
     data_br = _dt_br(data_ref)
     print(f"\n🕒 Coletando venda diária no Painel Gerencial: {data_br}")
     try:
@@ -1521,7 +1529,14 @@ def coletar_venda_diaria_painel_gerencial(data_ref):
                 driver.find_element(By.XPATH, "//button[contains(.,'Filtrar') or contains(.,'filtrar')] | //input[contains(@value,'Filtrar') or contains(@value,'filtrar')]").click()
             except Exception:
                 pass
-        time.sleep(4)
+
+        # Aguarda canvas e animação do gráfico carregar
+        try:
+            wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "canvas#vendas_empresa")))
+        except Exception:
+            pass
+        time.sleep(6)
+
         js = r"""
         const normNum=(v)=>{
           if(v==null) return 0;
@@ -1533,48 +1548,52 @@ def coletar_venda_diaria_painel_gerencial(data_ref):
           }
           let s=String(v).replace(/R\$|\s/g,'').trim();
           s=s.replace(/[^0-9,\.\-]/g,'');
+          if(!s) return 0;
           if(s.includes(',') && s.includes('.')) s=s.replace(/\./g,'').replace(',','.');
           else if(s.includes(',')) s=s.replace(',','.');
           return Number(s)||0;
         };
-        const pickFaturamentoFromChart=(chart)=>{
-          if(!chart) return null;
-          const dataObj=(chart.data || chart.config?.data || chart.config?._config?.data || {});
+        const canvas=document.getElementById('vendas_empresa') || document.querySelector('canvas#vendas_empresa') || document.querySelector('canvas');
+        const out={canvas:!!canvas, tries:[]};
+
+        const pickFaturamentoFromData=(dataObj, origin)=>{
+          if(!dataObj) return null;
           const labels=(dataObj.labels || []).map(x=>String(x||''));
-          const datasets=(dataObj.datasets || []).filter(Boolean);
+          const datasets=(dataObj.datasets || dataObj.datasets_empresa || []).filter(Boolean);
           const rows=[];
-          // Caso comum do Painel Gerencial: labels ['Meta','Faturamento'] e 1 dataset com os dois valores.
           const idxFat=labels.findIndex(l=>/fatur/i.test(l));
           if(idxFat>=0){
             for(const ds of datasets){
-              const arr=Array.isArray(ds.data)?ds.data:[];
+              const arr=Array.isArray(ds.data)?ds.data:(Array.isArray(ds.value)?ds.value:[]);
               const val=normNum(arr[idxFat]);
-              rows.push({modo:'label_index',label:labels[idxFat],dataset:String(ds.label||''),valor:val,data:arr.map(normNum)});
-              if(val>0) return {valor:val, rows, labels};
+              rows.push({modo:'label_index',origin,label:labels[idxFat],dataset:String(ds.label||''),valor:val,data:arr.map(normNum)});
+              if(val>0) return {valor:val, rows, labels, origin};
             }
           }
-          // Caso alternativo: cada dataset tem label Meta/Faturamento.
           for(const ds of datasets){
-            const label=String(ds.label||'');
+            const label=String(ds.label||ds.name||ds.title||'');
             const arr=Array.isArray(ds.data)?ds.data:[];
             const total=arr.reduce((a,b)=>a+normNum(b),0);
-            rows.push({modo:'dataset_label',label,total,data:arr.map(normNum)});
-            if(/fatur/i.test(label) && total>=0) return {valor:total, rows, labels};
+            rows.push({modo:'dataset_label',origin,label,total,data:arr.map(normNum)});
+            if(/fatur/i.test(label) && total>0) return {valor:total, rows, labels, origin};
           }
-          // Se não achou pelo nome, em gráfico Meta/Faturamento normalmente o menor positivo é o faturamento do dia.
-          let vals=[];
-          datasets.forEach(ds=>(Array.isArray(ds.data)?ds.data:[]).forEach((v,i)=>vals.push({i,label:labels[i]||String(ds.label||''),valor:normNum(v)})));
-          vals=vals.filter(x=>x.valor>0).sort((a,b)=>a.valor-b.valor);
-          const naoMeta=vals.filter(x=>!/meta/i.test(String(x.label||'')));
-          const chosen=(naoMeta[0]||vals[0]||null);
-          if(chosen) return {valor:chosen.valor, rows, labels, chosen};
-          return {valor:0, rows, labels};
+          // Chart.js antigo: [{value:..., label:'Meta'}, {value:..., label:'Faturamento'}]
+          const arr = Array.isArray(dataObj) ? dataObj : (Array.isArray(dataObj.data) ? dataObj.data : []);
+          for(const item of arr){
+            const label=String(item?.label||item?.name||item?.title||'');
+            const val=normNum(item?.value ?? item?.val ?? item?.data);
+            rows.push({modo:'array_obj',origin,label,valor:val});
+            if(/fatur/i.test(label) && val>0) return {valor:val, rows, labels, origin};
+          }
+          return rows.length?{valor:0, rows, labels, origin}:null;
         };
-        const canvas=document.getElementById('vendas_empresa') || document.querySelector('canvas#vendas_empresa') || document.querySelector('canvas');
+
+        // 1) Chart.js conhecido
         const charts=[];
-        try{ if(window.Chart && window.Chart.getChart && canvas){ const c=window.Chart.getChart(canvas); if(c) charts.push(c); } }catch(e){}
+        try{ if(window.Chart && window.Chart.getChart && canvas){ const c=window.Chart.getChart(canvas); if(c) charts.push(c); } }catch(e){out.tries.push({chart_get:e.message})}
         try{ if(canvas && canvas.chart) charts.push(canvas.chart); }catch(e){}
         try{ if(canvas && canvas.__chartjs) charts.push(canvas.__chartjs); }catch(e){}
+        try{ if(canvas && canvas._chartjs) charts.push(canvas._chartjs); }catch(e){}
         try{
           if(window.Chart && window.Chart.instances){
             const inst=window.Chart.instances;
@@ -1582,37 +1601,140 @@ def coletar_venda_diaria_painel_gerencial(data_ref):
             vals.forEach(c=>{ if(c) charts.push(c); });
           }
         }catch(e){}
-        try{
-          // Chart.js v3/v4 mantém instâncias em registry privada em alguns builds
-          if(window.Chart && window.Chart.registry && window.Chart.registry.items){
-            Object.values(window.Chart.registry.items||{}).forEach(c=>{ if(c) charts.push(c); });
-          }
-        }catch(e){}
         const unique=[]; const seen=new Set();
         charts.forEach(c=>{ const id=c.id || c._id || (c.canvas&&c.canvas.id) || Math.random(); if(!seen.has(id)){seen.add(id); unique.push(c);} });
         for(const c of unique){
           try{
-            if(canvas && c.canvas && c.canvas!==canvas && c.canvas.id!=='vendas_empresa') continue;
-            const got=pickFaturamentoFromChart(c);
-            if(got && Number(got.valor||0)>=0){ return {ok:Number(got.valor||0)>0, valor:Number(got.valor||0), debug:got, chart_id:c.id||c._id||'', canvas_id:(c.canvas&&c.canvas.id)||''}; }
-          }catch(e){}
+            const dataObj=(c.data || c.config?.data || c.config?._config?.data || {});
+            const got=pickFaturamentoFromData(dataObj, 'chart_object');
+            out.tries.push({modo:'chart', canvas_id:(c.canvas&&c.canvas.id)||'', got});
+            if(got && Number(got.valor||0)>0) return {ok:true, valor:Number(got.valor), debug:out};
+            // Chart.js antigo: segments
+            const segs=c.segments || c._segments || c.chart?.segments || [];
+            for(const s of segs){
+              const label=String(s.label||s.name||'');
+              const val=normNum(s.value);
+              if(/fatur/i.test(label) && val>0) return {ok:true, valor:val, debug:{...out, modo:'segments'}};
+            }
+          }catch(e){out.tries.push({chart_err:e.message})}
         }
-        // Fallback: procura dados serializados no JS da página.
+
+        // 2) jQuery data e dataset do canvas
         try{
-          const scripts=[...document.scripts].map(s=>s.textContent||'').join('\n');
-          const around=(scripts.match(/Faturamento[\s\S]{0,600}/i)||[''])[0];
-          const nums=[...around.matchAll(/([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2}|[0-9]+\.?[0-9]*)/g)].map(m=>normNum(m[1])).filter(n=>n>0);
-          if(nums.length){ nums.sort((a,b)=>a-b); return {ok:true,valor:nums[0],debug:{modo:'script_fallback',around:around.slice(0,300),nums}}; }
+          if(window.jQuery && canvas){
+            const d=window.jQuery(canvas).data();
+            const got=pickFaturamentoFromData(d,'jquery_data');
+            out.tries.push({modo:'jquery_data', keys:Object.keys(d||{}), got});
+            if(got && got.valor>0) return {ok:true,valor:got.valor,debug:out};
+          }
         }catch(e){}
+
+        // 3) Varredura profunda de objetos globais, procurando Faturamento + value
+        const visited=new WeakSet();
+        const candidates=[];
+        function scanObj(o,path,depth,parent){
+          if(!o || depth>4) return;
+          const t=typeof o;
+          if(t!=='object' && t!=='function') return;
+          if(visited.has(o)) return;
+          try{visited.add(o)}catch(e){}
+          if(o instanceof Node || o===window || o===document) return;
+          let keys=[];
+          try{keys=Object.keys(o).slice(0,80)}catch(e){return}
+          try{
+            const got=pickFaturamentoFromData(o,path);
+            if(got && got.valor>0) candidates.push({path,valor:got.valor,modo:'pickData'});
+          }catch(e){}
+          let hasFat=false, nums=[];
+          for(const k of keys){
+            let v; try{v=o[k]}catch(e){continue}
+            if(typeof v==='string' && /fatur/i.test(v)) hasFat=true;
+            if(typeof v==='number' && isFinite(v) && v>0) nums.push({k,v});
+            if(v && typeof v==='object'){
+              try{
+                if(String(v.label||v.name||v.title||'').match(/fatur/i)){
+                  const val=normNum(v.value ?? v.val ?? v.y ?? v.data);
+                  if(val>0) candidates.push({path:path+'.'+k,valor:val,modo:'label_value'});
+                }
+              }catch(e){}
+            }
+          }
+          if(hasFat && nums.length){
+            nums.sort((a,b)=>a.v-b.v);
+            candidates.push({path,valor:nums[0].v,modo:'sibling_number',nums:nums.slice(0,5)});
+          }
+          for(const k of keys){
+            if(/^(__|webkit|chrome|localStorage|sessionStorage|document|location|navigator|history|console)$/i.test(k)) continue;
+            let v; try{v=o[k]}catch(e){continue}
+            if(v && typeof v==='object') scanObj(v,path+'.'+k,depth+1,o);
+          }
+        }
+        try{
+          const names=Object.keys(window).filter(k=>/venda|fatur|graf|chart|empresa|painel|dados|data/i.test(k)).slice(0,120);
+          out.global_names=names;
+          for(const k of names){
+            try{scanObj(window[k],'window.'+k,0,null)}catch(e){}
+          }
+          candidates.sort((a,b)=>a.valor-b.valor);
+          out.candidates=candidates.slice(0,20);
+          const valid=candidates.filter(x=>x.valor>0 && x.valor<99999999);
+          // Prioriza caminhos com fatur/empresa/vendas; caso contrário menor positivo.
+          const pref=valid.find(x=>/fatur|vendas_empresa|empresa|venda/i.test(x.path||'')) || valid[0];
+          if(pref) return {ok:true,valor:Number(pref.valor),debug:out};
+        }catch(e){out.tries.push({scan_global:e.message})}
+
+        // 4) texto do body caso tooltip seja DOM
         const bodyText=document.body ? document.body.innerText : '';
         const m=bodyText.match(/Faturamento\s*:\s*R\$\s*([0-9\.]+,[0-9]{2})/i);
-        if(m) return {ok:true,valor:normNum(m[1]),datasets:[],debug:{modo:'body_text'}};
-        return {ok:false,valor:0,datasets:[],erro:'chart_nao_encontrado_ou_sem_dados',canvas:!!canvas,chart_count:unique.length};
+        if(m) return {ok:true,valor:normNum(m[1]),debug:{...out,modo:'body_text'}};
+
+        return {ok:false,valor:0,erro:'canvas_sem_chart_dados',debug:out};
         """
         ret = driver.execute_script(js) or {}
-        valor = round(float((ret or {}).get('valor') or 0), 2)
+
+        valor = round(float((ret or {}).get("valor") or 0), 2)
+
+        # 5) Fallback Python: buscar scripts inline + externos e parsear "vendas_empresa" / "Faturamento"
+        if valor <= 0:
+            try:
+                scripts_text = driver.execute_async_script(r"""
+                    const cb=arguments[arguments.length-1];
+                    const urls=[...document.scripts].map(s=>s.src).filter(Boolean);
+                    const inline=[...document.scripts].map(s=>s.textContent||'').join('\n');
+                    Promise.all(urls.map(u=>fetch(u,{credentials:'include'}).then(r=>r.text()).catch(e=>'')))
+                      .then(arr=>cb(inline+'\n'+arr.join('\n')))
+                      .catch(e=>cb(inline));
+                """) or ""
+                chunks = []
+                for pat in [r"vendas_empresa[\s\S]{0,2500}", r"Faturamento[\s\S]{0,1200}", r"faturamento[\s\S]{0,1200}"]:
+                    chunks += re.findall(pat, scripts_text, flags=re.I)
+                cand = []
+                for ch in chunks:
+                    if not re.search(r"fatur", ch, flags=re.I):
+                        continue
+                    # pares comuns: label:'Faturamento', value:2954.93 ou value: '2.954,93'
+                    for m in re.finditer(r"(?:Faturamento|faturamento)[\s\S]{0,220}?([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2}|[0-9]{2,}(?:\.[0-9]+)?)", ch, flags=re.I):
+                        cand.append(float(_to_float(m.group(1))))
+                    # caso value antes do label
+                    for m in re.finditer(r"([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2}|[0-9]{2,}(?:\.[0-9]+)?)[\s\S]{0,220}?(?:Faturamento|faturamento)", ch, flags=re.I):
+                        cand.append(float(_to_float(m.group(1))))
+                cand = [x for x in cand if x and x > 0 and x < 99999999]
+                if cand:
+                    # geralmente meta é maior e faturamento é menor; evita pegar dia/ano/códigos baixos
+                    cand = sorted(cand)
+                    # descarta valores muito pequenos de labels/ids, pega menor >= 10
+                    valor = round(next((x for x in cand if x >= 10), cand[0]), 2)
+                    ret = {"ok": True, "valor": valor, "debug": {"modo": "python_script_regex", "candidatos": cand[:20]}}
+            except Exception as e:
+                print(f"⚠️ Fallback scripts venda diária falhou: {e}")
+
         print(f"✅ Venda diária Painel Gerencial {data_br}: R$ {valor:,.2f}")
-        return {"data": data_br, "valor": valor, "ok": bool((ret or {}).get('ok')), "debug": ret}
+        if valor <= 0:
+            try:
+                print("⚠️ Debug venda diária:", json.dumps(ret, ensure_ascii=False)[:1500])
+            except Exception:
+                print("⚠️ Debug venda diária:", ret)
+        return {"data": data_br, "valor": valor, "ok": valor > 0, "debug": ret}
     except Exception as e:
         print(f"⚠️ Erro ao coletar venda diária Painel Gerencial {data_br}: {e}")
         return {"data": data_br, "valor": 0.0, "ok": False, "erro": str(e)}
@@ -8121,21 +8243,24 @@ function buildSnapshotFromHistoricRow(row,month){
     </div>
   </div>`;
 }
-function ensureSnapshotHtmlForMonth(month){
+function ensureSnapshotHtmlForMonth(month, force=false){
   try{
     const snap=HIST_COMISSAO?.months?.[month];
     if(!snap || !Array.isArray(snap.entidades)) return 0;
     let changed=0;
     snap.entidades.forEach(row=>{
-      if(!row.html_individual || String(row.html_individual||'').length<300 || String(row.html_individual||'').includes('Resumo reconstruído automaticamente')){
+      const antigo=String(row.html_individual||'');
+      const precisa = force || !antigo || antigo.length<300 || antigo.includes('Resumo reconstruído automaticamente') || antigo.includes('Resumo visual reconstruído');
+      if(precisa){
         let ent=null, html='';
         try{ ent = (typeof findEntityBySnapshotRow==='function') ? findEntityBySnapshotRow(row) : null; }catch(e){}
         if(ent && typeof snapshotEntityHTML==='function'){
-          try{ html=String(snapshotEntityHTML(ent)||''); }catch(e){ html=''; }
+          try{ html=String(snapshotEntityHTML(ent)||''); }catch(e){ console.warn('snapshotEntityHTML falhou', e); html=''; }
         }
         if(!html) html=buildSnapshotFromHistoricRow(row,month);
         row.html_individual=html;
-        row.html_snapshot_model='visual_cards_v3';
+        row.html_snapshot_model=html.includes('snapshot-real-cards')?'visual_cards_exatos_v4':'visual_cards_v4';
+        row.html_atualizado_em=(new Date()).toISOString();
         changed++;
       }
     });
@@ -8145,7 +8270,7 @@ function ensureSnapshotHtmlForMonth(month){
 async function atualizarTelasCongeladasMes(){
   try{
     const month=document.getElementById('histComMonthSave')?.value || document.getElementById('histComMonth')?.value || mesAtualComissao();
-    const qtd=ensureSnapshotHtmlForMonth(month);
+    const qtd=ensureSnapshotHtmlForMonth(month, true);
     if(typeof salvarHistoricoComissaoOnline==='function') await salvarHistoricoComissaoOnline();
     else {
       const payload=HIST_COMISSAO?.months?.[month];
@@ -8165,17 +8290,19 @@ function getSnapshotHtmlFromSelection(){
 
   let html=String(row.html_individual||'');
   let fonte='tela congelada salva no fechamento';
-  if(!html){
+  const antigoResumo = html.includes('Resumo reconstruído automaticamente') || html.includes('Resumo visual reconstruído') || html.includes('snap-sheet') && !html.includes('snapshot-meta-panel');
+  if(!html || antigoResumo){
     const ent=findEntityBySnapshotRow(row);
     if(ent){
       try{html=String(snapshotEntityHTML(ent)||'');}catch(e){console.error('snapshotEntityHTML falhou',e); html='';}
-      fonte='gerada agora porque este fechamento antigo não tinha a tela salva';
+      fonte=antigoResumo?'tela visual atualizada a partir da base atual':'gerada agora porque este fechamento antigo não tinha a tela salva';
     }
   }
   if(!html){
-    html=snapshotHtmlFallbackFromRow(row,month);
-    fonte='resumo reconstruído do histórico salvo';
+    html=buildSnapshotFromHistoricRow(row,month);
+    fonte='resumo visual reconstruído do histórico salvo';
   }
+  row.html_individual=html;
   return {ok:true,html,row,month,fonte};
 }
 function abrirTelaComissionamentoCongeladaPorSelect(){
