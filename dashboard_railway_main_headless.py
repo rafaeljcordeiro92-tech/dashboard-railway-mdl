@@ -1953,7 +1953,29 @@ vendas_diarias_painel_info = {"hoje": {"valor": 0.0}, "ontem": {"valor": 0.0}, "
 try:
     vendas_diarias_painel_info = coletar_vendas_diarias_painel_gerencial()
 except Exception as e:
-    print(f"⚠️ Erro ao coletar venda diária/dia anterior no Painel Gerencial: {e}")
+    print(f"⚠️ Erro ao coletar venda diária/dia anterior no Relatório Análises Totais Vendas: {e}")
+
+# ✅ Anexa a venda diária ao JSON de metas.
+# Sem isso, a tela carregava correto no HTML inicial, mas o pollSalesLive()
+# baixava metas_vendas_mes_atual.json e sobrescrevia SALES_EMPRESA sem os campos diários.
+try:
+    if metas_vendas_info.get("json_path") and os.path.exists(metas_vendas_info["json_path"]):
+        with open(metas_vendas_info["json_path"], "r", encoding="utf-8") as f:
+            _meta_json_wrap = json.load(f)
+        _meta_json_wrap["vendas_diarias_painel_info"] = vendas_diarias_painel_info
+        _meta_json_wrap["venda_diaria_oficial"] = round(float((vendas_diarias_painel_info.get("hoje") or {}).get("valor") or 0), 2)
+        _meta_json_wrap["venda_dia_anterior_oficial"] = round(float((vendas_diarias_painel_info.get("ontem") or {}).get("valor") or 0), 2)
+        _meta_json_wrap["venda_diaria_fonte"] = vendas_diarias_painel_info.get("fonte", "/relatorio_analises_totais_vendas")
+        _meta_json_wrap["venda_diaria_data"] = (vendas_diarias_painel_info.get("hoje") or {}).get("data", "")
+        _meta_json_wrap["venda_dia_anterior_data"] = (vendas_diarias_painel_info.get("ontem") or {}).get("data", "")
+        with open(metas_vendas_info["json_path"], "w", encoding="utf-8") as f:
+            json.dump(_meta_json_wrap, f, ensure_ascii=False, indent=2)
+        # Mantém também em memória caso alguma rotina use metas_vendas_info["dados"]
+        metas_vendas_info["dados"] = _meta_json_wrap
+        print(f"✅ Venda diária anexada ao metas_vendas_mes_atual.json: hoje={_meta_json_wrap['venda_diaria_oficial']} anterior={_meta_json_wrap['venda_dia_anterior_oficial']}")
+except Exception as e:
+    print(f"⚠️ Não consegui anexar venda diária ao JSON de metas: {e}")
+
 
 margens_brutas_info = {"json_path": None, "xlsx_path": None, "dados": {}}
 try:
@@ -6358,8 +6380,8 @@ function renderKPIs(){
     : Number(sales.servico_atingido_total||0);
 
   const prevServicoReal = Number(prevEmpresa.servico_realizado_total || 0);
-  const vendaDiaria=Number(sales.venda_diaria_oficial||0);
-  const vendaDiaAnterior=Number(sales.venda_dia_anterior_oficial||0);
+  const vendaDiaria=getVendaDiariaValor(sales,"hoje");
+  const vendaDiaAnterior=getVendaDiariaValor(sales,"ontem");
   try{
     console.log('[MDL serviços]', {
       total_controle_meta_sgi: Number(sales.servico_realizado_total||0),
@@ -6424,8 +6446,8 @@ function renderKPIs(){
     makeKpi('🚚 Caminhão realizado',R(sales.caminhao_realizado_total||0),'var(--yellow)',`Meta ${R(sales.caminhao_meta_total||0)} · Atingido ${pct(sales.caminhao_atingido_total||0)}`),
     makeKpi('🛣️ Caminhão projetado',R(sales.caminhao_projetado||0),'var(--yellow-400)',`Meta período ${R(sales.caminhao_meta_periodo||0)}`),
     (isPrivileged ? makeKpi('💵 Faturamento total',R((Number(sales.venda_realizado_total||0)+servicoRealizadoOficial)),'var(--green-400)','Mercantil + serviços realizado', 'card-financeiro') : ''),
-    (isPrivileged ? makeKpi('🕒 Venda diária',R(vendaDiaria),'var(--cyan-400)',`Painel Gerencial ${esc(sales.venda_diaria_data||'hoje')}`, 'card-venda-dia', statusLaranjitoVendaDiaria(vendaDiaria)) : ''),
-    makeKpi('🗓️ Venda dia anterior',R(vendaDiaAnterior),'var(--cyan-400)',`Painel Gerencial ${esc(sales.venda_dia_anterior_data||'ontem')}`, 'card-venda-dia'),
+    (isPrivileged ? makeKpi('🕒 Venda diária',R(vendaDiaria),'var(--cyan-400)',`Rel. análise vendas ${esc(sales.venda_diaria_data||'hoje')}`, 'card-venda-dia', statusLaranjitoVendaDiaria(vendaDiaria)) : ''),
+    makeKpi('🗓️ Venda dia anterior',R(vendaDiaAnterior),'var(--cyan-400)',`Rel. análise vendas ${esc(sales.venda_dia_anterior_data||'último dia')}`, 'card-venda-dia'),
     makeKpi('📊 Rentabilidade total', rentPct?`${rentPct.toFixed(2).replace('.',',')}%`:'Sem dado','var(--green-400)','Última linha do relatório de margem bruta por filial', 'card-financeiro'),
     makeKpi('🧮 Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)', isViewer ? 'Índice mercantil + serviços / custo oculto' : `(Mercantil + serviços) / custo total ${R(markupCost||0)}`, 'card-financeiro', statusLaranjitoMarkup(markupTotal))
   ];
@@ -6493,6 +6515,9 @@ function calcSalesEmpresaFromMetas(payload){
   const venda=totalOf('venda_filial_meta');
   const serv=totalOf('servico_filial_ouro_fob');
   const cam=totalOf('venda_filial_subgrupo_20k');
+  const vdInfo=(payload||{}).vendas_diarias_painel_info || {};
+  const hojeInfo=vdInfo.hoje || {};
+  const antInfo=vdInfo.ontem || {};
   return {
     venda_realizado_total:venda.real_total,
     venda_atingido_total:venda.ating_total,
@@ -6509,6 +6534,14 @@ function calcSalesEmpresaFromMetas(payload){
     caminhao_projetado:cam.proj,
     caminhao_meta_total:cam.meta_total,
     caminhao_meta_periodo:cam.meta_per,
+
+    // ✅ Campos de venda diária vindos do relatório /relatorio_analises_totais_vendas.
+    // Importante: sem estes campos, o pollSalesLive zerava os cards após carregar a tela.
+    venda_diaria_oficial:Number((payload||{}).venda_diaria_oficial ?? hojeInfo.valor ?? 0),
+    venda_dia_anterior_oficial:Number((payload||{}).venda_dia_anterior_oficial ?? antInfo.valor ?? 0),
+    venda_diaria_fonte:String((payload||{}).venda_diaria_fonte || vdInfo.fonte || '/relatorio_analises_totais_vendas'),
+    venda_diaria_data:String((payload||{}).venda_diaria_data || hojeInfo.data || ''),
+    venda_dia_anterior_data:String((payload||{}).venda_dia_anterior_data || antInfo.data || ''),
   };
 }
 async function pollSalesLive(){
@@ -8803,6 +8836,86 @@ window.addEventListener('load',async ()=>{
   setTimeout(pollSalesLive,3000);
   setTimeout(pollDashboardLiveReload,5000);
 })
+
+function getVendaDiariaValor(sales, tipo='hoje'){
+  const s=sales||{};
+  const info=s.vendas_diarias_painel_info || s.vendas_diarias_info || {};
+  const node = tipo==='ontem' ? (info.ontem||info.anterior||{}) : (info.hoje||{});
+  const keys = tipo==='ontem'
+    ? ['venda_dia_anterior_oficial','venda_anterior_oficial','venda_dia_anterior','venda_ontem','valor_dia_anterior']
+    : ['venda_diaria_oficial','venda_diaria','venda_hoje','valor_diario'];
+  for(const k of keys){
+    const n=Number(s[k] ?? 0);
+    if(Number.isFinite(n) && n>0) return n;
+  }
+  const n2=Number(node.valor ?? node.total ?? 0);
+  if(Number.isFinite(n2) && n2>0) return n2;
+  return 0;
+}
+function getVendaDiariaDataLabel(sales, tipo='hoje'){
+  const s=sales||{};
+  const info=s.vendas_diarias_painel_info || s.vendas_diarias_info || {};
+  const node = tipo==='ontem' ? (info.ontem||info.anterior||{}) : (info.hoje||{});
+  if(tipo==='ontem') return String(s.venda_dia_anterior_data || node.data || 'último dia');
+  return String(s.venda_diaria_data || node.data || 'hoje');
+}
+function getLaranjitoMarkupCard(markup){
+  const foguete='https://moveisdolar.com.br/colaborador/mascote%20foguete.png';
+  const feliz='https://moveisdolar.com.br/colaborador/mascote%20feliz1.png';
+  const preocupado='https://moveisdolar.com.br/colaborador/mascote%20preocupado1.png';
+  const triste='https://moveisdolar.com.br/colaborador/mascote%20triste1.png';
+  const v=Number(markup||0);
+  if(v>2.25) return foguete;
+  if(v>=2.15) return feliz;
+  if(v>=2.01) return preocupado;
+  return triste;
+}
+function getLaranjitoVendaDiariaCard(valor){
+  const foguete='https://moveisdolar.com.br/colaborador/mascote%20foguete.png';
+  const feliz='https://moveisdolar.com.br/colaborador/mascote%20feliz1.png';
+  const preocupado='https://moveisdolar.com.br/colaborador/mascote%20preocupado1.png';
+  const triste='https://moveisdolar.com.br/colaborador/mascote%20triste1.png';
+  const v=Number(valor||0);
+  if(v>40000) return foguete;
+  if(v>25000) return feliz;
+  if(v>20000) return preocupado;
+  return triste;
+}
+
+
+function fixCardsVendaDiariaEMarkupDepoisRender(){
+  try{
+    const sales=SALES_EMPRESA||{};
+    const vd=getVendaDiariaValor(sales,'hoje');
+    const va=getVendaDiariaValor(sales,'ontem');
+    const markup=Number(SALES_EMPRESA?.markup_total ?? SALES_EMPRESA?.markup ?? 0);
+
+    document.querySelectorAll('.kpi-card,.stat-card,.metric-card,.card').forEach(card=>{
+      const txt=(card.innerText||'').toUpperCase();
+      if(txt.includes('VENDA DIÁRIA')){
+        const val=card.querySelector('.value,.kpi-value,.metric-value,h3,strong');
+        if(val) val.textContent=R(vd);
+        const sub=[...card.querySelectorAll('.hint,.sub,.small,small')].find(x=>(x.innerText||'').toLowerCase().includes('painel') || (x.innerText||'').toLowerCase().includes('rel.'));
+        if(sub) sub.textContent='Rel. análise vendas '+getVendaDiariaDataLabel(sales,'hoje');
+        const img=card.querySelector('img');
+        if(img) img.src=getLaranjitoVendaDiariaCard(vd);
+      }
+      if(txt.includes('VENDA DIA ANTERIOR')){
+        const val=card.querySelector('.value,.kpi-value,.metric-value,h3,strong');
+        if(val) val.textContent=R(va);
+        const sub=[...card.querySelectorAll('.hint,.sub,.small,small')].find(x=>(x.innerText||'').toLowerCase().includes('painel') || (x.innerText||'').toLowerCase().includes('rel.'));
+        if(sub) sub.textContent='Rel. análise vendas '+getVendaDiariaDataLabel(sales,'ontem');
+      }
+      if(txt.includes('MARKUP TOTAL')){
+        const img=card.querySelector('img');
+        if(img) img.src=getLaranjitoMarkupCard(markup);
+      }
+    });
+  }catch(e){console.warn('fixCardsVendaDiariaEMarkupDepoisRender',e)}
+}
+
+
+setInterval(()=>{try{fixCardsVendaDiariaEMarkupDepoisRender()}catch(e){}},1500);
 </script>
 </body>
 </html>
