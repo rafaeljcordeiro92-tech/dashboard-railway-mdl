@@ -1512,274 +1512,227 @@ def _gerar_relatorio_margem(tipo):
 def _dt_br(d):
     return d.strftime("%d/%m/%Y")
 
-def coletar_venda_diaria_painel_gerencial(data_ref):
-    """Coleta faturamento diário no Painel Gerencial.
 
-    Esse painel desenha os valores em canvas. A coleta agora faz 3 caminhos:
-      1) tenta buscar o mesmo retorno AJAX usado pelo botão Filtrar e parsear o JS;
-      2) lê objetos Chart.js/jQuery/props do canvas;
-      3) simula hover no canvas e tenta capturar tooltip DOM/debug.
+def _nome_arquivo_analises_totais_vendas_valido(fname):
+    s = str(fname or "").lower().strip()
+    if s.startswith("~$"):
+        return False
+    if not (s.endswith(".xls") or s.endswith(".xlsx")):
+        return False
+    bloqueados = ["margem", "contas", "servicos", "metas_vendas_mes_atual", "dashboard", "historico", "fechamentos"]
+    if any(b in s for b in bloqueados):
+        return False
+    # Alguns relatórios do SGI vêm com nome genérico. Para este fluxo, a seleção principal é feita por "arquivos_antes".
+    return True
+
+
+def _ler_tabelas_xls_ou_html(caminho):
+    """Lê XLS/XLSX do SGI, inclusive quando o .xls é xlsx disfarçado ou HTML."""
+    tabelas = []
+    erros = []
+    caminho_str = str(caminho)
+    try:
+        with open(caminho, "rb") as f:
+            magic = f.read(4)
+        # O SGI às vezes baixa .xls, mas o conteúdo real é XLSX/ZIP começando com PK.
+        if magic.startswith(b"PK") or caminho_str.lower().endswith(".xlsx"):
+            tabelas.append(pd.read_excel(caminho, header=None, engine="openpyxl"))
+        else:
+            tabelas.append(pd.read_excel(caminho, header=None))
+    except Exception as e:
+        erros.append(f"read_excel: {e}")
+    try:
+        htmls = pd.read_html(caminho, decimal=",", thousands=".")
+        tabelas.extend(htmls)
+    except Exception as e:
+        erros.append(f"read_html: {e}")
+    if not tabelas:
+        raise Exception("Não consegui ler XLS/HTML do relatório de análise de vendas: " + " | ".join(erros[:3]))
+    return tabelas
+
+
+def _totalizar_colunas_b_g_h(caminho):
+    """Total diário do relatório de análise total de vendas.
+
+    No XLS enviado pelo SGI:
+      A = Filial
+      B = Total Vendido (R$)
+      G = Valor Serviço (R$)
+      H = Valor Acréscimo Serviço (R$)
+
+    Regra:
+      1) Se existir a linha "Total", usa apenas B/G/H desta linha.
+      2) Se não existir, soma B/G/H apenas das linhas de FILIAL.
+    """
+    tabelas = _ler_tabelas_xls_ou_html(caminho)
+    debug = []
+    melhor_total = 0.0
+
+    for idx, df in enumerate(tabelas):
+        if df is None or df.empty or df.shape[1] < 2:
+            continue
+
+        df2 = df.copy()
+        # Normaliza primeira coluna para localizar Total/Filial
+        col_a = df2.iloc[:, 0].astype(str).fillna("").str.strip()
+        total_rows = df2[col_a.str.upper().eq("TOTAL")]
+
+        def soma_linha(row):
+            partes = {}
+            total_linha = 0.0
+            for col_idx, col_nome in [(1, "B_Total_Vendido"), (6, "G_Valor_Servico"), (7, "H_Acrescimo_Servico")]:
+                val = 0.0
+                if df2.shape[1] > col_idx:
+                    n = valor_float_brasil(row.iloc[col_idx])
+                    val = float(n or 0)
+                partes[col_nome] = round(val, 2)
+                total_linha += val
+            return round(total_linha, 2), partes
+
+        if not total_rows.empty:
+            row = total_rows.iloc[-1]
+            parcial, partes = soma_linha(row)
+            debug.append({
+                "tabela": idx,
+                "modo": "linha_total",
+                "linhas": int(df2.shape[0]),
+                "colunas": int(df2.shape[1]),
+                "partes": partes,
+                "parcial": parcial,
+            })
+            if abs(parcial) > abs(melhor_total):
+                melhor_total = parcial
+            continue
+
+        filial_rows = df2[col_a.str.upper().str.startswith("FILIAL ")]
+        parcial = 0.0
+        partes_soma = {"B_Total_Vendido": 0.0, "G_Valor_Servico": 0.0, "H_Acrescimo_Servico": 0.0}
+        for _, row in filial_rows.iterrows():
+            _, partes = soma_linha(row)
+            for k, v in partes.items():
+                partes_soma[k] += v
+        parcial = round(sum(partes_soma.values()), 2)
+        partes_soma = {k: round(v, 2) for k, v in partes_soma.items()}
+        debug.append({
+            "tabela": idx,
+            "modo": "soma_linhas_filial",
+            "linhas": int(df2.shape[0]),
+            "colunas": int(df2.shape[1]),
+            "qtd_filiais": int(len(filial_rows)),
+            "partes": partes_soma,
+            "parcial": parcial,
+        })
+        if abs(parcial) > abs(melhor_total):
+            melhor_total = parcial
+
+    return round(float(melhor_total or 0), 2), debug
+
+
+def coletar_venda_diaria_painel_gerencial(data_ref):
+    """Coleta venda diária pelo relatório /relatorio_analises_totais_vendas.
+
+    Regra MDL:
+      - data emissão inicial = data_ref
+      - data emissão final = data_ref
+      - formato XLS
+      - total diário = soma da coluna B + coluna G + coluna H do XLS
     """
     data_br = _dt_br(data_ref)
-    print(f"\n🕒 Coletando venda diária no Painel Gerencial: {data_br}")
+    print(f"\n🕒 Coletando venda diária pelo Relatório Análises Totais Vendas: {data_br}")
     try:
-        driver.get(URL + "/paineis_gerenciais")
-        wait.until(EC.presence_of_element_located((By.ID, "data_inicial")))
-        set_input_value_safe(By.ID, "data_inicial", data_br)
-        set_input_value_safe(By.ID, "data_final", data_br)
+        driver.get(URL + "/relatorio_analises_totais_vendas")
+        wait.until(EC.presence_of_element_located((By.ID, "data_emissao_inicial")))
+        time.sleep(1.0)
+
+        set_input_value_safe(By.ID, "data_emissao_inicial", data_br)
+        set_input_value_safe(By.ID, "data_emissao_final", data_br)
 
         try:
-            driver.find_element(By.ID, "btn_filtrar").click()
+            Select(wait.until(EC.presence_of_element_located((By.ID, "_formato")))).select_by_value("xls")
+            print("✅ Formato XLS para Análises Totais Vendas")
+        except Exception as e:
+            print(f"⚠️ Não consegui selecionar XLS em Análises Totais Vendas: {e}")
+
+        arquivos_antes = set(
+            f for f in os.listdir(download_dir)
+            if _nome_arquivo_analises_totais_vendas_valido(f)
+        )
+
+        gerar = wait.until(EC.presence_of_element_located((By.ID, "gerar")))
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", gerar)
+        esperar_sumir_overlays(10)
+        try:
+            wait.until(EC.element_to_be_clickable((By.ID, "gerar"))).click()
         except Exception:
+            driver.execute_script("arguments[0].click();", gerar)
+
+        print("📥 Gerando XLS Análises Totais Vendas... aguardando download...")
+        caminho = None
+        for tentativa in range(75):
+            time.sleep(2)
+            baixando = any(f.endswith(".crdownload") or f.endswith(".tmp") for f in os.listdir(download_dir))
+            if tentativa % 10 == 0:
+                print(f"⏳ Análises Totais Vendas tentativa {tentativa}/75 | baixando={baixando}")
+            if baixando:
+                continue
+            atuais = set(
+                f for f in os.listdir(download_dir)
+                if _nome_arquivo_analises_totais_vendas_valido(f)
+            )
+            novos = atuais - arquivos_antes
+            if novos:
+                caminho = max([os.path.join(download_dir, f) for f in novos], key=os.path.getctime)
+                break
+
+        if not caminho:
             try:
-                driver.find_element(By.ID, "filtrar").click()
+                recentes = [
+                    os.path.join(download_dir, f) for f in os.listdir(download_dir)
+                    if _nome_arquivo_analises_totais_vendas_valido(f)
+                ]
+                recentes = sorted(recentes, key=os.path.getctime, reverse=True)
+                if recentes:
+                    caminho = recentes[0]
+                    print(f"⚠️ Usando XLS mais recente encontrado para Análises Totais Vendas: {caminho}")
             except Exception:
-                try:
-                    driver.find_element(By.XPATH, "//button[contains(.,'Filtrar') or contains(.,'filtrar')] | //input[contains(@value,'Filtrar') or contains(@value,'filtrar')]").click()
-                except Exception:
-                    pass
+                caminho = None
 
-        try:
-            wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "canvas#vendas_empresa")))
-        except Exception:
-            pass
-        # aguarda sumir loading do painel, se existir
-        try:
-            WebDriverWait(driver, 20).until(lambda d: d.execute_script("return !document.querySelector('.loading_vendas_empresa:not([style*=none]) img.loading')"))
-        except Exception:
-            pass
-        time.sleep(5)
+        if not caminho:
+            raise Exception("Nenhum XLS válido de Análises Totais Vendas foi baixado")
 
-        js = r"""
-        const dataBr = arguments[0];
-        const normNum=(v)=>{
-          if(v==null) return 0;
-          if(typeof v==='number') return Number(v)||0;
-          if(typeof v==='object'){
-            if(v.y!=null) return normNum(v.y);
-            if(v.value!=null) return normNum(v.value);
-            if(v.v!=null) return normNum(v.v);
-          }
-          let s=String(v).replace(/R\$|\s/g,'').trim();
-          s=s.replace(/[^0-9,\.\-]/g,'');
-          if(!s) return 0;
-          if(s.includes(',') && s.includes('.')) s=s.replace(/\./g,'').replace(',','.');
-          else if(s.includes(',')) s=s.replace(',','.');
-          return Number(s)||0;
-        };
-        const validVal=(x)=>Number(x)>0 && Number(x)<99999999;
-        const parseFaturamentoText=(txt, origin)=>{
-          txt=String(txt||'');
-          const cands=[];
-          const add=(raw, why)=>{
-            const v=normNum(raw);
-            if(validVal(v)) cands.push({valor:v, raw:String(raw), why, origin});
-          };
-          // label antes do valor
-          let re=/(?:Faturamento|faturamento)[\s\S]{0,280}?([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2}|[0-9]+,[0-9]{2}|[0-9]{2,}(?:\.[0-9]+)?)/g;
-          let m; while((m=re.exec(txt))) add(m[1],'label_before');
-          // valor antes do label
-          re=/([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2}|[0-9]+,[0-9]{2}|[0-9]{2,}(?:\.[0-9]+)?)[\s\S]{0,280}?(?:Faturamento|faturamento)/g;
-          while((m=re.exec(txt))) add(m[1],'value_before');
-          // objetos label/value
-          re=/(?:label|titulo|title|name)\s*[:=]\s*['"]?Faturamento['"]?[\s\S]{0,350}?(?:value|valor|data|y)\s*[:=]\s*['"]?([0-9\.,]+)/gi;
-          while((m=re.exec(txt))) add(m[1],'obj_label_value');
-          re=/(?:value|valor|data|y)\s*[:=]\s*['"]?([0-9\.,]+)['"]?[\s\S]{0,350}?(?:label|titulo|title|name)\s*[:=]\s*['"]?Faturamento/gi;
-          while((m=re.exec(txt))) add(m[1],'obj_value_label');
-          // labels Meta/Faturamento e array data [meta, faturamento]
-          re=/(?:labels|label)\s*[:=]\s*\[[^\]]*Meta[^\]]*Faturamento[^\]]*\][\s\S]{0,500}?(?:data|dados|values|valores)\s*[:=]\s*\[([^\]]+)\]/gi;
-          while((m=re.exec(txt))){
-            const nums=[...String(m[1]).matchAll(/[0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2}|[0-9]+,[0-9]{2}|[0-9]{2,}(?:\.[0-9]+)?/g)].map(x=>normNum(x[0])).filter(validVal);
-            if(nums.length>=2) cands.push({valor:nums[1], raw:String(m[1]), why:'labels_meta_faturamento_index1', origin});
-          }
-          cands.sort((a,b)=>a.valor-b.valor);
-          return cands;
-        };
+        total, debug = _totalizar_colunas_b_g_h(caminho)
+        print(f"✅ Venda diária Análises Totais Vendas {data_br}: R$ {total:,.2f} | arquivo={caminho}")
+        print(f"🔎 Debug B+G+H: {json.dumps(debug[:5], ensure_ascii=False)[:2500]}")
+        return {"data": data_br, "valor": round(float(total or 0), 2), "ok": total > 0, "arquivo": caminho, "debug": debug}
 
-        const out={canvas:false, tries:[], ajax:[], candidates:[]};
-        const canvas=document.getElementById('vendas_empresa') || document.querySelector('canvas#vendas_empresa');
-        out.canvas=!!canvas;
-
-        const pickFaturamentoFromData=(dataObj, origin)=>{
-          if(!dataObj) return null;
-          const rows=[];
-          const labels=(dataObj.labels || dataObj.label || []).map ? (dataObj.labels || dataObj.label || []).map(x=>String(x||'')) : [];
-          const datasets=(dataObj.datasets || dataObj.datasets_empresa || dataObj.series || []).filter ? (dataObj.datasets || dataObj.datasets_empresa || dataObj.series || []).filter(Boolean) : [];
-          const idxFat=labels.findIndex(l=>/fatur/i.test(l));
-          if(idxFat>=0){
-            for(const ds of datasets){
-              const arr=Array.isArray(ds.data)?ds.data:(Array.isArray(ds.value)?ds.value:(Array.isArray(ds.values)?ds.values:[]));
-              const val=normNum(arr[idxFat]);
-              rows.push({modo:'label_index',origin,label:labels[idxFat],dataset:String(ds.label||''),valor:val,data:arr.map(normNum)});
-              if(validVal(val)) return {valor:val, rows, labels, origin};
-            }
-          }
-          for(const ds of datasets){
-            const label=String(ds.label||ds.name||ds.title||'');
-            const arr=Array.isArray(ds.data)?ds.data:(Array.isArray(ds.value)?ds.value:(Array.isArray(ds.values)?ds.values:[]));
-            if(/fatur/i.test(label)){
-              const total=arr.reduce((a,b)=>a+normNum(b),0);
-              rows.push({modo:'dataset_label',origin,label,total,data:arr.map(normNum)});
-              if(validVal(total)) return {valor:total, rows, labels, origin};
-            }
-          }
-          const arr = Array.isArray(dataObj) ? dataObj : (Array.isArray(dataObj.data) ? dataObj.data : []);
-          for(const item of arr){
-            const label=String(item?.label||item?.name||item?.title||'');
-            const val=normNum(item?.value ?? item?.valor ?? item?.val ?? item?.data ?? item?.y);
-            rows.push({modo:'array_obj',origin,label,valor:val});
-            if(/fatur/i.test(label) && validVal(val)) return {valor:val, rows, labels, origin};
-          }
-          return rows.length?{valor:0, rows, labels, origin}:null;
-        };
-
-        // 0) Retorno AJAX da tela, muitas vezes contém o JS que desenha o gráfico com os valores.
-        async function fetchAjaxCandidates(){
-          const qs='?data_inicial='+encodeURIComponent(dataBr)+'&data_final='+encodeURIComponent(dataBr);
-          const urls=['/paineis_gerenciais'+qs, '/paineis_gerenciais.js'+qs, '/paineis_gerenciais?'+new URLSearchParams({data_inicial:dataBr,data_final:dataBr}).toString()];
-          for(const u of urls){
-            try{
-              const r=await fetch(u,{credentials:'include',headers:{'X-Requested-With':'XMLHttpRequest','Accept':'text/javascript, application/javascript, application/json, */*'}});
-              const t=await r.text();
-              const c=parseFaturamentoText(t,'ajax:'+u);
-              out.ajax.push({url:u,status:r.status,len:t.length,cands:c.slice(0,10),sample:t.slice(0,300)});
-              if(c.length) return c[0];
-            }catch(e){out.ajax.push({url:u,erro:String(e)})}
-          }
-          return null;
-        }
-        const ajaxBest=await fetchAjaxCandidates();
-        if(ajaxBest && validVal(ajaxBest.valor)) return {ok:true,valor:ajaxBest.valor,debug:{...out,modo:'ajax'}};
-
-        // 1) Chart.js conhecido
-        const charts=[];
-        try{ if(window.Chart && window.Chart.getChart && canvas){ const c=window.Chart.getChart(canvas); if(c) charts.push(c); } }catch(e){out.tries.push({chart_get:e.message})}
-        try{ if(canvas && canvas.chart) charts.push(canvas.chart); }catch(e){}
-        try{ if(canvas && canvas.__chartjs) charts.push(canvas.__chartjs); }catch(e){}
-        try{ if(canvas && canvas._chartjs) charts.push(canvas._chartjs); }catch(e){}
-        try{ if(canvas){ Object.getOwnPropertyNames(canvas).forEach(k=>{ try{ const v=canvas[k]; if(v && typeof v==='object') charts.push(v); }catch(e){} }); } }catch(e){}
-        try{
-          if(window.Chart && window.Chart.instances){
-            const inst=window.Chart.instances;
-            const vals=Array.isArray(inst)?inst:Object.keys(inst).map(k=>inst[k]);
-            vals.forEach(c=>{ if(c) charts.push(c); });
-          }
-        }catch(e){}
-        const unique=[]; const seen=new Set();
-        charts.forEach(c=>{ const id=c.id || c._id || (c.canvas&&c.canvas.id) || (c.chart&&c.chart.canvas&&c.chart.canvas.id) || Math.random(); if(!seen.has(id)){seen.add(id); unique.push(c);} });
-        for(const c of unique){
-          try{
-            const dataObj=(c.data || c.config?.data || c.config?._config?.data || c.chart?.data || {});
-            const got=pickFaturamentoFromData(dataObj, 'chart_object');
-            out.tries.push({modo:'chart', canvas_id:(c.canvas&&c.canvas.id)||(c.chart&&c.chart.canvas&&c.chart.canvas.id)||'', got});
-            if(got && validVal(got.valor)) return {ok:true, valor:Number(got.valor), debug:out};
-            const segs=c.segments || c._segments || c.chart?.segments || c.active || [];
-            for(const s of segs){
-              const label=String(s.label||s.name||s.title||'');
-              const val=normNum(s.value ?? s.valor ?? s.y);
-              if(/fatur/i.test(label) && validVal(val)) return {ok:true, valor:val, debug:{...out, modo:'segments'}};
-            }
-          }catch(e){out.tries.push({chart_err:e.message})}
-        }
-
-        // 2) jQuery data e varredura recursiva de objetos ligados ao canvas
-        const visited=new WeakSet(), candidates=[];
-        function scanObj(o,path,depth){
-          if(!o || depth>5) return;
-          const t=typeof o;
-          if(t!=='object' && t!=='function') return;
-          if(visited.has(o)) return;
-          try{visited.add(o)}catch(e){}
-          let got=null; try{ got=pickFaturamentoFromData(o,path); }catch(e){}
-          if(got && validVal(got.valor)) candidates.push({path,valor:got.valor,modo:'pickData'});
-          let keys=[];
-          try{keys=[...Object.keys(o),...Object.getOwnPropertyNames(o)].slice(0,180)}catch(e){return}
-          for(const k of [...new Set(keys)]){
-            let v; try{v=o[k]}catch(e){continue}
-            if(v && typeof v==='object'){
-              try{
-                const label=String(v.label||v.name||v.title||'');
-                const val=normNum(v.value ?? v.valor ?? v.val ?? v.y ?? v.data);
-                if(/fatur/i.test(label) && validVal(val)) candidates.push({path:path+'.'+k,valor:val,modo:'label_value'});
-              }catch(e){}
-              if(depth<5 && !(v instanceof Node) && v!==window && v!==document) scanObj(v,path+'.'+k,depth+1);
-            }else if(typeof v==='string' && /fatur/i.test(v)){
-              const textC=parseFaturamentoText(JSON.stringify(o).slice(0,5000), path+'.json');
-              textC.forEach(c=>candidates.push({path:c.origin,valor:c.valor,modo:c.why}));
-            }
-          }
-        }
-        try{
-          if(window.jQuery && canvas){
-            const d=window.jQuery(canvas).data();
-            out.tries.push({modo:'jquery_data_keys', keys:Object.keys(d||{})});
-            scanObj(d,'jquery(canvas).data()',0);
-          }
-          if(canvas) scanObj(canvas,'canvas',0);
-        }catch(e){out.tries.push({scan_canvas:e.message})}
-
-        // 3) Varre globals prováveis
-        try{
-          const names=Object.keys(window).filter(k=>/venda|fatur|graf|chart|empresa|painel|dados|data|meta/i.test(k)).slice(0,220);
-          out.global_names=names;
-          for(const k of names){ try{scanObj(window[k],'window.'+k,0)}catch(e){} }
-          candidates.sort((a,b)=>a.valor-b.valor);
-          out.candidates=candidates.slice(0,30);
-          const pref=candidates.find(x=>/fatur|vendas_empresa|empresa|venda/i.test(x.path||'')) || candidates[0];
-          if(pref && validVal(pref.valor)) return {ok:true,valor:Number(pref.valor),debug:{...out,modo:'scan'}};
-        }catch(e){out.tries.push({scan_global:e.message})}
-
-        // 4) Simula hover em alguns pontos do canvas e tenta ler tooltip caso vire DOM/texto.
-        try{
-          if(canvas){
-            const rect=canvas.getBoundingClientRect();
-            const pts=[
-              [rect.width*0.50,rect.height*0.10],
-              [rect.width*0.42,rect.height*0.10],
-              [rect.width*0.35,rect.height*0.16],
-              [rect.width*0.50,rect.height*0.20],
-              [rect.width*0.30,rect.height*0.25],
-            ];
-            for(const [x,y] of pts){
-              const ev=new MouseEvent('mousemove',{bubbles:true,cancelable:true,clientX:rect.left+x,clientY:rect.top+y,offsetX:x,offsetY:y});
-              canvas.dispatchEvent(ev);
-              const bodyText=document.body ? document.body.innerText : '';
-              const c=parseFaturamentoText(bodyText,'body_after_hover');
-              if(c.length) return {ok:true,valor:c[0].valor,debug:{...out,modo:'hover_body',pt:[x,y],cands:c.slice(0,5)}};
-            }
-          }
-        }catch(e){out.tries.push({hover:e.message})}
-
-        const bodyText=document.body ? document.body.innerText : '';
-        const bodyC=parseFaturamentoText(bodyText,'body_text');
-        if(bodyC.length) return {ok:true,valor:bodyC[0].valor,debug:{...out,modo:'body'}};
-
-        return {ok:false,valor:0,erro:'canvas_sem_chart_dados',debug:out};
-        """
-        ret = driver.execute_script(js, data_br) or {}
-        valor = round(float((ret or {}).get("valor") or 0), 2)
-
-        print(f"✅ Venda diária Painel Gerencial {data_br}: R$ {valor:,.2f}")
-        if valor <= 0:
-            try:
-                print("⚠️ Debug venda diária:", json.dumps(ret, ensure_ascii=False)[:3000])
-            except Exception:
-                print("⚠️ Debug venda diária:", ret)
-        return {"data": data_br, "valor": valor, "ok": valor > 0, "debug": ret}
     except Exception as e:
-        print(f"⚠️ Erro ao coletar venda diária Painel Gerencial {data_br}: {e}")
+        print(f"⚠️ Erro ao coletar venda diária por Análises Totais Vendas {data_br}: {e}")
         return {"data": data_br, "valor": 0.0, "ok": False, "erro": str(e)}
 
 
 def coletar_vendas_diarias_painel_gerencial():
     hoje_br = now_brasilia().date()
     hoje_dt = datetime(hoje_br.year, hoje_br.month, hoje_br.day)
-    ontem_dt = hoje_dt - timedelta(days=1)
+
+    hoje_info = coletar_venda_diaria_painel_gerencial(hoje_dt)
+
+    # Dia anterior: se domingo/feriado/loja fechada vier 0, volta até 10 dias procurando o último dia com venda.
+    anterior_info = None
+    for dias in range(1, 11):
+        data_ant = hoje_dt - timedelta(days=dias)
+        tentativa = coletar_venda_diaria_painel_gerencial(data_ant)
+        if float(tentativa.get("valor") or 0) > 0:
+            tentativa["dias_voltados"] = dias
+            anterior_info = tentativa
+            break
+        if anterior_info is None:
+            anterior_info = tentativa
+
     return {
-        "hoje": coletar_venda_diaria_painel_gerencial(hoje_dt),
-        "ontem": coletar_venda_diaria_painel_gerencial(ontem_dt),
+        "hoje": hoje_info,
+        "ontem": anterior_info or {"data": _dt_br(hoje_dt - timedelta(days=1)), "valor": 0.0, "ok": False},
         "coletado_em": now_brasilia().isoformat(),
-        "fonte": "/paineis_gerenciais canvas#vendas_empresa",
+        "fonte": "/relatorio_analises_totais_vendas XLS colunas B+G+H",
     }
 
 def coletar_margens_brutas_mes_atual():
@@ -8192,7 +8145,8 @@ function _snapshotCssForExactCards(){
 function _snapshotCleanClone(root){
   const c=root.cloneNode(true);
   // remove partes muito grandes/operacionais que não fazem parte dos cards principais
-  c.querySelectorAll('.accordion,.acc-body,.acc-head,#laranjitoNotify,#laranjitoNotifyPanel,.toast,.modal,.modal-backdrop,script').forEach(x=>x.remove());
+  c.querySelectorAll('#laranjitoNotify,#laranjitoNotifyPanel,.toast,.modal,.modal-backdrop,script').forEach(x=>x.remove());
+  c.querySelectorAll('.accordion .acc-body').forEach(x=>x.style.display='none');
   c.querySelectorAll('[onclick]').forEach(x=>x.removeAttribute('onclick'));
   return c;
 }
@@ -8242,7 +8196,7 @@ function snapshotEntityHTML(ent){
         .snapshot-exact-cards .snapshot-title h1{margin:0;font-size:30px;color:#fff}
         .snapshot-exact-cards .snapshot-title .sub{margin-top:6px;color:#aab4c8}
         .snapshot-exact-cards .back-row button{display:none!important}
-        .snapshot-exact-cards .detail-top{display:grid!important;grid-template-columns:1.05fr .95fr!important;gap:16px!important;align-items:start!important}
+        .snapshot-exact-cards .detail-top{display:grid!important;grid-template-columns:1.05fr .95fr!important;gap:16px!important;align-items:start!important}.snapshot-exact-cards .glass.panel{margin-bottom:14px!important}.snapshot-exact-cards .sales-panel,.snapshot-exact-cards .commission-card{display:block!important}
         .snapshot-exact-cards .accordion{display:none!important}
         @media(max-width:1000px){.snapshot-exact-cards .detail-top{grid-template-columns:1fr!important}}
       </style>
@@ -8355,7 +8309,7 @@ function ensureSnapshotHtmlForMonth(month, force=false){
     let changed=0;
     snap.entidades.forEach(row=>{
       const old=String(row.html_individual||'');
-      const isResumo=/Resumo visual reconstruído|resumo reconstruído|snap-sheet|snapshot-visual-rebuild/i.test(old);
+      const isExact=/snapshot-exact-cards|snapshot-real-cards|detail-top|commission-card|sales-panel/.test(old); const isResumo=!isExact || /Resumo visual reconstruído|resumo reconstruído|snap-sheet|snapshot-visual-rebuild/i.test(old);
       if(force || !old || old.length<300 || isResumo){
         const ent = (typeof findEntityBySnapshotRow==='function') ? findEntityBySnapshotRow(row) : null;
         let html='';
@@ -8394,19 +8348,21 @@ function getSnapshotHtmlFromSelection(){
 
   let html=String(row.html_individual||'');
   let fonte='tela congelada salva no fechamento';
-  const antigoResumo = html.includes('Resumo reconstruído automaticamente') || html.includes('Resumo visual reconstruído') || html.includes('snap-sheet') && !html.includes('snapshot-meta-panel');
+  const isExact = /snapshot-exact-cards|snapshot-real-cards|detail-top|commission-card|sales-panel/.test(html||'');
+  const antigoResumo = !isExact || /Resumo reconstruído automaticamente|Resumo visual reconstruído|resumo visual reconstruído|snap-sheet|snapshot-visual-rebuild/i.test(html||'');
   if(!html || antigoResumo){
     const ent=findEntityBySnapshotRow(row);
     if(ent){
       try{html=String(snapshotEntityHTML(ent)||'');}catch(e){console.error('snapshotEntityHTML falhou',e); html='';}
-      fonte=antigoResumo?'tela visual atualizada a partir da base atual':'gerada agora porque este fechamento antigo não tinha a tela salva';
+      fonte='tela visual dos cards individuais regenerada agora';
     }
   }
   if(!html){
     html=buildSnapshotFromHistoricRow(row,month);
-    fonte='resumo visual reconstruído do histórico salvo';
+    fonte='modelo visual reconstruído do histórico salvo';
   }
   row.html_individual=html;
+  row.html_snapshot_model = /snapshot-exact-cards|snapshot-real-cards/.test(html||'') ? 'exact_cards_dom_v5' : (row.html_snapshot_model||'visual_rebuild_v5');
   return {ok:true,html,row,month,fonte};
 }
 function abrirTelaComissionamentoCongeladaPorSelect(){
