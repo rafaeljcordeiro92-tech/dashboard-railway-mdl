@@ -29,7 +29,7 @@ def now_brasilia():
     return datetime.now(APP_TZ)
 
 # ===== DATAS
-hoje        = datetime.now()
+hoje        = now_brasilia()
 data_inicio = (hoje - timedelta(days=90)).strftime("%d/%m/%Y")
 data_fim    = (hoje - timedelta(days=15)).strftime("%d/%m/%Y")
 
@@ -4465,20 +4465,20 @@ hist_dash["sales_dates"][hoje_str] = {
     "empresa": _sales_emp,
     "filiais": _sales_fil,
     "vendedores": _sales_vend,
-    "updated_at": datetime.now().isoformat(),
+    "updated_at": now_brasilia().isoformat(),
 }
 hist_dash["sales_months"][mes_str] = {
     "empresa": _sales_emp,
     "filiais": _sales_fil,
     "vendedores": _sales_vend,
-    "updated_at": datetime.now().isoformat(),
+    "updated_at": now_brasilia().isoformat(),
 }
 
 hist_dash["dates"][hoje_str] = {
     "empresa": _hist_empresa,
     "vendedores": _hist_vends,
     "filiais": _hist_fils,
-    "updated_at": datetime.now().isoformat(),
+    "updated_at": now_brasilia().isoformat(),
 }
 _fech_mensal = fechar_mes_anterior_travado(mes_str, hist_dash, CONFIG_META, CONFIG_META_IND)
 hist_dash['months_closed'] = _fech_mensal.get('months', {})
@@ -6014,13 +6014,76 @@ function laranjitoSrc(status){
 }
 
 
+
+function brDateISO(d=new Date()){
+  // Data local de Brasília, sem cair no problema do toISOString virar dia seguinte em UTC.
+  try{
+    const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(d);
+    const y=parts.find(p=>p.type==='year')?.value;
+    const m=parts.find(p=>p.type==='month')?.value;
+    const day=parts.find(p=>p.type==='day')?.value;
+    return `${y}-${m}-${day}`;
+  }catch(e){
+    const z=new Date(d.getTime()-3*60*60*1000);
+    return z.toISOString().slice(0,10);
+  }
+}
+function servicoControleMetaTotal(ent){
+  if(!ent) return 0;
+  const key = ent.type==='filial' ? 'servico_filial_ouro_fob' : 'servico_filial_vendedor_ouro_fob';
+  const row=(getSalesRows(ent,key)||[])[0];
+  if(!row) return 0;
+  return salesNum(salesCell(row,['Realizado (R$) Total','Realizado(R$) Total','Realizado Total','Realizado']));
+}
+function servicoControleMetaPeriodo(ent){
+  if(!ent) return 0;
+  const key = ent.type==='filial' ? 'servico_filial_ouro_fob' : 'servico_filial_vendedor_ouro_fob';
+  const row=(getSalesRows(ent,key)||[])[0];
+  if(!row) return 0;
+  return salesNum(salesCell(row,['Realizado (R$) Período','Realizado(R$) Período','Realizado Período']));
+}
+function ajustarServicosPorControleMeta(ent, rows){
+  const bruto=(rows||[]).reduce((a,b)=>a+Number(b.real_total||0),0);
+  const oficial=servicoControleMetaTotal(ent);
+  if(!(oficial>0) || !(bruto>0)) return {rows:rows||[], bruto, oficial:bruto, ajuste:0, ratio:1, ajustado:false};
+  const diff=bruto-oficial;
+  if(Math.abs(diff) < 0.05) return {rows:rows||[], bruto, oficial, ajuste:0, ratio:1, ajustado:false};
+  const ratio=oficial/bruto;
+  let acumulado=0;
+  const adj=(rows||[]).map((r,i,arr)=>{
+    let val;
+    if(i===arr.length-1){
+      val=Math.max(0, Number((oficial-acumulado).toFixed(2)));
+    }else{
+      val=Math.max(0, Number((Number(r.real_total||0)*ratio).toFixed(2)));
+      acumulado+=val;
+    }
+    return {...r, real_total:val, real_total_bruto:Number(r.real_total||0), ajuste_cancelamento:Number(diff||0), ajustado_controle_meta:true};
+  });
+  return {rows:adj, bruto, oficial, ajuste:diff, ratio, ajustado:true};
+}
+function servicosEmpresaAjustados(){
+  const raw=Object.values((SERVICOS_RELATORIO && SERVICOS_RELATORIO.servicos) || {}).map(s=>({...s, real_total:Number(_srvTotal(s)||0)}));
+  const bruto=raw.reduce((a,b)=>a+Number(b.real_total||0),0);
+  const oficial=Number(SALES_EMPRESA?.servico_realizado_total||0);
+  if(!(oficial>0) || !(bruto>0) || Math.abs(bruto-oficial)<0.05) return raw;
+  const ratio=oficial/bruto;
+  let acc=0;
+  return raw.map((s,i,arr)=>{
+    let val;
+    if(i===arr.length-1) val=Math.max(0, Number((oficial-acc).toFixed(2)));
+    else {val=Math.max(0, Number((Number(s.real_total||0)*ratio).toFixed(2))); acc+=val;}
+    return {...s, real_total:val, valor:val, total:val, real_total_bruto:Number(s.real_total||0), ajustado_controle_meta:true};
+  });
+}
+
 function renderKPIs(){
   const grave=flattenFiliais().reduce((a,b)=>a+Number(b.grave_pend||0),0);
   const alerta=flattenFiliais().reduce((a,b)=>a+Number(b.alerta_pend||0),0);
   const rentPct=Number(RENT_EMPRESA?.margem_bruta_pct||0);
   const sales=SALES_EMPRESA||{};
   const salesDates=Object.keys(HIST_DASH?.sales_dates||{}).sort();
-  const hojeIso=new Date().toISOString().slice(0,10);
+  const hojeIso=brDateISO();
   const prevDate=salesDates.filter(d=>String(d)<String(hojeIso)).slice(-1)[0]||'';
   const prevEmpresa=(prevDate?(HIST_DASH?.sales_dates?.[prevDate]?.empresa||{}):{});
   // ✅ Total de Serviços da tela inicial deve bater com o Controle de Meta do SGI.
@@ -6080,11 +6143,11 @@ function renderKPIs(){
     if(n.includes('COPA') || n.includes('CUPOM')) return '⚽';
     return '🛠️';
   }
-  const topServiceCards = Object.values((SERVICOS_RELATORIO && SERVICOS_RELATORIO.servicos) || {})
+  const topServiceCards = servicosEmpresaAjustados()
     .slice()
     .sort((a,b)=>Number(_srvTotal(b)||0)-Number(_srvTotal(a)||0))
     .slice(0,4)
-    .map(s=>makeKpi(`${servicoIcone(s.servico)} ${String(s.servico||'Serviço').slice(0,30)}`, R(_srvTotal(s)||0), 'var(--blue-400)', `${Number(s.quantidade||0).toLocaleString('pt-BR')} item(ns)`));
+    .map(s=>makeKpi(`${servicoIcone(s.servico)} ${String(s.servico||'Serviço').slice(0,30)}`, R(_srvTotal(s)||0), 'var(--blue-400)', `${Number(s.quantidade||0).toLocaleString('pt-BR')} item(ns)${s.ajustado_controle_meta?' · ajustado cancelamentos':''}`));
 
   const cards=[
     makeKpi('💰 Total pendente',R(TOTAL_P),'var(--red)','', 'card-cobranca'),
@@ -6099,7 +6162,7 @@ function renderKPIs(){
     makeKpi('🚚 Caminhão realizado',R(sales.caminhao_realizado_total||0),'var(--yellow)',`Meta ${R(sales.caminhao_meta_total||0)} · Atingido ${pct(sales.caminhao_atingido_total||0)}`),
     makeKpi('🛣️ Caminhão projetado',R(sales.caminhao_projetado||0),'var(--yellow-400)',`Meta período ${R(sales.caminhao_meta_periodo||0)}`),
     (isPrivileged ? makeKpi('💵 Faturamento total',R((Number(sales.venda_realizado_total||0)+servicoRealizadoOficial)),'var(--green-400)','Mercantil + serviços realizado', 'card-financeiro') : ''),
-    (isPrivileged ? makeKpi('🕒 Venda diária',R(vendaDiaria),'var(--cyan-400)','Mercantil + serviços do dia', 'card-venda-dia', statusLaranjitoVendaDiaria(vendaDiaria)) : ''),
+    (isPrivileged ? makeKpi('🕒 Venda diária',R(vendaDiaria),'var(--cyan-400)',`Fonte: acumulado atual - histórico ${prevDate||'sem base'} (Brasília)`, 'card-venda-dia', statusLaranjitoVendaDiaria(vendaDiaria)) : ''),
     makeKpi('📊 Rentabilidade total', rentPct?`${rentPct.toFixed(2).replace('.',',')}%`:'Sem dado','var(--green-400)','Última linha do relatório de margem bruta por filial', 'card-financeiro'),
     makeKpi('🧮 Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)', isViewer ? 'Índice mercantil + serviços / custo oculto' : `(Mercantil + serviços) / custo total ${R(markupCost||0)}`, 'card-financeiro', statusLaranjitoMarkup(markupTotal))
   ];
@@ -6534,7 +6597,7 @@ function servicosKeyNome(nome){
   return normSalesText(nome).replace(/\s+/g,' ').trim();
 }
 function servicosEntidade(ent){
-  const out=[];
+  let out=[];
   const data=SERVICOS_RELATORIO||{};
   if(!ent) return out;
   if(ent.type==='filial'){
@@ -6556,15 +6619,23 @@ function servicosEntidade(ent){
       out.push({servico, real_total:Number(valor||0), quantidade:0});
     });
   }
-  return out.sort((a,b)=>Number(_srvTotal(b)||0)-Number(_srvTotal(a)||0));
+  out=out.sort((a,b)=>Number(_srvTotal(b)||0)-Number(_srvTotal(a)||0));
+  const adj=ajustarServicosPorControleMeta(ent,out);
+  return adj.rows.sort((a,b)=>Number(_srvTotal(b)||0)-Number(_srvTotal(a)||0));
 }
 function renderServicosEntidade(ent){
   const rows=servicosEntidade(ent).filter(x=>Number(x.real_total||0)>0);
+  const bruto=rows.reduce((a,b)=>a+Number(b.real_total_bruto!=null?b.real_total_bruto:b.real_total||0),0);
+  const total=rows.reduce((a,b)=>a+Number(b.real_total||0),0);
+  const ajustado=rows.some(r=>r.ajustado_controle_meta);
+  const diff=bruto-total;
   if(!rows.length){
     return `<div class="glass panel"><h3>🛠️ Serviços por tipo</h3><div class="empty">Nenhum serviço localizado para ${ent?.type==='filial'?'esta filial':'este vendedor'} no relatório mensal.</div></div>`;
   }
-  const total=rows.reduce((a,b)=>a+Number(b.real_total||0),0);
-  return `<div class="glass panel"><div class="section-head" style="margin:0 0 10px"><div><h3 style="margin:0">🛠️ Serviços por tipo</h3><div class="hint">Relatório real de serviços do mês atual · total oficial ${R(total)}</div></div></div><div class="metrics-grid">${rows.slice(0,8).map(r=>`<div class="metric"><div class="k">${esc(String(r.servico||'Serviço').slice(0,34))}</div><div class="v" style="color:var(--blue-400);font-size:18px">${R(r.real_total||0)}</div></div>`).join('')}</div></div>`;
+  const nota=ajustado
+    ? `Total bruto do relatório ${R(bruto)} · cancelamentos/ajustes descontados ${R(diff)} · total oficial controle de meta ${R(total)}`
+    : `Relatório real de serviços do mês atual · total oficial ${R(total)}`;
+  return `<div class="glass panel"><div class="section-head" style="margin:0 0 10px"><div><h3 style="margin:0">🛠️ Serviços por tipo</h3><div class="hint">${nota}</div></div></div><div class="metrics-grid">${rows.slice(0,8).map(r=>`<div class="metric"><div class="k">${esc(String(r.servico||'Serviço').slice(0,34))}</div><div class="v" style="color:var(--blue-400);font-size:18px">${R(r.real_total||0)}</div>${r.ajustado_controle_meta?`<div class="hint">bruto ${R(r.real_total_bruto||0)} ajustado</div>`:''}</div>`).join('')}</div></div>`;
 }
 
 function servicosEntidadeTotal(ent){
@@ -6601,9 +6672,8 @@ function renderSalesRows(ent, key, label){
   let rows=getSalesRows(ent,key);
   if(!rows.length) return `<div class="sales-card"><h4>${label}</h4><div class="sales-empty">Sem dados desta meta para ${ent.type==='filial'?'esta filial':'este vendedor'}.</div></div>`;
 
-  // Para SERVIÇOS, o realizado oficial vem do relatório real de serviços por tipo.
-  // A meta do SGI permanece como alvo, mas os campos "Realizado" e "% atingido" passam a bater
-  // exatamente com o painel "Serviços por tipo" da mesma filial/vendedor.
+  // Para SERVIÇOS, o realizado oficial deve bater com o Controle de Meta do SGI.
+  // O relatório separado detalha por tipo, mas é ajustado para descontar cancelamentos/ajustes.
   if(String(key||'').includes('servico') && servicosEntidadeTotal(ent)>0){
     rows=[rows[0]];
   }
@@ -6840,7 +6910,7 @@ function campaignMetaDailyData(ent){
     }
   }
   const pontosMetaDiaria = Math.min(diasUteis, Number(histObj?.pontos || 0));
-  const hojeKey = new Date().toISOString().slice(0, 10);
+  const hojeKey = brDateISO();
   const realizadoDia = Number(histObj?.dias?.[hojeKey]?.realizado_dia || 0);
   const pontoHoje = Number(histObj?.dias?.[hojeKey]?.ponto || 0);
 
@@ -7923,6 +7993,73 @@ function snapshotHtmlFallbackFromRow(row,month){
   }catch(e){return `<div style="padding:20px;background:#111;color:#fff">Resumo indisponível: ${esc(String(e))}</div>`}
 }
 
+
+function buildSnapshotFromHistoricRow(row,month){
+  const nome=esc(row?.nome||'');
+  const filial=esc(row?.filial||'');
+  const tipo=esc(row?.tipo||'');
+  const cards=[
+    ['Meta cobrança', pct(row?.meta_cobranca||0), '#60a5fa'],
+    ['Recebido', R(row?.recebido||0), '#34d399'],
+    ['Vendas', R(row?.vendas||0), '#f59e0b'],
+    ['Serviços', R(row?.servicos||0), '#f59e0b'],
+    ['Bônus meta', R(row?.bonus||0), '#34d399'],
+    ['Comissão vendas', R(row?.comissao_vendas||0), '#f59e0b'],
+    ['Comissão serviços', R(row?.comissao_servicos||0), '#f59e0b'],
+    ['Comissão caminhão', R(row?.comissao_caminhao||0), '#f59e0b'],
+    ['Rentabilidade', R((row?.rent48||0)+(row?.rent52||0)+(row?.rent55||0)), '#34d399'],
+    ['Total previsto', R(row?.total_previsto||0), '#34d399']
+  ];
+  return `<div class="snap-sheet">
+    <style>
+      .snap-sheet{max-width:1180px;margin:0 auto;background:#0d0f14;color:#f3f6ff;font-family:Inter,Arial,sans-serif;padding:22px;border-radius:22px}
+      .snap-head{border:1px solid rgba(255,255,255,.12);background:#161922;border-radius:18px;padding:18px;margin-bottom:16px}
+      .snap-head h1{font-size:30px;margin:0 0 8px 0;color:#fff}.snap-sub{color:#aeb7ca;font-size:14px}
+      .snap-grid{display:grid;grid-template-columns:repeat(4,minmax(170px,1fr));gap:12px}
+      .snap-card{border:1px solid rgba(255,255,255,.12);background:#151821;border-radius:16px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.22)}
+      .snap-title{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:#8c96ab;font-weight:900}
+      .snap-value{font-size:28px;font-weight:950;margin-top:8px}
+      .snap-note{margin-top:16px;padding:12px 14px;border:1px solid rgba(245,158,11,.35);background:rgba(245,158,11,.10);border-radius:15px;color:#fde68a;font-weight:800}
+      @media(max-width:900px){.snap-grid{grid-template-columns:repeat(2,1fr)}}
+    </style>
+    <div class="snap-head"><h1>${nome}</h1><div class="snap-sub">${tipo} · ${filial} · fechamento ${esc(month||'')}</div></div>
+    <div class="snap-grid">${cards.map(c=>`<div class="snap-card"><div class="snap-title">${c[0]}</div><div class="snap-value" style="color:${c[2]}">${c[1]}</div></div>`).join('')}</div>
+    <div class="snap-note">Resumo visual reconstruído com os dados salvos do fechamento mensal. Para congelar os cards reais da tela, clique em “Atualizar telas congeladas do mês” ou salve o fechamento novamente com esta versão.</div>
+  </div>`;
+}
+function ensureSnapshotHtmlForMonth(month){
+  try{
+    const snap=HIST_COMISSAO?.months?.[month];
+    if(!snap || !Array.isArray(snap.entidades)) return 0;
+    let changed=0;
+    snap.entidades.forEach(row=>{
+      if(!row.html_individual || String(row.html_individual||'').length<300){
+        let ent=null, html='';
+        try{ ent = (typeof findEntityBySnapshotRow==='function') ? findEntityBySnapshotRow(row) : null; }catch(e){}
+        if(ent && typeof snapshotEntityHTML==='function'){
+          try{ html=String(snapshotEntityHTML(ent)||''); }catch(e){ html=''; }
+        }
+        if(!html) html=buildSnapshotFromHistoricRow(row,month);
+        row.html_individual=html;
+        row.html_snapshot_model='visual_cards_v3';
+        changed++;
+      }
+    });
+    return changed;
+  }catch(e){console.warn('ensureSnapshotHtmlForMonth falhou',e); return 0;}
+}
+async function atualizarTelasCongeladasMes(){
+  try{
+    const month=document.getElementById('histComSaveMonth')?.value || document.getElementById('histComMonth')?.value || mesAtualComissao();
+    const qtd=ensureSnapshotHtmlForMonth(month);
+    if(typeof salvarHistoricoComissaoOnline==='function') await salvarHistoricoComissaoOnline();
+    else if(typeof salvarMetaOnline==='function') await salvarMetaOnline();
+    if(typeof renderHistoricoComissaoResults==='function') renderHistoricoComissaoResults();
+    toast(qtd?`Telas congeladas atualizadas: ${qtd}`:'Telas congeladas já estavam atualizadas.');
+  }catch(e){console.error(e);toast('Erro ao atualizar telas congeladas do mês.');}
+}
+
+
 function getSnapshotHtmlFromSelection(){
   const month=document.getElementById('histComMonth')?.value || _histComMeses()[0] || mesAtualComissao();
   const key=document.getElementById('histComEntityView')?.value||'';
@@ -8093,6 +8230,44 @@ function exportarComissionamentoTodosXLS(){
     const file=`comissionamento_todos_${_safeFileName(month)}.xls`;
     _downloadHtmlXls(file,_comissaoXlsHtml(rows,month,'Relatório geral de comissionamento'));
   }catch(e){console.error(e);toast('Erro ao exportar XLS geral.');}
+}
+
+
+function mesAtualBR(){
+  const d=new Date();
+  const sp=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit'}).format(d);
+  return sp.slice(0,7);
+}
+async function reiniciarMetaMensalDashboard(){
+  const mes=mesAtualBR();
+  if(!confirm(`Reiniciar os dados mensais do dashboard para ${mes}?\n\nUse isso depois de salvar o fechamento do mês anterior. As próximas coletas do SGI preencherão vendas, serviços e metas do mês atual.`)) return;
+  try{
+    if(typeof SALES_DATA!=='undefined'){
+      Object.keys(SALES_DATA).forEach(k=>{
+        if(Array.isArray(SALES_DATA[k])) SALES_DATA[k]=[];
+        else if(SALES_DATA[k] && typeof SALES_DATA[k]==='object') SALES_DATA[k]={};
+        else SALES_DATA[k]=null;
+      });
+    }
+    if(typeof SERVICOS_DATA!=='undefined'){
+      if(Array.isArray(SERVICOS_DATA)) SERVICOS_DATA.length=0;
+      else Object.keys(SERVICOS_DATA||{}).forEach(k=>delete SERVICOS_DATA[k]);
+    }
+    if(typeof MARGENS_DATA!=='undefined'){
+      if(Array.isArray(MARGENS_DATA)) MARGENS_DATA.length=0;
+      else Object.keys(MARGENS_DATA||{}).forEach(k=>delete MARGENS_DATA[k]);
+    }
+    if(typeof ULTIMA_ATUALIZACAO_DASHBOARD_BR!=='undefined'){
+      ULTIMA_ATUALIZACAO_DASHBOARD_BR=`Reiniciado para ${mes} - aguardando próxima coleta SGI`;
+    }
+    if(typeof salvarMetaOnline==='function') await salvarMetaOnline();
+    toast(`Meta mensal reiniciada para ${mes}. Aguarde a próxima coleta do SGI.`);
+    if(typeof renderAll==='function') renderAll();
+    else location.reload();
+  }catch(e){
+    console.error(e);
+    toast('Erro ao reiniciar meta mensal.');
+  }
 }
 
 function renderHistoricoComissaoResults(){
