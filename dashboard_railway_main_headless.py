@@ -279,8 +279,15 @@ def set_input_value_safe(by, locator, value):
         el.send_keys(Keys.DELETE)
         el.send_keys(value)
     except Exception:
-        driver.execute_script("arguments[0].value = arguments[1];", el, value)
-        driver.execute_script("arguments[0].dispatchEvent(new Event('change', {bubbles:true}));", el)
+        pass
+    # Força valor + eventos do Rails/datepicker. Em alguns campos o send_keys muda visualmente,
+    # mas o filtro usa o valor interno só depois de input/change/blur.
+    driver.execute_script("""
+        const el=arguments[0], val=arguments[1];
+        el.value = val;
+        ['input','change','keyup','blur'].forEach(ev=>el.dispatchEvent(new Event(ev,{bubbles:true})));
+        if(window.jQuery){ try{ window.jQuery(el).val(val).trigger('input').trigger('change').trigger('blur'); }catch(e){} }
+    """, el, value)
     return el
 
 
@@ -1506,14 +1513,12 @@ def _dt_br(d):
     return d.strftime("%d/%m/%Y")
 
 def coletar_venda_diaria_painel_gerencial(data_ref):
-    """Coleta faturamento do Painel Gerencial (/paineis_gerenciais) para uma data.
+    """Coleta faturamento diário no Painel Gerencial.
 
-    O gráfico de Empresa é canvas (Chart.js antigo/novo). Em algumas versões o valor só aparece
-    no tooltip visual. Por isso a coleta tenta, nessa ordem:
-      1) Chart.js/objetos do canvas;
-      2) varredura profunda de objetos globais procurando label Faturamento;
-      3) scripts inline + externos da página, perto de vendas_empresa/Faturamento;
-      4) texto do body se o tooltip virar DOM.
+    Esse painel desenha os valores em canvas. A coleta agora faz 3 caminhos:
+      1) tenta buscar o mesmo retorno AJAX usado pelo botão Filtrar e parsear o JS;
+      2) lê objetos Chart.js/jQuery/props do canvas;
+      3) simula hover no canvas e tenta capturar tooltip DOM/debug.
     """
     data_br = _dt_br(data_ref)
     print(f"\n🕒 Coletando venda diária no Painel Gerencial: {data_br}")
@@ -1522,22 +1527,31 @@ def coletar_venda_diaria_painel_gerencial(data_ref):
         wait.until(EC.presence_of_element_located((By.ID, "data_inicial")))
         set_input_value_safe(By.ID, "data_inicial", data_br)
         set_input_value_safe(By.ID, "data_final", data_br)
+
         try:
-            driver.find_element(By.ID, "filtrar").click()
+            driver.find_element(By.ID, "btn_filtrar").click()
         except Exception:
             try:
-                driver.find_element(By.XPATH, "//button[contains(.,'Filtrar') or contains(.,'filtrar')] | //input[contains(@value,'Filtrar') or contains(@value,'filtrar')]").click()
+                driver.find_element(By.ID, "filtrar").click()
             except Exception:
-                pass
+                try:
+                    driver.find_element(By.XPATH, "//button[contains(.,'Filtrar') or contains(.,'filtrar')] | //input[contains(@value,'Filtrar') or contains(@value,'filtrar')]").click()
+                except Exception:
+                    pass
 
-        # Aguarda canvas e animação do gráfico carregar
         try:
             wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "canvas#vendas_empresa")))
         except Exception:
             pass
-        time.sleep(6)
+        # aguarda sumir loading do painel, se existir
+        try:
+            WebDriverWait(driver, 20).until(lambda d: d.execute_script("return !document.querySelector('.loading_vendas_empresa:not([style*=none]) img.loading')"))
+        except Exception:
+            pass
+        time.sleep(5)
 
         js = r"""
+        const dataBr = arguments[0];
         const normNum=(v)=>{
           if(v==null) return 0;
           if(typeof v==='number') return Number(v)||0;
@@ -1553,40 +1567,89 @@ def coletar_venda_diaria_painel_gerencial(data_ref):
           else if(s.includes(',')) s=s.replace(',','.');
           return Number(s)||0;
         };
-        const canvas=document.getElementById('vendas_empresa') || document.querySelector('canvas#vendas_empresa') || document.querySelector('canvas');
-        const out={canvas:!!canvas, tries:[]};
+        const validVal=(x)=>Number(x)>0 && Number(x)<99999999;
+        const parseFaturamentoText=(txt, origin)=>{
+          txt=String(txt||'');
+          const cands=[];
+          const add=(raw, why)=>{
+            const v=normNum(raw);
+            if(validVal(v)) cands.push({valor:v, raw:String(raw), why, origin});
+          };
+          // label antes do valor
+          let re=/(?:Faturamento|faturamento)[\s\S]{0,280}?([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2}|[0-9]+,[0-9]{2}|[0-9]{2,}(?:\.[0-9]+)?)/g;
+          let m; while((m=re.exec(txt))) add(m[1],'label_before');
+          // valor antes do label
+          re=/([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2}|[0-9]+,[0-9]{2}|[0-9]{2,}(?:\.[0-9]+)?)[\s\S]{0,280}?(?:Faturamento|faturamento)/g;
+          while((m=re.exec(txt))) add(m[1],'value_before');
+          // objetos label/value
+          re=/(?:label|titulo|title|name)\s*[:=]\s*['"]?Faturamento['"]?[\s\S]{0,350}?(?:value|valor|data|y)\s*[:=]\s*['"]?([0-9\.,]+)/gi;
+          while((m=re.exec(txt))) add(m[1],'obj_label_value');
+          re=/(?:value|valor|data|y)\s*[:=]\s*['"]?([0-9\.,]+)['"]?[\s\S]{0,350}?(?:label|titulo|title|name)\s*[:=]\s*['"]?Faturamento/gi;
+          while((m=re.exec(txt))) add(m[1],'obj_value_label');
+          // labels Meta/Faturamento e array data [meta, faturamento]
+          re=/(?:labels|label)\s*[:=]\s*\[[^\]]*Meta[^\]]*Faturamento[^\]]*\][\s\S]{0,500}?(?:data|dados|values|valores)\s*[:=]\s*\[([^\]]+)\]/gi;
+          while((m=re.exec(txt))){
+            const nums=[...String(m[1]).matchAll(/[0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2}|[0-9]+,[0-9]{2}|[0-9]{2,}(?:\.[0-9]+)?/g)].map(x=>normNum(x[0])).filter(validVal);
+            if(nums.length>=2) cands.push({valor:nums[1], raw:String(m[1]), why:'labels_meta_faturamento_index1', origin});
+          }
+          cands.sort((a,b)=>a.valor-b.valor);
+          return cands;
+        };
+
+        const out={canvas:false, tries:[], ajax:[], candidates:[]};
+        const canvas=document.getElementById('vendas_empresa') || document.querySelector('canvas#vendas_empresa');
+        out.canvas=!!canvas;
 
         const pickFaturamentoFromData=(dataObj, origin)=>{
           if(!dataObj) return null;
-          const labels=(dataObj.labels || []).map(x=>String(x||''));
-          const datasets=(dataObj.datasets || dataObj.datasets_empresa || []).filter(Boolean);
           const rows=[];
+          const labels=(dataObj.labels || dataObj.label || []).map ? (dataObj.labels || dataObj.label || []).map(x=>String(x||'')) : [];
+          const datasets=(dataObj.datasets || dataObj.datasets_empresa || dataObj.series || []).filter ? (dataObj.datasets || dataObj.datasets_empresa || dataObj.series || []).filter(Boolean) : [];
           const idxFat=labels.findIndex(l=>/fatur/i.test(l));
           if(idxFat>=0){
             for(const ds of datasets){
-              const arr=Array.isArray(ds.data)?ds.data:(Array.isArray(ds.value)?ds.value:[]);
+              const arr=Array.isArray(ds.data)?ds.data:(Array.isArray(ds.value)?ds.value:(Array.isArray(ds.values)?ds.values:[]));
               const val=normNum(arr[idxFat]);
               rows.push({modo:'label_index',origin,label:labels[idxFat],dataset:String(ds.label||''),valor:val,data:arr.map(normNum)});
-              if(val>0) return {valor:val, rows, labels, origin};
+              if(validVal(val)) return {valor:val, rows, labels, origin};
             }
           }
           for(const ds of datasets){
             const label=String(ds.label||ds.name||ds.title||'');
-            const arr=Array.isArray(ds.data)?ds.data:[];
-            const total=arr.reduce((a,b)=>a+normNum(b),0);
-            rows.push({modo:'dataset_label',origin,label,total,data:arr.map(normNum)});
-            if(/fatur/i.test(label) && total>0) return {valor:total, rows, labels, origin};
+            const arr=Array.isArray(ds.data)?ds.data:(Array.isArray(ds.value)?ds.value:(Array.isArray(ds.values)?ds.values:[]));
+            if(/fatur/i.test(label)){
+              const total=arr.reduce((a,b)=>a+normNum(b),0);
+              rows.push({modo:'dataset_label',origin,label,total,data:arr.map(normNum)});
+              if(validVal(total)) return {valor:total, rows, labels, origin};
+            }
           }
-          // Chart.js antigo: [{value:..., label:'Meta'}, {value:..., label:'Faturamento'}]
           const arr = Array.isArray(dataObj) ? dataObj : (Array.isArray(dataObj.data) ? dataObj.data : []);
           for(const item of arr){
             const label=String(item?.label||item?.name||item?.title||'');
-            const val=normNum(item?.value ?? item?.val ?? item?.data);
+            const val=normNum(item?.value ?? item?.valor ?? item?.val ?? item?.data ?? item?.y);
             rows.push({modo:'array_obj',origin,label,valor:val});
-            if(/fatur/i.test(label) && val>0) return {valor:val, rows, labels, origin};
+            if(/fatur/i.test(label) && validVal(val)) return {valor:val, rows, labels, origin};
           }
           return rows.length?{valor:0, rows, labels, origin}:null;
         };
+
+        // 0) Retorno AJAX da tela, muitas vezes contém o JS que desenha o gráfico com os valores.
+        async function fetchAjaxCandidates(){
+          const qs='?data_inicial='+encodeURIComponent(dataBr)+'&data_final='+encodeURIComponent(dataBr);
+          const urls=['/paineis_gerenciais'+qs, '/paineis_gerenciais.js'+qs, '/paineis_gerenciais?'+new URLSearchParams({data_inicial:dataBr,data_final:dataBr}).toString()];
+          for(const u of urls){
+            try{
+              const r=await fetch(u,{credentials:'include',headers:{'X-Requested-With':'XMLHttpRequest','Accept':'text/javascript, application/javascript, application/json, */*'}});
+              const t=await r.text();
+              const c=parseFaturamentoText(t,'ajax:'+u);
+              out.ajax.push({url:u,status:r.status,len:t.length,cands:c.slice(0,10),sample:t.slice(0,300)});
+              if(c.length) return c[0];
+            }catch(e){out.ajax.push({url:u,erro:String(e)})}
+          }
+          return null;
+        }
+        const ajaxBest=await fetchAjaxCandidates();
+        if(ajaxBest && validVal(ajaxBest.valor)) return {ok:true,valor:ajaxBest.valor,debug:{...out,modo:'ajax'}};
 
         // 1) Chart.js conhecido
         const charts=[];
@@ -1594,150 +1657,119 @@ def coletar_venda_diaria_painel_gerencial(data_ref):
         try{ if(canvas && canvas.chart) charts.push(canvas.chart); }catch(e){}
         try{ if(canvas && canvas.__chartjs) charts.push(canvas.__chartjs); }catch(e){}
         try{ if(canvas && canvas._chartjs) charts.push(canvas._chartjs); }catch(e){}
+        try{ if(canvas){ Object.getOwnPropertyNames(canvas).forEach(k=>{ try{ const v=canvas[k]; if(v && typeof v==='object') charts.push(v); }catch(e){} }); } }catch(e){}
         try{
           if(window.Chart && window.Chart.instances){
             const inst=window.Chart.instances;
-            const vals=Array.isArray(inst)?inst:Object.values(inst||{});
+            const vals=Array.isArray(inst)?inst:Object.keys(inst).map(k=>inst[k]);
             vals.forEach(c=>{ if(c) charts.push(c); });
           }
         }catch(e){}
         const unique=[]; const seen=new Set();
-        charts.forEach(c=>{ const id=c.id || c._id || (c.canvas&&c.canvas.id) || Math.random(); if(!seen.has(id)){seen.add(id); unique.push(c);} });
+        charts.forEach(c=>{ const id=c.id || c._id || (c.canvas&&c.canvas.id) || (c.chart&&c.chart.canvas&&c.chart.canvas.id) || Math.random(); if(!seen.has(id)){seen.add(id); unique.push(c);} });
         for(const c of unique){
           try{
-            const dataObj=(c.data || c.config?.data || c.config?._config?.data || {});
+            const dataObj=(c.data || c.config?.data || c.config?._config?.data || c.chart?.data || {});
             const got=pickFaturamentoFromData(dataObj, 'chart_object');
-            out.tries.push({modo:'chart', canvas_id:(c.canvas&&c.canvas.id)||'', got});
-            if(got && Number(got.valor||0)>0) return {ok:true, valor:Number(got.valor), debug:out};
-            // Chart.js antigo: segments
-            const segs=c.segments || c._segments || c.chart?.segments || [];
+            out.tries.push({modo:'chart', canvas_id:(c.canvas&&c.canvas.id)||(c.chart&&c.chart.canvas&&c.chart.canvas.id)||'', got});
+            if(got && validVal(got.valor)) return {ok:true, valor:Number(got.valor), debug:out};
+            const segs=c.segments || c._segments || c.chart?.segments || c.active || [];
             for(const s of segs){
-              const label=String(s.label||s.name||'');
-              const val=normNum(s.value);
-              if(/fatur/i.test(label) && val>0) return {ok:true, valor:val, debug:{...out, modo:'segments'}};
+              const label=String(s.label||s.name||s.title||'');
+              const val=normNum(s.value ?? s.valor ?? s.y);
+              if(/fatur/i.test(label) && validVal(val)) return {ok:true, valor:val, debug:{...out, modo:'segments'}};
             }
           }catch(e){out.tries.push({chart_err:e.message})}
         }
 
-        // 2) jQuery data e dataset do canvas
-        try{
-          if(window.jQuery && canvas){
-            const d=window.jQuery(canvas).data();
-            const got=pickFaturamentoFromData(d,'jquery_data');
-            out.tries.push({modo:'jquery_data', keys:Object.keys(d||{}), got});
-            if(got && got.valor>0) return {ok:true,valor:got.valor,debug:out};
-          }
-        }catch(e){}
-
-        // 3) Varredura profunda de objetos globais, procurando Faturamento + value
-        const visited=new WeakSet();
-        const candidates=[];
-        function scanObj(o,path,depth,parent){
-          if(!o || depth>4) return;
+        // 2) jQuery data e varredura recursiva de objetos ligados ao canvas
+        const visited=new WeakSet(), candidates=[];
+        function scanObj(o,path,depth){
+          if(!o || depth>5) return;
           const t=typeof o;
           if(t!=='object' && t!=='function') return;
           if(visited.has(o)) return;
           try{visited.add(o)}catch(e){}
-          if(o instanceof Node || o===window || o===document) return;
+          let got=null; try{ got=pickFaturamentoFromData(o,path); }catch(e){}
+          if(got && validVal(got.valor)) candidates.push({path,valor:got.valor,modo:'pickData'});
           let keys=[];
-          try{keys=Object.keys(o).slice(0,80)}catch(e){return}
-          try{
-            const got=pickFaturamentoFromData(o,path);
-            if(got && got.valor>0) candidates.push({path,valor:got.valor,modo:'pickData'});
-          }catch(e){}
-          let hasFat=false, nums=[];
-          for(const k of keys){
+          try{keys=[...Object.keys(o),...Object.getOwnPropertyNames(o)].slice(0,180)}catch(e){return}
+          for(const k of [...new Set(keys)]){
             let v; try{v=o[k]}catch(e){continue}
-            if(typeof v==='string' && /fatur/i.test(v)) hasFat=true;
-            if(typeof v==='number' && isFinite(v) && v>0) nums.push({k,v});
             if(v && typeof v==='object'){
               try{
-                if(String(v.label||v.name||v.title||'').match(/fatur/i)){
-                  const val=normNum(v.value ?? v.val ?? v.y ?? v.data);
-                  if(val>0) candidates.push({path:path+'.'+k,valor:val,modo:'label_value'});
-                }
+                const label=String(v.label||v.name||v.title||'');
+                const val=normNum(v.value ?? v.valor ?? v.val ?? v.y ?? v.data);
+                if(/fatur/i.test(label) && validVal(val)) candidates.push({path:path+'.'+k,valor:val,modo:'label_value'});
               }catch(e){}
+              if(depth<5 && !(v instanceof Node) && v!==window && v!==document) scanObj(v,path+'.'+k,depth+1);
+            }else if(typeof v==='string' && /fatur/i.test(v)){
+              const textC=parseFaturamentoText(JSON.stringify(o).slice(0,5000), path+'.json');
+              textC.forEach(c=>candidates.push({path:c.origin,valor:c.valor,modo:c.why}));
             }
-          }
-          if(hasFat && nums.length){
-            nums.sort((a,b)=>a.v-b.v);
-            candidates.push({path,valor:nums[0].v,modo:'sibling_number',nums:nums.slice(0,5)});
-          }
-          for(const k of keys){
-            if(/^(__|webkit|chrome|localStorage|sessionStorage|document|location|navigator|history|console)$/i.test(k)) continue;
-            let v; try{v=o[k]}catch(e){continue}
-            if(v && typeof v==='object') scanObj(v,path+'.'+k,depth+1,o);
           }
         }
         try{
-          const names=Object.keys(window).filter(k=>/venda|fatur|graf|chart|empresa|painel|dados|data/i.test(k)).slice(0,120);
-          out.global_names=names;
-          for(const k of names){
-            try{scanObj(window[k],'window.'+k,0,null)}catch(e){}
+          if(window.jQuery && canvas){
+            const d=window.jQuery(canvas).data();
+            out.tries.push({modo:'jquery_data_keys', keys:Object.keys(d||{})});
+            scanObj(d,'jquery(canvas).data()',0);
           }
+          if(canvas) scanObj(canvas,'canvas',0);
+        }catch(e){out.tries.push({scan_canvas:e.message})}
+
+        // 3) Varre globals prováveis
+        try{
+          const names=Object.keys(window).filter(k=>/venda|fatur|graf|chart|empresa|painel|dados|data|meta/i.test(k)).slice(0,220);
+          out.global_names=names;
+          for(const k of names){ try{scanObj(window[k],'window.'+k,0)}catch(e){} }
           candidates.sort((a,b)=>a.valor-b.valor);
-          out.candidates=candidates.slice(0,20);
-          const valid=candidates.filter(x=>x.valor>0 && x.valor<99999999);
-          // Prioriza caminhos com fatur/empresa/vendas; caso contrário menor positivo.
-          const pref=valid.find(x=>/fatur|vendas_empresa|empresa|venda/i.test(x.path||'')) || valid[0];
-          if(pref) return {ok:true,valor:Number(pref.valor),debug:out};
+          out.candidates=candidates.slice(0,30);
+          const pref=candidates.find(x=>/fatur|vendas_empresa|empresa|venda/i.test(x.path||'')) || candidates[0];
+          if(pref && validVal(pref.valor)) return {ok:true,valor:Number(pref.valor),debug:{...out,modo:'scan'}};
         }catch(e){out.tries.push({scan_global:e.message})}
 
-        // 4) texto do body caso tooltip seja DOM
+        // 4) Simula hover em alguns pontos do canvas e tenta ler tooltip caso vire DOM/texto.
+        try{
+          if(canvas){
+            const rect=canvas.getBoundingClientRect();
+            const pts=[
+              [rect.width*0.50,rect.height*0.10],
+              [rect.width*0.42,rect.height*0.10],
+              [rect.width*0.35,rect.height*0.16],
+              [rect.width*0.50,rect.height*0.20],
+              [rect.width*0.30,rect.height*0.25],
+            ];
+            for(const [x,y] of pts){
+              const ev=new MouseEvent('mousemove',{bubbles:true,cancelable:true,clientX:rect.left+x,clientY:rect.top+y,offsetX:x,offsetY:y});
+              canvas.dispatchEvent(ev);
+              const bodyText=document.body ? document.body.innerText : '';
+              const c=parseFaturamentoText(bodyText,'body_after_hover');
+              if(c.length) return {ok:true,valor:c[0].valor,debug:{...out,modo:'hover_body',pt:[x,y],cands:c.slice(0,5)}};
+            }
+          }
+        }catch(e){out.tries.push({hover:e.message})}
+
         const bodyText=document.body ? document.body.innerText : '';
-        const m=bodyText.match(/Faturamento\s*:\s*R\$\s*([0-9\.]+,[0-9]{2})/i);
-        if(m) return {ok:true,valor:normNum(m[1]),debug:{...out,modo:'body_text'}};
+        const bodyC=parseFaturamentoText(bodyText,'body_text');
+        if(bodyC.length) return {ok:true,valor:bodyC[0].valor,debug:{...out,modo:'body'}};
 
         return {ok:false,valor:0,erro:'canvas_sem_chart_dados',debug:out};
         """
-        ret = driver.execute_script(js) or {}
-
+        ret = driver.execute_script(js, data_br) or {}
         valor = round(float((ret or {}).get("valor") or 0), 2)
-
-        # 5) Fallback Python: buscar scripts inline + externos e parsear "vendas_empresa" / "Faturamento"
-        if valor <= 0:
-            try:
-                scripts_text = driver.execute_async_script(r"""
-                    const cb=arguments[arguments.length-1];
-                    const urls=[...document.scripts].map(s=>s.src).filter(Boolean);
-                    const inline=[...document.scripts].map(s=>s.textContent||'').join('\n');
-                    Promise.all(urls.map(u=>fetch(u,{credentials:'include'}).then(r=>r.text()).catch(e=>'')))
-                      .then(arr=>cb(inline+'\n'+arr.join('\n')))
-                      .catch(e=>cb(inline));
-                """) or ""
-                chunks = []
-                for pat in [r"vendas_empresa[\s\S]{0,2500}", r"Faturamento[\s\S]{0,1200}", r"faturamento[\s\S]{0,1200}"]:
-                    chunks += re.findall(pat, scripts_text, flags=re.I)
-                cand = []
-                for ch in chunks:
-                    if not re.search(r"fatur", ch, flags=re.I):
-                        continue
-                    # pares comuns: label:'Faturamento', value:2954.93 ou value: '2.954,93'
-                    for m in re.finditer(r"(?:Faturamento|faturamento)[\s\S]{0,220}?([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2}|[0-9]{2,}(?:\.[0-9]+)?)", ch, flags=re.I):
-                        cand.append(float(_to_float(m.group(1))))
-                    # caso value antes do label
-                    for m in re.finditer(r"([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2}|[0-9]{2,}(?:\.[0-9]+)?)[\s\S]{0,220}?(?:Faturamento|faturamento)", ch, flags=re.I):
-                        cand.append(float(_to_float(m.group(1))))
-                cand = [x for x in cand if x and x > 0 and x < 99999999]
-                if cand:
-                    # geralmente meta é maior e faturamento é menor; evita pegar dia/ano/códigos baixos
-                    cand = sorted(cand)
-                    # descarta valores muito pequenos de labels/ids, pega menor >= 10
-                    valor = round(next((x for x in cand if x >= 10), cand[0]), 2)
-                    ret = {"ok": True, "valor": valor, "debug": {"modo": "python_script_regex", "candidatos": cand[:20]}}
-            except Exception as e:
-                print(f"⚠️ Fallback scripts venda diária falhou: {e}")
 
         print(f"✅ Venda diária Painel Gerencial {data_br}: R$ {valor:,.2f}")
         if valor <= 0:
             try:
-                print("⚠️ Debug venda diária:", json.dumps(ret, ensure_ascii=False)[:1500])
+                print("⚠️ Debug venda diária:", json.dumps(ret, ensure_ascii=False)[:3000])
             except Exception:
                 print("⚠️ Debug venda diária:", ret)
         return {"data": data_br, "valor": valor, "ok": valor > 0, "debug": ret}
     except Exception as e:
         print(f"⚠️ Erro ao coletar venda diária Painel Gerencial {data_br}: {e}")
         return {"data": data_br, "valor": 0.0, "ok": False, "erro": str(e)}
+
 
 def coletar_vendas_diarias_painel_gerencial():
     hoje_br = now_brasilia().date()
@@ -8126,7 +8158,7 @@ function snapCommission(ent){
     ${cell('Total previsto',R(totalExibido),'#fff')}
   </div><div class="snap-sub">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Serviço: ${R(c.servReal||0)}.</div></div>`;
 }
-function snapshotEntityHTML(ent){
+function snapshotEntityHTMLFallback(ent){
   try{
     if(ent && (ent.type==='crediarista'||ent.is_crediarista)){
       ent=findEntityBySnapshotRow({key:(typeof _comEntKey==='function'?_comEntKey(ent):`${ent.type||'ent'}::${ent.filial||''}::${ent.login||ent.nome||''}`),nome:ent.nome,filial:ent.filial}) || ent;
@@ -8151,6 +8183,79 @@ function snapshotEntityHTML(ent){
     </style><div class="snap-head"><div><h1>${nome}</h1><div class="snap-sub">${sub} · ${esc(ent.filial||'')} · fechamento ${mesAtualComissao()}</div></div><div class="snap-sub">🕒 ${esc(ULTIMA_ATUALIZACAO_DASHBOARD_BR||'')}</div></div><div class="detail-top"><div>${metaPanel}</div><div>${salesPanel}${commPanel?`<div style="height:16px"></div>${commPanel}`:''}</div></div></div>`;
   }catch(e){console.error('snapshotEntityHTML erro',e); return '';}
 }
+
+function _snapshotCssForExactCards(){
+  try{
+    return Array.from(document.querySelectorAll('style')).map(s=>s.textContent||'').join('\n');
+  }catch(e){return ''}
+}
+function _snapshotCleanClone(root){
+  const c=root.cloneNode(true);
+  // remove partes muito grandes/operacionais que não fazem parte dos cards principais
+  c.querySelectorAll('.accordion,.acc-body,.acc-head,#laranjitoNotify,#laranjitoNotifyPanel,.toast,.modal,.modal-backdrop,script').forEach(x=>x.remove());
+  c.querySelectorAll('[onclick]').forEach(x=>x.removeAttribute('onclick'));
+  return c;
+}
+function snapshotEntityHTML(ent){
+  // Congela EXATAMENTE os cards individuais da tela, copiando o DOM real renderizado.
+  // Captura: meta do mês, vendas e metas, serviços, comissionamento previsto e bônus/premiações.
+  try{
+    const oldMainHidden=document.getElementById('mainScreen')?.classList.contains('hidden');
+    const oldDetailHidden=detailScreen?.classList.contains('hidden');
+    const oldDetailHTML=detailScreen?.innerHTML||'';
+    const oldCurrent=JSON.parse(JSON.stringify(currentDetailRef||null));
+    const oldUser=usuarioAtual;
+
+    // Para o snapshot aparecer com comissionamento previsto, renderiza temporariamente como master.
+    try{ usuarioAtual = Object.assign({}, usuarioAtual||{}, {tipo:'master'}); }catch(e){}
+
+    try{
+      openEntity({type:ent.type, filial:ent.filial, nome:ent.nome, login:ent.login||''});
+    }catch(e1){
+      console.warn('openEntity snapshot falhou',e1);
+    }
+
+    const title = detailScreen.querySelector('.back-row') ? _snapshotCleanClone(detailScreen.querySelector('.back-row')).outerHTML : '';
+    const detailTop = detailScreen.querySelector('.detail-top') ? _snapshotCleanClone(detailScreen.querySelector('.detail-top')).outerHTML : '';
+
+    // Restaura tela anterior imediatamente
+    try{ usuarioAtual=oldUser; }catch(e){}
+    try{ currentDetailRef=oldCurrent; }catch(e){}
+    try{ detailScreen.innerHTML=oldDetailHTML; }catch(e){}
+    try{
+      const main=document.getElementById('mainScreen');
+      if(main){ if(oldMainHidden) main.classList.add('hidden'); else main.classList.remove('hidden'); }
+      if(detailScreen){ if(oldDetailHidden) detailScreen.classList.add('hidden'); else detailScreen.classList.remove('hidden'); }
+    }catch(e){}
+
+    if(!detailTop) return snapshotEntityHTMLFallback(ent);
+
+    const nome=ent.type==='filial'?filialLabel(ent.filial):esc(ent.nome||'');
+    const sub=ent.type==='filial'?'filial':'vendedor';
+    const css=_snapshotCssForExactCards();
+    return `<div class="snapshot-exact-cards">
+      <style>
+        ${css}
+        body{background:#080a0f!important}
+        .snapshot-exact-cards{max-width:1440px;margin:0 auto;background:#080a0f;color:#f4f6fb;font-family:Inter,Arial,sans-serif;padding:18px;border-radius:22px}
+        .snapshot-exact-cards .snapshot-title{border:1px solid rgba(255,255,255,.12);background:#151821;border-radius:18px;padding:18px;margin-bottom:16px}
+        .snapshot-exact-cards .snapshot-title h1{margin:0;font-size:30px;color:#fff}
+        .snapshot-exact-cards .snapshot-title .sub{margin-top:6px;color:#aab4c8}
+        .snapshot-exact-cards .back-row button{display:none!important}
+        .snapshot-exact-cards .detail-top{display:grid!important;grid-template-columns:1.05fr .95fr!important;gap:16px!important;align-items:start!important}
+        .snapshot-exact-cards .accordion{display:none!important}
+        @media(max-width:1000px){.snapshot-exact-cards .detail-top{grid-template-columns:1fr!important}}
+      </style>
+      <div class="snapshot-title"><h1>${nome}</h1><div class="sub">${sub} · ${esc(ent.filial||'')} · fechamento ${mesAtualComissao()} · cópia exata dos cards individuais</div></div>
+      ${title}
+      ${detailTop}
+    </div>`;
+  }catch(e){
+    console.error('snapshotEntityHTML exact erro',e);
+    return snapshotEntityHTMLFallback(ent);
+  }
+}
+
 
 function buildSnapshotComissionamentoMensal(month=mesAtualComissao()){
   const ents=[...flattenVendedores(),...flattenFiliais(),...crediaristaEntities(),thirdChargeEntity()].filter(Boolean);
@@ -8249,18 +8354,17 @@ function ensureSnapshotHtmlForMonth(month, force=false){
     if(!snap || !Array.isArray(snap.entidades)) return 0;
     let changed=0;
     snap.entidades.forEach(row=>{
-      const antigo=String(row.html_individual||'');
-      const precisa = force || !antigo || antigo.length<300 || antigo.includes('Resumo reconstruído automaticamente') || antigo.includes('Resumo visual reconstruído');
-      if(precisa){
-        let ent=null, html='';
-        try{ ent = (typeof findEntityBySnapshotRow==='function') ? findEntityBySnapshotRow(row) : null; }catch(e){}
+      const old=String(row.html_individual||'');
+      const isResumo=/Resumo visual reconstruído|resumo reconstruído|snap-sheet|snapshot-visual-rebuild/i.test(old);
+      if(force || !old || old.length<300 || isResumo){
+        const ent = (typeof findEntityBySnapshotRow==='function') ? findEntityBySnapshotRow(row) : null;
+        let html='';
         if(ent && typeof snapshotEntityHTML==='function'){
-          try{ html=String(snapshotEntityHTML(ent)||''); }catch(e){ console.warn('snapshotEntityHTML falhou', e); html=''; }
+          try{ html=String(snapshotEntityHTML(ent)||''); }catch(e){ html=''; }
         }
-        if(!html) html=buildSnapshotFromHistoricRow(row,month);
+        if(!html && typeof buildSnapshotFromHistoricRow==='function') html=buildSnapshotFromHistoricRow(row,month);
         row.html_individual=html;
-        row.html_snapshot_model=html.includes('snapshot-real-cards')?'visual_cards_exatos_v4':'visual_cards_v4';
-        row.html_atualizado_em=(new Date()).toISOString();
+        row.html_snapshot_model='exact_cards_dom_v4';
         changed++;
       }
     });
