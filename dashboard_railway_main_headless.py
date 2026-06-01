@@ -1501,6 +1501,84 @@ def _gerar_relatorio_margem(tipo):
     return _parse_relatorio_margem_xls(caminho, tipo)
 
 
+
+def _dt_br(d):
+    return d.strftime("%d/%m/%Y")
+
+def coletar_venda_diaria_painel_gerencial(data_ref):
+    """Coleta faturamento do Painel Gerencial (/paineis_gerenciais) para uma data."""
+    data_br = _dt_br(data_ref)
+    print(f"\n🕒 Coletando venda diária no Painel Gerencial: {data_br}")
+    try:
+        driver.get(URL + "/paineis_gerenciais")
+        wait.until(EC.presence_of_element_located((By.ID, "data_inicial")))
+        set_input_value_safe(By.ID, "data_inicial", data_br)
+        set_input_value_safe(By.ID, "data_final", data_br)
+        try:
+            driver.find_element(By.ID, "filtrar").click()
+        except Exception:
+            try:
+                driver.find_element(By.XPATH, "//button[contains(.,'Filtrar') or contains(.,'filtrar')] | //input[contains(@value,'Filtrar') or contains(@value,'filtrar')]").click()
+            except Exception:
+                pass
+        time.sleep(4)
+        js = r"""
+        const normNum=(v)=>{
+          if(v==null) return 0;
+          if(typeof v==='number') return Number(v)||0;
+          let s=String(v).replace(/R\$|\s/g,'').trim();
+          if(s.includes(',') && s.includes('.')) s=s.replace(/\./g,'').replace(',','.');
+          else if(s.includes(',')) s=s.replace(',','.');
+          return Number(s)||0;
+        };
+        const canvas=document.getElementById('vendas_empresa') || document.querySelector('canvas#vendas_empresa') || document.querySelector('canvas');
+        let chart=null;
+        try{ if(window.Chart && window.Chart.getChart && canvas) chart=window.Chart.getChart(canvas); }catch(e){}
+        try{ if(!chart && canvas && canvas.chart) chart=canvas.chart; }catch(e){}
+        try{
+          if(!chart && window.Chart && window.Chart.instances){
+            const vals=Object.values(window.Chart.instances||{});
+            chart=vals.find(c=>c && c.canvas===canvas) || vals[0];
+          }
+        }catch(e){}
+        if(chart && chart.data && Array.isArray(chart.data.datasets)){
+          const rows=chart.data.datasets.map(ds=>{
+            const label=String(ds.label||'');
+            const data=Array.isArray(ds.data)?ds.data:[];
+            const total=data.reduce((a,b)=>a+normNum(b),0);
+            return {label,total,data};
+          });
+          let fat=rows.find(r=>/fatur/i.test(r.label));
+          if(!fat){
+            const notMeta=rows.filter(r=>!/meta/i.test(r.label));
+            fat=(notMeta.sort((a,b)=>b.total-a.total)[0]||rows.sort((a,b)=>b.total-a.total)[0]);
+          }
+          return {ok:true,valor:Number((fat&&fat.total)||0),datasets:rows};
+        }
+        const bodyText=document.body ? document.body.innerText : '';
+        const m=bodyText.match(/Faturamento\s*:\s*R\$\s*([0-9\.]+,[0-9]{2})/i);
+        if(m) return {ok:true,valor:normNum(m[1]),datasets:[]};
+        return {ok:false,valor:0,datasets:[],erro:'chart_nao_encontrado'};
+        """
+        ret = driver.execute_script(js) or {}
+        valor = round(float((ret or {}).get('valor') or 0), 2)
+        print(f"✅ Venda diária Painel Gerencial {data_br}: R$ {valor:,.2f}")
+        return {"data": data_br, "valor": valor, "ok": bool((ret or {}).get('ok')), "debug": ret}
+    except Exception as e:
+        print(f"⚠️ Erro ao coletar venda diária Painel Gerencial {data_br}: {e}")
+        return {"data": data_br, "valor": 0.0, "ok": False, "erro": str(e)}
+
+def coletar_vendas_diarias_painel_gerencial():
+    hoje_br = now_brasilia().date()
+    hoje_dt = datetime(hoje_br.year, hoje_br.month, hoje_br.day)
+    ontem_dt = hoje_dt - timedelta(days=1)
+    return {
+        "hoje": coletar_venda_diaria_painel_gerencial(hoje_dt),
+        "ontem": coletar_venda_diaria_painel_gerencial(ontem_dt),
+        "coletado_em": now_brasilia().isoformat(),
+        "fonte": "/paineis_gerenciais canvas#vendas_empresa",
+    }
+
 def coletar_margens_brutas_mes_atual():
     print("\n📈 Iniciando coleta de Margem Bruta/Rentabilidade do mês atual...")
     json_path = os.path.join(pasta, "margens_brutas_mes_atual.json")
@@ -1714,6 +1792,12 @@ try:
     metas_vendas_info = coletar_metas_vendas_mes_atual()
 except Exception as e:
     print(f"⚠️ Erro ao coletar metas/vendas do SGI: {e}")
+
+vendas_diarias_painel_info = {"hoje": {"valor": 0.0}, "ontem": {"valor": 0.0}, "fonte": ""}
+try:
+    vendas_diarias_painel_info = coletar_vendas_diarias_painel_gerencial()
+except Exception as e:
+    print(f"⚠️ Erro ao coletar venda diária/dia anterior no Painel Gerencial: {e}")
 
 margens_brutas_info = {"json_path": None, "xlsx_path": None, "dados": {}}
 try:
@@ -4234,6 +4318,11 @@ _sales_emp = {
     "caminhao_projetado":       _t_caminhao.get("proj", 0.0),
     "caminhao_meta_total":      _t_caminhao.get("meta_total", 0.0),
     "caminhao_meta_periodo":    _t_caminhao.get("meta_per", 0.0),
+    "venda_diaria_oficial": round(float((vendas_diarias_painel_info.get("hoje") or {}).get("valor") or 0), 2),
+    "venda_dia_anterior_oficial": round(float((vendas_diarias_painel_info.get("ontem") or {}).get("valor") or 0), 2),
+    "venda_diaria_fonte": vendas_diarias_painel_info.get("fonte", "/paineis_gerenciais"),
+    "venda_diaria_data": (vendas_diarias_painel_info.get("hoje") or {}).get("data", ""),
+    "venda_dia_anterior_data": (vendas_diarias_painel_info.get("ontem") or {}).get("data", ""),
 }
 print(f"📊 _sales_emp carregado do xlsx:")
 print(f"   Mercantil  : R$ {_sales_emp['venda_realizado_total']:>12,.2f}  proj R$ {_sales_emp['venda_projetado']:>12,.2f}  ating {_sales_emp['venda_atingido_total']:.2f}%")
@@ -6043,6 +6132,55 @@ function laranjitoSrc(status){
 }
 
 
+
+function mesAtualBRjs(){return new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit'}).format(new Date()).slice(0,7)}
+function mesFromBrDateStr(s){const m=String(s||'').match(/(\d{2})\/(\d{2})\/(\d{4})/); return m?`${m[3]}-${m[2]}`:''}
+function serviceReportMonth(data){
+  const d=data||{};
+  const cand=[d.mes,d.month,d.mes_referencia,d.periodo?.mes,d.periodo?.month,d.periodo?.data_inicial,d.periodo?.inicio,d.data_inicial,d.inicio,d.coletado_em,d.updated_at].filter(Boolean);
+  for(const x of cand){
+    const s=String(x);
+    const iso=s.match(/(20\d{2})-(\d{2})/); if(iso) return `${iso[1]}-${iso[2]}`;
+    const br=mesFromBrDateStr(s); if(br) return br;
+  }
+  return '';
+}
+function cloneSrv(o){try{return JSON.parse(JSON.stringify(o||{}))}catch(e){return {}}}
+function scaleServicoObj(obj,factor){
+  if(!obj) return obj;
+  if(obj.real_total!=null) obj.real_total=Number((Number(obj.real_total||0)*factor).toFixed(2));
+  if(obj.total!=null) obj.total=Number((Number(obj.total||0)*factor).toFixed(2));
+  if(obj.servicos && typeof obj.servicos==='object') Object.keys(obj.servicos).forEach(k=>{obj.servicos[k]=Number((Number(obj.servicos[k]||0)*factor).toFixed(2))});
+  return obj;
+}
+function servicoControleMetaTotalEnt(ent){
+  try{
+    if(!ent) return 0;
+    const key=ent.type==='filial'?'servico_filial_ouro_fob':'servico_filial_vendedor_ouro_fob';
+    const row=(getSalesRows(ent,key)||[])[0];
+    return row ? salesNum(salesCell(row,['Realizado (R$) Total','Realizado(R$) Total'])) : 0;
+  }catch(e){return 0}
+}
+function servicosRelatorioNormalizado(){
+  const raw=SERVICOS_RELATORIO||{};
+  const mes=serviceReportMonth(raw), atual=mesAtualBRjs();
+  const oficial=Number(SALES_EMPRESA?.servico_realizado_total||0);
+  if(oficial<=0) return {empresa:{real_total:0,quantidade:0,linhas:0,nota:'zerado pelo controle de meta do mês atual'},servicos:{},filiais:{},vendedores:{},detalhes:[],mes_referencia:atual};
+  if(mes && mes!==atual) return {empresa:{real_total:0,quantidade:0,linhas:0,nota:`relatório de ${mes} ignorado no mês ${atual}`},servicos:{},filiais:{},vendedores:{},detalhes:[],mes_referencia:atual};
+  const data=cloneSrv(raw);
+  const bruto=Number(data?.empresa?.real_total||0);
+  if(bruto>0 && Math.abs(bruto-oficial)>0.01){
+    const factor=oficial/bruto;
+    scaleServicoObj(data.empresa,factor);
+    data.empresa.real_total=oficial;
+    Object.values(data.servicos||{}).forEach(o=>scaleServicoObj(o,factor));
+    Object.values(data.filiais||{}).forEach(o=>scaleServicoObj(o,factor));
+    Object.values(data.vendedores||{}).forEach(o=>scaleServicoObj(o,factor));
+    data.ajuste_controle_meta={bruto_relatorio:bruto,oficial_controle_meta:oficial,fator:factor,motivo:'cancelamentos/ajustes descontados para bater Controle de Meta SGI'};
+  }
+  return data;
+}
+function servicosRelatorioAtivo(){return servicosRelatorioNormalizado()}
 function renderKPIs(){
   const grave=flattenFiliais().reduce((a,b)=>a+Number(b.grave_pend||0),0);
   const alerta=flattenFiliais().reduce((a,b)=>a+Number(b.alerta_pend||0),0);
@@ -6056,14 +6194,16 @@ function renderKPIs(){
   // Fonte oficial do TOTAL: sales.servico_realizado_total, vindo da tela /metas/consulta.
   // O relatório de serviços separado continua sendo usado apenas para detalhar por tipo
   // (Ouro, FOB, Cupom Copa etc.), mas não substitui o total oficial.
-  const servicoRelatorioTotal = Number(SERVICOS_RELATORIO?.empresa?.real_total || 0);
+  const SERV_ATIVO=servicosRelatorioAtivo();
+  const servicoRelatorioTotal = Number(SERV_ATIVO?.empresa?.real_total || 0);
   const servicoRealizadoOficial = Number(sales.servico_realizado_total || 0);
   const servicoAtingidoOficial = Number(sales.servico_meta_total||0)>0
     ? (servicoRealizadoOficial / Number(sales.servico_meta_total||0) * 100)
     : Number(sales.servico_atingido_total||0);
 
   const prevServicoReal = Number(prevEmpresa.servico_realizado_total || 0);
-  const vendaDiaria=Math.max(0, Number(sales.venda_realizado_total||0)-Number(prevEmpresa.venda_realizado_total||0)) + Math.max(0, servicoRealizadoOficial-prevServicoReal);
+  const vendaDiaria=Number(sales.venda_diaria_oficial||0);
+  const vendaDiaAnterior=Number(sales.venda_dia_anterior_oficial||0);
   try{
     console.log('[MDL serviços]', {
       total_controle_meta_sgi: Number(sales.servico_realizado_total||0),
@@ -6109,7 +6249,7 @@ function renderKPIs(){
     if(n.includes('COPA') || n.includes('CUPOM')) return '⚽';
     return '🛠️';
   }
-  const topServiceCards = Object.values((SERVICOS_RELATORIO && SERVICOS_RELATORIO.servicos) || {})
+  const topServiceCards = Object.values((SERV_ATIVO && SERV_ATIVO.servicos) || {})
     .slice()
     .sort((a,b)=>Number(_srvTotal(b)||0)-Number(_srvTotal(a)||0))
     .slice(0,4)
@@ -6128,7 +6268,8 @@ function renderKPIs(){
     makeKpi('🚚 Caminhão realizado',R(sales.caminhao_realizado_total||0),'var(--yellow)',`Meta ${R(sales.caminhao_meta_total||0)} · Atingido ${pct(sales.caminhao_atingido_total||0)}`),
     makeKpi('🛣️ Caminhão projetado',R(sales.caminhao_projetado||0),'var(--yellow-400)',`Meta período ${R(sales.caminhao_meta_periodo||0)}`),
     (isPrivileged ? makeKpi('💵 Faturamento total',R((Number(sales.venda_realizado_total||0)+servicoRealizadoOficial)),'var(--green-400)','Mercantil + serviços realizado', 'card-financeiro') : ''),
-    (isPrivileged ? makeKpi('🕒 Venda diária',R(vendaDiaria),'var(--cyan-400)','Mercantil + serviços do dia', 'card-venda-dia', statusLaranjitoVendaDiaria(vendaDiaria)) : ''),
+    (isPrivileged ? makeKpi('🕒 Venda diária',R(vendaDiaria),'var(--cyan-400)',`Painel Gerencial ${esc(sales.venda_diaria_data||'hoje')}`, 'card-venda-dia', statusLaranjitoVendaDiaria(vendaDiaria)) : ''),
+    makeKpi('🗓️ Venda dia anterior',R(vendaDiaAnterior),'var(--cyan-400)',`Painel Gerencial ${esc(sales.venda_dia_anterior_data||'ontem')}`, 'card-venda-dia'),
     makeKpi('📊 Rentabilidade total', rentPct?`${rentPct.toFixed(2).replace('.',',')}%`:'Sem dado','var(--green-400)','Última linha do relatório de margem bruta por filial', 'card-financeiro'),
     makeKpi('🧮 Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)', isViewer ? 'Índice mercantil + serviços / custo oculto' : `(Mercantil + serviços) / custo total ${R(markupCost||0)}`, 'card-financeiro', statusLaranjitoMarkup(markupTotal))
   ];
@@ -6272,7 +6413,7 @@ function _srvRankRows(rows, kind){
   }).join('');
 }
 function renderServicosTab(isViewer=false){
-  const data = SERVICOS_RELATORIO||{};
+  const data = servicosRelatorioAtivo();
   const empresa = data.empresa||{};
   const tipos = _srvSortedEntries(data.servicos||{});
   const filiais = _srvSortedEntries(data.filiais||{});
@@ -6564,7 +6705,7 @@ function servicosKeyNome(nome){
 }
 function servicosEntidade(ent){
   const out=[];
-  const data=SERVICOS_RELATORIO||{};
+  const data=servicosRelatorioAtivo();
   if(!ent) return out;
   if(ent.type==='filial'){
     const item=(data.filiais||{})[ent.filial]||{};
@@ -6584,6 +6725,13 @@ function servicosEntidade(ent){
     Object.entries((item&&item.servicos)||{}).forEach(([servico,valor])=>{
       out.push({servico, real_total:Number(valor||0), quantidade:0});
     });
+  }
+  const bruto=out.reduce((a,b)=>a+Number(b.real_total||0),0);
+  const oficial=servicoControleMetaTotalEnt(ent);
+  if(oficial<=0) return [];
+  if(bruto>0 && Math.abs(bruto-oficial)>0.01){
+    const factor=oficial/bruto;
+    out.forEach(x=>{x.real_total=Number((Number(x.real_total||0)*factor).toFixed(2)); x.ajuste_controle_meta=true;});
   }
   return out.sort((a,b)=>Number(_srvTotal(b)||0)-Number(_srvTotal(a)||0));
 }
@@ -7814,76 +7962,25 @@ function snapshotEntityHTML(ent){
     }
     const meta=calcMeta(ent);
     const nome=ent.type==='filial'?filialLabel(ent.filial):esc(ent.nome||'');
-    const sub=ent.type==='filial'?'Painel individual da filial':(ent.type==='crediarista'?'Painel de crediarista':'Painel individual do vendedor');
-    const bonus=getBonus(meta.cfg,meta.geral);
-    const salesBlocks = ent.type==='filial'
-      ? [['venda_filial_meta','📈 Venda · Meta Filial'],['servico_filial_ouro_fob','🛠️ Serviço · Ouro / FOB'],['venda_filial_subgrupo_20k','🚚 Venda · Caminhão 20K']]
-      : [['venda_filial_vendedor_meta','📈 Venda · Meta Vendedor'],['servico_filial_vendedor_ouro_fob','🛠️ Serviço · Ouro / FOB Vendedor'],['venda_vendedor_subgrupo_20k','🚚 Venda · Caminhão 20K']];
-    const vendasHtml=(ent.type==='crediarista'||ent.is_crediarista)?'':salesBlocks.map(([k,l])=>snapSalesRows(ent,k,l)).join('');
-    const bonusItems=[[50,meta.cfg.bonus_50||'-'],[75,meta.cfg.bonus_75||'-'],[85,meta.cfg.bonus_85||'-'],[100,meta.cfg.bonus_100||'-']];
-    return `<div class="snap-sheet">
-      <style>
-      .snap-sheet{width:1180px;max-width:100%;margin:0 auto;background:#0d0f14;color:#f3f6ff;font-family:Inter,Arial,sans-serif;padding:22px;border-radius:22px}
-      .snap-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;border:1px solid rgba(255,255,255,.12);background:#161922;border-radius:18px;padding:16px 18px}
-      .snap-head h1{font-size:28px;margin:0;color:#fff}.snap-head .snap-sub{margin-top:6px}
-      .snap-two{display:grid;grid-template-columns:1.04fr .96fr;gap:18px;align-items:start}
-      .snap-box,.snap-card,.snap-mini,.snap-kv{border:1px solid rgba(255,255,255,.12);background:#151821;border-radius:16px;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,.22)}
-      .snap-box{margin-bottom:16px}.snap-box h2,.snap-box h3{margin:0 0 12px 0;font-size:19px;color:#fff}
-      .snap-topmeta{display:grid;grid-template-columns:210px 1fr;gap:18px;align-items:center}.snap-ring{display:flex;align-items:center;justify-content:center}
-      .snap-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.snap-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.snap-grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-      .snap-title{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#8c96ab;font-weight:800}.snap-value{font-size:26px;font-weight:900;margin-top:6px}.snap-sub{color:#aeb7ca;font-size:13px;line-height:1.35}
-      .snap-mini{text-align:center}.snap-percent{font-size:30px;font-weight:950;margin:8px 0}
-      .snap-kv strong{display:block;font-size:18px;margin-top:6px;color:#fff}.snap-sales-title{font-weight:900;color:#fff;margin-bottom:10px}
-      .snap-chart-bars{height:230px;display:flex;align-items:end;gap:36px;justify-content:center;padding:16px 10px}.snap-barwrap{text-align:center}.snap-bar{width:58px;border-radius:12px 12px 8px 8px;background:linear-gradient(180deg,rgba(255,255,255,.25),transparent),var(--c);box-shadow:0 0 22px color-mix(in srgb,var(--c),transparent 65%)}.snap-barlabel{font-size:12px;color:#c7d0e1;margin-top:8px}
-      .snap-bonus{display:grid;gap:8px}.snap-bonus-item{display:flex;justify-content:space-between;gap:12px;border:1px solid rgba(255,255,255,.1);background:#10131a;border-radius:12px;padding:10px 12px;font-size:13px}.snap-bonus-item.active{outline:2px solid rgba(245,158,11,.45)}
-      @media print{body{background:#0d0f14}.snap-sheet{width:1180px}}
-      </style>
-      <div class="snap-head"><div><h1>${nome}</h1><div class="snap-sub">${sub} · ${esc(ent.filial||'')} · ${mesAtualComissao()}</div></div><div class="snap-sub">🕒 ${esc(ULTIMA_ATUALIZACAO_DASHBOARD_BR||'')}</div></div>
-      <div class="snap-two">
-        <div>
-          <div class="snap-box"><h2>🎯 Meta do mês · Não acumulativo</h2><div class="snap-topmeta"><div class="snap-ring">${renderPiggyBank(meta.geral)}</div><div><div class="snap-grid2">
-            ${snapMetric('Pendente',R(ent.pendente||0),'','#ff5a6a')}
-            ${snapMetric('Recebido',R(ent.pago||0),'','#34d399')}
-            ${snapMetric('% da filial',pct(ent.perc_filial||100))}
-            ${snapMetric('Configuração usada',`${Number(meta.cfg.grave_pct||0)}/${Number(meta.cfg.alerta_pct||0)}/${Number(meta.cfg.atencao_pct||0)}`)}
-          </div><div style="height:12px"></div><div class="snap-sub">🔴 Grave alvo ${R(meta.grave.alvo)} · recebido ${R(meta.grave.rec)}<br>🟠 Alerta alvo ${R(meta.alerta.alvo)} · recebido ${R(meta.alerta.rec)}<br>🟡 Atenção alvo ${R(meta.atencao.alvo)} · recebido ${R(meta.atencao.rec)}</div></div></div><div style="height:14px"></div><div class="snap-grid4">
-            ${snapMiniBox('Grave',meta.grave.perc,meta.grave.alvo,meta.grave.rec,'#ff5a6a')}
-            ${snapMiniBox('Alerta',meta.alerta.perc,meta.alerta.alvo,meta.alerta.rec,'#fb923c')}
-            ${snapMiniBox('Atenção',meta.atencao.perc,meta.atencao.alvo,meta.atencao.rec,'#facc15')}
-            ${snapMiniBox('Meta geral',meta.geral,meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,meta.grave.rec+meta.alerta.rec+meta.atencao.rec,'#60a5fa')}
-          </div></div>
-          <div class="snap-box"><h3>🌊 Gráfico Geral Contas a Receber</h3>${(()=>{const vals=[['Grave',meta.grave.pend,'#ff5a6a'],['Alerta',meta.alerta.pend,'#fb923c'],['Atenção',meta.atencao.pend,'#facc15'],['Recebido',Number(ent.pago||0),'#34d399']]; const max=Math.max(1,...vals.map(v=>v[1])); return `<div class="snap-chart-bars">${vals.map(v=>`<div class="snap-barwrap"><div class="snap-bar" style="--c:${v[2]};height:${Math.max(24,(v[1]/max)*190)}px"></div><div class="snap-barlabel">${v[0]}<br><strong>${R(v[1])}</strong></div></div>`).join('')}</div>`})()}</div>
-          <div class="snap-box"><h3>🏆 Bônus e premiações · Não acumulativo</h3><div class="snap-bonus">${bonusItems.map(([p,t])=>`<div class="snap-bonus-item ${bonus?.perc===p?'active':''}"><strong>🎯 ${p}%</strong><span>${esc(t)}</span></div>`).join('')}</div></div>
-        </div>
-        <div>
-          ${vendasHtml}
-          ${snapServices(ent)}
-          ${snapCommission(ent)}
-        </div>
-      </div>
-    </div>`;
-  }catch(e){console.log('Falha ao montar snapshot compacto',e); return '';}
+    const sub=ent.type==='filial'?'Painel individual da filial':'Painel individual do vendedor';
+    const deltaVal=Number(ent.var_pago_delta||0);
+    const prevBase=Math.max(Math.abs(Number(ent.pago||0)-deltaVal),1);
+    const pctFallback=(Math.abs(deltaVal)/prevBase)*100;
+    const compPerc=(ent.var_pago_perc==null || Math.abs(Number(ent.var_pago_perc||0))<0.01)?pctFallback:Math.abs(Number(ent.var_pago_perc||0));
+    const metaPanel=`<div class="glass panel snapshot-meta-panel"><h3>🎯 Meta do mês <span class="note">· Não acumulativo</span></h3><div class="mega-progress"><div class="ring-wrap">${renderPiggyBank(meta.geral)}</div><div><div class="metrics-grid"><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">% da filial</div><div class="v">${pct(ent.perc_filial||100)}</div></div><div class="metric"><div class="k">Configuração usada</div><div class="v">${Number(meta.cfg.grave_pct||0)}/${Number(meta.cfg.alerta_pct||0)}/${Number(meta.cfg.atencao_pct||0)}</div></div><div class="metric"><div class="k">Comparado a ontem</div><div class="v" style="font-size:16px">${renderDeltaPill(ent.var_pago_delta,compPerc)} <span>${R(Math.abs(Number(ent.var_pago_delta||0)))}</span></div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave alvo ${R(meta.grave.alvo)} · recebido ${R(meta.grave.rec)}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta alvo ${R(meta.alerta.alvo)} · recebido ${R(meta.alerta.rec)}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção alvo ${R(meta.atencao.alvo)} · recebido ${R(meta.atencao.rec)}</span></div></div></div><div class="meta-grid">${renderMetaBox('Grave','var(--red)',meta.grave)}${renderMetaBox('Alerta','var(--orange)',meta.alerta)}${renderMetaBox('Atenção','var(--yellow)',meta.atencao)}${renderMetaBox('Meta geral','var(--blue)',{perc:meta.geral,alvo:meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,rec:meta.grave.rec+meta.alerta.rec+meta.atencao.rec})}</div><div style="height:16px"></div><div class="glass panel"><h3>🏆 Bônus e premiações <span class="note">· Não acumulativo</span></h3>${renderBonusBox(meta.cfg,meta.geral)}</div></div>`;
+    const salesPanel = (ent.type==='crediarista'||ent.is_crediarista||ent.type==='terceiro'||ent.is_terceiro) ? '' : renderSalesPanel(ent);
+    const commPanel = (ent.type==='crediarista'||ent.is_crediarista||ent.type==='terceiro'||ent.is_terceiro) ? '' : renderCommissionSummary(ent);
+    return `<div class="snapshot-real-cards"><style>
+      .snapshot-real-cards{max-width:1280px;margin:0 auto;background:#080a0f;color:#f4f6fb;font-family:Inter,Arial,sans-serif;padding:18px;border-radius:22px}
+      .snapshot-real-cards .snap-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;border:1px solid rgba(255,255,255,.12);background:#161922;border-radius:18px;padding:16px 18px}
+      .snapshot-real-cards .snap-head h1{font-size:28px;margin:0;color:#fff}.snapshot-real-cards .snap-sub{color:#aeb7ca;font-size:13px;margin-top:5px}
+      .snapshot-real-cards .detail-top{display:grid;grid-template-columns:1.1fr .9fr;gap:16px;align-items:start}.snapshot-real-cards .glass{background:#141720;border:1px solid rgba(255,255,255,.12);border-radius:18px;box-shadow:0 10px 28px rgba(0,0,0,.25)}
+      .snapshot-real-cards .panel{padding:16px}.snapshot-real-cards .mega-progress{display:grid;grid-template-columns:220px 1fr;gap:16px;align-items:center}.snapshot-real-cards .metrics-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.snapshot-real-cards .meta-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px}.snapshot-real-cards .metric,.snapshot-real-cards .meta-card,.snapshot-real-cards .sales-mini,.snapshot-real-cards .commission-item{background:#0f1218;border:1px solid rgba(255,255,255,.10);border-radius:14px;padding:12px}.snapshot-real-cards .k,.snapshot-real-cards .meta-title,.snapshot-real-cards .sales-note,.snapshot-real-cards .note{color:#8c96ab;text-transform:uppercase;letter-spacing:.08em;font-size:11px;font-weight:900}.snapshot-real-cards .v,.snapshot-real-cards .meta-main{font-size:24px;font-weight:950}.snapshot-real-cards .sales-card{border:1px solid rgba(255,255,255,.10);border-radius:16px;padding:12px;margin:10px 0;background:#10131a}.snapshot-real-cards .sales-metrics,.snapshot-real-cards .commission-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.snapshot-real-cards .bonus-list{display:grid;gap:8px}.snapshot-real-cards .bonus-item{display:flex;justify-content:space-between;border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px}.snapshot-real-cards .bonus-item.active{animation:liquid 1.6s ease-in-out infinite alternate;outline:2px solid rgba(59,130,246,.18)}@keyframes liquid{from{filter:brightness(1)}to{filter:brightness(1.18)}}
+      @media(max-width:1000px){.snapshot-real-cards .detail-top{grid-template-columns:1fr}.snapshot-real-cards .sales-metrics,.snapshot-real-cards .commission-grid,.snapshot-real-cards .meta-grid{grid-template-columns:repeat(2,1fr)}}
+    </style><div class="snap-head"><div><h1>${nome}</h1><div class="snap-sub">${sub} · ${esc(ent.filial||'')} · fechamento ${mesAtualComissao()}</div></div><div class="snap-sub">🕒 ${esc(ULTIMA_ATUALIZACAO_DASHBOARD_BR||'')}</div></div><div class="detail-top"><div>${metaPanel}</div><div>${salesPanel}${commPanel?`<div style="height:16px"></div>${commPanel}`:''}</div></div></div>`;
+  }catch(e){console.error('snapshotEntityHTML erro',e); return '';}
 }
 
-function isUltimoDiaMes23(){
-  const now=new Date(); const tomorrow=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1);
-  return tomorrow.getDate()===1 && now.getHours()>=23;
-}
-
-function snapshotComissaoEntidade(ent){
-  const meta=calcMeta(ent); const rec=_recebResumo(ent); let c={};
-  try{ if(ent.type==='vendedor'||ent.type==='filial') c=calcCommissionSummary(ent)||{}; }catch(e){c={erro:String(e)}}
-  const totalPrev=Number(c.totalPrevisto||0);
-  return {
-    key:_comEntKey(ent), tipo:ent.type, nome:ent.nome||filialLabel(ent.filial), filial:ent.filial||'', login:ent.login||'',
-    pendente:Number(ent.pendente||0), recebido:Number(ent.pago||rec.total||0), recebido_conciliado:Number(rec.total||0), qtd_recebidos:Number(rec.qtd||0),
-    meta_geral:Number(meta.geral||0), grave_rec:Number(meta.grave?.rec||0), alerta_rec:Number(meta.alerta?.rec||0), atencao_rec:Number(meta.atencao?.rec||0),
-    grave_alvo:Number(meta.grave?.alvo||0), alerta_alvo:Number(meta.alerta?.alvo||0), atencao_alvo:Number(meta.atencao?.alvo||0),
-    venda_real:Number(c.vendaReal||0), servico_real:Number(c.servReal||0), caminhao_real:Number(c.camReal||0),
-    faixa:String(c.faixaTxt||''), comissao_vendas:Number(c.vendasComissao||0), comissao_servicos:Number(c.servicosComissao||0), comissao_caminhao:Number(c.caminhaoComissao||0), bonus_meta:Number(c.bonusMeta||0), rent48:Number(c.rent48||0), rent52:Number(c.rent52||0), rent55:Number(c.rent55||0), total_previsto:totalPrev,
-    elegivel_mercantil:Boolean(c.elegivelMercantil), elegivel_servicos:Boolean(c.elegivelServicos), html_individual:(()=>{try{return snapshotEntityHTML(ent)||''}catch(e){console.error('snapshot individual erro',e);return ''}})(), observacao:(ent.type==='crediarista'?'Crediarista: somente pagos conciliados após cobrança própria.':(ent.type==='terceiro'?'Cobrança terceiro.':''))
-  };
-}
 function buildSnapshotComissionamentoMensal(month=mesAtualComissao()){
   const ents=[...flattenVendedores(),...flattenFiliais(),...crediaristaEntities(),thirdChargeEntity()].filter(Boolean);
   const entidades=ents.map(snapshotComissaoEntidade);
@@ -8109,6 +8206,7 @@ async function reiniciarMetaMensalDashboard(){
       if(Array.isArray(SERVICOS_DATA)) SERVICOS_DATA.length=0;
       else Object.keys(SERVICOS_DATA||{}).forEach(k=>delete SERVICOS_DATA[k]);
     }
+    if(typeof SERVICOS_RELATORIO!=='undefined'){SERVICOS_RELATORIO={empresa:{real_total:0,quantidade:0,linhas:0},servicos:{},filiais:{},vendedores:{},detalhes:[],mes_referencia:mes};}
     if(typeof MARGENS_DATA!=='undefined'){
       if(Array.isArray(MARGENS_DATA)) MARGENS_DATA.length=0;
       else Object.keys(MARGENS_DATA||{}).forEach(k=>delete MARGENS_DATA[k]);
