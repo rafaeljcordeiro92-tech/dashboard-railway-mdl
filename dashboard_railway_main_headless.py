@@ -6304,10 +6304,13 @@ const LARANJITO_IMG = {
   triste: '/colaborador/mascote%20triste1.png',
   preocupado: '/colaborador/mascote%20preocupado1.png',
   feliz: '/colaborador/mascote%20feliz1.png',
-  foguete: '/colaborador/mascote%20foguete.png'
+  foguete: 'https://webftp.locaweb.com.br/view/public_html/colaborador/mascote%20foguete.png'
 };
 function laranjitoSrc(status){
-  return LARANJITO_IMG[status] || LARANJITO_IMG.triste;
+  const s = String(status || '').trim();
+  if(/^https?:\/\//i.test(s)) return s;
+  if(s === 'foguete') return 'https://webftp.locaweb.com.br/view/public_html/colaborador/mascote%20foguete.png';
+  return LARANJITO_IMG[s] || LARANJITO_IMG.triste;
 }
 
 
@@ -8884,7 +8887,7 @@ function getVendaDiariaDataLabel(sales, tipo='hoje'){
   return String(s.venda_diaria_data || node.data || 'hoje');
 }
 function getLaranjitoMarkupCard(markup){
-  const foguete='https://moveisdolar.com.br/colaborador/mascote%20foguete.png';
+  const foguete='https://webftp.locaweb.com.br/view/public_html/colaborador/mascote%20foguete.png';
   const feliz='https://moveisdolar.com.br/colaborador/mascote%20feliz1.png';
   const preocupado='https://moveisdolar.com.br/colaborador/mascote%20preocupado1.png';
   const triste='https://moveisdolar.com.br/colaborador/mascote%20triste1.png';
@@ -8895,7 +8898,7 @@ function getLaranjitoMarkupCard(markup){
   return triste;
 }
 function getLaranjitoVendaDiariaCard(valor){
-  const foguete='https://moveisdolar.com.br/colaborador/mascote%20foguete.png';
+  const foguete='https://webftp.locaweb.com.br/view/public_html/colaborador/mascote%20foguete.png';
   const feliz='https://moveisdolar.com.br/colaborador/mascote%20feliz1.png';
   const preocupado='https://moveisdolar.com.br/colaborador/mascote%20preocupado1.png';
   const triste='https://moveisdolar.com.br/colaborador/mascote%20triste1.png';
@@ -8907,6 +8910,24 @@ function getLaranjitoVendaDiariaCard(valor){
 }
 
 
+
+function parseMoneyOrNumberFromCardText(txt){
+  const s=String(txt||'');
+  const money=[...s.matchAll(/R\$\s*([0-9\.\,]+)/g)].map(m=>m[1]);
+  if(money.length){
+    const raw=money[0];
+    return Number(raw.replace(/\./g,'').replace(',','.')) || 0;
+  }
+  const nums=[...s.matchAll(/(^|\s)([0-9]+(?:[\,\.][0-9]+)?)(\s|$)/g)].map(m=>m[2]);
+  if(nums.length){
+    return Number(nums[0].replace(/\./g,'').replace(',','.')) || 0;
+  }
+  return 0;
+}
+function fogueteMascoteUrl(){
+  return 'https://webftp.locaweb.com.br/view/public_html/colaborador/mascote%20foguete.png';
+}
+
 function fixCardsVendaDiariaEMarkupDepoisRender(){
   try{
     const sales=SALES_EMPRESA||{};
@@ -8916,23 +8937,28 @@ function fixCardsVendaDiariaEMarkupDepoisRender(){
 
     document.querySelectorAll('.kpi,.glass.kpi,.kpi-card,.stat-card,.metric-card,.card').forEach(card=>{
       const txt=(card.innerText||'').toUpperCase();
+
       if(txt.includes('VENDA DIÁRIA')){
         const val=card.querySelector('.value,.kpi-value,.metric-value,h3,strong');
         if(val) val.textContent=R(vd);
-        const sub=[...card.querySelectorAll('.hint,.sub,.small,small')].find(x=>(x.innerText||'').toLowerCase().includes('painel') || (x.innerText||'').toLowerCase().includes('rel.'));
+        const sub=[...card.querySelectorAll('.hint,.sub,.small,small,.subline')].find(x=>(x.innerText||'').toLowerCase().includes('painel') || (x.innerText||'').toLowerCase().includes('rel.'));
         if(sub) sub.textContent='Rel. análise vendas '+getVendaDiariaDataLabel(sales,'hoje');
         const img=card.querySelector('img');
-        if(img) img.src=getLaranjitoVendaDiariaCard(vd);
+        const valorVisivel = vd || parseMoneyOrNumberFromCardText(card.innerText||'');
+        if(img) img.src = valorVisivel > 40000 ? fogueteMascoteUrl() : laranjitoSrc(statusLaranjitoVendaDiaria(valorVisivel));
       }
+
       if(txt.includes('VENDA DIA ANTERIOR')){
         const val=card.querySelector('.value,.kpi-value,.metric-value,h3,strong');
         if(val) val.textContent=R(va);
-        const sub=[...card.querySelectorAll('.hint,.sub,.small,small')].find(x=>(x.innerText||'').toLowerCase().includes('painel') || (x.innerText||'').toLowerCase().includes('rel.'));
+        const sub=[...card.querySelectorAll('.hint,.sub,.small,small,.subline')].find(x=>(x.innerText||'').toLowerCase().includes('painel') || (x.innerText||'').toLowerCase().includes('rel.'));
         if(sub) sub.textContent='Rel. análise vendas '+getVendaDiariaDataLabel(sales,'ontem');
       }
+
       if(txt.includes('MARKUP TOTAL')){
         const img=card.querySelector('img');
-        if(img) img.src=getLaranjitoMarkupCard(markup);
+        const valorVisivel = markup || parseMoneyOrNumberFromCardText(card.innerText||'');
+        if(img) img.src = valorVisivel > 2.25 ? fogueteMascoteUrl() : laranjitoSrc(statusLaranjitoMarkup(valorVisivel));
       }
     });
   }catch(e){console.warn('fixCardsVendaDiariaEMarkupDepoisRender',e)}
