@@ -3323,6 +3323,8 @@ def calc_perc_geral(grave_perc, alerta_perc, atencao_perc, cfg=None):
 # Passo A: Lê títulos brutos do XLS (todos os vendedores)
 # _rec_raw[chave] = {grave:[], alerta:[], atencao:[], is_ativo, is_fdep, filial}
 _rec_raw = {}
+# Evita duplicar títulos quando o mesmo pagamento aparece no XLS principal e no complementar de quitados.
+_rec_seen_keys = set()
 _vd2 = None
 
 for _i2 in range(len(df_raw)):
@@ -3386,6 +3388,15 @@ for _i2 in range(len(df_raw)):
 
     _kv2 = f"{_nome2}_{_fv2k}"
 
+    _titulo_seen2 = str(_row2[COL["num_titulo"]]).strip()
+    _parcela_seen2 = str(_row2[COL["num_parcela"]]).strip()
+    _lanc_seen2 = str(_row2[COL["num_lancamento"]]).strip()
+    _pag_seen2 = str(_row2[COL["pagamento"]]).strip()
+    _seen2 = f"{normalizar_texto_match(_c12[:60])}|{_lanc_seen2}|{_titulo_seen2}|{_parcela_seen2}|{_pag_seen2}"
+    if _seen2 in _rec_seen_keys:
+        continue
+    _rec_seen_keys.add(_seen2)
+
     if _kv2 not in _rec_raw:
         _rec_raw[_kv2] = {
             "grave": [],
@@ -3405,7 +3416,82 @@ for _i2 in range(len(df_raw)):
         "parcela": str(_row2[COL["num_parcela"]]).strip(),
         "titulo": str(_row2[COL["num_titulo"]]).strip(),
         "vendedor": (_nome2 + ("" if _is_at2 else (" [FDEP]" if _is_fp2 else " [Inativo]")))[:30],
+        "origem": "xls_principal",
     })
+
+# Passo A.1: Inclui o relatório complementar de QUITADOS 180d na mesma fonte dos recebimentos.
+# Antes o robô baixava/salvava quitados_180d_contas_receber.json, mas não somava esses títulos
+# em recebimentos_det_js/recebido_faixa. Assim, pagamentos que saíam do relatório principal
+# por estarem quitados podiam deixar as faixas Grave/Alerta/Atenção zeradas.
+_quitados_extra = (quitados_180_info.get("dados", {}) or {}).get("quitados", []) or []
+_ativos_lookup_receb = {}
+try:
+    for _, _rv_lookup in df_vend.iterrows():
+        _nome_lookup = str(_rv_lookup.get("nome_exibicao", "")).strip()
+        _fil_lookup = str(_rv_lookup.get("filial_vendedor", "")).strip().upper()
+        if _nome_lookup and _fil_lookup:
+            _ativos_lookup_receb[(normalizar_texto_match(_nome_lookup), _fil_lookup)] = _nome_lookup
+except Exception:
+    _ativos_lookup_receb = {}
+
+_qtd_extra_usados = 0
+_qtd_extra_dup = 0
+for _q in _quitados_extra:
+    try:
+        _fxq = str(_q.get("faixa", "")).strip().lower()
+        if _fxq not in ("grave", "alerta", "atencao"):
+            continue
+        _pagtoq = _parse_data(_q.get("pagamento"))
+        _pagoq = float(_q.get("pago", 0) or 0)
+        if not _pagtoq or _pagoq <= 0 or _pagtoq <= _data_corte_parse:
+            continue
+
+        _clienteq = str(_q.get("cliente", "")).strip()
+        _seenq = f"{normalizar_texto_match(_clienteq[:60])}|{str(_q.get('lancamento','')).strip()}|{str(_q.get('titulo','')).strip()}|{str(_q.get('parcela','')).strip()}|{str(_q.get('pagamento','')).strip()}"
+        if _seenq in _rec_seen_keys:
+            _qtd_extra_dup += 1
+            continue
+        _rec_seen_keys.add(_seenq)
+
+        _filq = str(_q.get("filial", "")).strip().upper() or "OUTROS"
+        _nomeq_raw = str(_q.get("vendedor_erp", "")).strip() or "INATIVO"
+        _nomeq_norm = normalizar_texto_match(_nomeq_raw)
+        _nome_ativo = _ativos_lookup_receb.get((_nomeq_norm, _filq))
+
+        if _nome_ativo:
+            _nomeq = _nome_ativo
+            _fvq = _filq
+            _is_atq = True
+            _is_fpq = False
+        else:
+            _nomeq = limpar_nome_display(_nomeq_raw)
+            _fvq = "FDEP" if _filq == "FDEP" else _filq
+            _is_atq = False
+            _is_fpq = (_fvq == "FDEP")
+
+        _kvq = f"{_nomeq}_{_fvq}"
+        if _kvq not in _rec_raw:
+            _rec_raw[_kvq] = {
+                "grave": [], "alerta": [], "atencao": [],
+                "is_ativo": _is_atq, "is_fdep": _is_fpq, "filial": _fvq,
+            }
+
+        _rec_raw[_kvq][_fxq].append({
+            "cliente": _clienteq[:40],
+            "dias": int(_q.get("dias_atraso_pagamento", 0) or 0),
+            "pago": _pagoq,
+            "vencimento": str(_q.get("vencimento", "")).strip(),
+            "pagamento": str(_q.get("pagamento", "")).strip(),
+            "parcela": str(_q.get("parcela", "")).strip(),
+            "titulo": str(_q.get("titulo", "")).strip(),
+            "vendedor": (_nomeq + ("" if _is_atq else (" [FDEP]" if _is_fpq else " [Quitado/Inativo]")))[:30],
+            "origem": "quitados_180d",
+        })
+        _qtd_extra_usados += 1
+    except Exception as _e_q:
+        print(f"⚠️ Quitado 180d ignorado por erro: {_e_q}")
+
+print(f"💰 Quitados 180d incorporados aos recebimentos: {_qtd_extra_usados} título(s) | duplicados ignorados: {_qtd_extra_dup}")
 
 # Passo B: Separa ativos, inativos por filial, e FDEP (lista única)
 _inat_por_fil = {}   # {filial: {faixa: [títulos]}}
@@ -7731,7 +7817,30 @@ function targetOptionsMsg(){
 
   return o;
 }
-function renderSenhaCard(u, isDirector=false){const key=isDirector?'diretorcomercial':u.login; const pend=(AUTH_STATE?.password_reset_requests||[]).filter(r=>String(r.login||'').toLowerCase()===String(key).toLowerCase() && String(r.status||'pendente')==='pendente').length; return `<div class="glass card" style="cursor:default"><div class="title" style="min-height:auto">${esc(isDirector?'Diretor Comercial':u.nome)} ${!isDirector?`(${u.filial||''})`:''}</div><div class="legend-inline"><span><i class="dot" style="background:${u.must_change_password?'#f59e0b':'#22c55e'}"></i>${u.must_change_password?'Precisa trocar senha':'Senha ativa'}</span>${pend?`<span><i class="dot" style="background:#ef4444"></i>${pend} solicitação(ões)</span>`:''}</div><div class="form-grid bonus" style="grid-template-columns:1.1fr .9fr;margin-top:12px"><div class="input-card"><label>Nova senha para ${esc(key)}</label><input id="pwd_${key}" placeholder="Digite a nova senha"></div><div class="input-card"><label>Ações</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="adminSalvarSenha('${key}')">💾 Salvar senha</button><button class="btn soft" type="button" onclick="adminMarcarTroca('${key}')">🔁 Exigir troca</button></div></div></div>${pend?`<div class="note" style="margin-top:10px">Solicitação pendente de recuperação. <button class="btn soft" style="margin-left:8px" onclick="adminResolverReset('${key}')">Resolver solicitação</button></div>`:''}<div id="pwd_msg_${key}" class="note" style="margin-top:8px"></div></div>`}
+function renderSenhaCard(u, isDirector=false){
+  const key=isDirector?'diretorcomercial':u.login;
+  const senhaAtual=String((isDirector ? (AUTH_STATE?.director?.password||SENHA_DIRETOR) : (u.password||u.senha||''))||'');
+  const senhaIni=String((isDirector ? (AUTH_STATE?.director?.initial_password||SENHA_DIRETOR) : (u.initial_password||u.senha_inicial||''))||'');
+  const pend=(AUTH_STATE?.password_reset_requests||[]).filter(r=>String(r.login||'').toLowerCase()===String(key).toLowerCase() && String(r.status||'pendente')==='pendente').length;
+  return `<div class="glass card" style="cursor:default">
+    <div class="title" style="min-height:auto">${esc(isDirector?'Diretor Comercial':u.nome)} ${!isDirector?`(${u.filial||''})`:''}</div>
+    <div class="legend-inline">
+      <span><i class="dot" style="background:${u.must_change_password?'#f59e0b':'#22c55e'}"></i>${u.must_change_password?'Precisa trocar senha':'Senha ativa'}</span>
+      ${pend?`<span><i class="dot" style="background:#ef4444"></i>${pend} solicitação(ões)</span>`:''}
+    </div>
+    <div class="note" style="margin-top:10px;background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-radius:14px;padding:10px 12px">
+      <div><b>Login:</b> <code>${esc(key)}</code></div>
+      <div><b>Senha definida agora:</b> <code style="font-size:14px">${esc(senhaAtual||'—')}</code></div>
+      ${senhaIni && senhaIni!==senhaAtual?`<div class="small muted">Senha inicial: <code>${esc(senhaIni)}</code></div>`:''}
+    </div>
+    <div class="form-grid bonus" style="grid-template-columns:1.1fr .9fr;margin-top:12px">
+      <div class="input-card"><label>Nova senha para ${esc(key)}</label><input id="pwd_${key}" placeholder="Digite a nova senha"></div>
+      <div class="input-card"><label>Ações</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="adminSalvarSenha('${key}')">💾 Salvar senha</button><button class="btn soft" type="button" onclick="adminMarcarTroca('${key}')">🔁 Exigir troca</button></div></div>
+    </div>
+    ${pend?`<div class="note" style="margin-top:10px">Solicitação pendente de recuperação. <button class="btn soft" style="margin-left:8px" onclick="adminResolverReset('${key}')">Resolver solicitação</button></div>`:''}
+    <div id="pwd_msg_${key}" class="note" style="margin-top:8px"></div>
+  </div>`
+}
 
 function _histDates(){return Object.keys(HIST_DASH?.dates||{}).sort().reverse()}
 function _histMonths(){return Object.keys(HIST_DASH?.months_closed||{}).sort().reverse()}
@@ -8210,7 +8319,7 @@ function renderSenhasTab(){
       <div></div>
     </div>`).join('')}</div>`:''}
   </div>
-  <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">👑 Contas administrativas</h2></div></div>${renderSenhaCard(AUTH_STATE?.director||{login:'diretorcomercial',nome:'Diretor Comercial',must_change_password:true}, true)}</div>
+  <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">👑 Contas administrativas</h2><div class="hint">O Master visualiza aqui a senha definida para cada acesso. A senha Master é fixa no arquivo do robô.</div></div></div><div class="grid-cards"><div class="glass card" style="cursor:default"><div class="title" style="min-height:auto">Master</div><div class="note" style="margin-top:10px;background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-radius:14px;padding:10px 12px"><div><b>Login:</b> <code>${esc(LOGIN_MASTER)}</code></div><div><b>Senha definida agora:</b> <code style="font-size:14px">${esc(SENHA_MASTER)}</code></div></div></div>${renderSenhaCard(AUTH_STATE?.director||{login:'diretorcomercial',nome:'Diretor Comercial',password:SENHA_DIRETOR,initial_password:SENHA_DIRETOR,must_change_password:true}, true)}</div></div>
   <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">➕ Criar usuário de acesso</h2><div class="hint">Aqui você cria apenas o login/senha de acesso. Depois vá em Metas > Crediaristas configuráveis para vincular esse usuário à filial/base e ao percentual.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Login</label><input id="newUserLogin" placeholder="ex: crediaristaf07"></div><div class="input-card"><label>Nome</label><input id="newUserNome" placeholder="ex: CREDIARISTAF07"></div><div class="input-card"><label>Filial</label><input id="newUserFilial" placeholder="ex: F7"></div><div class="input-card"><label>Senha inicial</label><input id="newUserSenha" placeholder="mín. 4 caracteres"></div></div><div class="form-grid bonus" style="margin-top:10px"><div class="input-card"><label>Tipo</label><select id="newUserTipo"><option value="crediarista">Crediarista</option><option value="cobranca">Cobrança</option></select></div></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="adminCriarUsuarioCobranca()">💾 Criar usuário</button></div><div id="newUserMsg" class="note" style="margin-top:10px"></div></div>
   <div class="section-head"><div><h2>👥 Usuários do dashboard</h2><div class="hint">As senhas permanecem congeladas e só mudam se você alterar aqui ou se surgir um usuário novo.</div></div></div>
   <div class="grid-cards">${users.map(u=>renderSenhaCard(u,false)).join('')}</div>`;
