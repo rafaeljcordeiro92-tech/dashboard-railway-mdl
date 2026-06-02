@@ -1,4 +1,4 @@
-# VERSAO: COBRANCA10_V4_RELATORIOS_XLS_HISTORICO
+# VERSAO: COBRANCA10_V7_RECEBIMENTO_MES_COMPLETO
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -1988,7 +1988,7 @@ for _, _rr in df_inativos_raw.iterrows():
 
 # ===== PARSE CLIENTES E RECEBIMENTOS POR FAIXA
 # Lógica:
-#   recebido_faixa  = pago nos títulos com pagto > data_corte (delta do período)
+#   recebido_faixa  = pago nos títulos com pagto >= data_corte (delta do período)
 #                     inclui ativos + inativos + FDEP (para rateio na meta)
 #   clientes_cobrar = títulos PENDENTES por faixa (para cobrança)
 from datetime import datetime as _dt
@@ -2051,6 +2051,11 @@ else:
     if _data_corte_parse is None:
         _data_corte_parse = _dt(_dt.now().year, _dt.now().month, 1)
     print(f"📅 Data de corte (snapshot disponível): {_data_corte_parse.strftime('%d/%m/%Y')}")
+
+# ✅ V7: para os recebimentos por faixa, o período deve ser o mês inteiro.
+# Inclui pagamentos feitos no próprio dia 01 do mês.
+_data_corte_parse = _dt(_dt.now().year, _dt.now().month, 1)
+print(f"✅ V7_RECEBIMENTO_MES_COMPLETO: recebimentos por faixa desde {_data_corte_parse.strftime('%d/%m/%Y')} inclusive")
 
 for _i in range(len(df_raw)):
     _row = df_raw.iloc[_i]
@@ -2141,7 +2146,7 @@ for _i in range(len(df_raw)):
     # =========================================
     # RECEBIMENTOS
     # =========================================
-    if _faixa and _pagto and _pago_val > 0 and _pagto > _data_corte_parse:
+    if _faixa and _pagto and _pago_val > 0 and _pagto >= _data_corte_parse:
         if _key_vend not in recebido_faixa:
             recebido_faixa[_key_vend] = {
                 "grave": 0.0,
@@ -3368,7 +3373,7 @@ def calc_perc_geral(grave_perc, alerta_perc, atencao_perc, cfg=None):
 # =========================================================================
 # RECEBIMENTOS E META — FONTE ÚNICA
 # Regra:
-#   1. Lê todos os títulos pagos no período (pagto > data_corte, conta caixa ≠ 100)
+#   1. Lê todos os títulos pagos no período (pagto >= data_corte, conta caixa ≠ 100)
 #   2. Classifica por faixa de vencimento (grave/alerta/atenção)
 #   3. Distribui inativos e FDEP para ativos da filial (60% gerente / 40% vendedores)
 #   4. recebimentos_det_js = relatório visual (com detalhes dos títulos)
@@ -3403,7 +3408,7 @@ for _i2 in range(len(df_raw)):
 
     if not _venc2 or not _pagto2 or _pago2 <= 0:
         continue
-    if _pagto2 <= _data_corte_parse:
+    if _pagto2 < _data_corte_parse:
         continue
 
     if str(_row2[COL["conta_caixa"]]).strip() == "Caixa Filial 100":
@@ -3499,7 +3504,7 @@ for _q in _quitados_extra:
             continue
         _pagtoq = _parse_data(_q.get("pagamento"))
         _pagoq = float(_q.get("pago", 0) or 0)
-        if not _pagtoq or _pagoq <= 0 or _pagtoq <= _data_corte_parse:
+        if not _pagtoq or _pagoq <= 0 or _pagtoq < _data_corte_parse:
             continue
 
         _clienteq = str(_q.get("cliente", "")).strip()
@@ -3688,6 +3693,15 @@ for _kd, _vd_det in recebimentos_det_js.items():
     if _kd.startswith("Filial "):
         recebido_faixa[_kd]['is_ativo'] = False
 
+
+# ✅ V7: diagnóstico para confirmar nos logs se os valores entraram no HTML
+try:
+    _dbg_g = sum(float(v.get('grave', 0) or 0) for v in recebido_faixa.values())
+    _dbg_a = sum(float(v.get('alerta', 0) or 0) for v in recebido_faixa.values())
+    _dbg_t = sum(float(v.get('atencao', 0) or 0) for v in recebido_faixa.values())
+    print(f"🧾 DEBUG V7 recebimentos por faixa desde {_data_corte_parse.strftime('%d/%m/%Y')}: grave=R$ {_dbg_g:.2f} | alerta=R$ {_dbg_a:.2f} | atencao=R$ {_dbg_t:.2f} | total=R$ {(_dbg_g+_dbg_a+_dbg_t):.2f}")
+except Exception as _e_dbg_rec:
+    print(f"⚠️ DEBUG V7 recebimentos falhou: {_e_dbg_rec}")
 
 _pre_inat_rec = {f: {'grave':0.0,'alerta':0.0,'atencao':0.0} for f in ORDEM_FILIAIS}
 _pre_fdep_rec = {f: {'grave':0.0,'alerta':0.0,'atencao':0.0} for f in ORDEM_FILIAIS}
