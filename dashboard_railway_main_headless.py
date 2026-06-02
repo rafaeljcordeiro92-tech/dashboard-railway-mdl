@@ -1,4 +1,4 @@
-# VERSAO: COBRANCA10_V4_RELATORIOS_XLS_HISTORICO
+﻿# VERSAO: COBRANCA10_V11_FIX_RECEBIMENTOS_MES_COMPLETO_PATCH_LOCAL
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -38,7 +38,7 @@ IS_RAILWAY = bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RUN_ON_RAILWAY"
 pasta = os.path.dirname(os.path.abspath(__file__))
 download_dir = pasta if not IS_RAILWAY else tempfile.gettempdir()
 
-# ===== RELATÓRIOS AUDITÁVEIS DA ÚLTIMA EXECUÇÃO
+# ===== RELATÃ“RIOS AUDITÃVEIS DA ÃšLTIMA EXECUÃ‡ÃƒO
 # No Railway, downloads em /tmp somem quando o container reinicia.
 # Por isso copiamos os XLS/JSON para /app/relatorios_publicos e depois publicamos no FTP.
 RELATORIOS_DIR = os.path.join(pasta, "relatorios_publicos")
@@ -55,14 +55,14 @@ relatorios_publicos = {
 def _copiar_relatorio_publico(src, nome_destino):
     try:
         if not src or not os.path.exists(src):
-            print(f"⚠️ Relatório não encontrado para publicar: {src}")
+            print(f"âš ï¸ RelatÃ³rio nÃ£o encontrado para publicar: {src}")
             return None
         dst = os.path.join(RELATORIOS_DIR, nome_destino)
         shutil.copy2(src, dst)
-        print(f"💾 Relatório público salvo: {dst}")
+        print(f"ðŸ’¾ RelatÃ³rio pÃºblico salvo: {dst}")
         return dst
     except Exception as e:
-        print(f"⚠️ Falha ao copiar relatório público {src} -> {nome_destino}: {e}")
+        print(f"âš ï¸ Falha ao copiar relatÃ³rio pÃºblico {src} -> {nome_destino}: {e}")
         return None
 
 def _gerar_zip_relatorios_publicos():
@@ -76,10 +76,10 @@ def _gerar_zip_relatorios_publicos():
                 if path and os.path.exists(path):
                     zf.write(path, arcname=os.path.basename(path))
         relatorios_publicos["zip"] = zip_path
-        print(f"📦 ZIP de relatórios salvo: {zip_path}")
+        print(f"ðŸ“¦ ZIP de relatÃ³rios salvo: {zip_path}")
         return zip_path
     except Exception as e:
-        print(f"⚠️ Falha ao gerar ZIP de relatórios: {e}")
+        print(f"âš ï¸ Falha ao gerar ZIP de relatÃ³rios: {e}")
         return None
 
 from selenium.webdriver.chrome.service import Service
@@ -87,7 +87,7 @@ from selenium.common.exceptions import WebDriverException, SessionNotCreatedExce
 
 
 def _resolve_bin(env_names, candidates):
-    """Resolve binário por variável de ambiente, caminho fixo ou PATH."""
+    """Resolve binÃ¡rio por variÃ¡vel de ambiente, caminho fixo ou PATH."""
     for env in env_names:
         val = os.getenv(env)
         if val and os.path.exists(val):
@@ -111,7 +111,7 @@ def _make_chrome_options(profile_dir):
 
     if IS_RAILWAY:
         opts.page_load_strategy = "eager"
-        # Headless deixa o Chrome mais estável no Railway, mesmo com Xvfb disponível.
+        # Headless deixa o Chrome mais estÃ¡vel no Railway, mesmo com Xvfb disponÃ­vel.
         if os.getenv("DISABLE_CHROME_HEADLESS", "0") != "1":
             opts.add_argument("--headless=new")
         opts.add_argument("--no-sandbox")
@@ -119,7 +119,7 @@ def _make_chrome_options(profile_dir):
         opts.add_argument("--disable-gpu")
         opts.add_argument("--window-size=1920,1080")
         opts.add_argument("--disable-blink-features=AutomationControlled")
-        # NÃO usar porta fixa 9222: em Railway pode dar conflito e o Chrome fecha.
+        # NÃƒO usar porta fixa 9222: em Railway pode dar conflito e o Chrome fecha.
         opts.add_argument("--remote-debugging-port=0")
         opts.add_argument("--remote-debugging-address=127.0.0.1")
         opts.add_argument("--disable-software-rasterizer")
@@ -141,7 +141,7 @@ def _make_chrome_options(profile_dir):
         opts.add_argument("--disable-sync")
         opts.add_argument("--metrics-recording-only")
         opts.add_argument("--disable-default-apps")
-        # Perfil único por execução: evita "Chrome instance exited" por profile lock.
+        # Perfil Ãºnico por execuÃ§Ã£o: evita "Chrome instance exited" por profile lock.
         opts.add_argument(f"--user-data-dir={profile_dir}")
         opts.add_argument(f"--data-path={os.path.join(profile_dir, 'data')}")
         opts.add_argument(f"--disk-cache-dir={os.path.join(profile_dir, 'cache')}")
@@ -183,7 +183,7 @@ def iniciar_driver_chrome():
         opts = _make_chrome_options(profile_dir)
 
         try:
-            print(f"🧭 Iniciando Chrome tentativa {tentativa}/3")
+            print(f"ðŸ§­ Iniciando Chrome tentativa {tentativa}/3")
             print(f"   IS_RAILWAY={IS_RAILWAY} DISPLAY={os.getenv('DISPLAY')}")
             print(f"   Chrome binary={getattr(opts, 'binary_location', '')}")
             print(f"   ChromeDriver={chrome_driver_bin or 'Selenium Manager'}")
@@ -197,10 +197,10 @@ def iniciar_driver_chrome():
 
         except (SessionNotCreatedException, WebDriverException) as e:
             ultimo_erro = e
-            print(f"⚠️ Falha ao iniciar Chrome na tentativa {tentativa}/3: {e}")
+            print(f"âš ï¸ Falha ao iniciar Chrome na tentativa {tentativa}/3: {e}")
             time.sleep(2)
 
-    print("❌ Não foi possível iniciar Chrome/Chromedriver após 3 tentativas.")
+    print("âŒ NÃ£o foi possÃ­vel iniciar Chrome/Chromedriver apÃ³s 3 tentativas.")
     print(f"   GOOGLE_CHROME_BIN={os.getenv('GOOGLE_CHROME_BIN')}")
     print(f"   CHROME_BIN={os.getenv('CHROME_BIN')}")
     print(f"   CHROMEDRIVER={os.getenv('CHROMEDRIVER')}")
@@ -347,13 +347,13 @@ def clicar_primeiro_filtro_metas():
 
 def extrair_linhas_tabela_metas():
     """
-    Lê a tabela de metas de forma robusta usando os atributos data-title/data-value.
-    O SGI muda os IDs das metas todo mês (ex.: 208, 209, 210, 211), então não usamos ID fixo.
+    LÃª a tabela de metas de forma robusta usando os atributos data-title/data-value.
+    O SGI muda os IDs das metas todo mÃªs (ex.: 208, 209, 210, 211), entÃ£o nÃ£o usamos ID fixo.
     """
     wait.until(EC.presence_of_all_elements_located((By.XPATH, "//table//tbody/tr")))
     linhas = []
 
-    # Primeira tentativa: via JavaScript, pegando data-title/data-value da própria tabela.
+    # Primeira tentativa: via JavaScript, pegando data-title/data-value da prÃ³pria tabela.
     try:
         rows = driver.execute_script("""
             const out = [];
@@ -381,7 +381,7 @@ def extrair_linhas_tabela_metas():
 
             tipo = str(obj.get('Tipo') or obj.get('tipo') or obj.get('col_1') or '').strip()
             escopo = str(obj.get('Escopo') or obj.get('escopo') or obj.get('col_2') or '').strip()
-            descricao = str(obj.get('Descrição') or obj.get('Descricao') or obj.get('descricao') or obj.get('col_3') or '').strip()
+            descricao = str(obj.get('DescriÃ§Ã£o') or obj.get('Descricao') or obj.get('descricao') or obj.get('col_3') or '').strip()
             data_inicial = str(obj.get('Data Inicial') or obj.get('data inicial') or obj.get('col_4') or '').strip()
             data_final = str(obj.get('Data Final') or obj.get('data final') or obj.get('col_5') or '').strip()
 
@@ -404,7 +404,7 @@ def extrair_linhas_tabela_metas():
         if linhas:
             return linhas
     except Exception as e:
-        print(f"⚠️ Leitura JS da tabela de metas falhou, tentando Selenium comum: {e}")
+        print(f"âš ï¸ Leitura JS da tabela de metas falhou, tentando Selenium comum: {e}")
 
     # Fallback: leitura Selenium tradicional.
     for tr in driver.find_elements(By.XPATH, "//table//tbody/tr"):
@@ -449,8 +449,8 @@ def linha_meta_match(item, spec):
 
 def escolher_melhor_linha_meta(linhas, spec):
     """
-    Escolhe a meta do mês pela linha exibida na tela.
-    Não usa IDs fixos, porque o SGI cria novos IDs todo mês.
+    Escolhe a meta do mÃªs pela linha exibida na tela.
+    NÃ£o usa IDs fixos, porque o SGI cria novos IDs todo mÃªs.
     """
     candidatos = [x for x in linhas if linha_meta_match(x, spec)]
     if not candidatos:
@@ -474,7 +474,7 @@ def limpar_df_tabela(df):
 
 
 def encontrar_df_resultado_metas():
-    # Lê direto da tabela HTML visível via Selenium, sem depender de lxml/pandas.read_html
+    # LÃª direto da tabela HTML visÃ­vel via Selenium, sem depender de lxml/pandas.read_html
     possiveis = [
         "//table[@id='tabela_metas']",
         "//table[contains(@class,'tabela-metas')]",
@@ -493,7 +493,7 @@ def encontrar_df_resultado_metas():
             tabela = None
 
     if tabela is None:
-        raise Exception(f"Tabela de resultados das metas não encontrada na tela: {ultimo_erro}")
+        raise Exception(f"Tabela de resultados das metas nÃ£o encontrada na tela: {ultimo_erro}")
 
     driver.execute_script("arguments[0].scrollIntoView({block:'center'});", tabela)
     time.sleep(0.6)
@@ -504,7 +504,7 @@ def encontrar_df_resultado_metas():
         if txt:
             headers.append(re.sub(r"\s+", " ", txt))
 
-    # Alguns layouts têm a 1ª coluna sem texto no header. Ajusta pelo data-title do tbody.
+    # Alguns layouts tÃªm a 1Âª coluna sem texto no header. Ajusta pelo data-title do tbody.
     linhas = []
     trs = tabela.find_elements(By.XPATH, ".//tbody/tr[td]")
     for tr in trs:
@@ -538,7 +538,7 @@ def encontrar_df_resultado_metas():
     while len(headers) < max_cols:
         idx = len(headers)
         if idx == 0:
-            # tenta descobrir pelo data-title da primeira célula
+            # tenta descobrir pelo data-title da primeira cÃ©lula
             try:
                 data_title = trs[0].find_elements(By.XPATH, "./td")[0].get_attribute("data-title") or ""
                 headers.append(data_title.strip() or "Nome")
@@ -565,17 +565,17 @@ def encontrar_df_resultado_metas():
         elif "ATINGIDO TOTAL" in uc:
             nome = "Atingido Total"
         elif "META(R$) PERIODO" in uc:
-            nome = "Meta(R$) Período"
+            nome = "Meta(R$) PerÃ­odo"
         elif "REALIZADO(R$) PERIODO" in uc:
-            nome = "Realizado(R$) Período"
+            nome = "Realizado(R$) PerÃ­odo"
         elif "ATINGIDO PERIODO" in uc:
-            nome = "Atingido Período"
+            nome = "Atingido PerÃ­odo"
         elif "PROJETADO(R$)" in uc:
             nome = "Projetado(R$)"
         ren[c] = nome
     df = df.rename(columns=ren)
 
-    # Garante nomes únicos: ex. Vendedor, Vendedor_2
+    # Garante nomes Ãºnicos: ex. Vendedor, Vendedor_2
     cols = []
     usados = {}
     for c in df.columns:
@@ -594,17 +594,17 @@ def valor_float_brasil(v):
         s = str(v).strip()
         if s in ("", "nan", "None"):
             return None
-        # Se já é um número puro (ex: 0.1995 vindo da seção numérica do xlsx),
-        # não faz replace de "." que quebraria o valor
+        # Se jÃ¡ Ã© um nÃºmero puro (ex: 0.1995 vindo da seÃ§Ã£o numÃ©rica do xlsx),
+        # nÃ£o faz replace de "." que quebraria o valor
         s_clean = s.replace("%", "").strip()
-        # Detecta formato brasileiro (tem vírgula como decimal): "13.031,84"
+        # Detecta formato brasileiro (tem vÃ­rgula como decimal): "13.031,84"
         if "," in s_clean and s_clean.index(",") > s_clean.index(".") if "." in s_clean else False:
-            # Formato BR: remove pontos de milhar, troca vírgula por ponto
+            # Formato BR: remove pontos de milhar, troca vÃ­rgula por ponto
             s_clean = s_clean.replace(".", "").replace(",", ".")
         elif "," in s_clean and "." not in s_clean:
-            # Só vírgula: "13031,84" -> "13031.84"
+            # SÃ³ vÃ­rgula: "13031,84" -> "13031.84"
             s_clean = s_clean.replace(",", ".")
-        # else: formato puro com ponto: "13031.84" ou "0.1995" — usa direto
+        # else: formato puro com ponto: "13031.84" ou "0.1995" â€” usa direto
         return float(s_clean)
     except Exception:
         return None
@@ -617,7 +617,7 @@ def nome_arquivo_contas_valido(fname):
     if not (s.endswith(".xls") or s.endswith(".xlsx")):
         return False
 
-    # nunca aceitar relatórios de margem ou arquivos auxiliares
+    # nunca aceitar relatÃ³rios de margem ou arquivos auxiliares
     bloqueados = [
         "margem",
         "margens",
@@ -632,7 +632,7 @@ def nome_arquivo_contas_valido(fname):
     if any(b in s for b in bloqueados):
         return False
 
-    # aceitar apenas nomes típicos do Contas a Receber
+    # aceitar apenas nomes tÃ­picos do Contas a Receber
     permitidos = [
         "relatorio_contas",
         "contas_pagar_receber",
@@ -660,8 +660,8 @@ def _set_input_by_id_safely(input_id, valor):
 
 def _selecionar_situacao_quitados():
     """
-    Tenta selecionar Situação = Quitados no relatório de Contas a Receber.
-    O SGI pode mudar id/name, então tentamos várias formas.
+    Tenta selecionar SituaÃ§Ã£o = Quitados no relatÃ³rio de Contas a Receber.
+    O SGI pode mudar id/name, entÃ£o tentamos vÃ¡rias formas.
     """
     tentativas = [
         (By.ID, "situacao"),
@@ -678,7 +678,7 @@ def _selecionar_situacao_quitados():
             for val in ["quitado", "quitados", "Q", "2", "3"]:
                 try:
                     s.select_by_value(val)
-                    print(f"✅ Situação Quitados OK via {sel}={val}")
+                    print(f"âœ… SituaÃ§Ã£o Quitados OK via {sel}={val}")
                     return True
                 except Exception:
                     pass
@@ -687,33 +687,33 @@ def _selecionar_situacao_quitados():
                 txt = (opt.text or "").strip().lower()
                 if "quitad" in txt:
                     s.select_by_visible_text(opt.text)
-                    print(f"✅ Situação Quitados OK via texto: {opt.text}")
+                    print(f"âœ… SituaÃ§Ã£o Quitados OK via texto: {opt.text}")
                     return True
         except Exception:
             pass
 
     # fallback por label
     try:
-        xp = "//label[contains(translate(normalize-space(.),'ÇÃÕÁÉÍÓÚÂÊÔÀÈÌÒÙ','CAOAEIOUAEOA EIOU'),'Situacao')]/following::select[1]"
+        xp = "//label[contains(translate(normalize-space(.),'Ã‡ÃƒÃ•ÃÃ‰ÃÃ“ÃšÃ‚ÃŠÃ”Ã€ÃˆÃŒÃ’Ã™','CAOAEIOUAEOA EIOU'),'Situacao')]/following::select[1]"
         el = driver.find_element(By.XPATH, xp)
         s = Select(el)
         for opt in s.options:
             if "quitad" in (opt.text or "").lower():
                 s.select_by_visible_text(opt.text)
-                print(f"✅ Situação Quitados OK via label: {opt.text}")
+                print(f"âœ… SituaÃ§Ã£o Quitados OK via label: {opt.text}")
                 return True
     except Exception:
         pass
 
-    print("⚠️ Não consegui confirmar Situação = Quitados automaticamente")
+    print("âš ï¸ NÃ£o consegui confirmar SituaÃ§Ã£o = Quitados automaticamente")
     return False
 
 
 def _parse_quitados_xls_180d(caminho_quitados, colmap):
     """
-    Lê o relatório de quitados e devolve lista de títulos quitados.
-    Mantém vendedor do ERP como referência, mas a atribuição do mérito será feita no dashboard
-    cruzando com cobrancas_log.json pelo último cobrador antes do pagamento.
+    LÃª o relatÃ³rio de quitados e devolve lista de tÃ­tulos quitados.
+    MantÃ©m vendedor do ERP como referÃªncia, mas a atribuiÃ§Ã£o do mÃ©rito serÃ¡ feita no dashboard
+    cruzando com cobrancas_log.json pelo Ãºltimo cobrador antes do pagamento.
     """
     dfq = pd.read_excel(caminho_quitados, header=None, engine="openpyxl")
     quitados = []
@@ -778,7 +778,7 @@ def _parse_quitados_xls_180d(caminho_quitados, colmap):
         elif 15 <= dias_atraso_pg < 30:
             faixa = "atencao"
         else:
-            # quitou antes de entrar na regra de cobrança
+            # quitou antes de entrar na regra de cobranÃ§a
             continue
 
         filial_txt = c0
@@ -803,25 +803,25 @@ def _parse_quitados_xls_180d(caminho_quitados, colmap):
             "origem": "relatorio_quitados_180d",
         })
 
-    print(f"✅ Quitados 180d lidos: {len(quitados)} título(s)")
+    print(f"âœ… Quitados 180d lidos: {len(quitados)} tÃ­tulo(s)")
     return quitados
 
 
 def coletar_quitados_180d_contas_receber():
     """
-    Relatório complementar para conciliar cobranças feitas com pagamentos que saíram da faixa 15-90.
+    RelatÃ³rio complementar para conciliar cobranÃ§as feitas com pagamentos que saÃ­ram da faixa 15-90.
     Filtros:
     - Vencimento inicial em branco
     - Vencimento final = hoje
-    - Situação = Quitados
-    - + Data último pagamento inicial = hoje - 180 dias
-    - Data último pagamento final = hoje
-    - Formas de pagamento iguais ao relatório atual
+    - SituaÃ§Ã£o = Quitados
+    - + Data Ãºltimo pagamento inicial = hoje - 180 dias
+    - Data Ãºltimo pagamento final = hoje
+    - Formas de pagamento iguais ao relatÃ³rio atual
     """
     data_hoje = datetime.now().strftime("%d/%m/%Y")
     data_180 = (datetime.now() - timedelta(days=180)).strftime("%d/%m/%Y")
 
-    print("\n🔎 Iniciando relatório complementar de QUITADOS 180 dias...")
+    print("\nðŸ”Ž Iniciando relatÃ³rio complementar de QUITADOS 180 dias...")
     driver.get(URL + "/relatorio_contas_receber")
     wait.until(EC.presence_of_element_located((By.ID, "data_vencimento_inicial")))
     Select(driver.find_element(By.ID, "data_vencimento")).select_by_value("intervalo")
@@ -831,7 +831,7 @@ def coletar_quitados_180d_contas_receber():
     _set_input_by_id_safely("data_vencimento_inicial", "")
     _set_input_by_id_safely("data_vencimento_final", data_hoje)
 
-    # Situação = Quitados
+    # SituaÃ§Ã£o = Quitados
     _selecionar_situacao_quitados()
 
     # Filiais
@@ -843,66 +843,66 @@ def coletar_quitados_180d_contas_receber():
         for c in container.find_elements(By.XPATH, ".//input[@type='checkbox']"):
             if c.get_attribute("value") in filiais_sel:
                 driver.execute_script("arguments[0].click();", c)
-        print("✅ Filiais OK quitados")
+        print("âœ… Filiais OK quitados")
         time.sleep(1.5)
     except Exception as e:
-        print(f"⚠️ Erro filiais quitados: {e}")
+        print(f"âš ï¸ Erro filiais quitados: {e}")
 
     # Abre +
     try:
         clicar_seguro_xpath("//span[contains(@class,'glyphicon-plus')]", timeout=20)
-        print("✅ Mais filtros quitados")
+        print("âœ… Mais filtros quitados")
         time.sleep(1.5)
     except Exception as e:
-        print(f"⚠️ Não abriu + quitados: {e}")
+        print(f"âš ï¸ NÃ£o abriu + quitados: {e}")
 
-    # Data último pagamento
+    # Data Ãºltimo pagamento
     try:
         _set_input_by_id_safely("data_ultimo_pagamento_inicial", data_180)
         _set_input_by_id_safely("data_ultimo_pagamento_final", data_hoje)
-        print(f"✅ Data último pagamento: {data_180} até {data_hoje}")
+        print(f"âœ… Data Ãºltimo pagamento: {data_180} atÃ© {data_hoje}")
     except Exception as e:
-        print(f"⚠️ Erro datas último pagamento: {e}")
+        print(f"âš ï¸ Erro datas Ãºltimo pagamento: {e}")
 
     # Formas de pagamento
     try:
         marcar_multiselect_por_label("Forma de Pagamento", ["3", "47", "17"], timeout=20, limpar_antes=True)
-        print("✅ Formas OK quitados")
+        print("âœ… Formas OK quitados")
         time.sleep(1.5)
     except Exception as e:
-        print(f"⚠️ Erro formas quitados: {e}")
+        print(f"âš ï¸ Erro formas quitados: {e}")
 
     try:
         Select(wait.until(EC.presence_of_element_located((By.ID, "_formato")))).select_by_value("xls")
-        print("✅ Formato XLS quitados")
+        print("âœ… Formato XLS quitados")
         time.sleep(1.5)
     except Exception as e:
-        print(f"⚠️ Erro formato XLS quitados: {e}")
+        print(f"âš ï¸ Erro formato XLS quitados: {e}")
 
     arquivos_antes = set(f for f in os.listdir(download_dir) if nome_arquivo_contas_valido(f))
     driver.find_element(By.ID, "gerar").click()
-    print("📥 Gerando XLS quitados... aguardando download...")
+    print("ðŸ“¥ Gerando XLS quitados... aguardando download...")
 
     caminho_q = None
     for tentativa in range(75):
         time.sleep(2)
         baixando = any(f.endswith(".crdownload") or f.endswith(".tmp") for f in os.listdir(download_dir))
         if tentativa % 5 == 0:
-            print(f"⏳ Quitados tentativa {tentativa}/75 | baixando={baixando}")
+            print(f"â³ Quitados tentativa {tentativa}/75 | baixando={baixando}")
         if baixando:
             continue
         novos = set(f for f in os.listdir(download_dir) if nome_arquivo_contas_valido(f)) - arquivos_antes
         if novos:
             caminho_q = max([os.path.join(download_dir, f) for f in novos], key=os.path.getctime)
-            print(f"✅ Download quitados OK: {caminho_q}")
+            print(f"âœ… Download quitados OK: {caminho_q}")
             try:
                 relatorios_publicos["quitados_original_xls"] = _copiar_relatorio_publico(caminho_q, "ultimo_contas_receber_quitados_original.xls")
             except Exception as e_pub_q:
-                print(f"⚠️ Não consegui copiar XLS original de quitados: {e_pub_q}")
+                print(f"âš ï¸ NÃ£o consegui copiar XLS original de quitados: {e_pub_q}")
             break
 
     if not caminho_q:
-        print("⚠️ Nenhum XLS de quitados baixado. Seguindo sem conciliação extra.")
+        print("âš ï¸ Nenhum XLS de quitados baixado. Seguindo sem conciliaÃ§Ã£o extra.")
         return {"xlsx_path": None, "json_path": None, "dados": {"quitados": [], "erro": "download_nao_encontrado"}}
 
     quitados = _parse_quitados_xls_180d(caminho_q, COL)
@@ -920,34 +920,34 @@ def coletar_quitados_180d_contas_receber():
     except Exception:
         out_xlsx = None
 
-    print(f"💾 Quitados JSON: {out_json}")
+    print(f"ðŸ’¾ Quitados JSON: {out_json}")
     if out_xlsx:
-        print(f"💾 Quitados XLSX: {out_xlsx}")
+        print(f"ðŸ’¾ Quitados XLSX: {out_xlsx}")
     try:
         relatorios_publicos["quitados_json"] = _copiar_relatorio_publico(out_json, "quitados_180d_contas_receber.json")
         if out_xlsx:
             relatorios_publicos["quitados_processado_xlsx"] = _copiar_relatorio_publico(out_xlsx, "quitados_180d_contas_receber.xlsx")
     except Exception as e_pub_q2:
-        print(f"⚠️ Não consegui preparar quitados para publicação: {e_pub_q2}")
+        print(f"âš ï¸ NÃ£o consegui preparar quitados para publicaÃ§Ã£o: {e_pub_q2}")
 
     return {"xlsx_path": out_xlsx, "json_path": out_json, "dados": {"quitados": quitados}}
 
 
 def _is_total_row(reg):
-    """Detecta se uma linha é a linha de Total (tfoot ou primeira coluna contém "Total")."""
-    # Verifica colunas conhecidas de identificação
+    """Detecta se uma linha Ã© a linha de Total (tfoot ou primeira coluna contÃ©m "Total")."""
+    # Verifica colunas conhecidas de identificaÃ§Ã£o
     for k in ["Filial", "Vendedor", "Subgrupo", "Nome", "col_0"]:
         v = str(reg.get(k, "") or "").strip()
         if re.search(r"\btotal\b", v, re.IGNORECASE):
             return True
-    # Verifica a primeira coluna de dados (não meta)
+    # Verifica a primeira coluna de dados (nÃ£o meta)
     for k, v in reg.items():
         if k.startswith("_"):
             continue
         sv = str(v or "").strip()
         if re.search(r"\btotal\b", sv, re.IGNORECASE):
             return True
-        break  # só verifica a primeira coluna de dados
+        break  # sÃ³ verifica a primeira coluna de dados
     return False
 
 
@@ -982,8 +982,8 @@ def df_meta_para_registros(df, spec, origem):
 
 def _extrair_totais_do_xlsx(xlsx_path):
     """
-    Extrai os totais das abas de metas a partir das células finais do XLSX.
-    Regra pedida pelo usuário:
+    Extrai os totais das abas de metas a partir das cÃ©lulas finais do XLSX.
+    Regra pedida pelo usuÃ¡rio:
       - venda_filial_meta           -> linha 11
       - servico_filial_ouro_fob     -> linha 10
       - venda_filial_subgrupo_20k   -> linha 10
@@ -991,11 +991,11 @@ def _extrair_totais_do_xlsx(xlsx_path):
     Mapeamento usado:
       B = Meta Total
       D = Atingido Total (%)
-      E = Meta Período
+      E = Meta PerÃ­odo
       F = Realizado (valor exibido no card)
       H = Projetado
 
-    Se a célula fixa não existir, faz fallback para localizar a última linha "Total"
+    Se a cÃ©lula fixa nÃ£o existir, faz fallback para localizar a Ãºltima linha "Total"
     ou somar as linhas de filial.
     """
     from openpyxl import load_workbook
@@ -1019,7 +1019,7 @@ def _extrair_totais_do_xlsx(xlsx_path):
         return None
 
     def _fallback_from_sheet(ws):
-        # 1) tenta achar a última linha "Total"
+        # 1) tenta achar a Ãºltima linha "Total"
         max_row = ws.max_row
         for r in range(max_row, 1, -1):
             a = str(ws.cell(r, 1).value or "").strip().upper()
@@ -1062,19 +1062,19 @@ def _extrair_totais_do_xlsx(xlsx_path):
     try:
         wb = load_workbook(xlsx_path, data_only=True)
     except Exception as e:
-        print(f"⚠️ Não consegui abrir xlsx de metas: {e}")
+        print(f"âš ï¸ NÃ£o consegui abrir xlsx de metas: {e}")
         return out
 
     for chave, cfg in _MAP.items():
         ws = _sheet_by_prefix(wb, cfg["sheet"])
         if ws is None:
-            print(f"⚠️ Sheet não encontrada no xlsx: {cfg['sheet']}")
+            print(f"âš ï¸ Sheet nÃ£o encontrada no xlsx: {cfg['sheet']}")
             out[chave] = {"meta_total": 0.0, "real_total": 0.0, "ating_total": 0.0, "meta_per": 0.0, "real_per": 0.0, "proj": 0.0}
             continue
 
         r = int(cfg["row"])
         a = str(ws.cell(r, 1).value or "").strip().upper()
-        # Usa a linha fixa se houver conteúdo e parecer ser a linha final/total
+        # Usa a linha fixa se houver conteÃºdo e parecer ser a linha final/total
         if a in ("TOTAL",) or ws.cell(r, 2).value not in (None, ""):
             meta_total = round(_br_float(ws.cell(r, 2).value), 2)
             real_total = round(_br_float(ws.cell(r, 6).value), 2)
@@ -1094,7 +1094,7 @@ def _extrair_totais_do_xlsx(xlsx_path):
             item = _fallback_from_sheet(ws)
 
         out[chave] = item
-        print(f"✅ Total xlsx [{chave}]: meta={item['meta_total']:.2f}  real={item['real_total']:.2f}  ating={item['ating_total']:.2f}%  proj={item['proj']:.2f}")
+        print(f"âœ… Total xlsx [{chave}]: meta={item['meta_total']:.2f}  real={item['real_total']:.2f}  ating={item['ating_total']:.2f}%  proj={item['proj']:.2f}")
 
     return out
 
@@ -1105,7 +1105,7 @@ def coletar_metas_vendas_mes_atual():
     prox_mes = (hoje.replace(day=28) + timedelta(days=4)).replace(day=1)
     ultimo_dia = (prox_mes - timedelta(days=1)).strftime("%d/%m/%Y")
 
-    print("\n📊 Iniciando coleta de metas/vendas do mês atual...")
+    print("\nðŸ“Š Iniciando coleta de metas/vendas do mÃªs atual...")
     driver.get(URL + "/metas")
     wait.until(EC.presence_of_element_located((By.ID, "data_inicial_maior_igual")))
     set_input_value_safe(By.ID, "data_inicial_maior_igual", primeiro_dia)
@@ -1114,16 +1114,16 @@ def coletar_metas_vendas_mes_atual():
     time.sleep(2)
 
     linhas = extrair_linhas_tabela_metas()
-    print(f"📋 Metas listadas na tela: {len(linhas)}")
+    print(f"ðŸ“‹ Metas listadas na tela: {len(linhas)}")
 
-    # IDs das metas mudam todo mês. Buscar sempre pelo Tipo + Escopo + Descrição da tela filtrada.
+    # IDs das metas mudam todo mÃªs. Buscar sempre pelo Tipo + Escopo + DescriÃ§Ã£o da tela filtrada.
     specs = [
         {"chave": "venda_filial_meta", "label": "Venda / Filial / Meta Filial", "tipo": "Venda", "escopo": "Filial", "descricao_contem": ["META FILIAL"]},
         {"chave": "venda_filial_vendedor_meta", "label": "Venda / Filial-Vendedor / Meta Vendedor", "tipo": "Venda", "escopo": "Filial/Vendedor", "descricao_contem": ["META VENDEDOR"]},
-        {"chave": "venda_filial_subgrupo_20k", "label": "Venda / Filial-Subgrupo / Caminhão 20K", "tipo": "Venda", "escopo": "Filial/Subgrupo", "descricao_contem": ["CAMINHAO", "20K"]},
-        {"chave": "servico_filial_ouro_fob", "label": "Serviço / Filial / Ouro-FOB", "tipo": "Serviço", "escopo": "Filial", "descricao_contem": ["OURO", "FOB"]},
-        {"chave": "servico_filial_vendedor_ouro_fob", "label": "Serviço / Filial-Vendedor / Ouro-FOB", "tipo": "Serviço", "escopo": "Filial/Vendedor", "descricao_contem": ["OURO", "FOB"]},
-        {"chave": "venda_vendedor_subgrupo_20k", "label": "Venda / Vendedor-Subgrupo / Caminhão 20K", "tipo": "Venda", "escopo": "Vendedor/Subgrupo", "descricao_contem": ["CAMINHAO", "20K"]},
+        {"chave": "venda_filial_subgrupo_20k", "label": "Venda / Filial-Subgrupo / CaminhÃ£o 20K", "tipo": "Venda", "escopo": "Filial/Subgrupo", "descricao_contem": ["CAMINHAO", "20K"]},
+        {"chave": "servico_filial_ouro_fob", "label": "ServiÃ§o / Filial / Ouro-FOB", "tipo": "ServiÃ§o", "escopo": "Filial", "descricao_contem": ["OURO", "FOB"]},
+        {"chave": "servico_filial_vendedor_ouro_fob", "label": "ServiÃ§o / Filial-Vendedor / Ouro-FOB", "tipo": "ServiÃ§o", "escopo": "Filial/Vendedor", "descricao_contem": ["OURO", "FOB"]},
+        {"chave": "venda_vendedor_subgrupo_20k", "label": "Venda / Vendedor-Subgrupo / CaminhÃ£o 20K", "tipo": "Venda", "escopo": "Vendedor/Subgrupo", "descricao_contem": ["CAMINHAO", "20K"]},
     ]
 
     resultados = {
@@ -1142,18 +1142,18 @@ def coletar_metas_vendas_mes_atual():
         for spec in specs:
             origem = escolher_melhor_linha_meta(linhas, spec)
             if not origem:
-                print(f"⚠️ Meta não encontrada: {spec['label']}")
+                print(f"âš ï¸ Meta nÃ£o encontrada: {spec['label']}")
                 resultados["metas"][spec["chave"]] = {"ok": False, "erro": "meta_nao_encontrada", "spec": spec}
                 continue
 
             try:
-                print(f"➡️ Abrindo resultados: {spec['label']} -> {origem['href_resultado']}")
+                print(f"âž¡ï¸ Abrindo resultados: {spec['label']} -> {origem['href_resultado']}")
                 driver.get(origem["href_resultado"])
                 time.sleep(2)
                 df_result = encontrar_df_resultado_metas()
                 df_result = limpar_df_tabela(df_result)
-                print(f"   ↳ Colunas lidas: {list(df_result.columns)}")
-                print(f"   ↳ Primeiras linhas: {len(df_result)}")
+                print(f"   â†³ Colunas lidas: {list(df_result.columns)}")
+                print(f"   â†³ Primeiras linhas: {len(df_result)}")
                 resultados["metas"][spec["chave"]] = {
                     "ok": True,
                     "spec": spec,
@@ -1163,9 +1163,9 @@ def coletar_metas_vendas_mes_atual():
                 }
                 sheet = spec["chave"][:31]
                 df_result.to_excel(writer, sheet_name=sheet, index=False)
-                print(f"✅ {spec['label']}: {len(df_result)} linha(s)")
+                print(f"âœ… {spec['label']}: {len(df_result)} linha(s)")
             except Exception as e:
-                print(f"⚠️ Erro em {spec['label']}: {e}")
+                print(f"âš ï¸ Erro em {spec['label']}: {e}")
                 resultados["metas"][spec["chave"]] = {
                     "ok": False,
                     "spec": spec,
@@ -1173,8 +1173,8 @@ def coletar_metas_vendas_mes_atual():
                     "erro": str(e),
                 }
 
-    # ── Pós-coleta: relê o xlsx para extrair totais numéricos limpos ──────────────
-    # O xlsx já está fechado aqui. Relemos e injetamos a linha Total em cada spec
+    # â”€â”€ PÃ³s-coleta: relÃª o xlsx para extrair totais numÃ©ricos limpos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # O xlsx jÃ¡ estÃ¡ fechado aqui. Relemos e injetamos a linha Total em cada spec
     # que a precisa, garantindo que _sales_emp receba os valores corretos.
     _totais_xlsx = _extrair_totais_do_xlsx(xlsx_path)
     for _chave_t, _tot in _totais_xlsx.items():
@@ -1184,42 +1184,42 @@ def coletar_metas_vendas_mes_atual():
         _linhas_t = _meta_obj_t.get("linhas") or []
         # Remove qualquer linha Total anterior (evita duplicata)
         _linhas_t = [_r for _r in _linhas_t if not _r.get("_is_total")]
-        # Constrói linha Total canônica com todos os campos _float prontos
+        # ConstrÃ³i linha Total canÃ´nica com todos os campos _float prontos
         _total_reg = {
             "Filial": "Total",
             "Meta(R$) Total":           str(_tot["meta_total"]),
             "Realizado(R$) Total":       str(_tot["real_total"]),
             "Atingido Total":            f"{_tot['ating_total']:.2f}%",
-            "Meta(R$) Período":          str(_tot["meta_per"]),
-            "Realizado(R$) Período":     str(_tot["real_per"]),
+            "Meta(R$) PerÃ­odo":          str(_tot["meta_per"]),
+            "Realizado(R$) PerÃ­odo":     str(_tot["real_per"]),
             "Projetado(R$)":             str(_tot["proj"]),
             "Meta(R$) Total_float":      _tot["meta_total"],
             "Realizado(R$) Total_float": _tot["real_total"],
             "Atingido Total_float":      _tot["ating_total"],
-            "Meta(R$) Período_float":    _tot["meta_per"],
-            "Realizado(R$) Período_float": _tot["real_per"],
+            "Meta(R$) PerÃ­odo_float":    _tot["meta_per"],
+            "Realizado(R$) PerÃ­odo_float": _tot["real_per"],
             "Projetado(R$)_float":       _tot["proj"],
             "_is_total": True,
             "_meta_chave": _chave_t,
         }
         _linhas_t.append(_total_reg)
         resultados["metas"][_chave_t]["linhas"] = _linhas_t
-    # ── Fim do pós-coleta ──────────────────────────────────────────────────────────
+    # â”€â”€ Fim do pÃ³s-coleta â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(resultados, f, ensure_ascii=False, indent=2)
 
-    print(f"💾 Metas JSON: {json_path}")
-    print(f"💾 Metas XLSX: {xlsx_path}")
+    print(f"ðŸ’¾ Metas JSON: {json_path}")
+    print(f"ðŸ’¾ Metas XLSX: {xlsx_path}")
     return {"json_path": json_path, "xlsx_path": xlsx_path, "dados": resultados}
 
 
 # =========================================
-# 📈 RELATÓRIO DE MARGEM BRUTA / RENTABILIDADE
-# Coleta 2 relatórios do SGI:
+# ðŸ“ˆ RELATÃ“RIO DE MARGEM BRUTA / RENTABILIDADE
+# Coleta 2 relatÃ³rios do SGI:
 #   1) Lucratividade por FILIAL
 #   2) Lucratividade por VENDEDOR
-# Alimenta o dashboard com Margem Bruta (%) do mês atual.
+# Alimenta o dashboard com Margem Bruta (%) do mÃªs atual.
 # =========================================
 
 def _select_by_text_contains(select_el, texto_alvo):
@@ -1255,11 +1255,11 @@ def _find_relatorio_block_by_label(label_texto):
                 return bloco
         except Exception as e:
             ultimo = e
-    raise ultimo or Exception(f"Bloco do label {label_texto} não encontrado")
+    raise ultimo or Exception(f"Bloco do label {label_texto} nÃ£o encontrado")
 
 
 def _set_relatorio_periodo_emissao(data_inicial, data_final):
-    bloco = _find_relatorio_block_by_label('Período de Emissão')
+    bloco = _find_relatorio_block_by_label('PerÃ­odo de EmissÃ£o')
     try:
         sels = [s for s in bloco.find_elements(By.TAG_NAME, 'select') if s.is_displayed()]
         if sels:
@@ -1273,11 +1273,11 @@ def _set_relatorio_periodo_emissao(data_inicial, data_final):
 
     inputs = [i for i in bloco.find_elements(By.XPATH, ".//input[not(@type='hidden')]") if i.is_displayed()]
     if len(inputs) < 2:
-        # fallback geral: pega os 2 primeiros inputs visíveis de data/texto do formulário
+        # fallback geral: pega os 2 primeiros inputs visÃ­veis de data/texto do formulÃ¡rio
         form = wait.until(EC.presence_of_element_located((By.XPATH, "//form[contains(@action,'relatorio_margens_brutas')]")))
         inputs = [i for i in form.find_elements(By.XPATH, ".//input[not(@type='hidden')]") if i.is_displayed()]
     if len(inputs) < 2:
-        raise Exception('Não encontrei os 2 campos de data do relatório de margens')
+        raise Exception('NÃ£o encontrei os 2 campos de data do relatÃ³rio de margens')
 
     for el, valor in [(inputs[0], data_inicial), (inputs[1], data_final)]:
         driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
@@ -1296,7 +1296,7 @@ def _select_relatorio_por_label(label_texto, texto_opcao=None, value=None):
     bloco = _find_relatorio_block_by_label(label_texto)
     selects = [s for s in bloco.find_elements(By.TAG_NAME, 'select') if s.is_displayed()]
     if not selects:
-        # fallback: primeiro select visível após o label no DOM
+        # fallback: primeiro select visÃ­vel apÃ³s o label no DOM
         xp = f"({_label_contains_xpath(label_texto)})[1]/following::select[1]"
         selects = [wait.until(EC.presence_of_element_located((By.XPATH, xp)))]
     el = selects[0]
@@ -1312,7 +1312,7 @@ def _select_relatorio_por_label(label_texto, texto_opcao=None, value=None):
             try:
                 sel.select_by_visible_text(texto_opcao)
             except Exception:
-                # último fallback: tentativa por option text normalizado
+                # Ãºltimo fallback: tentativa por option text normalizado
                 achou = False
                 alvo = normalizar_texto_match(texto_opcao)
                 for opt in sel.options:
@@ -1321,7 +1321,7 @@ def _select_relatorio_por_label(label_texto, texto_opcao=None, value=None):
                         achou = True
                         break
                 if not achou:
-                    raise Exception(f'Opção {texto_opcao} não encontrada em {label_texto}')
+                    raise Exception(f'OpÃ§Ã£o {texto_opcao} nÃ£o encontrada em {label_texto}')
     driver.execute_script("arguments[0].dispatchEvent(new Event('change', {bubbles:true}));", el)
     return el
 
@@ -1411,7 +1411,7 @@ def _ler_xls_ou_xlsx(caminho):
             return tabelas[0]
     except Exception as e:
         erros.append(f'read_html: {e}')
-    raise Exception('Não consegui ler XLS/XLSX de margem: ' + ' | '.join(erros))
+    raise Exception('NÃ£o consegui ler XLS/XLSX de margem: ' + ' | '.join(erros))
 
 
 def _parse_relatorio_margem_xls(caminho, tipo):
@@ -1500,26 +1500,26 @@ def _gerar_relatorio_margem(tipo):
     _set_relatorio_periodo_emissao(primeiro_dia, ultimo_dia)
 
     try:
-        _select_relatorio_por_label("Tipo de Custo", texto_opcao="Custo Médio Gerencial")
+        _select_relatorio_por_label("Tipo de Custo", texto_opcao="Custo MÃ©dio Gerencial")
     except Exception as e:
-        print(f"⚠️ Não consegui selecionar Tipo de Custo automaticamente: {e}")
+        print(f"âš ï¸ NÃ£o consegui selecionar Tipo de Custo automaticamente: {e}")
 
     try:
         _select_relatorio_por_label("Lucratividade por", texto_opcao=("Filial" if tipo == "filial" else "Vendedor"))
     except Exception as e:
-        print(f"⚠️ Não consegui selecionar Lucratividade por {tipo}: {e}")
+        print(f"âš ï¸ NÃ£o consegui selecionar Lucratividade por {tipo}: {e}")
 
     try:
-        total_ops = _select_all_multiselect_by_label("Operações de Devolução")
-        print(f"✅ Operações de Devolução: {total_ops} opções marcadas")
+        total_ops = _select_all_multiselect_by_label("OperaÃ§Ãµes de DevoluÃ§Ã£o")
+        print(f"âœ… OperaÃ§Ãµes de DevoluÃ§Ã£o: {total_ops} opÃ§Ãµes marcadas")
     except Exception as e:
-        print(f"⚠️ Não consegui marcar Operações de Devolução: {e}")
+        print(f"âš ï¸ NÃ£o consegui marcar OperaÃ§Ãµes de DevoluÃ§Ã£o: {e}")
 
     try:
         Select(wait.until(EC.presence_of_element_located((By.ID, "_formato")))).select_by_value("xls")
-        print("✅ Formato XLS para Margem Bruta")
+        print("âœ… Formato XLS para Margem Bruta")
     except Exception as e:
-        print(f"⚠️ Não consegui selecionar formato XLS de Margem Bruta: {e}")
+        print(f"âš ï¸ NÃ£o consegui selecionar formato XLS de Margem Bruta: {e}")
 
     arquivos_antes = set(f for f in os.listdir(download_dir) if _nome_arquivo_margem_valido(f))
 
@@ -1530,7 +1530,7 @@ def _gerar_relatorio_margem(tipo):
         wait.until(EC.element_to_be_clickable((By.ID, 'gerar'))).click()
     except Exception:
         driver.execute_script("arguments[0].click();", gerar_btn)
-    print(f"📈 Gerando Margem Bruta por {tipo.upper()}...")
+    print(f"ðŸ“ˆ Gerando Margem Bruta por {tipo.upper()}...")
 
     caminho = None
     for _ in range(60):
@@ -1548,15 +1548,15 @@ def _gerar_relatorio_margem(tipo):
         if not todos:
             raise Exception('Nenhum arquivo XLS/XLSX de margem foi baixado')
         caminho = max(todos, key=os.path.getctime)
-        print(f"⚠️ Usando último arquivo de margem encontrado: {caminho}")
+        print(f"âš ï¸ Usando Ãºltimo arquivo de margem encontrado: {caminho}")
     else:
-        print(f"✅ Download margem OK: {caminho}")
+        print(f"âœ… Download margem OK: {caminho}")
 
     return _parse_relatorio_margem_xls(caminho, tipo)
 
 
 def coletar_margens_brutas_mes_atual():
-    print("\n📈 Iniciando coleta de Margem Bruta/Rentabilidade do mês atual...")
+    print("\nðŸ“ˆ Iniciando coleta de Margem Bruta/Rentabilidade do mÃªs atual...")
     json_path = os.path.join(pasta, "margens_brutas_mes_atual.json")
     xlsx_path = os.path.join(pasta, "margens_brutas_mes_atual.xlsx")
     resultados = {
@@ -1575,18 +1575,18 @@ def coletar_margens_brutas_mes_atual():
         res_fil = _gerar_relatorio_margem("filial")
         resultados["filiais"] = res_fil.get("filiais", {})
         resultados["empresa"] = res_fil.get("empresa", {})
-        print(f"✅ Margem por FILIAL: {len(resultados['filiais'])} registro(s)")
+        print(f"âœ… Margem por FILIAL: {len(resultados['filiais'])} registro(s)")
     except Exception as e:
         resultados["erro_filial"] = str(e)
-        print(f"⚠️ Erro ao coletar margem por FILIAL: {e}")
+        print(f"âš ï¸ Erro ao coletar margem por FILIAL: {e}")
 
     try:
         res_vend = _gerar_relatorio_margem("vendedor")
         resultados["vendedores"] = res_vend.get("vendedores", {})
-        print(f"✅ Margem por VENDEDOR: {len(resultados['vendedores'])} registro(s)")
+        print(f"âœ… Margem por VENDEDOR: {len(resultados['vendedores'])} registro(s)")
     except Exception as e:
         resultados["erro_vendedor"] = str(e)
-        print(f"⚠️ Erro ao coletar margem por VENDEDOR: {e}")
+        print(f"âš ï¸ Erro ao coletar margem por VENDEDOR: {e}")
 
     resultados["ok"] = bool(resultados.get("filiais") or resultados.get("vendedores"))
 
@@ -1599,12 +1599,12 @@ def coletar_margens_brutas_mes_atual():
             pd.DataFrame([resultados.get("empresa", {})]).to_excel(writer, sheet_name="empresa", index=False)
             pd.DataFrame(list(resultados.get("vendedores", {}).values())).to_excel(writer, sheet_name="vendedores", index=False)
     except Exception as e:
-        print(f"⚠️ Não consegui salvar XLSX de margens: {e}")
+        print(f"âš ï¸ NÃ£o consegui salvar XLSX de margens: {e}")
         xlsx_path = None
 
-    print(f"💾 Margens JSON: {json_path}")
+    print(f"ðŸ’¾ Margens JSON: {json_path}")
     if xlsx_path:
-        print(f"💾 Margens XLSX: {xlsx_path}")
+        print(f"ðŸ’¾ Margens XLSX: {xlsx_path}")
     return {"json_path": json_path, "xlsx_path": xlsx_path, "dados": resultados}
 
 
@@ -1631,13 +1631,13 @@ for by, sel in seletores_usuario:
             EC.presence_of_element_located((by, sel))
         )
         if campo_usuario:
-            print(f"✅ Campo usuário encontrado em: {by} = {sel}")
+            print(f"âœ… Campo usuÃ¡rio encontrado em: {by} = {sel}")
             break
     except Exception:
         pass
 
 if not campo_usuario:
-    print("❌ Campo usuário não encontrado")
+    print("âŒ Campo usuÃ¡rio nÃ£o encontrado")
     print("URL:", driver.current_url)
     print("TITLE:", driver.title)
     try:
@@ -1648,7 +1648,7 @@ if not campo_usuario:
         driver.save_screenshot(os.path.join(download_dir, "debug_login.png"))
     except Exception:
         pass
-    raise Exception("Campo usuário não encontrado na tela de login")
+    raise Exception("Campo usuÃ¡rio nÃ£o encontrado na tela de login")
 
 try:
     campo_usuario.click()
@@ -1664,12 +1664,12 @@ senha_field.send_keys(Keys.ENTER)
 
 try:
     wait.until(EC.element_to_be_clickable((By.ID, "botao_prosseguir_informa_local_trabalho"))).click()
-    print("✅ Filial OK")
+    print("âœ… Filial OK")
 except Exception:
-    print("⚠️ Tela de filial não apareceu")
+    print("âš ï¸ Tela de filial nÃ£o apareceu")
 time.sleep(5)
 
-# ===== RELATÓRIO
+# ===== RELATÃ“RIO
 driver.get(URL + "/relatorio_contas_receber")
 wait.until(EC.presence_of_element_located((By.ID, "data_vencimento_inicial")))
 Select(driver.find_element(By.ID, "data_vencimento")).select_by_value("intervalo")
@@ -1694,36 +1694,36 @@ try:
         if c.get_attribute("value") in filiais_sel:
             driver.execute_script("arguments[0].click();", c)
 
-    print("✅ Filiais OK")
+    print("âœ… Filiais OK")
     time.sleep(3)
 except Exception as e:
-    print(f"⚠️ Erro filiais: {e}")
+    print(f"âš ï¸ Erro filiais: {e}")
 
-# 🔥 PULA TOTALIZAR POR VENDEDOR
-# O XLS já virá totalizado corretamente, então vai direto pro botão "+"
+# ðŸ”¥ PULA TOTALIZAR POR VENDEDOR
+# O XLS jÃ¡ virÃ¡ totalizado corretamente, entÃ£o vai direto pro botÃ£o "+"
 try:
     clicar_seguro_xpath("//span[contains(@class,'glyphicon-plus')]", timeout=20)
-    print("✅ Mais filtros")
+    print("âœ… Mais filtros")
     time.sleep(2)
 except Exception as e:
-    print(f"⚠️ Não abriu +: {e}")
+    print(f"âš ï¸ NÃ£o abriu +: {e}")
 
 # ===== FORMAS DE PAGAMENTO
 try:
     marcar_multiselect_por_label("Forma de Pagamento", ["3", "47", "17"], timeout=20, limpar_antes=True)
-    print("✅ Formas OK")
+    print("âœ… Formas OK")
     time.sleep(2)
 except Exception as e:
-    print(f"⚠️ Erro formas: {e}")
+    print(f"âš ï¸ Erro formas: {e}")
 
 try:
     Select(wait.until(EC.presence_of_element_located((By.ID, "_formato")))).select_by_value("xls")
-    print("✅ Formato XLS")
+    print("âœ… Formato XLS")
     time.sleep(2)
 except Exception as e:
-    print(f"⚠️ Erro formato XLS: {e}")
+    print(f"âš ï¸ Erro formato XLS: {e}")
 
-# Conta Caixa já vem no relatório automaticamente — sem ação Selenium necessária
+# Conta Caixa jÃ¡ vem no relatÃ³rio automaticamente â€” sem aÃ§Ã£o Selenium necessÃ¡ria
 
 # ===== GERAR E AGUARDAR DOWNLOAD
 arquivos_antes = set(
@@ -1731,51 +1731,51 @@ arquivos_antes = set(
     if nome_arquivo_contas_valido(f)
 )
 driver.find_element(By.ID, "gerar").click()
-print("📥 Gerando XLS... aguardando download...")
+print("ðŸ“¥ Gerando XLS... aguardando download...")
 
 caminho = None
 for _ in range(60):
     time.sleep(2)
     baixando = any(f.endswith(".crdownload") or f.endswith(".tmp") for f in os.listdir(download_dir))
     if baixando:
-        print("⏳ Ainda baixando..."); continue
+        print("â³ Ainda baixando..."); continue
     novos = set(
         f for f in os.listdir(download_dir)
         if nome_arquivo_contas_valido(f)
     ) - arquivos_antes
     if novos:
         caminho = max([os.path.join(download_dir, f) for f in novos], key=os.path.getctime)
-        print(f"✅ Download OK: {caminho}")
+        print(f"âœ… Download OK: {caminho}")
         relatorios_publicos["principal_xls"] = _copiar_relatorio_publico(caminho, "ultimo_contas_receber_principal.xls")
         break
 
 if not caminho:
-    print(f"📂 download_dir: {download_dir}")
+    print(f"ðŸ“‚ download_dir: {download_dir}")
     try:
-        print("📂 Arquivos atuais:", os.listdir(download_dir))
+        print("ðŸ“‚ Arquivos atuais:", os.listdir(download_dir))
     except Exception as e:
-        print(f"⚠️ Não consegui listar download_dir: {e}")
+        print(f"âš ï¸ NÃ£o consegui listar download_dir: {e}")
 
     driver.quit()
-    raise Exception("Nenhum XLS válido de Contas a Receber foi baixado nesta execução")
+    raise Exception("Nenhum XLS vÃ¡lido de Contas a Receber foi baixado nesta execuÃ§Ã£o")
 
 # ===== LEITURA DO XLS
 if not nome_arquivo_contas_valido(os.path.basename(caminho)):
-    raise Exception(f"Arquivo selecionado não é o relatório de contas a receber: {caminho}")
+    raise Exception(f"Arquivo selecionado nÃ£o Ã© o relatÃ³rio de contas a receber: {caminho}")
 df_raw = pd.read_excel(caminho, header=None, engine="openpyxl")
-print(f"📋 {df_raw.shape[0]} linhas lidas")
+print(f"ðŸ“‹ {df_raw.shape[0]} linhas lidas")
 
 metas_vendas_info = {"json_path": None, "xlsx_path": None, "dados": {}}
 try:
     metas_vendas_info = coletar_metas_vendas_mes_atual()
 except Exception as e:
-    print(f"⚠️ Erro ao coletar metas/vendas do SGI: {e}")
+    print(f"âš ï¸ Erro ao coletar metas/vendas do SGI: {e}")
 
 margens_brutas_info = {"json_path": None, "xlsx_path": None, "dados": {}}
 try:
     margens_brutas_info = coletar_margens_brutas_mes_atual()
 except Exception as e:
-    print(f"⚠️ Erro ao coletar Margem Bruta/Rentabilidade do SGI: {e}")
+    print(f"âš ï¸ Erro ao coletar Margem Bruta/Rentabilidade do SGI: {e}")
 
 # ===== MAPA DE COLUNAS DO XLS NOVO
 COL = {
@@ -1813,9 +1813,9 @@ def tratar_valor(v):
 
 def extrair_filial_nome(nome):
     """
-    Gerente: (GERFx) → filial='Fx', is_gerente=True
-    Ativo:   (Fx)    → filial='Fx', is_gerente=False
-    Inativo: sem tag → None, False
+    Gerente: (GERFx) â†’ filial='Fx', is_gerente=True
+    Ativo:   (Fx)    â†’ filial='Fx', is_gerente=False
+    Inativo: sem tag â†’ None, False
     """
     s = str(nome).upper()
     m = re.search(r"\(GER\s*F(\d+)\)", s)
@@ -1826,7 +1826,7 @@ def extrair_filial_nome(nome):
 
 
 def limpar_nome_erp(texto):
-    """Remove prefixo numérico do ERP"""
+    """Remove prefixo numÃ©rico do ERP"""
     s = re.sub(r"^Vendedor:\s*", "", str(texto).strip(), flags=re.IGNORECASE)
     s = re.sub(r"^\d+\s*-\s*", "", s)
     s = re.sub(r"^C\.\d+\s*-\s*", "", s, flags=re.IGNORECASE)
@@ -1853,12 +1853,12 @@ def normalizar_login(texto):
 
 
 # =========================================
-# 🔥 NOVOS HELPERS (WHATSAPP + CONTATO)
+# ðŸ”¥ NOVOS HELPERS (WHATSAPP + CONTATO)
 # =========================================
 
 def extrair_telefones(texto):
     """
-    Extrai múltiplos números de telefone de um campo
+    Extrai mÃºltiplos nÃºmeros de telefone de um campo
     """
     s = str(texto or "").strip()
 
@@ -1905,11 +1905,11 @@ def mensagem_cobranca_padrao(cliente, vencimento, valor_pendente):
     valor_fmt = valor_fmt.replace(",", "X").replace(".", ",").replace("X", ".")
 
     return (
-        f"Olá, {primeiro_nome} tudo bem? Aqui é da Lojas MDL - Móveis do Lar. "
+        f"OlÃ¡, {primeiro_nome} tudo bem? Aqui Ã© da Lojas MDL - MÃ³veis do Lar. "
         f"Passando para lembrar que tem uma parcelinha vencida na data de {vencimento}, "
-        f"no valor de {valor_fmt}. Caso o pagamento já tenha sido realizado, por gentileza, "
-        f"desconsidere esta mensagem. Se precisar do boleto, chave PIX ou tiver qualquer dúvida, "
-        f"fico à disposição para ajudar. Agradecemos a atenção e desejamos um excelente dia."
+        f"no valor de {valor_fmt}. Caso o pagamento jÃ¡ tenha sido realizado, por gentileza, "
+        f"desconsidere esta mensagem. Se precisar do boleto, chave PIX ou tiver qualquer dÃºvida, "
+        f"fico Ã  disposiÃ§Ã£o para ajudar. Agradecemos a atenÃ§Ã£o e desejamos um excelente dia."
     )
 
 # ===== PARSE LINHA A LINHA
@@ -1948,7 +1948,7 @@ df = pd.DataFrame(registros)
 # Totaliza BRUTO (deve bater com "Total Geral" do arquivo)
 total_bruto_p  = df["pendente"].sum()
 total_bruto_pg = df["pago"].sum()
-print(f"\n📊 TOTAL BRUTO (deve bater com Total Geral do XLS):")
+print(f"\nðŸ“Š TOTAL BRUTO (deve bater com Total Geral do XLS):")
 print(f"   Pendente : R$ {total_bruto_p:>12,.2f}")
 print(f"   Pago     : R$ {total_bruto_pg:>12,.2f}")
 
@@ -1957,24 +1957,24 @@ df[["filial_vendedor","is_gerente"]] = df["vendedor"].apply(
     lambda n: pd.Series(extrair_filial_nome(n))
 )
 
-# Filial do registro (onde está no ERP)
+# Filial do registro (onde estÃ¡ no ERP)
 df["filial_erp"] = df["filial_num"].apply(
     lambda n: "FDEP" if n in (90,99) else f"F{n}"
 )
 
 # Filial definitiva:
-# - ativo/gerente → usa a filial do nome (ex: SANDY (F1) → F1)
-# - inativo       → usa a filial do ERP (onde estão os créditos)
+# - ativo/gerente â†’ usa a filial do nome (ex: SANDY (F1) â†’ F1)
+# - inativo       â†’ usa a filial do ERP (onde estÃ£o os crÃ©ditos)
 df["filial"] = df.apply(
     lambda r: r["filial_vendedor"] if r["filial_vendedor"] else r["filial_erp"],
     axis=1
 )
 
-# Separa ANTES de agrupar para não perder inativos com múltiplas filiais
+# Separa ANTES de agrupar para nÃ£o perder inativos com mÃºltiplas filiais
 df_ativos_raw   = df[df["filial_vendedor"].notna()].copy()
 df_inativos_raw = df[df["filial_vendedor"].isna()].copy()
 
-# Lookup de filial real para inativos (usando df já processado)
+# Lookup de filial real para inativos (usando df jÃ¡ processado)
 _filial_inativo_lookup = {}
 _nomes_fdep = set()
 for _, _rr in df_inativos_raw.iterrows():
@@ -1987,10 +1987,10 @@ for _, _rr in df_inativos_raw.iterrows():
 
 
 # ===== PARSE CLIENTES E RECEBIMENTOS POR FAIXA
-# Lógica:
-#   recebido_faixa  = pago nos títulos com pagto > data_corte (delta do período)
+# LÃ³gica:
+#   recebido_faixa  = pago nos tÃ­tulos com pagto > data_corte (delta do perÃ­odo)
 #                     inclui ativos + inativos + FDEP (para rateio na meta)
-#   clientes_cobrar = títulos PENDENTES por faixa (para cobrança)
+#   clientes_cobrar = tÃ­tulos PENDENTES por faixa (para cobranÃ§a)
 from datetime import datetime as _dt
 _hoje = _dt.now()
 
@@ -2003,14 +2003,14 @@ def _parse_data(v):
     except:
         return None
 
-# ===== RELATÓRIO COMPLEMENTAR: QUITADOS 180 DIAS
+# ===== RELATÃ“RIO COMPLEMENTAR: QUITADOS 180 DIAS
 # IMPORTANTE: roda aqui porque neste ponto os helpers limpar_nome_erp, limpar_nome_display,
-# tratar_valor e _parse_data já foram definidos.
+# tratar_valor e _parse_data jÃ¡ foram definidos.
 quitados_180_info = {"json_path": None, "xlsx_path": None, "dados": {"quitados": []}}
 try:
     quitados_180_info = coletar_quitados_180d_contas_receber()
 except Exception as e:
-    print(f"⚠️ Erro ao coletar quitados 180d: {e}")
+    print(f"âš ï¸ Erro ao coletar quitados 180d: {e}")
     quitados_180_info = {"json_path": None, "xlsx_path": None, "dados": {"quitados": [], "erro": str(e)}}
 
 
@@ -2019,10 +2019,10 @@ recebido_faixa    = {}   # {key: {grave, alerta, atencao, is_ativo, is_fdep, fil
 clientes_key_hoje = set()
 _vend_cli_atual   = None
 
-# Data de corte para recebimentos do período:
+# Data de corte para recebimentos do perÃ­odo:
 # 1. Prioridade: snapshot_referencia_YYYY-MM.json
-# 2. Se não existir: snapshot de ontem
-# 3. Fallback: snapshot mais recente disponível
+# 2. Se nÃ£o existir: snapshot de ontem
+# 3. Fallback: snapshot mais recente disponÃ­vel
 import json as _json_tmp
 
 _mes_atual_str   = _dt.now().strftime("%Y-%m")
@@ -2034,12 +2034,12 @@ if os.path.exists(_ref_path):
     with open(_ref_path, encoding="utf-8") as _f_tmp:
         _ref_tmp = _json_tmp.load(_f_tmp)
     _data_corte_parse = _dt.strptime(_ref_tmp.get("data", f"{_mes_atual_str}-01"), "%Y-%m-%d")
-    print(f"📅 Referência do mês (base): {_data_corte_parse.strftime('%d/%m/%Y')} → acumulando desde início do mês")
+    print(f"ðŸ“… ReferÃªncia do mÃªs (base): {_data_corte_parse.strftime('%d/%m/%Y')} â†’ acumulando desde inÃ­cio do mÃªs")
 elif os.path.exists(_snap_ontem_path):
     with open(_snap_ontem_path, encoding="utf-8") as _f_tmp:
         _snap_ontem_tmp = _json_tmp.load(_f_tmp)
     _data_corte_parse = _dt.strptime(_snap_ontem_tmp.get("data", _ontem_str_parse), "%Y-%m-%d")
-    print(f"📅 Data de corte (ontem): {_data_corte_parse.strftime('%d/%m/%Y')}")
+    print(f"ðŸ“… Data de corte (ontem): {_data_corte_parse.strftime('%d/%m/%Y')}")
 else:
     _data_corte_parse = None
     for _d in range(1, 60):
@@ -2050,7 +2050,7 @@ else:
             break
     if _data_corte_parse is None:
         _data_corte_parse = _dt(_dt.now().year, _dt.now().month, 1)
-    print(f"📅 Data de corte (snapshot disponível): {_data_corte_parse.strftime('%d/%m/%Y')}")
+    print(f"ðŸ“… Data de corte (snapshot disponÃ­vel): {_data_corte_parse.strftime('%d/%m/%Y')}")
 
 for _i in range(len(df_raw)):
     _row = df_raw.iloc[_i]
@@ -2079,7 +2079,7 @@ for _i in range(len(df_raw)):
     if not _venc:
         continue
 
-    # 🔥 IGNORA CONTA CAIXA 100
+    # ðŸ”¥ IGNORA CONTA CAIXA 100
     if str(_row[COL["conta_caixa"]]).strip() == "Caixa Filial 100":
         continue
 
@@ -2098,7 +2098,7 @@ for _i in range(len(df_raw)):
     _nd_parse = limpar_nome_display(_vend_cli_atual)
 
     # =========================================
-    # DEFINIÇÃO DE FILIAL
+    # DEFINIÃ‡ÃƒO DE FILIAL
     # =========================================
     if _fv is not None:
         _fv_key   = _fv.strip().upper()
@@ -2141,7 +2141,7 @@ for _i in range(len(df_raw)):
     # =========================================
     # RECEBIMENTOS
     # =========================================
-    if _faixa and _pagto and _pago_val > 0 and _pagto > _data_corte_parse:
+    if _faixa and _pagto and _pago_val > 0 and _pagto >= _data_corte_parse:
         if _key_vend not in recebido_faixa:
             recebido_faixa[_key_vend] = {
                 "grave": 0.0,
@@ -2201,18 +2201,18 @@ _ng = sum(1 for c in clientes_cobrar if c['faixa']=='grave')
 _na = sum(1 for c in clientes_cobrar if c['faixa']=='alerta')
 _nt = sum(1 for c in clientes_cobrar if c['faixa']=='atencao')
 _nr = sum(1 for v in recebido_faixa.values() if v.get('is_ativo'))
-print(f"👥 Clientes a cobrar: {len(clientes_cobrar)} ({_ng}g/{_na}a/{_nt}t)")
-print(f"💰 Vendedores com recebimento no período: {_nr}")
+print(f"ðŸ‘¥ Clientes a cobrar: {len(clientes_cobrar)} ({_ng}g/{_na}a/{_nt}t)")
+print(f"ðŸ’° Vendedores com recebimento no perÃ­odo: {_nr}")
 
-print(f"\U0001f465 Clientes a cobrar: {len(clientes_cobrar)} títulos ({_ng} grave / {_na} alerta / {_nt} atenção)")
+print(f"\U0001f465 Clientes a cobrar: {len(clientes_cobrar)} tÃ­tulos ({_ng} grave / {_na} alerta / {_nt} atenÃ§Ã£o)")
 
 # =========================================
-# COBRANÇA10 — helpers e config
+# COBRANÃ‡A10 â€” helpers e config
 # =========================================
 import hashlib as _hashlib
 
 COBRANCA10_LOGIN = "cobranca10"
-COBRANCA10_NOME = "Cobrança10"
+COBRANCA10_NOME = "CobranÃ§a10"
 COBRANCA10_FILIAL = "FTER"
 COBRANCA10_RATEIO_DEFAULT = 20.0
 
@@ -2262,7 +2262,7 @@ def _load_crediaristas_config_do_meta():
                 if filial and login and pct > 0: clean.append({"login": login, "nome": nome, "filial": filial, "pct": pct})
             if clean: return clean
     except Exception as e:
-        print(f"⚠️ Não consegui carregar crediaristas_config: {e}")
+        print(f"âš ï¸ NÃ£o consegui carregar crediaristas_config: {e}")
     return default
 
 CREDIARISTAS_CONFIG = _load_crediaristas_config_do_meta()
@@ -2283,8 +2283,8 @@ def cobranca_row_key_py(r):
     ])
 
 # =========================================
-# COBRANÇA10 — 20% global dos títulos de cobrança
-# Cada título vai para 1 destino apenas, sem duplicidade.
+# COBRANÃ‡A10 â€” 20% global dos tÃ­tulos de cobranÃ§a
+# Cada tÃ­tulo vai para 1 destino apenas, sem duplicidade.
 # =========================================
 _clientes_cobrar_sorted = sorted(clientes_cobrar, key=lambda x: (cobranca_row_key_py(x), -float(x.get("pendente", 0) or 0)))
 _clientes_cobrar_unicos = {}
@@ -2299,17 +2299,17 @@ _clientes_cobrar_hash = sorted(_clientes_cobrar_base, key=lambda x: _hashlib.md5
 _clientes_terceiro_lista = _clientes_cobrar_hash[:_qtd_terceiro]
 _clientes_terceiro_keys = {cobranca_row_key_py(x) for x in _clientes_terceiro_lista}
 clientes_cobrar = [x for x in clientes_cobrar if cobranca_row_key_py(x) not in _clientes_terceiro_keys]
-print(f"🤝 Cobrança10 separado com {len(_clientes_terceiro_lista)} títulos ({COBRANCA10_RATEIO*100:.0f}% do total único)")
+print(f"ðŸ¤ CobranÃ§a10 separado com {len(_clientes_terceiro_lista)} tÃ­tulos ({COBRANCA10_RATEIO*100:.0f}% do total Ãºnico)")
 
-# Ativos: agrupa por (vendedor, filial_vendedor) — pertence a uma filial pelo nome
+# Ativos: agrupa por (vendedor, filial_vendedor) â€” pertence a uma filial pelo nome
 ativos = df_ativos_raw.groupby(["vendedor","filial_vendedor","is_gerente"]).agg(
     pendente=("pendente","sum"), pago=("pago","sum")
 ).reset_index()
-# Coluna "filial" nos ativos = filial_vendedor (necessária para o passo 2)
+# Coluna "filial" nos ativos = filial_vendedor (necessÃ¡ria para o passo 2)
 ativos["filial"] = ativos["filial_vendedor"]
 
-# Garante uma linha "gerente/filial" sintética quando a filial tem vendedor ativo,
-# mas não tem gerente ativo no relatório. Assim o rateio 60/40 continua valendo:
+# Garante uma linha "gerente/filial" sintÃ©tica quando a filial tem vendedor ativo,
+# mas nÃ£o tem gerente ativo no relatÃ³rio. Assim o rateio 60/40 continua valendo:
 # 60% fica na filial/gerente e 40% vai para os vendedores.
 _gerentes_sint = []
 for _fil_syn in sorted(set(str(x) for x in ativos["filial_vendedor"].dropna().tolist())):
@@ -2331,17 +2331,17 @@ for _fil_syn in sorted(set(str(x) for x in ativos["filial_vendedor"].dropna().to
 
 if _gerentes_sint:
     ativos = pd.concat([ativos, pd.DataFrame(_gerentes_sint)], ignore_index=True)
-    print(f"🧩 Gerentes sintéticos criados para manter rateio 60/40: {', '.join(sorted(x['filial_vendedor'] for x in _gerentes_sint))}")
+    print(f"ðŸ§© Gerentes sintÃ©ticos criados para manter rateio 60/40: {', '.join(sorted(x['filial_vendedor'] for x in _gerentes_sint))}")
 
-# Inativos: agrupa por (vendedor, filial_erp) — preserva a filial de cada crédito
+# Inativos: agrupa por (vendedor, filial_erp) â€” preserva a filial de cada crÃ©dito
 inativos = df_inativos_raw.groupby(["vendedor","filial_erp"]).agg(
     pendente=("pendente","sum"), pago=("pago","sum")
 ).reset_index()
 inativos.rename(columns={"filial_erp":"filial"}, inplace=True)
 inativos["is_gerente"] = False
 
-print(f"\n👥 Ativos (vendedor+gerente): {ativos['vendedor'].nunique()}")
-print(f"👥 Inativos:                  {inativos['vendedor'].nunique()}")
+print(f"\nðŸ‘¥ Ativos (vendedor+gerente): {ativos['vendedor'].nunique()}")
+print(f"ðŸ‘¥ Inativos:                  {inativos['vendedor'].nunique()}")
 
 # =========================================
 # RATEIO: regra 60% gerente / 40% vendedores
@@ -2373,12 +2373,12 @@ def ratear(ativos_df, filial, total_p, total_pg):
     return ativos_df
 
 # =========================================
-# PASSO 1 — INATIVOS → ATIVOS DA MESMA FILIAL
+# PASSO 1 â€” INATIVOS â†’ ATIVOS DA MESMA FILIAL
 # Filiais sem ativo ficam como bloco consolidado
 # =========================================
 filiais_sem_ativo = {}   # ex: {"F5": {"pendente":45169, "pago":77222}}
 
-# Passo 1 trata apenas filiais normais — FDEP dos inativos é tratado no Passo 2
+# Passo 1 trata apenas filiais normais â€” FDEP dos inativos Ã© tratado no Passo 2
 inat_normais = inativos[inativos["filial"] != "FDEP"].copy()
 inat_fdep    = inativos[inativos["filial"] == "FDEP"].copy()
 
@@ -2395,13 +2395,13 @@ for _, row_in in inat_agg.iterrows():
     tem_ativo = (ativos["filial_vendedor"] == filial).any()
     if tem_ativo:
         ativos = ratear(ativos, filial, total_p, total_pg)
-        print(f"  ↳ Inativos→{filial}: rateado pend={total_p:,.2f} pago={total_pg:,.2f}")
+        print(f"  â†³ Inativosâ†’{filial}: rateado pend={total_p:,.2f} pago={total_pg:,.2f}")
     else:
         filiais_sem_ativo[filial] = {"pendente": total_p, "pago": total_pg}
-        print(f"  ↳ Inativos→{filial}: SEM ATIVO, consolidado pend={total_p:,.2f} pago={total_pg:,.2f}")
+        print(f"  â†³ Inativosâ†’{filial}: SEM ATIVO, consolidado pend={total_p:,.2f} pago={total_pg:,.2f}")
 
 # =========================================
-# PASSO 2 — FDEP (F90/F99) → FILIAIS NORMAIS
+# PASSO 2 â€” FDEP (F90/F99) â†’ FILIAIS NORMAIS
 # Peso por filial = pendente+pago dos ativos daquela filial
 # Dentro de cada filial aplica regra 60/40 gerente/vendedor
 # Filiais sem ativo recebem a fatia proporcional no bloco consolidado
@@ -2410,11 +2410,11 @@ mask_dep  = ativos["filial"] == "FDEP"
 df_dep    = ativos[mask_dep].copy()
 df_normal = ativos[~mask_dep].copy()
 
-# Soma também o FDEP vindo de inativos (vendedores inativos com créditos na F90/F99)
+# Soma tambÃ©m o FDEP vindo de inativos (vendedores inativos com crÃ©ditos na F90/F99)
 fdep_inat_p  = inat_fdep["pendente"].sum() if not inat_fdep.empty else 0.0
 fdep_inat_pg = inat_fdep["pago"].sum()     if not inat_fdep.empty else 0.0
 
-# pesos e tw expostos fora do bloco condicional para uso na serialização
+# pesos e tw expostos fora do bloco condicional para uso na serializaÃ§Ã£o
 pesos = {}
 tw    = 0.0
 fdep_total_rateado_p  = 0.0
@@ -2425,7 +2425,7 @@ if not df_dep.empty or (fdep_inat_p + fdep_inat_pg) > 0:
     total_dep_pg = df_dep["pago"].sum()     + fdep_inat_pg
     fdep_total_rateado_p  = total_dep_p
     fdep_total_rateado_pg = total_dep_pg
-    print(f"\n💰 FDEP a ratear: pend={total_dep_p:,.2f}  pago={total_dep_pg:,.2f} (ativos={df_dep['pendente'].sum():,.2f} + inativos={fdep_inat_p:,.2f})")
+    print(f"\nðŸ’° FDEP a ratear: pend={total_dep_p:,.2f}  pago={total_dep_pg:,.2f} (ativos={df_dep['pendente'].sum():,.2f} + inativos={fdep_inat_p:,.2f})")
 
     # Calcula peso de cada filial
     for f in ORDEM_FILIAIS:
@@ -2444,13 +2444,13 @@ if not df_dep.empty or (fdep_inat_p + fdep_inat_pg) > 0:
             if filial in filiais_sem_ativo:
                 filiais_sem_ativo[filial]["pendente"] += vp
                 filiais_sem_ativo[filial]["pago"]     += vpg
-                print(f"  ↳ FDEP→{filial} (sem ativo): pend={vp:,.2f} pago={vpg:,.2f}")
+                print(f"  â†³ FDEPâ†’{filial} (sem ativo): pend={vp:,.2f} pago={vpg:,.2f}")
             else:
                 df_normal = ratear(df_normal, filial, vp, vpg)
-                print(f"  ↳ FDEP→{filial}: pend={vp:,.2f} pago={vpg:,.2f}")
-    print("✅ Rateio FDEP concluído")
+                print(f"  â†³ FDEPâ†’{filial}: pend={vp:,.2f} pago={vpg:,.2f}")
+    print("âœ… Rateio FDEP concluÃ­do")
 else:
-    print("ℹ️  Nenhum registro FDEP")
+    print("â„¹ï¸  Nenhum registro FDEP")
 
 # ===== RESULTADO FINAL (ativos + blocos consolidados)
 df_vend = df_normal.copy()
@@ -2466,7 +2466,7 @@ df_vend = df_vend.sort_values(
     ["filial_ordem","is_gerente","pendente"], ascending=[True,False,False]
 ).reset_index(drop=True)
 
-# ===== VERIFICAÇÃO DE TOTAIS (deve bater com o arquivo bruto)
+# ===== VERIFICAÃ‡ÃƒO DE TOTAIS (deve bater com o arquivo bruto)
 total_vend_p  = df_vend["pendente"].sum()
 total_vend_pg = df_vend["pago"].sum()
 total_cons_p  = sum(v["pendente"] for v in filiais_sem_ativo.values())
@@ -2475,7 +2475,7 @@ total_final_p  = total_vend_p  + total_cons_p
 total_final_pg = total_vend_pg + total_cons_pg
 
 print(f"\n{'='*55}")
-print(f"📊 TOTAIS POR FILIAL (após rateio):")
+print(f"ðŸ“Š TOTAIS POR FILIAL (apÃ³s rateio):")
 for f in ORDEM_FILIAIS:
     sub = df_vend[df_vend["filial_vendedor"] == f]
     if not sub.empty:
@@ -2495,16 +2495,16 @@ print(f"  TOTAL GERAL    : pend={total_final_p:>12,.2f}  pago={total_final_pg:>1
 print(f"  BRUTO original : pend={total_bruto_p:>12,.2f}  pago={total_bruto_pg:>12,.2f}")
 diff_p  = total_final_p  - total_bruto_p
 diff_pg = total_final_pg - total_bruto_pg
-print(f"  DIFERENÇA      : pend={diff_p:>+12,.2f}  pago={diff_pg:>+12,.2f}  {'✅ OK' if abs(diff_p)<0.02 and abs(diff_pg)<0.02 else '⚠️ VERIFICAR'}")
+print(f"  DIFERENÃ‡A      : pend={diff_p:>+12,.2f}  pago={diff_pg:>+12,.2f}  {'âœ… OK' if abs(diff_p)<0.02 and abs(diff_pg)<0.02 else 'âš ï¸ VERIFICAR'}")
 print(f"{'='*55}")
 
 # ===== SALVAR CSV
 csv_path = os.path.join(pasta, "dashboard_vendedores.csv")
 df_vend.to_csv(csv_path, index=False)
-print(f"\n💾 CSV salvo: {csv_path}")
+print(f"\nðŸ’¾ CSV salvo: {csv_path}")
 
 # =========================================
-# 🔐 CREDENCIAIS
+# ðŸ” CREDENCIAIS
 # =========================================
 SENHA_MASTER = "mdladm01"
 LOGIN_MASTER = "master"
@@ -2538,11 +2538,11 @@ try:
     with open(cred_state_path, "wb") as _fcred:
         _ftp.retrbinary("RETR credenciais_dashboard.json", _fcred.write)
     _ftp.quit()
-    print("🔄 Credenciais remotas sincronizadas do FTP.")
+    print("ðŸ”„ Credenciais remotas sincronizadas do FTP.")
 except Exception:
     pass
 
-# Carrega senhas existentes do TXT antigo para não trocar entre execuções
+# Carrega senhas existentes do TXT antigo para nÃ£o trocar entre execuÃ§Ãµes
 creds_salvas = {}
 if os.path.exists(cred_path):
     with open(cred_path, "r", encoding="utf-8") as f:
@@ -2598,7 +2598,7 @@ for _, row in df_vend.iterrows():
     tipo = "GERENTE" if is_ger else "VENDEDOR"
     linhas_txt.append(f"{login_fin} | {nome_exib} | {senha_atual} | {filial} | {tipo}")
 
-# Usuário especial de cobrança terceirizada
+# UsuÃ¡rio especial de cobranÃ§a terceirizada
 _chave_cob10 = COBRANCA10_LOGIN
 _senha_cob10_inicial = creds_salvas.get(f"{COBRANCA10_LOGIN}_{COBRANCA10_FILIAL}") or ("COB10" + str(random.randint(100,999)))
 _estado_cob10 = cred_state.get("users", {}).get(_chave_cob10, {})
@@ -2630,14 +2630,14 @@ auth_users[_chave_cob10] = {
     "only_cobranca": True,
     "email_recuperacao": EMAIL_RECUPERACAO,
 }
-linhas_txt.append(f"{_chave_cob10} | {COBRANCA10_NOME} | {_senha_cob10} | {COBRANCA10_FILIAL} | COBRANÇA TERCEIRO")
+linhas_txt.append(f"{_chave_cob10} | {COBRANCA10_NOME} | {_senha_cob10} | {COBRANCA10_FILIAL} | COBRANÃ‡A TERCEIRO")
 
 
-# Inicialização antecipada para evitar NameError antes da montagem final
+# InicializaÃ§Ã£o antecipada para evitar NameError antes da montagem final
 clientes_crediarista_js = {}
 recebimentos_crediarista_js = {}
 
-# Usuários CREDIARISTAS por filial
+# UsuÃ¡rios CREDIARISTAS por filial
 for _fil_cred, _login_cred in CREDIARISTAS_FILIAIS.items():
     _nome_cred = nome_crediarista_filial(_fil_cred, _login_cred)
     _senha_ini = creds_salvas.get(f"{_login_cred}_{_fil_cred}") or creds_salvas.get(_login_cred) or (_login_cred.upper() + str(random.randint(100,999)))
@@ -2674,7 +2674,7 @@ for _fil_cred, _login_cred in CREDIARISTAS_FILIAIS.items():
     linhas_txt.append(f"{_login_cred} | {_nome_cred} | {_senha_cred} | {_fil_cred} | CREDIARISTA")
 
 
-# Usuário somente visualização da tela inicial
+# UsuÃ¡rio somente visualizaÃ§Ã£o da tela inicial
 _estado_painel = cred_state.get("users", {}).get(LOGIN_PAINEL, {})
 _senha_painel = _estado_painel.get("password") or SENHA_PAINEL
 _troca_painel = bool(_estado_painel.get("must_change_password", False))
@@ -2701,7 +2701,7 @@ auth_users[LOGIN_PAINEL] = {
     "is_viewer": True,
     "email_recuperacao": EMAIL_RECUPERACAO,
 }
-linhas_txt.append(f"{LOGIN_PAINEL} | Painel | {_senha_painel} | --- | VISUALIZAÇÃO")
+linhas_txt.append(f"{LOGIN_PAINEL} | Painel | {_senha_painel} | --- | VISUALIZAÃ‡ÃƒO")
 
 cred_state["users"] = auth_users
 cred_state["director"] = {
@@ -2719,7 +2719,7 @@ with open(cred_state_path, "w", encoding="utf-8") as f:
 
 with open(cred_path, "w", encoding="utf-8") as f:
     f.write("=" * 70 + "\n")
-    f.write("   CREDENCIAIS DASHBOARD – MÓVEIS DOLAR\n")
+    f.write("   CREDENCIAIS DASHBOARD â€“ MÃ“VEIS DOLAR\n")
     f.write("=" * 70 + "\n\n")
     f.write(f"  MASTER             login: {LOGIN_MASTER}   senha: {SENHA_MASTER}\n")
     f.write(f"  DIRETOR COMERCIAL  login: {LOGIN_DIRETOR}   senha atual: {cred_state['director']['password']}\n")
@@ -2733,15 +2733,15 @@ with open(cred_path, "w", encoding="utf-8") as f:
             f.write(f"  {p[0]:<20} {p[1]:<35} {p[2]:<14} {p[3]:<6} {p[4]}\n")
     f.write("\n" + "=" * 70 + "\n")
 
-print(f"🔐 Credenciais: {cred_path} ({len(credenciais)} vendedores)")
+print(f"ðŸ” Credenciais: {cred_path} ({len(credenciais)} vendedores)")
 js_auth_state = json.dumps(cred_state, ensure_ascii=False)
 
 
 # =========================================
-# 💾 MÓDULO DE CACHE / HISTÓRICO / METAS (v2)
-# Nova lógica: 3 gráficos por faixa + 1 geral
-# Grave=20% do pendente grave, Alerta=15%, Atenção=10%
-# Geral: ponderado 60/30/10 dos 3 gráficos
+# ðŸ’¾ MÃ“DULO DE CACHE / HISTÃ“RICO / METAS (v2)
+# Nova lÃ³gica: 3 grÃ¡ficos por faixa + 1 geral
+# Grave=20% do pendente grave, Alerta=15%, AtenÃ§Ã£o=10%
+# Geral: ponderado 60/30/10 dos 3 grÃ¡ficos
 # =========================================
 import json
 from datetime import datetime, timedelta, date
@@ -2753,8 +2753,8 @@ Path(CACHE_DIR).mkdir(exist_ok=True)
 hoje_str = datetime.now().strftime("%Y-%m-%d")
 mes_str  = datetime.now().strftime("%Y-%m")
 
-# Carrega configurações de meta (definidas pelo master no dashboard)
-# Estrutura: config_meta.json tem "global" (padrão) e "individual" (por vendedor/filial)
+# Carrega configuraÃ§Ãµes de meta (definidas pelo master no dashboard)
+# Estrutura: config_meta.json tem "global" (padrÃ£o) e "individual" (por vendedor/filial)
 
 _config_meta_path = os.path.join(CACHE_DIR, "config_meta.json")
 REMOTE_PUBLIC_BASE = "https://moveisdolar.com.br/colaborador"
@@ -2769,7 +2769,7 @@ try:
     if _remote_hist and _remote_hist.startswith('{'):
         with open(_hist_dash_path, 'w', encoding='utf-8') as _f_hist_local:
             _f_hist_local.write(_remote_hist)
-        print('🌐 Histórico dashboard sincronizado do servidor')
+        print('ðŸŒ HistÃ³rico dashboard sincronizado do servidor')
 except Exception:
     pass
 try:
@@ -2778,7 +2778,7 @@ try:
     if _remote_fech and _remote_fech.startswith('{'):
         with open(_fechamento_path, 'w', encoding='utf-8') as _f_fech_local:
             _f_fech_local.write(_remote_fech)
-        print('🌐 Fechamentos mensais sincronizados do servidor')
+        print('ðŸŒ Fechamentos mensais sincronizados do servidor')
 except Exception:
     pass
 try:
@@ -2787,7 +2787,7 @@ try:
     if _remote_cfg and _remote_cfg.startswith("{"):
         with open(_config_meta_path, "w", encoding="utf-8") as _f_cfg_local:
             _f_cfg_local.write(_remote_cfg)
-        print("🌐 Config meta sincronizada do servidor")
+        print("ðŸŒ Config meta sincronizada do servidor")
 except Exception:
     pass
 _config_meta_default_global = {
@@ -2855,10 +2855,10 @@ def get_config_meta(key):
             return {**CONFIG_META, **CONFIG_META_IND[ak]}
     return CONFIG_META
 
-print(f"⚙️  Config meta global: Grave={CONFIG_META['grave_pct']}% Alerta={CONFIG_META['alerta_pct']}% Atenção={CONFIG_META['atencao_pct']}% | Pesos: {CONFIG_META['peso_grave']}/{CONFIG_META['peso_alerta']}/{CONFIG_META['peso_atencao']}")
-print(f"⚙️  Configs individuais: {len(CONFIG_META_IND)} sobreposições")
+print(f"âš™ï¸  Config meta global: Grave={CONFIG_META['grave_pct']}% Alerta={CONFIG_META['alerta_pct']}% AtenÃ§Ã£o={CONFIG_META['atencao_pct']}% | Pesos: {CONFIG_META['peso_grave']}/{CONFIG_META['peso_alerta']}/{CONFIG_META['peso_atencao']}")
+print(f"âš™ï¸  Configs individuais: {len(CONFIG_META_IND)} sobreposiÃ§Ãµes")
 
-# Histórico mensal de comissão de cobrança (pagamento dia 10 do mês seguinte)
+# HistÃ³rico mensal de comissÃ£o de cobranÃ§a (pagamento dia 10 do mÃªs seguinte)
 COMISSAO_HIST_PATH = os.path.join(pasta, "historico_comissao_cobranca.json")
 
 def _row_key_cob_json(r):
@@ -2904,7 +2904,7 @@ def _ftp_json(nome, default):
     except Exception:
         return default
 
-# Atualiza métricas finais dos crediaristas após montar carteiras/recebimentos reais
+# Atualiza mÃ©tricas finais dos crediaristas apÃ³s montar carteiras/recebimentos reais
 for _fil_cred, _login_cred in CREDIARISTAS_FILIAIS.items():
     _pend_cred = sum(float(x.get('pendente', 0) or 0) for _fx in ['grave','alerta','atencao'] for x in clientes_crediarista_js.get(_login_cred, {}).get(_fx, []))
     _pago_cred = sum(float(x.get('pago', 0) or 0) for _fx in ['grave','alerta','atencao'] for x in recebimentos_crediarista_js.get(_login_cred, {}).get(_fx, []))
@@ -3016,7 +3016,7 @@ def ensure_month_reference_locked(_month_str, _today_str):
         }
     with open(_rp, 'w', encoding='utf-8') as _f:
         json.dump(_ref_payload, _f, ensure_ascii=False, indent=2)
-    print(f'🧷 Referência mensal travada: {_rp} → base {_ref_payload["data"]}')
+    print(f'ðŸ§· ReferÃªncia mensal travada: {_rp} â†’ base {_ref_payload["data"]}')
     return _rp
 
 def fechar_mes_anterior_travado(_mes_atual, _hist_dash, _config_global, _config_ind):
@@ -3055,17 +3055,17 @@ def fechar_mes_anterior_travado(_mes_atual, _hist_dash, _config_global, _config_
     _fech['months'][_prev_month] = _entry
     with open(_fechamento_path, 'w', encoding='utf-8') as _f:
         json.dump(_fech, _f, ensure_ascii=False, indent=2)
-    print(f'📦 Fechamento mensal travado salvo: {_prev_month}')
+    print(f'ðŸ“¦ Fechamento mensal travado salvo: {_prev_month}')
     return _fech
 
 
 ensure_month_reference_locked(mes_str, hoje_str)
 
-# ── Base mensal opcional via relatório de início do mês ───────────────
+# â”€â”€ Base mensal opcional via relatÃ³rio de inÃ­cio do mÃªs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 MESES_PT = {
     "jan": "01", "janeiro": "01",
     "fev": "02", "fevereiro": "02",
-    "mar": "03", "marco": "03", "março": "03",
+    "mar": "03", "marco": "03", "marÃ§o": "03",
     "abr": "04", "abril": "04",
     "mai": "05", "maio": "05",
     "jun": "06", "junho": "06",
@@ -3079,7 +3079,7 @@ MESES_PT = {
 
 def _month_from_filename(_name):
     _n = os.path.basename(str(_name)).lower()
-    _n = _n.replace("ç", "c")
+    _n = _n.replace("Ã§", "c")
     for _mes_nome, _mes_num in sorted(MESES_PT.items(), key=lambda x: len(x[0]), reverse=True):
         if _mes_nome in _n:
             _m = re.search(r"(20\d{2}|\d{2})", _n)
@@ -3189,20 +3189,20 @@ if _base_report_path:
                 "arquivo_base": os.path.basename(_base_report_path),
                 "snapshot_origem_data": BASE_MENSAL_INFO["data"],
             }, _fr, ensure_ascii=False, indent=2)
-        print(f"🧷 Base mensal carregada do relatório: {os.path.basename(_base_report_path)}")
+        print(f"ðŸ§· Base mensal carregada do relatÃ³rio: {os.path.basename(_base_report_path)}")
     except Exception as _e_base:
-        print(f"⚠️ Erro lendo base mensal {_base_report_path}: {_e_base}")
+        print(f"âš ï¸ Erro lendo base mensal {_base_report_path}: {_e_base}")
 else:
     _base_meta_path = os.path.join(CACHE_DIR, f"base_meta_{mes_str}.json")
     if os.path.exists(_base_meta_path):
         try:
             with open(_base_meta_path, "r", encoding="utf-8") as _fbm:
                 BASE_MENSAL_INFO = json.load(_fbm)
-            print(f"🧷 Base mensal reutilizada do cache: {os.path.basename(_base_meta_path)}")
+            print(f"ðŸ§· Base mensal reutilizada do cache: {os.path.basename(_base_meta_path)}")
         except Exception:
             pass
 
-# ── Snapshot de hoje ──────────────────────────────────────────────────
+# â”€â”€ Snapshot de hoje â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 snapshot_hoje = {
     "data": hoje_str, "gerado_em": datetime.now().isoformat(),
     "total_p": total_final_p, "total_pg": total_final_pg,
@@ -3230,7 +3230,7 @@ for _, row in df_vend.iterrows():
         "pago":     round(float(row["pago"]), 2),
         "total":    round(float(row["total"]), 2),
         "is_gerente": bool(row["is_gerente"]),
-        # Totais de pago por faixa (para calcular delta no próximo dia)
+        # Totais de pago por faixa (para calcular delta no prÃ³ximo dia)
         "pago_grave":   round(recebido_faixa.get(
             f"{row['nome_exibicao']}_{row['filial_vendedor']}", {}).get('grave', 0.0), 2),
         "pago_alerta":  round(recebido_faixa.get(
@@ -3239,14 +3239,14 @@ for _, row in df_vend.iterrows():
             f"{row['nome_exibicao']}_{row['filial_vendedor']}", {}).get('atencao', 0.0), 2),
     }
 
-# Salva chaves dos títulos de hoje para identificar novos amanhã
+# Salva chaves dos tÃ­tulos de hoje para identificar novos amanhÃ£
 snapshot_hoje["clientes_keys"] = list(clientes_key_hoje)
 
 with open(cache_path(hoje_str), "w", encoding="utf-8") as f:
     json.dump(snapshot_hoje, f, ensure_ascii=False, indent=2)
-print(f"💾 Snapshot salvo: {cache_path(hoje_str)}")
+print(f"ðŸ’¾ Snapshot salvo: {cache_path(hoje_str)}")
 
-# ── Comparativos ──────────────────────────────────────────────────────
+# â”€â”€ Comparativos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def load_snapshot(d):
     p = cache_path(d)
     if os.path.exists(p):
@@ -3263,15 +3263,15 @@ if not snap_ontem:
         snap_ontem = load_snapshot((datetime.now()-timedelta(days=d)).strftime("%Y-%m-%d"))
         if snap_ontem: break
 
-# Identifica clientes NOVOS agora que snap_ontem está disponível
+# Identifica clientes NOVOS agora que snap_ontem estÃ¡ disponÃ­vel
 _clientes_ontem = set(snap_ontem.get("clientes_keys", [])) if snap_ontem else set()
 _novos_keys = clientes_key_hoje - _clientes_ontem
 for _c in clientes_cobrar:
     _c['novo'] = _c['titulo_key'] in _novos_keys
 _nn = sum(1 for _c in clientes_cobrar if _c.get('novo'))
-print(f"   🆕 Clientes novos hoje: {_nn}")
+print(f"   ðŸ†• Clientes novos hoje: {_nn}")
 
-# ── Variações ─────────────────────────────────────────────────────────
+# â”€â”€ VariaÃ§Ãµes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 var_vendedores = {}
 if snap_ontem:
     for key, vd in snapshot_hoje["vendedores"].items():
@@ -3296,16 +3296,16 @@ if snap_ontem:
                 "periodo": snap_ontem["data"]
             }
 
-# ── META MENSAL (nova lógica por faixa) ──────────────────────────────
-# Cada faixa tem meta própria baseada no PENDENTE daquela faixa:
-#   Grave  → meta = 20% do pendente grave
-#   Alerta → meta = 15% do pendente alerta
-#   Atenção→ meta = 10% do pendente atenção
-# Gráfico geral = média ponderada 60/30/10 dos 3 gráficos
+# â”€â”€ META MENSAL (nova lÃ³gica por faixa) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Cada faixa tem meta prÃ³pria baseada no PENDENTE daquela faixa:
+#   Grave  â†’ meta = 20% do pendente grave
+#   Alerta â†’ meta = 15% do pendente alerta
+#   AtenÃ§Ã£oâ†’ meta = 10% do pendente atenÃ§Ã£o
+# GrÃ¡fico geral = mÃ©dia ponderada 60/30/10 dos 3 grÃ¡ficos
 #
-# O pendente por faixa é estimado do total pendente com os pesos 50/30/20
-# (grave≈50%, alerta≈30%, atenção≈20% do total — estimativa para o alvo)
-# O recebimento por faixa é o delta acumulado × peso da faixa
+# O pendente por faixa Ã© estimado do total pendente com os pesos 50/30/20
+# (graveâ‰ˆ50%, alertaâ‰ˆ30%, atenÃ§Ã£oâ‰ˆ20% do total â€” estimativa para o alvo)
+# O recebimento por faixa Ã© o delta acumulado Ã— peso da faixa
 
 meta_file = meta_path(mes_str)
 if os.path.exists(meta_file):
@@ -3358,7 +3358,7 @@ def calc_metas_alvo(faixas, cfg=None):
     }
 
 def calc_perc_geral(grave_perc, alerta_perc, atencao_perc, cfg=None):
-    """Gráfico geral ponderado pelos pesos da config."""
+    """GrÃ¡fico geral ponderado pelos pesos da config."""
     c = cfg or CONFIG_META
     pg = c["peso_grave"]   / 100
     pa = c["peso_alerta"]  / 100
@@ -3366,20 +3366,20 @@ def calc_perc_geral(grave_perc, alerta_perc, atencao_perc, cfg=None):
     return round(grave_perc * pg + alerta_perc * pa + atencao_perc * pt, 1)
 
 # =========================================================================
-# RECEBIMENTOS E META — FONTE ÚNICA
+# RECEBIMENTOS E META â€” FONTE ÃšNICA
 # Regra:
-#   1. Lê todos os títulos pagos no período (pagto > data_corte, conta caixa ≠ 100)
-#   2. Classifica por faixa de vencimento (grave/alerta/atenção)
+#   1. LÃª todos os tÃ­tulos pagos no perÃ­odo (pagto > data_corte, conta caixa â‰  100)
+#   2. Classifica por faixa de vencimento (grave/alerta/atenÃ§Ã£o)
 #   3. Distribui inativos e FDEP para ativos da filial (60% gerente / 40% vendedores)
-#   4. recebimentos_det_js = relatório visual (com detalhes dos títulos)
-#   5. recebido_faixa = somatório por faixa por vendedor (para os gráficos de meta)
-#   OS DOIS SÃO DERIVADOS DA MESMA FONTE → valores sempre batem
+#   4. recebimentos_det_js = relatÃ³rio visual (com detalhes dos tÃ­tulos)
+#   5. recebido_faixa = somatÃ³rio por faixa por vendedor (para os grÃ¡ficos de meta)
+#   OS DOIS SÃƒO DERIVADOS DA MESMA FONTE â†’ valores sempre batem
 # =========================================================================
 
-# Passo A: Lê títulos brutos do XLS (todos os vendedores)
+# Passo A: LÃª tÃ­tulos brutos do XLS (todos os vendedores)
 # _rec_raw[chave] = {grave:[], alerta:[], atencao:[], is_ativo, is_fdep, filial}
 _rec_raw = {}
-# Evita duplicar títulos quando o mesmo pagamento aparece no XLS principal e no complementar de quitados.
+# Evita duplicar tÃ­tulos quando o mesmo pagamento aparece no XLS principal e no complementar de quitados.
 _rec_seen_keys = set()
 _vd2 = None
 
@@ -3403,7 +3403,7 @@ for _i2 in range(len(df_raw)):
 
     if not _venc2 or not _pagto2 or _pago2 <= 0:
         continue
-    if _pagto2 <= _data_corte_parse:
+    if _pagto2 < _data_corte_parse:
         continue
 
     if str(_row2[COL["conta_caixa"]]).strip() == "Caixa Filial 100":
@@ -3475,10 +3475,10 @@ for _i2 in range(len(df_raw)):
         "origem": "xls_principal",
     })
 
-# Passo A.1: Inclui o relatório complementar de QUITADOS 180d na mesma fonte dos recebimentos.
-# Antes o robô baixava/salvava quitados_180d_contas_receber.json, mas não somava esses títulos
-# em recebimentos_det_js/recebido_faixa. Assim, pagamentos que saíam do relatório principal
-# por estarem quitados podiam deixar as faixas Grave/Alerta/Atenção zeradas.
+# Passo A.1: Inclui o relatÃ³rio complementar de QUITADOS 180d na mesma fonte dos recebimentos.
+# Antes o robÃ´ baixava/salvava quitados_180d_contas_receber.json, mas nÃ£o somava esses tÃ­tulos
+# em recebimentos_det_js/recebido_faixa. Assim, pagamentos que saÃ­am do relatÃ³rio principal
+# por estarem quitados podiam deixar as faixas Grave/Alerta/AtenÃ§Ã£o zeradas.
 _quitados_extra = (quitados_180_info.get("dados", {}) or {}).get("quitados", []) or []
 _ativos_lookup_receb = {}
 try:
@@ -3499,7 +3499,7 @@ for _q in _quitados_extra:
             continue
         _pagtoq = _parse_data(_q.get("pagamento"))
         _pagoq = float(_q.get("pago", 0) or 0)
-        if not _pagtoq or _pagoq <= 0 or _pagtoq <= _data_corte_parse:
+        if not _pagtoq or _pagoq <= 0 or _pagtoq < _data_corte_parse:
             continue
 
         _clienteq = str(_q.get("cliente", "")).strip()
@@ -3545,12 +3545,12 @@ for _q in _quitados_extra:
         })
         _qtd_extra_usados += 1
     except Exception as _e_q:
-        print(f"⚠️ Quitado 180d ignorado por erro: {_e_q}")
+        print(f"âš ï¸ Quitado 180d ignorado por erro: {_e_q}")
 
-print(f"💰 Quitados 180d incorporados aos recebimentos: {_qtd_extra_usados} título(s) | duplicados ignorados: {_qtd_extra_dup}")
+print(f"ðŸ’° Quitados 180d incorporados aos recebimentos: {_qtd_extra_usados} tÃ­tulo(s) | duplicados ignorados: {_qtd_extra_dup}")
 
-# Passo B: Separa ativos, inativos por filial, e FDEP (lista única)
-_inat_por_fil = {}   # {filial: {faixa: [títulos]}}
+# Passo B: Separa ativos, inativos por filial, e FDEP (lista Ãºnica)
+_inat_por_fil = {}   # {filial: {faixa: [tÃ­tulos]}}
 _fdep_lista   = {'grave':[], 'alerta':[], 'atencao':[]}
 
 for _kv2, _rb in _rec_raw.items():
@@ -3566,7 +3566,7 @@ for _kv2, _rb in _rec_raw.items():
         for _fx in ['grave','alerta','atencao']:
             _inat_por_fil[_ff2][_fx].extend(_rb[_fx])
 
-# Distribui FDEP por filial proporcional ao peso (SEM duplicar títulos)
+# Distribui FDEP por filial proporcional ao peso (SEM duplicar tÃ­tulos)
 _fdep_por_fil = {}
 if tw > 0:
     _fils_ord = sorted([(f, pesos.get(f,0)) for f in ORDEM_FILIAIS if pesos.get(f,0)>0],
@@ -3582,14 +3582,14 @@ if tw > 0:
             _fdep_por_fil[_ff_f][_fx] = _todos[_s:_e]
             _s = _e
 
-# Passo C: Constrói recebimentos_det_js (relatório visual)
+# Passo C: ConstrÃ³i recebimentos_det_js (relatÃ³rio visual)
 # Chaves finais: "NOME_Fx" para ativos, "Filial Fx_Fx" para filiais sem ativo
 _chaves_validas   = {f"{r['nome_exibicao']}_{r['filial_vendedor']}" for _, r in df_vend.iterrows()}
 _chaves_sem_ativo = {f"Filial {f}_{f}" for f in filiais_sem_ativo}
 
 recebimentos_det_js = {}
 
-# 1) Títulos próprios dos ativos
+# 1) TÃ­tulos prÃ³prios dos ativos
 for _kv2, _rb in _rec_raw.items():
     if _rb['is_ativo']:
         recebimentos_det_js[_kv2] = {
@@ -3642,7 +3642,7 @@ for _fil_r in ORDEM_FILIAIS:
                             recebimentos_det_js[_kg2] = {'grave':[],'alerta':[],'atencao':[]}
                         recebimentos_det_js[_kg2][_fx].append(_t2)
 
-# Filtra: mantém só chaves de vendedores ativos + filiais sem ativo
+# Filtra: mantÃ©m sÃ³ chaves de vendedores ativos + filiais sem ativo
 recebimentos_det_js = {
     k: {'grave': sorted(v['grave'], key=lambda x: x['pago'], reverse=True),
         'alerta':sorted(v['alerta'],key=lambda x: x['pago'], reverse=True),
@@ -3660,16 +3660,16 @@ for _krt, _vrt in recebimentos_det_js.items():
 for _fxrt in ['grave', 'alerta', 'atencao']:
     recebimentos_terceiro_js[_fxrt].sort(key=lambda x: float(x.get('pago', 0) or 0), reverse=True)
 
-# Passo D: Deriva recebido_faixa — MESMA FONTE que o relatório
+# Passo D: Deriva recebido_faixa â€” MESMA FONTE que o relatÃ³rio
 # recebido_faixa[chave] = soma dos valores pagos por faixa
-# GARANTE que meta e relatório usam exatamente os mesmos números
+# GARANTE que meta e relatÃ³rio usam exatamente os mesmos nÃºmeros
 recebido_faixa = {}
 
 for _kd, _vd_det in recebimentos_det_js.items():
     _nome_d   = _kd.rsplit('_', 1)[0] if '_' in _kd else _kd
     _filial_d = _kd.rsplit('_', 1)[1] if '_' in _kd else 'OUTROS'
 
-    # 🔥 identifica se é filial sem ativo
+    # ðŸ”¥ identifica se Ã© filial sem ativo
     _is_filial_sem_ativo = _kd in _chaves_sem_ativo
 
     recebido_faixa[_kd] = {
@@ -3677,47 +3677,47 @@ for _kd, _vd_det in recebimentos_det_js.items():
         'alerta':  sum(t['pago'] for t in _vd_det['alerta']),
         'atencao': sum(t['pago'] for t in _vd_det['atencao']),
 
-        # 🔥 CORREÇÃO PRINCIPAL
+        # ðŸ”¥ CORREÃ‡ÃƒO PRINCIPAL
         'is_ativo': (_kd not in _chaves_sem_ativo),
 
         'is_fdep':  False,
         'filial':   _filial_d,
     }
 
-    # 🔥 CORREÇÃO FINAL (ESSA RESOLVE A F5)
+    # ðŸ”¥ CORREÃ‡ÃƒO FINAL (ESSA RESOLVE A F5)
     if _kd.startswith("Filial "):
         recebido_faixa[_kd]['is_ativo'] = False
 
 
 _pre_inat_rec = {f: {'grave':0.0,'alerta':0.0,'atencao':0.0} for f in ORDEM_FILIAIS}
 _pre_fdep_rec = {f: {'grave':0.0,'alerta':0.0,'atencao':0.0} for f in ORDEM_FILIAIS}
-_pre_ativos_filial = {f: 0 for f in ORDEM_FILIAIS}  # conta vendedores ativos p/ divisão
+_pre_ativos_filial = {f: 0 for f in ORDEM_FILIAIS}  # conta vendedores ativos p/ divisÃ£o
 
 for _kk, _rv in recebido_faixa.items():
     _is_at = _rv.get('is_ativo', False)
     _is_fp = _rv.get('is_fdep', False)
     _ff_k  = _rv.get('filial', '')
 
-    # 🔥 ATIVOS → contam normalmente
+    # ðŸ”¥ ATIVOS â†’ contam normalmente
     if _is_at and _ff_k in _pre_ativos_filial:
         _pre_ativos_filial[_ff_k] += 1
 
-    # 🔥 INATIVOS + FILIAL SEM ATIVO (CORRIGIDO)
+    # ðŸ”¥ INATIVOS + FILIAL SEM ATIVO (CORRIGIDO)
     elif not _is_at and not _is_fp:
 
-        # 🔥 DETECTA SE É BLOCO DE FILIAL (ex: "Filial F5_F5")
+        # ðŸ”¥ DETECTA SE Ã‰ BLOCO DE FILIAL (ex: "Filial F5_F5")
         if _kk.startswith("Filial "):
             if _ff_k in _pre_inat_rec:
                 for _fx in ['grave','alerta','atencao']:
                     _pre_inat_rec[_ff_k][_fx] += _rv.get(_fx, 0.0)
 
         else:
-            # 🔥 INATIVO NORMAL
+            # ðŸ”¥ INATIVO NORMAL
             if _ff_k in _pre_inat_rec:
                 for _fx in ['grave','alerta','atencao']:
                     _pre_inat_rec[_ff_k][_fx] += _rv.get(_fx, 0.0)
 
-    # 🔥 FDEP → rateio proporcional
+    # ðŸ”¥ FDEP â†’ rateio proporcional
     elif _is_fp:
         for _ff2 in ORDEM_FILIAIS:
             _w2 = pesos.get(_ff2, 0)
@@ -3754,11 +3754,11 @@ for key, vd in snapshot_hoje["vendedores"].items():
 
     vm = meta_mes["vendedores"][key]
     # Acumula delta pelos pesos das faixas
-    # Recebimento real do período por faixa (usa pré-cálculo feito antes do loop)
+    # Recebimento real do perÃ­odo por faixa (usa prÃ©-cÃ¡lculo feito antes do loop)
     _filial_vend = vd.get("filial", "")
     _is_ger      = vd.get("is_gerente", False)
 
-    # Próprio: apenas se é vendedor ativo registrado em recebido_faixa
+    # PrÃ³prio: apenas se Ã© vendedor ativo registrado em recebido_faixa
     _rv_proprio = recebido_faixa.get(key, {})
     _grave_delta   = _rv_proprio.get('grave',   0.0) if _rv_proprio.get('is_ativo') else 0.0
     _alerta_delta  = _rv_proprio.get('alerta',  0.0) if _rv_proprio.get('is_ativo') else 0.0
@@ -3775,8 +3775,8 @@ for key, vd in snapshot_hoje["vendedores"].items():
             elif _fx == 'alerta': _alerta_delta  += _share
             else:                 _atencao_delta += _share
 
-    # 🔥 CORREÇÃO: não acumular novamente a cada reprocessamento do mesmo período.
-    # O gráfico do vendedor deve refletir os valores reais atuais do período, assim como já ocorre nas filiais.
+    # ðŸ”¥ CORREÃ‡ÃƒO: nÃ£o acumular novamente a cada reprocessamento do mesmo perÃ­odo.
+    # O grÃ¡fico do vendedor deve refletir os valores reais atuais do perÃ­odo, assim como jÃ¡ ocorre nas filiais.
     vm["grave_rec"]   = round(_grave_delta,   2)
     vm["alerta_rec"]  = round(_alerta_delta,  2)
     vm["atencao_rec"] = round(_atencao_delta, 2)
@@ -3785,7 +3785,7 @@ for key, vd in snapshot_hoje["vendedores"].items():
         "grave_delta": _grave_delta, "alerta_delta": _alerta_delta, "atencao_delta": _atencao_delta
     })
 
-    # Migração: se registro antigo não tem campos de faixa, recalcula
+    # MigraÃ§Ã£o: se registro antigo nÃ£o tem campos de faixa, recalcula
     if "grave_alvo" not in vm:
         faixas_mig = get_base_faixas_vendedor(key, vd.get("pendente", 0))
         alvos_mig  = calc_metas_alvo(faixas_mig)
@@ -3798,7 +3798,7 @@ for key, vd in snapshot_hoje["vendedores"].items():
             "atencao_pend": faixas_mig["atencao"],
         })
 
-    # Base mensal do relatório, se existir, prevalece como alvo do mês
+    # Base mensal do relatÃ³rio, se existir, prevalece como alvo do mÃªs
     _faixas_base_vm = get_base_faixas_vendedor(key, vd.get("pendente", 0))
     _alvos_base_vm = calc_metas_alvo(_faixas_base_vm, _cfg_key)
     vm["grave_pend"] = _faixas_base_vm["grave"]
@@ -3828,7 +3828,7 @@ for f, fd in snapshot_hoje["filiais"].items():
     delta_f = max(fd["pago"] - ant_fd_pago, 0)
 
     # =========================================
-    # CRIA META SE NÃO EXISTIR
+    # CRIA META SE NÃƒO EXISTIR
     # =========================================
     if f not in meta_mes["filiais"]:
         faixas_f = get_base_faixas_filial(f, fd["pendente"])
@@ -3851,7 +3851,7 @@ for f, fd in snapshot_hoje["filiais"].items():
     fm = meta_mes["filiais"][f]
 
     # =========================================
-    # 🔥 CORREÇÃO DEFINITIVA
+    # ðŸ”¥ CORREÃ‡ÃƒO DEFINITIVA
     # =========================================
     _f_grave_delta  = 0.0
     _f_alerta_delta = 0.0
@@ -3863,13 +3863,13 @@ for f, fd in snapshot_hoje["filiais"].items():
             _f_alerta_delta += _rv.get("alerta", 0.0)
             _f_atenc_delta  += _rv.get("atencao", 0.0)
 
-    # 🔥 VALOR REAL DO PERÍODO (NÃO ACUMULA)
+    # ðŸ”¥ VALOR REAL DO PERÃODO (NÃƒO ACUMULA)
     fm["grave_rec"]   = round(_f_grave_delta,  2)
     fm["alerta_rec"]  = round(_f_alerta_delta, 2)
     fm["atencao_rec"] = round(_f_atenc_delta,  2)
 
     # =========================================
-    # 🔄 SEGURANÇA (migração)
+    # ðŸ”„ SEGURANÃ‡A (migraÃ§Ã£o)
     # =========================================
     if "grave_alvo" not in fm:
         faixas_mig_f = get_base_faixas_filial(f, fd.get("pendente", 0))
@@ -3884,7 +3884,7 @@ for f, fd in snapshot_hoje["filiais"].items():
             "atencao_pend": faixas_mig_f["atencao"],
         })
 
-    # Base mensal do relatório, se existir, prevalece como alvo do mês
+    # Base mensal do relatÃ³rio, se existir, prevalece como alvo do mÃªs
     _faixas_base_fm = get_base_faixas_filial(f, fd.get("pendente", 0))
     _alvos_base_fm = calc_metas_alvo(_faixas_base_fm)
     fm["grave_pend"] = _faixas_base_fm["grave"]
@@ -3895,7 +3895,7 @@ for f, fd in snapshot_hoje["filiais"].items():
     fm["atencao_alvo"] = _alvos_base_fm["atencao_alvo"]
 
     # =========================================
-    # 📊 % META
+    # ðŸ“Š % META
     # =========================================
     ga = fm["grave_alvo"];   gr = fm["grave_rec"]
     aa = fm["alerta_alvo"];  ar = fm["alerta_rec"]
@@ -3912,18 +3912,18 @@ for f, fd in snapshot_hoje["filiais"].items():
     )
 
 # =========================================
-# 💾 SALVA
+# ðŸ’¾ SALVA
 # =========================================
 with open(meta_file, "w", encoding="utf-8") as f:
     json.dump(meta_mes, f, ensure_ascii=False, indent=2)
 
-print(f"🎯 Meta do mês atualizada: {meta_file}")
+print(f"ðŸŽ¯ Meta do mÃªs atualizada: {meta_file}")
 print("\n===== DEBUG FILIAL F5 =====")
 
 for k, v in recebido_faixa.items():
     if "F5" in str(v.get("filial")):
         print(k, v)
-# ── Média trimestral ──────────────────────────────────────────────────
+# â”€â”€ MÃ©dia trimestral â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 meses_trim = []
 for i in range(3):
     m = (datetime.now() - timedelta(days=30*i)).strftime("%Y-%m")
@@ -3957,9 +3957,9 @@ for f in ORDEM_FILIAIS:
 # (filtro aplicado anteriormente)
 
 
-# Pré-calcula recebimentos de inativos e FDEP por filial (para rateio na meta)
-# Feito FORA do loop para não recalcular a cada vendedor
-# ── Destaque da semana ─────────────────────────────────────────────────
+# PrÃ©-calcula recebimentos de inativos e FDEP por filial (para rateio na meta)
+# Feito FORA do loop para nÃ£o recalcular a cada vendedor
+# â”€â”€ Destaque da semana â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 destaque_semana = None
 if snap_semana:
     melhor_f, melhor_d = None, -999999
@@ -3974,9 +3974,9 @@ if snap_semana:
             "perc_ganho": round(melhor_d/ref_pago*100,1) if ref_pago>0 else 0,
             "periodo": snap_semana["data"]
         }
-        print(f"🏆 Destaque da semana: {melhor_f} (+R$ {melhor_d:,.2f})")
+        print(f"ðŸ† Destaque da semana: {melhor_f} (+R$ {melhor_d:,.2f})")
 
-print(f"📊 Histórico: {len(list(Path(CACHE_DIR).glob('snapshot_*.json')))} snapshots disponíveis")
+print(f"ðŸ“Š HistÃ³rico: {len(list(Path(CACHE_DIR).glob('snapshot_*.json')))} snapshots disponÃ­veis")
 
 
 
@@ -3986,11 +3986,11 @@ print(f"📊 Histórico: {len(list(Path(CACHE_DIR).glob('snapshot_*.json')))} sn
 js_creds = json.dumps(credenciais, ensure_ascii=False)
 js_metas_vendas = json.dumps(metas_vendas_info.get('dados', {}), ensure_ascii=False)
 js_margens_brutas = json.dumps(margens_brutas_info.get('dados', {}), ensure_ascii=False)
-# placeholders; valores reais serão definidos após montar _sales_emp/_sales_fil/_sales_vend
+# placeholders; valores reais serÃ£o definidos apÃ³s montar _sales_emp/_sales_fil/_sales_vend
 js_sales_empresa = json.dumps({}, ensure_ascii=False)
 js_rent_empresa = json.dumps((margens_brutas_info.get('dados', {}) or {}).get('empresa', {}), ensure_ascii=False)
 
-# relatório de serviços do mês atual (gerado pelo worker de vendas)
+# relatÃ³rio de serviÃ§os do mÃªs atual (gerado pelo worker de vendas)
 _servicos_rel_path = os.path.join(pasta, "relatorio_servicos_mes_atual.json")
 _servicos_rel_data = {}
 try:
@@ -3998,7 +3998,7 @@ try:
         with open(_servicos_rel_path, "r", encoding="utf-8") as _fsrv:
             _servicos_rel_data = json.load(_fsrv) or {}
 except Exception as _e:
-    print(f"⚠️ Falha ao carregar relatorio_servicos_mes_atual.json: {_e}")
+    print(f"âš ï¸ Falha ao carregar relatorio_servicos_mes_atual.json: {_e}")
 js_servicos_relatorio = json.dumps(_servicos_rel_data, ensure_ascii=False)
 
 # Inativos e FDEP por filial
@@ -4032,7 +4032,7 @@ def margem_filial_pct(f):
     except Exception:
         return 0.0
 
-# Mesmo padrão usado na coleta de margens: nome normalizado + filial.
+# Mesmo padrÃ£o usado na coleta de margens: nome normalizado + filial.
 def margem_vendedor_pct(nome, filial):
     try:
         k = f"{_norm_key_margem(nome)}_{filial}"
@@ -4040,12 +4040,12 @@ def margem_vendedor_pct(nome, filial):
     except Exception:
         return 0.0
 
-# Vendedores por filial (somente NÃO gerentes para o painel individual)
+# Vendedores por filial (somente NÃƒO gerentes para o painel individual)
 todos_js = {}
 for filial in ORDEM_FILIAIS:
     sub = df_vend[df_vend["filial_vendedor"] == filial]
     if sub.empty: continue
-    # Somente vendedores (não gerentes) no painel individual
+    # Somente vendedores (nÃ£o gerentes) no painel individual
     sub_vend = sub[~sub["is_gerente"]]
     if sub_vend.empty:
         todos_js[filial] = []
@@ -4079,7 +4079,7 @@ for filial in ORDEM_FILIAIS:
             "proprio_p": max(prop_p,0), "inat_p": inat_p, "fdep_p": fdp,
             "perc_inat": round(inat_p/pf*100,1) if pf>0 else 0,
             "perc_fdep": round(fdp/pf*100,1)    if pf>0 else 0,
-            # variação
+            # variaÃ§Ã£o
             "var_pago_perc":  vv.get("perc_pago"),
             "var_pago_delta": vv.get("delta_pago", 0),
             "var_periodo":    vv.get("periodo",""),
@@ -4118,7 +4118,7 @@ for f in ORDEM_FILIAIS:
     tf = media_trimestral_fil.get(f, 0)
 
     # =========================================
-    # 🔹 FILIAL COM VENDEDOR
+    # ðŸ”¹ FILIAL COM VENDEDOR
     # =========================================
     if not sub.empty:
         pt = round(sub["pendente"].sum(), 2)
@@ -4140,7 +4140,7 @@ for f in ORDEM_FILIAIS:
             "var_pago_delta": vf.get("delta_pago",0),
             "var_periodo":    vf.get("periodo",""),
 
-            # 🔥 META
+            # ðŸ”¥ META
             "grave_perc":    mf.get("grave_perc",0),
             "alerta_perc":   mf.get("alerta_perc",0),
             "atencao_perc":  mf.get("atencao_perc",0),
@@ -4162,7 +4162,7 @@ for f in ORDEM_FILIAIS:
         }
 
     # =========================================
-    # 🔹 FILIAL SEM VENDEDOR (🔥 CORRETO AGORA)
+    # ðŸ”¹ FILIAL SEM VENDEDOR (ðŸ”¥ CORRETO AGORA)
     # =========================================
     elif f in filiais_sem_ativo:
         pt = round(filiais_sem_ativo[f]["pendente"], 2)
@@ -4184,7 +4184,7 @@ for f in ORDEM_FILIAIS:
             "var_pago_delta": 0,
             "var_periodo": "",
 
-            # 🔥 AQUI ESTAVA O ERRO → NÃO PODE ZERAR
+            # ðŸ”¥ AQUI ESTAVA O ERRO â†’ NÃƒO PODE ZERAR
             "grave_perc":    mf.get("grave_perc",0),
             "alerta_perc":   mf.get("alerta_perc",0),
             "atencao_perc":  mf.get("atencao_perc",0),
@@ -4206,7 +4206,7 @@ for f in ORDEM_FILIAIS:
         }
 
     # =========================================
-    # 🔹 SEGURANÇA (caso raro)
+    # ðŸ”¹ SEGURANÃ‡A (caso raro)
     # =========================================
     else:
         filiais_js[f] = {
@@ -4247,7 +4247,7 @@ for f in ORDEM_FILIAIS:
 
 filiais_js_ordered = {f: filiais_js[f] for f in ORDEM_FILIAIS if f in filiais_js}
 
-# ── Histórico diário persistente (Master / Diretor Comercial) ───────────────
+# â”€â”€ HistÃ³rico diÃ¡rio persistente (Master / Diretor Comercial) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def _load_hist_dash():
     if os.path.exists(_hist_dash_path):
         try:
@@ -4352,7 +4352,7 @@ def _ensure_sales_bucket(dct, key, nome="", filial=""):
         }
     return dct[key]
 
-# ── Carrega totais empresa direto do xlsx (fonte mais confiável) ─────────────
+# â”€â”€ Carrega totais empresa direto do xlsx (fonte mais confiÃ¡vel) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _xlsx_metas_path = os.path.join(pasta, "metas_vendas_mes_atual.xlsx")
 _totais_direto = _extrair_totais_do_xlsx(_xlsx_metas_path) if os.path.exists(_xlsx_metas_path) else {}
 
@@ -4377,10 +4377,10 @@ _sales_emp = {
     "caminhao_meta_total":      _t_caminhao.get("meta_total", 0.0),
     "caminhao_meta_periodo":    _t_caminhao.get("meta_per", 0.0),
 }
-print(f"📊 _sales_emp carregado do xlsx:")
+print(f"ðŸ“Š _sales_emp carregado do xlsx:")
 print(f"   Mercantil  : R$ {_sales_emp['venda_realizado_total']:>12,.2f}  proj R$ {_sales_emp['venda_projetado']:>12,.2f}  ating {_sales_emp['venda_atingido_total']:.2f}%")
-print(f"   Serviços   : R$ {_sales_emp['servico_realizado_total']:>12,.2f}  proj R$ {_sales_emp['servico_projetado']:>12,.2f}  ating {_sales_emp['servico_atingido_total']:.2f}%")
-print(f"   Caminhão   : R$ {_sales_emp['caminhao_realizado_total']:>12,.2f}  proj R$ {_sales_emp['caminhao_projetado']:>12,.2f}  ating {_sales_emp['caminhao_atingido_total']:.2f}%")
+print(f"   ServiÃ§os   : R$ {_sales_emp['servico_realizado_total']:>12,.2f}  proj R$ {_sales_emp['servico_projetado']:>12,.2f}  ating {_sales_emp['servico_atingido_total']:.2f}%")
+print(f"   CaminhÃ£o   : R$ {_sales_emp['caminhao_realizado_total']:>12,.2f}  proj R$ {_sales_emp['caminhao_projetado']:>12,.2f}  ating {_sales_emp['caminhao_atingido_total']:.2f}%")
 _sales_fil = {}
 _sales_vend = {}
 
@@ -4391,7 +4391,7 @@ for _meta_key, _meta_obj in (metas_vendas_info.get("dados", {}).get("metas", {})
     # Separa linhas normais das linhas de total (tfoot)
     _rows_normal = [_r for _r in _rows if not _r.get("_is_total")]
     _rows_total  = [_r for _r in _rows if _r.get("_is_total")]
-    # Usa a linha de total se disponível (é a mais precisa — vem direto do tfoot do SGI)
+    # Usa a linha de total se disponÃ­vel (Ã© a mais precisa â€” vem direto do tfoot do SGI)
     _total_row   = _rows_total[-1] if _rows_total else None
 
     def _val_real(r):
@@ -4399,7 +4399,7 @@ for _meta_key, _meta_obj in (metas_vendas_info.get("dados", {}).get("metas", {})
     def _val_meta(r):
         return float(r.get("Meta (R$) Total_float") or r.get("Meta(R$) Total_float") or 0)
     def _val_meta_per(r):
-        return float(r.get("Meta (R$) Período_float") or r.get("Meta(R$) Período_float") or 0)
+        return float(r.get("Meta (R$) PerÃ­odo_float") or r.get("Meta(R$) PerÃ­odo_float") or 0)
     def _val_ating(r):
         return float(r.get("Atingido Total_float") or 0)
     def _val_proj(r):
@@ -4455,8 +4455,8 @@ for _meta_key, _meta_obj in (metas_vendas_info.get("dados", {}).get("metas", {})
                 _b["servico_atingido_total"]  = _ating
                 _b["servico_projetado"]       = _proj
 
-    # _sales_emp já foi carregado do xlsx diretamente (ver inicialização acima).
-    # Este loop só precisa popular _sales_fil e _sales_vend (por filial/vendedor).
+    # _sales_emp jÃ¡ foi carregado do xlsx diretamente (ver inicializaÃ§Ã£o acima).
+    # Este loop sÃ³ precisa popular _sales_fil e _sales_vend (por filial/vendedor).
     pass
 for _bucket in list(_sales_fil.values()) + list(_sales_vend.values()):
     for _k in list(_bucket.keys()):
@@ -4467,7 +4467,7 @@ for _bucket in list(_sales_fil.values()) + list(_sales_vend.values()):
 js_sales_empresa = json.dumps(_sales_emp, ensure_ascii=False)
 js_rent_empresa = json.dumps((margens_brutas_info.get('dados', {}) or {}).get('empresa', {}), ensure_ascii=False)
 
-# relatório de serviços do mês atual (gerado pelo worker de vendas)
+# relatÃ³rio de serviÃ§os do mÃªs atual (gerado pelo worker de vendas)
 _servicos_rel_path = os.path.join(pasta, "relatorio_servicos_mes_atual.json")
 _servicos_rel_data = {}
 try:
@@ -4475,18 +4475,18 @@ try:
         with open(_servicos_rel_path, "r", encoding="utf-8") as _fsrv:
             _servicos_rel_data = json.load(_fsrv) or {}
 except Exception as _e:
-    print(f"⚠️ Falha ao carregar relatorio_servicos_mes_atual.json: {_e}")
+    print(f"âš ï¸ Falha ao carregar relatorio_servicos_mes_atual.json: {_e}")
 js_servicos_relatorio = json.dumps(_servicos_rel_data, ensure_ascii=False)
 
 hist_dash.setdefault("sales_dates", {})
 hist_dash.setdefault("sales_months", {})
 
 # =========================================
-# 🎯 HISTÓRICO REAL DA META DIÁRIA
+# ðŸŽ¯ HISTÃ“RICO REAL DA META DIÃRIA
 # Regra corrigida:
-#   - Meta diária = Meta Total / dias úteis configurados
-#   - Ponto diário só é gerado se a VENDA DO DIA bater a meta diária.
-#   - Não soma pelo acumulado dividido; salva dia a dia para valer no próximo mês.
+#   - Meta diÃ¡ria = Meta Total / dias Ãºteis configurados
+#   - Ponto diÃ¡rio sÃ³ Ã© gerado se a VENDA DO DIA bater a meta diÃ¡ria.
+#   - NÃ£o soma pelo acumulado dividido; salva dia a dia para valer no prÃ³ximo mÃªs.
 # =========================================
 
 def _last_sales_date_before(_today):
@@ -4599,7 +4599,7 @@ def _atualizar_meta_diaria_historico():
         _me.setdefault("dias", {})[hoje_str] = _today_entry["vendedores"][_k]
 
     _hist_md["dates"][hoje_str] = _today_entry
-    print(f"🎯 Meta diária histórica atualizada: {hoje_str} (base anterior: {_prev_date or 'sem histórico'})")
+    print(f"ðŸŽ¯ Meta diÃ¡ria histÃ³rica atualizada: {hoje_str} (base anterior: {_prev_date or 'sem histÃ³rico'})")
 
 _atualizar_meta_diaria_historico()
 
@@ -4626,18 +4626,18 @@ _fech_mensal = fechar_mes_anterior_travado(mes_str, hist_dash, CONFIG_META, CONF
 hist_dash['months_closed'] = _fech_mensal.get('months', {})
 with open(_hist_dash_path, "w", encoding="utf-8") as _f_hist_out:
     json.dump(hist_dash, _f_hist_out, ensure_ascii=False, indent=2)
-print(f"🗂️ Histórico diário salvo: {_hist_dash_path}")
+print(f"ðŸ—‚ï¸ HistÃ³rico diÃ¡rio salvo: {_hist_dash_path}")
 
-# Serializa relatório de clientes a cobrar
+# Serializa relatÃ³rio de clientes a cobrar
 # Regras:
-#   - Ativos: vão direto para o índice do próprio vendedor
+#   - Ativos: vÃ£o direto para o Ã­ndice do prÃ³prio vendedor
 #   - Inativos e FDEP: 60% para o gerente/filial, 40% dividido entre vendedores ativos
-#   - Cada CLIENTE vai para apenas 1 destinatário (sem duplicatas)
-#   - Determinismo: mesmo cliente sempre vai para mesmo destinatário (hash do nome)
+#   - Cada CLIENTE vai para apenas 1 destinatÃ¡rio (sem duplicatas)
+#   - Determinismo: mesmo cliente sempre vai para mesmo destinatÃ¡rio (hash do nome)
 import random as _random_mod
 
-clientes_js = {}       # {filial: {faixa: [...]}} — para visualização da filial/gerente
-clientes_por_vend_js = {}  # {nome_vend: {faixa: [...]}} — para painel individual
+clientes_js = {}       # {filial: {faixa: [...]}} â€” para visualizaÃ§Ã£o da filial/gerente
+clientes_por_vend_js = {}  # {nome_vend: {faixa: [...]}} â€” para painel individual
 clientes_terceiro_js = {"grave": [], "alerta": [], "atencao": []}
 
 for _ct in _clientes_terceiro_lista:
@@ -4667,7 +4667,7 @@ for f in ORDEM_FILIAIS:
 _cli_ativos    = [c for c in clientes_cobrar if c.get('is_ativo')]
 _cli_inat_fdep = [c for c in clientes_cobrar if not c.get('is_ativo')]
 
-# ── Clientes ATIVOS: vão para o próprio vendedor ──────────────────────
+# â”€â”€ Clientes ATIVOS: vÃ£o para o prÃ³prio vendedor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 for c in _cli_ativos:
     _nd = limpar_nome_display(c['vendedor'])
 
@@ -4714,7 +4714,7 @@ for c in _cli_ativos:
             "novo": c.get("novo", False),
         })
 
-# ── Inativos e FDEP: distribui 60% gerente/40% vendedores por filial ──
+# â”€â”€ Inativos e FDEP: distribui 60% gerente/40% vendedores por filial â”€â”€
 # Agrupa por filial de destino
 _inat_por_filial = {}   # {filial: [clientes]}
 for c in _cli_inat_fdep:
@@ -4744,8 +4744,8 @@ for c in _cli_inat_fdep:
 
 # Para cada filial, distribui 60% gerente / 40% vendedores (sem duplicatas)
 for _filial_dest, _clientes_inat in _inat_por_filial.items():
-    # Evita duplicatas: cada CLIENTE vai para apenas 1 destinatário
-    _clientes_unicos = {}  # {nome_cliente: c} — pega o de maior pendente
+    # Evita duplicatas: cada CLIENTE vai para apenas 1 destinatÃ¡rio
+    _clientes_unicos = {}  # {nome_cliente: c} â€” pega o de maior pendente
     for c in _clientes_inat:
         k = c['cliente'][:30]
         if k not in _clientes_unicos or c['pendente'] > _clientes_unicos[k]['pendente']:
@@ -4762,7 +4762,7 @@ for _filial_dest, _clientes_inat in _inat_por_filial.items():
     _para_gerente = _lista[:_n_ger]
     _para_vends   = _lista[_n_ger:]
 
-    # Adiciona ao painel da filial (gerente vê tudo da filial)
+    # Adiciona ao painel da filial (gerente vÃª tudo da filial)
     for c in _lista:
         _tag = " [FDEP]" if c.get("is_fdep") else " [Inativo]"
 
@@ -4827,19 +4827,19 @@ for _filial_dest, _clientes_inat in _inat_por_filial.items():
                 "novo": c.get("novo", False),
             })
 
-print(f"📋 Clientes por filial (gerente):")
+print(f"ðŸ“‹ Clientes por filial (gerente):")
 for f in ORDEM_FILIAIS:
     t = sum(len(clientes_js[f][x]) for x in ["grave", "alerta", "atencao"])
     if t:
-        print(f"  {f}: {t} títulos")
+        print(f"  {f}: {t} tÃ­tulos")
 
-print(f"📋 Clientes por vendedor: {len(clientes_por_vend_js)} vendedores com títulos")
+print(f"ðŸ“‹ Clientes por vendedor: {len(clientes_por_vend_js)} vendedores com tÃ­tulos")
 # Ordena por valor pendente descendente
 for f in clientes_js:
     for faixa in ["grave","alerta","atencao"]:
         clientes_js[f][faixa].sort(key=lambda x: x["pendente"], reverse=True)
 
-# ── CREDIARISTAS: configuráveis por usuário/filial/percentual ─────────────────
+# â”€â”€ CREDIARISTAS: configurÃ¡veis por usuÃ¡rio/filial/percentual â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 clientes_crediarista_js = {}
 recebimentos_crediarista_js = {}
 for _cred_cfg in CREDIARISTAS_CONFIG:
@@ -4859,11 +4859,11 @@ _historico_comissao_cobranca10()
 
 js_todos    = json.dumps(todos_js,            ensure_ascii=False)
 js_filiais  = json.dumps(filiais_js_ordered,  ensure_ascii=False)
-# clientes_por_vend_js já construído na serialização acima
+# clientes_por_vend_js jÃ¡ construÃ­do na serializaÃ§Ã£o acima
 
-# ── Recebimentos detalhados por faixa por vendedor (para relatório 💰) ──
-# Mostra títulos pagos após data_corte_parse, por faixa de vencimento
-# Só vendedores ativos; inativos/FDEP aparecem com tag no nome
+# â”€â”€ Recebimentos detalhados por faixa por vendedor (para relatÃ³rio ðŸ’°) â”€â”€
+# Mostra tÃ­tulos pagos apÃ³s data_corte_parse, por faixa de vencimento
+# SÃ³ vendedores ativos; inativos/FDEP aparecem com tag no nome
 js_recebimentos = json.dumps(recebimentos_det_js, ensure_ascii=False)
 js_recebimentos_terceiro = json.dumps(recebimentos_terceiro_js, ensure_ascii=False)
 js_clientes      = json.dumps(clientes_js,           ensure_ascii=False)
@@ -4882,7 +4882,7 @@ total_dash_pg = round(total_final_pg, 2)
 
 
 # =========================================
-# 🔥 HTML COMPLETO v2 — 4 GRÁFICOS META
+# ðŸ”¥ HTML COMPLETO v2 â€” 4 GRÃFICOS META
 # =========================================
 import re as _re, base64 as _b64
 
@@ -5095,7 +5095,7 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 .commission-item .k{font-size:10px;color:#dbe4ff;font-weight:700;text-transform:uppercase;letter-spacing:.08em}
 .commission-item .v{font-size:18px;font-weight:800;color:var(--amber-300);margin-top:6px;letter-spacing:-.02em}
 .commission-item.locked{opacity:.4;filter:blur(.5px);position:relative}
-.commission-item.locked::after{content:'🔒 Bloqueado';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(13,15,20,.75);font-size:11px;font-weight:700;color:var(--text-muted);border-radius:var(--radius-md)}
+.commission-item.locked::after{content:'ðŸ”’ Bloqueado';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(13,15,20,.75);font-size:11px;font-weight:700;color:var(--text-muted);border-radius:var(--radius-md)}
 .commission-item.total-final{background:linear-gradient(135deg,rgba(249,168,50,.1),rgba(249,168,50,.03));border-color:rgba(249,168,50,.3);box-shadow:0 0 20px rgba(249,168,50,.08)}
 .commission-item.total-final .v{color:var(--amber-200);font-size:22px}
 .commission-note{margin-top:10px;font-size:11px;color:var(--text-muted);font-weight:600}
@@ -5179,7 +5179,7 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 @media(max-width:1100px){.detail-top,.meta-layout,.search-row,.mega-progress{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}.meta-grid{grid-template-columns:repeat(2,1fr)}.sales-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.card-sales-grid{grid-template-columns:1fr}}
 @media(max-width:760px){.app-shell{padding:14px 14px 80px}.brand h1{font-size:20px}.kpis{grid-template-columns:1fr}.grid-cards,.meta-preview-grid{grid-template-columns:1fr}.form-grid,.form-grid.bonus,.meta-grid,.metrics-grid,.commission-grid,.campaign-grid{grid-template-columns:1fr}.row-top,.log-row{grid-template-columns:1fr}.tabs{gap:4px}.tab{padding:9px 12px;font-size:12px}.group{min-width:88px}.group .bars{height:220px}.bar{width:16px}}
 
-/* ===== AJUSTE VISUAL DOS CARDS KPI - CORES POR GRUPO E ÍCONES MAIORES ===== */
+/* ===== AJUSTE VISUAL DOS CARDS KPI - CORES POR GRUPO E ÃCONES MAIORES ===== */
 .kpi.card-cobranca{
   background:
     radial-gradient(circle at 12% 12%, rgba(96,165,250,.30), transparent 36%),
@@ -5252,7 +5252,7 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 }
 
 
-/* ===== IMAGENS REAIS DO LARANJITO E ÍCONE DE OURO ===== */
+/* ===== IMAGENS REAIS DO LARANJITO E ÃCONE DE OURO ===== */
 .kpi .kpi-img-icon{
   width:30px;
   height:30px;
@@ -5319,7 +5319,7 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 .kpi .laranjito-caption{display:none!important;}
 
 
-/* ===== CONFIGURAÇÃO GLOBAL DE MENSAGEM DE COBRANÇA ===== */
+/* ===== CONFIGURAÃ‡ÃƒO GLOBAL DE MENSAGEM DE COBRANÃ‡A ===== */
 .cobranca-config-grid{
   display:grid;
   grid-template-columns: 1.4fr .9fr;
@@ -5357,7 +5357,7 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 
 
 
-/* ===== LISTA SEM COBRANÇAS HOJE ===== */
+/* ===== LISTA SEM COBRANÃ‡AS HOJE ===== */
 .sem-cobrancas-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:12px}
 .sem-cobranca-chip{display:flex;align-items:center;gap:8px;border:1px solid rgba(239,68,68,.18);background:rgba(239,68,68,.06);border-radius:12px;padding:8px 10px;font-size:12px;font-weight:700}
 .sem-cobranca-chip small{display:block;color:var(--text-muted);font-weight:600;margin-top:2px}
@@ -5451,7 +5451,7 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 }
 
 
-/* ===== COBRANÇA INTELIGENTE: RECOBRANÇA / CONTADOR ===== */
+/* ===== COBRANÃ‡A INTELIGENTE: RECOBRANÃ‡A / CONTADOR ===== */
 .cob-history-chip{
   display:inline-flex;
   align-items:center;
@@ -5567,7 +5567,7 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
   color:#c2410c !important;
 }
 
-/* ===== LARANJITO NOTIFICAÇÕES FIXO ===== */
+/* ===== LARANJITO NOTIFICAÃ‡Ã•ES FIXO ===== */
 #laranjitoNotify{
   position:fixed;
   top:92px;
@@ -5630,7 +5630,7 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 }
 .laranjito-note .small{color:#aab4c8!important;margin-top:4px}
 
-/* ===== COBRANÇA INTELIGENTE: CONTADOR NO HISTÓRICO ===== */
+/* ===== COBRANÃ‡A INTELIGENTE: CONTADOR NO HISTÃ“RICO ===== */
 .log-cob-count{
   display:inline-flex;
   align-items:center;
@@ -5743,15 +5743,15 @@ body.master-view #laranjitoNotify, body.diretor-view #laranjitoNotify{display:no
 <div id="loginScreen" class="login-wrap">
   <div class="glass login-card">
     <img class="logo-big" src="__LOGO__" alt="logo">
-    <h2>Dashboard – Lojas MDL</h2>
-    <div class="sub" style="text-align:center">Entre com seu usuário de colaborador ou Master</div>
+    <h2>Dashboard â€“ Lojas MDL</h2>
+    <div class="sub" style="text-align:center">Entre com seu usuÃ¡rio de colaborador ou Master</div>
     <div class="login-form">
-      <input id="loginUser" placeholder="Usuário">
+      <input id="loginUser" placeholder="UsuÃ¡rio">
       <input id="loginPass" type="password" placeholder="Senha">
-      <button class="btn primary" onclick="fazerLogin()">🔐 Entrar</button>
+      <button class="btn primary" onclick="fazerLogin()">ðŸ” Entrar</button>
       <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:8px">
-        <button class="btn soft" type="button" onclick="openPrimeiroAcesso()">🔑 Primeiro acesso</button>
-        <button class="btn soft" type="button" onclick="openRecuperarSenha()">📩 Recuperar senha</button>
+        <button class="btn soft" type="button" onclick="openPrimeiroAcesso()">ðŸ”‘ Primeiro acesso</button>
+        <button class="btn soft" type="button" onclick="openRecuperarSenha()">ðŸ“© Recuperar senha</button>
       </div>
       <div id="loginMsg" class="note" style="text-align:center;color:#d97706"></div>
     </div>
@@ -5764,13 +5764,13 @@ body.master-view #laranjitoNotify, body.diretor-view #laranjitoNotify{display:no
       <div class="brand">
         <img src="__LOGO__" alt="logo">
         <div>
-          <h1>Dashboard – Lojas MDL</h1>
-          <div class="sub">Período Cobrança: __PERIODO__ · Vendedores: painel individual · Gerentes: painel de filial</div>
+          <h1>Dashboard â€“ Lojas MDL</h1>
+          <div class="sub">PerÃ­odo CobranÃ§a: __PERIODO__ Â· Vendedores: painel individual Â· Gerentes: painel de filial</div>
         </div>
       </div>
       <div class="header-actions">
-        <button id="bellBtn" class="btn soft" onclick="openBell()">🔔 Avisos <span id="bellCount" class="badge" style="padding:4px 8px;margin-left:4px;background:#eef5ff">0</span></button>
-        <div id="userBadge" class="badge">👑 Master</div>
+        <button id="bellBtn" class="btn soft" onclick="openBell()">ðŸ”” Avisos <span id="bellCount" class="badge" style="padding:4px 8px;margin-left:4px;background:#eef5ff">0</span></button>
+        <div id="userBadge" class="badge">ðŸ‘‘ Master</div>
         <button class="btn soft" onclick="logout()">Sair</button>
       </div>
     </div>
@@ -5778,14 +5778,14 @@ body.master-view #laranjitoNotify, body.diretor-view #laranjitoNotify{display:no
     <div id="kpis" class="kpis"></div>
 
     <div id="masterTabs" class="tabs hidden">
-      <button class="tab active" data-tab="vendedores" onclick="setMainTab('vendedores')">👥 Por Colaborador</button>
-      <button class="tab" data-tab="filiais" onclick="setMainTab('filiais')">🏬 Por Filial</button>
-      <button class="tab" data-tab="metas" onclick="setMainTab('metas')">🎯 Metas</button>
-      <button class="tab" data-tab="servicos" onclick="setMainTab('servicos')">🛠️ Serviços</button>
-      <button class="tab" data-tab="cobrancas" onclick="setMainTab('cobrancas')">🧾 Cobranças</button>
-      <button class="tab" data-tab="avisos" onclick="setMainTab('avisos')">📣 Avisos</button>
-      <button class="tab" data-tab="senhas" onclick="setMainTab('senhas')">🔐 Senhas</button>
-      <button class="tab" data-tab="historico" onclick="setMainTab('historico')">🗂️ Histórico</button>
+      <button class="tab active" data-tab="vendedores" onclick="setMainTab('vendedores')">ðŸ‘¥ Por Colaborador</button>
+      <button class="tab" data-tab="filiais" onclick="setMainTab('filiais')">ðŸ¬ Por Filial</button>
+      <button class="tab" data-tab="metas" onclick="setMainTab('metas')">ðŸŽ¯ Metas</button>
+      <button class="tab" data-tab="servicos" onclick="setMainTab('servicos')">ðŸ› ï¸ ServiÃ§os</button>
+      <button class="tab" data-tab="cobrancas" onclick="setMainTab('cobrancas')">ðŸ§¾ CobranÃ§as</button>
+      <button class="tab" data-tab="avisos" onclick="setMainTab('avisos')">ðŸ“£ Avisos</button>
+      <button class="tab" data-tab="senhas" onclick="setMainTab('senhas')">ðŸ” Senhas</button>
+      <button class="tab" data-tab="historico" onclick="setMainTab('historico')">ðŸ—‚ï¸ HistÃ³rico</button>
     </div>
 
     <div id="mainFilters" class="filters hidden"></div>
@@ -5806,14 +5806,14 @@ body.master-view #laranjitoNotify, body.diretor-view #laranjitoNotify{display:no
 
 <div id="toast" class="toast"></div>
 <div id="phoneModal" class="modal"><div class="glass modal-card"><h3 style="margin:0">Escolher contato</h3><div class="sub">Selecione para abrir o WhatsApp</div><div id="phoneList" class="modal-list"></div><button class="btn soft" style="width:100%;margin-top:10px" onclick="closePhoneModal()">Fechar</button></div></div>
-<div id="bellModal" class="modal"><div class="glass modal-card" style="width:min(760px,100%)"><h3 style="margin:0">🔔 Avisos e mensagens</h3><div class="sub">Atualizações enviadas pelo Master para você.</div><div id="bellList" class="modal-list" style="max-height:70vh;overflow:auto"></div><button class="btn soft" style="width:100%;margin-top:10px" onclick="closeBell()">Fechar</button></div></div>
-<div id="firstAccessModal" class="modal"><div class="glass modal-card" style="width:min(560px,100%)"><h3 style="margin:0">🔑 Primeiro acesso / troca de senha</h3><div class="sub">Defina sua nova senha para entrar no dashboard.</div><div class="modal-list"><div class="input-card"><label>Usuário</label><input id="faLogin" placeholder="Ex: joaodasilva"></div><div class="input-card"><label>Senha atual</label><input id="faCurrentPass" type="password" placeholder="Senha atual"></div><div class="input-card"><label>Nova senha</label><input id="faNewPass" type="password" placeholder="Nova senha"></div><div class="input-card"><label>Confirmar nova senha</label><input id="faNewPass2" type="password" placeholder="Confirmar nova senha"></div><div id="faMsg" class="note"></div></div><div style="display:flex;gap:10px;margin-top:10px"><button class="btn primary" style="flex:1" onclick="salvarPrimeiroAcesso()">💾 Salvar nova senha</button><button class="btn soft" style="flex:1" onclick="closeFirstAccess()">Fechar</button></div></div></div>
-<div id="recoverModal" class="modal"><div class="glass modal-card" style="width:min(560px,100%)"><h3 style="margin:0">📩 Recuperar senha</h3><div class="sub">O pedido será enviado para o Master no dashboard e também pode ser registrado em sac@moveisdolar.com.br.</div><div class="modal-list"><div class="input-card"><label>Usuário</label><input id="recLogin" placeholder="Seu usuário"></div><div class="input-card"><label>Nome / observação</label><input id="recObs" placeholder="Ex: sou da filial F4"></div><div id="recMsg" class="note"></div></div><div style="display:flex;gap:10px;margin-top:10px"><button class="btn primary" style="flex:1" onclick="enviarRecuperacaoSenha()">📨 Enviar solicitação</button><button class="btn soft" style="flex:1" onclick="closeRecover()">Fechar</button></div></div></div>
+<div id="bellModal" class="modal"><div class="glass modal-card" style="width:min(760px,100%)"><h3 style="margin:0">ðŸ”” Avisos e mensagens</h3><div class="sub">AtualizaÃ§Ãµes enviadas pelo Master para vocÃª.</div><div id="bellList" class="modal-list" style="max-height:70vh;overflow:auto"></div><button class="btn soft" style="width:100%;margin-top:10px" onclick="closeBell()">Fechar</button></div></div>
+<div id="firstAccessModal" class="modal"><div class="glass modal-card" style="width:min(560px,100%)"><h3 style="margin:0">ðŸ”‘ Primeiro acesso / troca de senha</h3><div class="sub">Defina sua nova senha para entrar no dashboard.</div><div class="modal-list"><div class="input-card"><label>UsuÃ¡rio</label><input id="faLogin" placeholder="Ex: joaodasilva"></div><div class="input-card"><label>Senha atual</label><input id="faCurrentPass" type="password" placeholder="Senha atual"></div><div class="input-card"><label>Nova senha</label><input id="faNewPass" type="password" placeholder="Nova senha"></div><div class="input-card"><label>Confirmar nova senha</label><input id="faNewPass2" type="password" placeholder="Confirmar nova senha"></div><div id="faMsg" class="note"></div></div><div style="display:flex;gap:10px;margin-top:10px"><button class="btn primary" style="flex:1" onclick="salvarPrimeiroAcesso()">ðŸ’¾ Salvar nova senha</button><button class="btn soft" style="flex:1" onclick="closeFirstAccess()">Fechar</button></div></div></div>
+<div id="recoverModal" class="modal"><div class="glass modal-card" style="width:min(560px,100%)"><h3 style="margin:0">ðŸ“© Recuperar senha</h3><div class="sub">O pedido serÃ¡ enviado para o Master no dashboard e tambÃ©m pode ser registrado em sac@moveisdolar.com.br.</div><div class="modal-list"><div class="input-card"><label>UsuÃ¡rio</label><input id="recLogin" placeholder="Seu usuÃ¡rio"></div><div class="input-card"><label>Nome / observaÃ§Ã£o</label><input id="recObs" placeholder="Ex: sou da filial F4"></div><div id="recMsg" class="note"></div></div><div style="display:flex;gap:10px;margin-top:10px"><button class="btn primary" style="flex:1" onclick="enviarRecuperacaoSenha()">ðŸ“¨ Enviar solicitaÃ§Ã£o</button><button class="btn soft" style="flex:1" onclick="closeRecover()">Fechar</button></div></div></div>
 
 
-<div id="laranjitoNotify" onclick="toggleLaranjitoNotifyPanel()" title="Alertas e parabéns">
+<div id="laranjitoNotify" onclick="toggleLaranjitoNotifyPanel()" title="Alertas e parabÃ©ns">
   <img id="laranjitoNotifyImg" src="" alt="" referrerpolicy="no-referrer">
-  <span id="laranjitoNotifyFallback">🍊</span>
+  <span id="laranjitoNotifyFallback">ðŸŠ</span>
   <span id="laranjitoNotifyBadge">0</span>
 </div>
 <div id="laranjitoNotifyPanel"></div>
@@ -5839,7 +5839,7 @@ if(!CREDIARISTAS_CONFIG.length && __JS_CREDIARISTAS_MAP__ && typeof __JS_CREDIAR
 function getCrediaristasConfig(){return Array.isArray(CONFIG_META?.crediaristas_config)&&CONFIG_META.crediaristas_config.length?CONFIG_META.crediaristas_config:CREDIARISTAS_CONFIG}
 const CREDIARISTAS_MAP=new Proxy({}, {get(t,k){const row=getCrediaristasConfig().find(r=>String(r.filial||'').toUpperCase()===String(k||'').toUpperCase());return row?String(row.login||'').toLowerCase():undefined}, ownKeys(){return getCrediaristasConfig().map(r=>r.filial)}, getOwnPropertyDescriptor(){return {enumerable:true,configurable:true}}});
 const COBRANCA10_LOGIN='cobranca10';
-const COBRANCA10_NOME='Cobrança10';
+const COBRANCA10_NOME='CobranÃ§a10';
 const METAS_VENDAS=__JS_METAS_VENDAS__||{metas:{}};
 const MARGENS_BRUTAS=__JS_MARGENS_BRUTAS__||{filiais:{},vendedores:{}};
 let SALES_EMPRESA=__JS_SALES_EMPRESA__||{};
@@ -5850,8 +5850,8 @@ function getRentEmpresa(){
   const mb = MARGENS_BRUTAS || {};
   if((!e || !Object.keys(e).length) && mb.empresa) e = {...mb.empresa};
 
-  // Fallback: se por qualquer motivo a empresa não veio no JSON,
-  // soma as filiais do relatório de margem bruta.
+  // Fallback: se por qualquer motivo a empresa nÃ£o veio no JSON,
+  // soma as filiais do relatÃ³rio de margem bruta.
   if((!Number(e.custo_total||0)) && mb.filiais){
     const vals = Object.values(mb.filiais || {});
     const soma = (campo)=>vals.reduce((acc,x)=>acc + Number(x?.[campo]||0), 0);
@@ -5871,13 +5871,13 @@ function getRentEmpresa(){
 }
 
 let SERVICOS_RELATORIO=__JS_SERVICOS_RELATORIO__||{empresa:{},servicos:{},filiais:{},vendedores:{},detalhes:[]};
-let CONFIG_META={grave_pct:20,alerta_pct:15,atencao_pct:10,peso_grave:60,peso_alerta:30,peso_atencao:10,bonus_50:'',bonus_75:'',bonus_85:'',bonus_100:'',cob_cred_rateio_filial_pct:50,cob_cred_rateio_cred_pct:50,cobranca_global_rateio_pct:20,cobranca_msg_template_terceira:`Olá, {primeiro_nome}. Tudo bem?
-Aqui é da Lojas MDL - Móveis do Lar.
+let CONFIG_META={grave_pct:20,alerta_pct:15,atencao_pct:10,peso_grave:60,peso_alerta:30,peso_atencao:10,bonus_50:'',bonus_75:'',bonus_85:'',bonus_100:'',cob_cred_rateio_filial_pct:50,cob_cred_rateio_cred_pct:50,cobranca_global_rateio_pct:20,cobranca_msg_template_terceira:`OlÃ¡, {primeiro_nome}. Tudo bem?
+Aqui Ã© da Lojas MDL - MÃ³veis do Lar.
 
-Já tentamos contato sobre a parcela vencida em {vencimento}, no valor de {valor}, referente ao título {titulo}/{parcela}.
+JÃ¡ tentamos contato sobre a parcela vencida em {vencimento}, no valor de {valor}, referente ao tÃ­tulo {titulo}/{parcela}.
 
-Para evitar novos encargos e restrições, pedimos que regularize o pagamento o quanto antes.
-Caso já tenha pago, por gentileza desconsidere esta mensagem.`,cobranca_msg_template:`Olá, {primeiro_nome} tudo bem?\nAqui é da Lojas MDL - Móveis do Lar.\nPassando para lembrar que tem uma parcelinha vencida na data de {vencimento}, no valor de {valor}.\nCaso o pagamento já tenha sido realizado, por gentileza, desconsidere esta mensagem.\nSe precisar do boleto, chave PIX ou tiver qualquer dúvida, fico à disposição para ajudar.`,...(__CONFIG_META__||{})};
+Para evitar novos encargos e restriÃ§Ãµes, pedimos que regularize o pagamento o quanto antes.
+Caso jÃ¡ tenha pago, por gentileza desconsidere esta mensagem.`,cobranca_msg_template:`OlÃ¡, {primeiro_nome} tudo bem?\nAqui Ã© da Lojas MDL - MÃ³veis do Lar.\nPassando para lembrar que tem uma parcelinha vencida na data de {vencimento}, no valor de {valor}.\nCaso o pagamento jÃ¡ tenha sido realizado, por gentileza, desconsidere esta mensagem.\nSe precisar do boleto, chave PIX ou tiver qualquer dÃºvida, fico Ã  disposiÃ§Ã£o para ajudar.`,...(__CONFIG_META__||{})};
 let CONFIG_META_IND=__CONFIG_META_IND__||{};
 const LOGIN_MASTER=String(__LOGIN_MASTER__);
 const SENHA_MASTER=String(__SENHA_MASTER__);
@@ -5927,7 +5927,7 @@ async function tentarAtualizarOnlineDepoisLogin(){
         if(isUltimoDiaMes23()) setTimeout(()=>salvarSnapshotComissionamentoMensal(true),900);
       }
     }catch(e){}
-  }catch(e){console.log('Falha atualização online pós-login',e);}
+  }catch(e){console.log('Falha atualizaÃ§Ã£o online pÃ³s-login',e);}
 }
 
 let usuarioAtual=null;
@@ -5946,8 +5946,8 @@ const SESSION_KEY='mdl_dashboard_session_v1';
 function getAuthUser(login){const k=String(login||'').trim().toLowerCase(); if(k===LOGIN_DIRETOR.toLowerCase()) return AUTH_STATE?.director||null; return (AUTH_STATE?.users||{})[k]||null}
 async function carregarCredenciaisOnline(){try{const r=await fetchComTimeout(API_CRED+'?_='+Date.now(),{},2500); const j=await r.json(); if(j.ok && j.data){AUTH_STATE=j.data;}}catch(e){console.log('Falha ao carregar credenciais online',e);}}
 
-async function carregarHistoricoOnline(){try{const r=await fetchComTimeout(API_HIST+'?_='+Date.now(),{},2500); const j=await r.json(); if(j.ok && j.data){HIST_DASH=j.data;}}catch(e){console.log('Falha ao carregar histórico online',e);}}
-async function carregarHistoricoComissaoOnline(){try{const r=await fetchComTimeout(API_COMIS+'?_='+Date.now(),{},3000); const j=await r.json(); if(j.ok && j.data){HIST_COMISSAO=j.data;}}catch(e){console.log('Falha ao carregar histórico de comissionamento',e);}}
+async function carregarHistoricoOnline(){try{const r=await fetchComTimeout(API_HIST+'?_='+Date.now(),{},2500); const j=await r.json(); if(j.ok && j.data){HIST_DASH=j.data;}}catch(e){console.log('Falha ao carregar histÃ³rico online',e);}}
+async function carregarHistoricoComissaoOnline(){try{const r=await fetchComTimeout(API_COMIS+'?_='+Date.now(),{},3000); const j=await r.json(); if(j.ok && j.data){HIST_COMISSAO=j.data;}}catch(e){console.log('Falha ao carregar histÃ³rico de comissionamento',e);}}
 
 
 
@@ -5957,8 +5957,8 @@ function currentSessionNoticeKey(){
   return 'mdl_laranjito_seen_'+(usuarioAtual?.login||usuarioAtual?.nome||usuarioAtual?.tipo||'anon')+'_'+new Date().toISOString().slice(0,10);
 }
 function shouldShowLaranjitoBubble(){
-  // Aparece somente para colaborador logado olhando o próprio painel individual.
-  // Master/Diretor nunca veem essa bolinha, mesmo abrindo painel de alguém.
+  // Aparece somente para colaborador logado olhando o prÃ³prio painel individual.
+  // Master/Diretor nunca veem essa bolinha, mesmo abrindo painel de alguÃ©m.
   try{
     const tipo=String(usuarioAtual?.tipo||'').toLowerCase();
     if(tipo==='master' || tipo==='diretor' || tipo==='painel') return false;
@@ -6021,7 +6021,7 @@ function renderLaranjitoNotify(){
   badge.style.display=(LARANJITO_UNREAD>0)?'flex':'none';
 
   panel.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px">
-    <strong>🍊 Alertas do Laranjito</strong>
+    <strong>ðŸŠ Alertas do Laranjito</strong>
     <button class="btn soft" onclick="clearLaranjitoNotes()">Marcar lidas</button>
   </div>` + LARANJITO_NOTES.map(n=>`<div class="laranjito-note"><div>${esc(n.title||'Aviso')}</div><div class="small">${esc(n.msg||'')}</div><div class="small">${esc(n.dt||'')}</div></div>`).join('');
 }
@@ -6030,13 +6030,13 @@ function toggleLaranjitoNotifyPanel(){
   if(panel) panel.classList.toggle('show');
 }
 function clearLaranjitoNotes(){
-  // Não apaga as mensagens. Apenas limpa o contador vermelho da bolinha.
+  // NÃ£o apaga as mensagens. Apenas limpa o contador vermelho da bolinha.
   LARANJITO_UNREAD=0;
   try{localStorage.setItem(currentSessionNoticeKey(),'1')}catch(e){}
   renderLaranjitoNotify();
 }
 function showLaranjitoOncePerAccess(){
-  // A bolinha aparece uma vez por acesso/login. Não joga mais toast sozinho toda hora.
+  // A bolinha aparece uma vez por acesso/login. NÃ£o joga mais toast sozinho toda hora.
   try{
     const k=currentSessionNoticeKey();
     if(localStorage.getItem(k)==='1') return;
@@ -6070,7 +6070,7 @@ const histSection=document.getElementById('histSection');
 function R(v){return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
 function pct(v){return `${Math.round(Number(v||0))}%`}
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-function trunc(s,n=18){s=String(s||'');return s.length>n?s.slice(0,n-1)+'…':s}
+function trunc(s,n=18){s=String(s||'');return s.length>n?s.slice(0,n-1)+'â€¦':s}
 function filialLabel(f){return String(f||'').replace(/^F/,'Filial F')}
 function flattenVendedores(){const out=[];Object.entries(TODOS||{}).forEach(([f,arr])=>(arr||[]).forEach(v=>out.push({type:'vendedor',filial:f,...v})));return out}
 function thirdChargeEntity(){const src=CLIENTES_TERCEIRO||{grave:[],alerta:[],atencao:[]}; const rsrc=RECEBIMENTOS_TERCEIRO||{grave:[],alerta:[],atencao:[]}; const pend=[...(src.grave||[]),...(src.alerta||[]),...(src.atencao||[])].reduce((a,b)=>a+Number(b.pendente||0),0); const rec=[...(rsrc.grave||[]),...(rsrc.alerta||[]),...(rsrc.atencao||[])].reduce((a,b)=>a+Number(b.pago||0),0); return {type:'terceiro',login:COBRANCA10_LOGIN,filial:'FTER',nome:COBRANCA10_NOME,is_terceiro:true,is_gerente:false,pendente:pend,pago:rec,total:pend+rec,perc_filial:100,grave_pend:(src.grave||[]).reduce((a,b)=>a+Number(b.pendente||0),0),alerta_pend:(src.alerta||[]).reduce((a,b)=>a+Number(b.pendente||0),0),atencao_pend:(src.atencao||[]).reduce((a,b)=>a+Number(b.pendente||0),0),grave_rec:(rsrc.grave||[]).reduce((a,b)=>a+Number(b.pago||0),0),alerta_rec:(rsrc.alerta||[]).reduce((a,b)=>a+Number(b.pago||0),0),atencao_rec:(rsrc.atencao||[]).reduce((a,b)=>a+Number(b.pago||0),0)}}
@@ -6109,7 +6109,7 @@ function crediaristaEntityByLogin(login){const key=String(login||'').toLowerCase
 function flattenFiliais(){const out=[];ORDEM.forEach(f=>{if(FILIAIS[f]) out.push({type:'filial',filial:f,nome:filialLabel(f),...FILIAIS[f]})});return out}
 function metaPureKey(ent){return ent.type==='vendedor'?`${ent.nome}_${ent.filial}`:ent.filial}
 function metaCanonKey(ent){return ent.type==='vendedor'?`VEND::${metaPureKey(ent)}`:`FILIAL::${metaPureKey(ent)}`}
-function normMetaKey(v){return String(v||'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' ').trim()}
+function normMetaKey(v){return String(v||'').normalize('NFD').replace(/[Ì€-Í¯]/g,'').replace(/\s+/g,' ').trim()}
 function metaAliasesFromRaw(raw){
   const val=String(raw||'').trim();
   if(!val) return [];
@@ -6136,7 +6136,7 @@ function calcMeta(ent){const cfg=entityConfig(ent);const gPend=Number(ent.grave_
   return {cfg,grave:{pend:gPend,rec:gRec,alvo:gAlvo,perc:gPerc},alerta:{pend:aPend,rec:aRec,alvo:aAlvo,perc:aPerc},atencao:{pend:tPend,rec:tRec,alvo:tAlvo,perc:tPerc},geral:geral};
 }
 function getBonus(cfg,perc){const p=Number(perc||0);if(p>=100 && cfg.bonus_100) return {thr:100,text:cfg.bonus_100};if(p>=85 && cfg.bonus_85) return {thr:85,text:cfg.bonus_85};if(p>=75 && cfg.bonus_75) return {thr:75,text:cfg.bonus_75};if(p>=50 && cfg.bonus_50) return {thr:50,text:cfg.bonus_50};return null}
-function renderDeltaPill(delta,perc){const up=Number(delta||0)>=0;return `<span class="delta-pill ${up?'up':'down'}"><span class="arrow">${up?'⬆️':'⬇️'}</span><span>${pct(Math.abs(Number(perc||0)))}</span></span>`}
+function renderDeltaPill(delta,perc){const up=Number(delta||0)>=0;return `<span class="delta-pill ${up?'up':'down'}"><span class="arrow">${up?'â¬†ï¸':'â¬‡ï¸'}</span><span>${pct(Math.abs(Number(perc||0)))}</span></span>`}
 function renderPiggyBank(perc){
   const p=Math.max(0,Math.min(100,Number(perc||0)));
   const positions=[[30,110],[60,106],[90,112],[119,108],[45,86],[77,82],[108,86],[60,58],[93,60],[76,132],[106,132],[45,133]];
@@ -6152,7 +6152,7 @@ const _toastOriginalLaranjito = toast;
 toast = function(msg, type='info'){
   try{
     const s=String(msg||'');
-    if(/parab[eé]ns|ganhou|meta|laranjito|comemorando|liberada|ótimo ritmo|otimo ritmo/i.test(s)){
+    if(/parab[eÃ©]ns|ganhou|meta|laranjito|comemorando|liberada|Ã³timo ritmo|otimo ritmo/i.test(s)){
       addLaranjitoNote('Tudo certo!', s, type);
       return;
     }
@@ -6160,7 +6160,7 @@ toast = function(msg, type='info'){
   return _toastOriginalLaranjito(msg,type);
 };
 
-function mascotCongrats(ent){const meta=calcMeta(ent);const b=getBonus(meta.cfg,meta.geral);if(!b) return;toast(`Parabéns, ${ent.type==='vendedor'?ent.nome:filialLabel(ent.filial)}! Meta em ${pct(meta.geral)}. ${b.text||''}`,'success')}
+function mascotCongrats(ent){const meta=calcMeta(ent);const b=getBonus(meta.cfg,meta.geral);if(!b) return;toast(`ParabÃ©ns, ${ent.type==='vendedor'?ent.nome:filialLabel(ent.filial)}! Meta em ${pct(meta.geral)}. ${b.text||''}`,'success')}
 function makeKpi(label,val,accent,sub='',extraClass='',mascote='',iconHtml=''){
   const raw=String(label||'').trim();
   const p=raw.split(' ');
@@ -6195,10 +6195,10 @@ function renderKPIs(){
   const hojeIso=new Date().toISOString().slice(0,10);
   const prevDate=salesDates.filter(d=>String(d)<String(hojeIso)).slice(-1)[0]||'';
   const prevEmpresa=(prevDate?(HIST_DASH?.sales_dates?.[prevDate]?.empresa||{}):{});
-  // ✅ Total de Serviços da tela inicial deve bater com o Controle de Meta do SGI.
+  // âœ… Total de ServiÃ§os da tela inicial deve bater com o Controle de Meta do SGI.
   // Fonte oficial do TOTAL: sales.servico_realizado_total, vindo da tela /metas/consulta.
-  // O relatório de serviços separado continua sendo usado apenas para detalhar por tipo
-  // (Ouro, FOB, Cupom Copa etc.), mas não substitui o total oficial.
+  // O relatÃ³rio de serviÃ§os separado continua sendo usado apenas para detalhar por tipo
+  // (Ouro, FOB, Cupom Copa etc.), mas nÃ£o substitui o total oficial.
   const servicoRelatorioTotal = Number(SERVICOS_RELATORIO?.empresa?.real_total || 0);
   const servicoRealizadoOficial = Number(sales.servico_realizado_total || 0);
   const servicoAtingidoOficial = Number(sales.servico_meta_total||0)>0
@@ -6208,7 +6208,7 @@ function renderKPIs(){
   const prevServicoReal = Number(prevEmpresa.servico_realizado_total || 0);
   const vendaDiaria=Math.max(0, Number(sales.venda_realizado_total||0)-Number(prevEmpresa.venda_realizado_total||0)) + Math.max(0, servicoRealizadoOficial-prevServicoReal);
   try{
-    console.log('[MDL serviços]', {
+    console.log('[MDL serviÃ§os]', {
       total_controle_meta_sgi: Number(sales.servico_realizado_total||0),
       total_relatorio_servicos_tipos: servicoRelatorioTotal,
       usado_no_card_servicos: servicoRealizadoOficial
@@ -6244,38 +6244,38 @@ function renderKPIs(){
   const isViewer=!!usuarioAtual?.is_viewer;
   const isPrivileged=(usuarioAtual?.tipo==='master' || isViewer);
 
-  // Cards extras por tipo de serviço vindos do relatorio_servicos_mes_atual.json
+  // Cards extras por tipo de serviÃ§o vindos do relatorio_servicos_mes_atual.json
   function servicoIcone(nome){
     const n=normSalesText(nome||'');
-    if(n.includes('OURO')) return '🪙';
-    if(n.includes('FOB')) return '🚚';
-    if(n.includes('COPA') || n.includes('CUPOM')) return '⚽';
-    return '🛠️';
+    if(n.includes('OURO')) return 'ðŸª™';
+    if(n.includes('FOB')) return 'ðŸšš';
+    if(n.includes('COPA') || n.includes('CUPOM')) return 'âš½';
+    return 'ðŸ› ï¸';
   }
   const topServiceCards = Object.values((SERVICOS_RELATORIO && SERVICOS_RELATORIO.servicos) || {})
     .slice()
     .sort((a,b)=>Number(_srvTotal(b)||0)-Number(_srvTotal(a)||0))
     .slice(0,4)
-    .map(s=>makeKpi(`${servicoIcone(s.servico)} ${String(s.servico||'Serviço').slice(0,30)}`, R(_srvTotal(s)||0), 'var(--blue-400)', `${Number(s.quantidade||0).toLocaleString('pt-BR')} item(ns)`));
+    .map(s=>makeKpi(`${servicoIcone(s.servico)} ${String(s.servico||'ServiÃ§o').slice(0,30)}`, R(_srvTotal(s)||0), 'var(--blue-400)', `${Number(s.quantidade||0).toLocaleString('pt-BR')} item(ns)`));
 
   const cards=[
-    makeKpi('💰 Total pendente',R(TOTAL_P),'var(--red)','', 'card-cobranca'),
-    makeKpi('🏦 Total recebido',R(TOTAL_PG),'var(--green)','', 'card-cobranca'),
-    makeKpi('🚨 Grave',R(grave),'var(--red)','', 'card-cobranca'),
-    makeKpi('🟠 Alerta',R(alerta),'var(--orange)','', 'card-cobranca'),
-    makeKpi('📦 Mercantil realizado',R(sales.venda_realizado_total||0),'var(--amber-400)',`Meta ${R(sales.venda_meta_total||0)} · Atingido ${pct(sales.venda_atingido_total||0)}`),
-    makeKpi('📈 Mercantil projetado',R(sales.venda_projetado||0),'var(--amber-500)',`Meta período ${R(sales.venda_meta_periodo||0)}`),
-    makeKpi('🛠️ Serviços realizado',R(servicoRealizadoOficial),'var(--blue)',`Meta ${R(sales.servico_meta_total||0)} · Atingido ${pct(servicoAtingidoOficial)} · controle de meta SGI`),
-    makeKpi('🧰 Serviços projetado',R(sales.servico_projetado||0),'var(--blue-400)',`Meta período ${R(sales.servico_meta_periodo||0)}`),
+    makeKpi('ðŸ’° Total pendente',R(TOTAL_P),'var(--red)','', 'card-cobranca'),
+    makeKpi('ðŸ¦ Total recebido',R(TOTAL_PG),'var(--green)','', 'card-cobranca'),
+    makeKpi('ðŸš¨ Grave',R(grave),'var(--red)','', 'card-cobranca'),
+    makeKpi('ðŸŸ  Alerta',R(alerta),'var(--orange)','', 'card-cobranca'),
+    makeKpi('ðŸ“¦ Mercantil realizado',R(sales.venda_realizado_total||0),'var(--amber-400)',`Meta ${R(sales.venda_meta_total||0)} Â· Atingido ${pct(sales.venda_atingido_total||0)}`),
+    makeKpi('ðŸ“ˆ Mercantil projetado',R(sales.venda_projetado||0),'var(--amber-500)',`Meta perÃ­odo ${R(sales.venda_meta_periodo||0)}`),
+    makeKpi('ðŸ› ï¸ ServiÃ§os realizado',R(servicoRealizadoOficial),'var(--blue)',`Meta ${R(sales.servico_meta_total||0)} Â· Atingido ${pct(servicoAtingidoOficial)} Â· controle de meta SGI`),
+    makeKpi('ðŸ§° ServiÃ§os projetado',R(sales.servico_projetado||0),'var(--blue-400)',`Meta perÃ­odo ${R(sales.servico_meta_periodo||0)}`),
     ...topServiceCards,
-    makeKpi('🚚 Caminhão realizado',R(sales.caminhao_realizado_total||0),'var(--yellow)',`Meta ${R(sales.caminhao_meta_total||0)} · Atingido ${pct(sales.caminhao_atingido_total||0)}`),
-    makeKpi('🛣️ Caminhão projetado',R(sales.caminhao_projetado||0),'var(--yellow-400)',`Meta período ${R(sales.caminhao_meta_periodo||0)}`),
-    (isPrivileged ? makeKpi('💵 Faturamento total',R((Number(sales.venda_realizado_total||0)+servicoRealizadoOficial)),'var(--green-400)','Mercantil + serviços realizado', 'card-financeiro') : ''),
-    (isPrivileged ? makeKpi('🕒 Venda diária',R(vendaDiaria),'var(--cyan-400)','Mercantil + serviços do dia', 'card-venda-dia', statusLaranjitoVendaDiaria(vendaDiaria)) : ''),
-    makeKpi('📊 Rentabilidade total', rentPct?`${rentPct.toFixed(2).replace('.',',')}%`:'Sem dado','var(--green-400)','Última linha do relatório de margem bruta por filial', 'card-financeiro'),
-    makeKpi('🧮 Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)', isViewer ? 'Índice mercantil + serviços / custo oculto' : `(Mercantil + serviços) / custo total ${R(markupCost||0)}`, 'card-financeiro', statusLaranjitoMarkup(markupTotal))
+    makeKpi('ðŸšš CaminhÃ£o realizado',R(sales.caminhao_realizado_total||0),'var(--yellow)',`Meta ${R(sales.caminhao_meta_total||0)} Â· Atingido ${pct(sales.caminhao_atingido_total||0)}`),
+    makeKpi('ðŸ›£ï¸ CaminhÃ£o projetado',R(sales.caminhao_projetado||0),'var(--yellow-400)',`Meta perÃ­odo ${R(sales.caminhao_meta_periodo||0)}`),
+    (isPrivileged ? makeKpi('ðŸ’µ Faturamento total',R((Number(sales.venda_realizado_total||0)+servicoRealizadoOficial)),'var(--green-400)','Mercantil + serviÃ§os realizado', 'card-financeiro') : ''),
+    (isPrivileged ? makeKpi('ðŸ•’ Venda diÃ¡ria',R(vendaDiaria),'var(--cyan-400)','Mercantil + serviÃ§os do dia', 'card-venda-dia', statusLaranjitoVendaDiaria(vendaDiaria)) : ''),
+    makeKpi('ðŸ“Š Rentabilidade total', rentPct?`${rentPct.toFixed(2).replace('.',',')}%`:'Sem dado','var(--green-400)','Ãšltima linha do relatÃ³rio de margem bruta por filial', 'card-financeiro'),
+    makeKpi('ðŸ§® Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)', isViewer ? 'Ãndice mercantil + serviÃ§os / custo oculto' : `(Mercantil + serviÃ§os) / custo total ${R(markupCost||0)}`, 'card-financeiro', statusLaranjitoMarkup(markupTotal))
   ];
-  document.getElementById('kpis').innerHTML=cards.join('') + `<div class="glass" style="grid-column:1/-1;padding:10px 14px;display:flex;align-items:center;justify-content:flex-start;min-height:46px"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div></div>`;
+  document.getElementById('kpis').innerHTML=cards.join('') + `<div class="glass" style="grid-column:1/-1;padding:10px 14px;display:flex;align-items:center;justify-content:flex-start;min-height:46px"><div style="font-size:12px;color:#a9b2c7">ðŸ•’ Ãšltima atualizaÃ§Ã£o do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div></div>`;
 }
 
 async function fetchJsonNoCache(url){
@@ -6319,7 +6319,7 @@ function latestUpdatedLabel(){
 }
 
 function renderUpdateStrip(){
-  return `<div class="glass" style="margin:10px 0 14px;padding:10px 14px;display:flex;align-items:center;justify-content:flex-start;min-height:42px;border-color:rgba(148,163,184,.20)"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div></div>`;
+  return `<div class="glass" style="margin:10px 0 14px;padding:10px 14px;display:flex;align-items:center;justify-content:flex-start;min-height:42px;border-color:rgba(148,163,184,.20)"><div style="font-size:12px;color:#a9b2c7">ðŸ•’ Ãšltima atualizaÃ§Ã£o do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div></div>`;
 }
 
 
@@ -6333,7 +6333,7 @@ function calcSalesEmpresaFromMetas(payload){
       ating_total:Number(total['Atingido Total_float']||0),
       proj:Number(total['Projetado(R$)_float']||0),
       meta_total:Number(total['Meta(R$) Total_float']||0),
-      meta_per:Number(total['Meta(R$) Período_float']||0),
+      meta_per:Number(total['Meta(R$) PerÃ­odo_float']||0),
     };
   }
   const venda=totalOf('venda_filial_meta');
@@ -6363,9 +6363,9 @@ async function pollSalesLive(){
     const stamp=String(ver?.updated_at_label||ver?.updated_at||'');
     if(stamp){ window.__salesUpdatedAtLabel = stamp; }
 
-    // Atualização atômica do pacote de vendas:
-    // só busca metas/margens/serviços quando sales_version mudar.
-    // Assim o dashboard não mistura parte nova de vendas com serviços/margem antigos.
+    // AtualizaÃ§Ã£o atÃ´mica do pacote de vendas:
+    // sÃ³ busca metas/margens/serviÃ§os quando sales_version mudar.
+    // Assim o dashboard nÃ£o mistura parte nova de vendas com serviÃ§os/margem antigos.
     if(stamp && window.__lastSalesVersion===stamp && window.__salesBundleLoaded){
       return;
     }
@@ -6412,7 +6412,7 @@ function _srvMiniCard(title, value, subtitle=''){
   return `<div class="glass panel" style="padding:14px 16px"><div class="mini" style="margin-bottom:8px">${esc(title)}</div><div class="big" style="font-size:28px;color:#f8fafc">${value}</div>${subtitle?`<div class="hint" style="margin-top:6px">${subtitle}</div>`:''}</div>`;
 }
 function _srvRankRows(rows, kind){
-  if(!rows.length) return `<div class="empty">Nenhum dado encontrado no relatório de serviços.</div>`;
+  if(!rows.length) return `<div class="empty">Nenhum dado encontrado no relatÃ³rio de serviÃ§os.</div>`;
   return rows.map((r,idx)=>{
     const label = kind==='servico' ? (r.servico||'-') : (kind==='filial' ? (r.label||r.filial||'-') : (r.label||r.nome||'-'));
     const qtd = Number(r.quantidade||0);
@@ -6439,15 +6439,15 @@ function renderServicosTab(isViewer=false){
 
   const summary = `
     <div class="kpis" style="margin-bottom:14px">
-      ${_srvMiniCard('🧰 Serviços no mês', R(totalServ), `${totalQtd.toLocaleString('pt-BR')} item(ns) · ${totalLinhas.toLocaleString('pt-BR')} linha(s)`)}
-      ${_srvMiniCard('🏷️ Tipos de serviço', String(tiposAtivos), topTipo.servico?`Maior: ${esc(topTipo.servico)} · ${R(topTipo.real_total||0)}`:'')}
-      ${_srvMiniCard('🏬 Melhor filial', topFil.label?esc(topFil.label):'—', topFil.real_total?`${R(topFil.real_total)} · ${Number(topFil.quantidade||0).toLocaleString('pt-BR')} item(ns)`:'')}
-      ${_srvMiniCard('👤 Melhor vendedor', topVend.label?esc(topVend.label):'—', topVend.real_total?`${R(topVend.real_total)} · ${Number(topVend.quantidade||0).toLocaleString('pt-BR')} item(ns)`:'')}
+      ${_srvMiniCard('ðŸ§° ServiÃ§os no mÃªs', R(totalServ), `${totalQtd.toLocaleString('pt-BR')} item(ns) Â· ${totalLinhas.toLocaleString('pt-BR')} linha(s)`)}
+      ${_srvMiniCard('ðŸ·ï¸ Tipos de serviÃ§o', String(tiposAtivos), topTipo.servico?`Maior: ${esc(topTipo.servico)} Â· ${R(topTipo.real_total||0)}`:'')}
+      ${_srvMiniCard('ðŸ¬ Melhor filial', topFil.label?esc(topFil.label):'â€”', topFil.real_total?`${R(topFil.real_total)} Â· ${Number(topFil.quantidade||0).toLocaleString('pt-BR')} item(ns)`:'')}
+      ${_srvMiniCard('ðŸ‘¤ Melhor vendedor', topVend.label?esc(topVend.label):'â€”', topVend.real_total?`${R(topVend.real_total)} Â· ${Number(topVend.quantidade||0).toLocaleString('pt-BR')} item(ns)`:'')}
     </div>`;
 
   const tipoCards = tipos.length ? `
     <div class="glass panel" style="margin-bottom:14px">
-      <div class="section-head"><div><h2>🛠️ Serviços por tipo</h2><div class="hint">Totais consolidados por serviço do relatório mensal. Este é o valor oficial usado no card Serviços realizado.</div></div></div>
+      <div class="section-head"><div><h2>ðŸ› ï¸ ServiÃ§os por tipo</h2><div class="hint">Totais consolidados por serviÃ§o do relatÃ³rio mensal. Este Ã© o valor oficial usado no card ServiÃ§os realizado.</div></div></div>
       <div class="grid-cards">${tipos.map(t=>`
         <div class="glass card" style="padding:14px 16px">
           <div class="title">${esc(t.servico||'-')}</div>
@@ -6455,18 +6455,18 @@ function renderServicosTab(isViewer=false){
             <div class="stat-box"><div class="mini">Quantidade</div><div class="big" style="font-size:18px">${Number(t.quantidade||0).toLocaleString('pt-BR')}</div></div>
             <div class="stat-box"><div class="mini">Total</div><div class="big" style="font-size:18px;color:var(--green)">${R(t.real_total||0)}</div></div>
           </div>
-          <div class="legend-inline"><span><i class="dot" style="background:#f59e0b"></i>${Number(t.linhas||0).toLocaleString('pt-BR')} lançamento(s)</span></div>
+          <div class="legend-inline"><span><i class="dot" style="background:#f59e0b"></i>${Number(t.linhas||0).toLocaleString('pt-BR')} lanÃ§amento(s)</span></div>
         </div>`).join('')}</div>
-    </div>` : `<div class="empty">Nenhum serviço encontrado no relatório.</div>`;
+    </div>` : `<div class="empty">Nenhum serviÃ§o encontrado no relatÃ³rio.</div>`;
 
   const rankings = `
     <div class="grid-2">
       <div class="glass panel">
-        <div class="section-head"><div><h2>🏬 Ranking por filial</h2><div class="hint">Top filiais em serviços do mês.</div></div></div>
+        <div class="section-head"><div><h2>ðŸ¬ Ranking por filial</h2><div class="hint">Top filiais em serviÃ§os do mÃªs.</div></div></div>
         <div class="logs-list">${_srvRankRows(filiais.slice(0,20), 'filial')}</div>
       </div>
       <div class="glass panel">
-        <div class="section-head"><div><h2>👤 Ranking por vendedor</h2><div class="hint">Top vendedores em serviços do mês.</div></div></div>
+        <div class="section-head"><div><h2>ðŸ‘¤ Ranking por vendedor</h2><div class="hint">Top vendedores em serviÃ§os do mÃªs.</div></div></div>
         <div class="logs-list">${_srvRankRows(vendedores.slice(0,20), 'vendedor')}</div>
       </div>
     </div>`;
@@ -6505,8 +6505,8 @@ function setFiltroFilial(f){
   renderList();
 }
 function currentEntities(){let arr=mainTab==='filiais'?flattenFiliais():flattenVendedores(); if(mainTab==='vendedores' && usuarioAtual?.tipo==='master'){const t=thirdChargeEntity(); const hasThird=Number(t.pendente||0)>0 || Number(t.pago||0)>0 || Number(t.grave_pend||0)>0 || Number(t.alerta_pend||0)>0 || Number(t.atencao_pend||0)>0; if(hasThird) arr=[t,...arr]; const creds=crediaristaEntities().filter(x=>Number(x.pendente||0)>0||Number(x.pago||0)>0); if(creds.length) arr=[...creds,...arr]} return arr.filter(x=>filtroFilial==='TODAS'||x.filial===filtroFilial || x.is_terceiro || x.is_crediarista)}
-function renderEntityCard(ent){const m=calcMeta(ent); const isThird=!!(ent?.is_terceiro || ent?.type==='terceiro'); const isCred=!!(ent?.is_crediarista || ent?.type==='crediarista'); if(isThird || isCred){const credLogin=String(ent.login||crediaristaLoginByFilial(ent.filial)||'').toLowerCase(); const credFilial=String(ent.filial||'').toUpperCase(); const credNome=String(ent.nome||`CREDIARISTA${credFilial}`); const label=isThird?'Cobrança terceiro':'Crediarista'; const sub=isThird?'Clique para abrir a carteira terceirizada':'Clique para abrir a carteira do crediarista'; const actionAttr=isThird?`data-action="third-card" role="button" tabindex="0"`:`data-action="cred-card" data-login="${esc(credLogin)}" data-filial="${esc(credFilial)}" data-nome="${esc(credNome)}" role="button" tabindex="0"`; return `<div class="glass card ${m.geral>=50?'card-hit':(m.geral<30?'card-low-red':(m.geral<40?'card-low-orange':''))}" style="box-shadow:0 0 0 2px rgba(239,68,68,.12) inset" ${actionAttr}><div class="title">${esc(credNome)}</div><div class="numbers" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="stat-box" style="min-width:0"><div class="mini">Pendente</div><div class="big" style="color:var(--red);font-size:15px;word-break:break-word">${R(ent.pendente||0)}</div></div><div class="stat-box" style="min-width:0"><div class="mini">Recebido</div><div class="big" style="color:var(--green);font-size:15px;word-break:break-word">${R(ent.pago||0)}</div></div></div><div class="meta-row"><div class="mini-chip">🔴 Grave ${pct(m.grave.perc)}</div><div class="mini-chip">🟠 Alerta ${pct(m.alerta.perc)}</div><div class="mini-chip">🟡 Atenção ${pct(m.atencao.perc)}</div><div class="mini-chip" style="font-size:12px">🔵 Meta geral ${pct(m.geral)}</div></div>${renderMascotStatus(m.geral,label)}<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>${sub}</span></div></div>`} const bonus=getBonus(m.cfg,m.geral);const sales=summarizeSalesCard(ent);const salesPct=sales?.n||0;const salesBorder=salesPct>=100?'box-shadow:0 0 0 2px rgba(242,201,76,.35) inset':salesPct>=80?'box-shadow:0 0 0 2px rgba(34,197,94,.18) inset':salesPct>=50?'box-shadow:0 0 0 2px rgba(249,115,22,.18) inset':'box-shadow:0 0 0 2px rgba(239,68,68,.12) inset';const cls=m.geral>=50?'card-hit':(m.geral<30?'card-low-red':(m.geral<40?'card-low-orange':''));const pulseNote=m.geral>=50?'<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>Meta atingida no mês</span></div>':'';return `<div class="glass card ${cls}" style="${salesBorder}" onclick='openEntity(${JSON.stringify({type:ent.type,filial:ent.filial,nome:ent.nome})})'><div class="title">${esc(ent.nome)} ${ent.type==='vendedor'?`(${ent.filial})`:''}</div><div class="numbers" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="stat-box" style="min-width:0"><div class="mini">Pendente</div><div class="big" style="color:var(--red);font-size:15px;word-break:break-word">${R(ent.pendente||0)}</div></div><div class="stat-box" style="min-width:0"><div class="mini">Recebido</div><div class="big" style="color:var(--green);font-size:15px;word-break:break-word">${R(ent.pago||0)}</div></div></div><div class="meta-row"><div class="mini-chip">🔴 Grave ${pct(m.grave.perc)}</div><div class="mini-chip">🟠 Alerta ${pct(m.alerta.perc)}</div><div class="mini-chip">🟡 Atenção ${pct(m.atencao.perc)}</div><div class="mini-chip" style="font-size:12px">🔵 Meta geral ${pct(m.geral)}</div></div>${renderSalesCardSummary(ent)}${renderDualMascotStatus(ent)}${bonus?`<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>${esc(bonus.text)}</span></div>`:''}${pulseNote}</div>`}
-function renderGroupBars(entities){if(!entities.length) return `<div class="empty">Nenhum dado para exibir.</div>`; const max=Math.max(1,...entities.map(e=>Math.max(Number(e.grave_pend||0),Number(e.alerta_pend||0),Number(e.atencao_pend||0),Number(e.pago||0)))); return `<div class="glass big-chart-card"><div class="section-head"><div><h2>📊 Panorama por ${mainTab==='filiais'?'filial':'vendedor'}</h2><div class="hint">Barras por faixa: Grave, Alerta, Atenção e Recebido</div></div><div class="legend-inline"><span><i class="dot" style="background:var(--red)"></i>Grave</span><span><i class="dot" style="background:var(--orange)"></i>Alerta</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção</span><span><i class="dot" style="background:var(--green)"></i>Recebido</span></div></div><div class="groupbars">${entities.map(e=>{const vals=[{c:'var(--red)',v:Number(e.grave_pend||0),t:'Grave'},{c:'var(--orange)',v:Number(e.alerta_pend||0),t:'Alerta'},{c:'var(--yellow)',v:Number(e.atencao_pend||0),t:'Atenção'},{c:'var(--green)',v:Number(e.pago||0),t:'Recebido'}]; return `<div class="group"><div class="bars">${vals.map(v=>`<div title="${v.t}: ${R(v.v)}" class="bar" style="height:${Math.max(12,(v.v/max)*240)}px;background:linear-gradient(180deg,${v.c},${v.c})"></div>`).join('')}<span class="wave one"></span><span class="wave two"></span><span class="bubble b1"></span><span class="bubble b2"></span><span class="bubble b3"></span></div><div class="glabel">${esc(trunc(e.nome,16))}</div></div>`}).join('')}</div><div class="axis"><span>Escala relativa automática</span><span>${entities.length} ${mainTab==='filiais'?'filiais':'colaboradores'}</span></div></div>`}
+function renderEntityCard(ent){const m=calcMeta(ent); const isThird=!!(ent?.is_terceiro || ent?.type==='terceiro'); const isCred=!!(ent?.is_crediarista || ent?.type==='crediarista'); if(isThird || isCred){const credLogin=String(ent.login||crediaristaLoginByFilial(ent.filial)||'').toLowerCase(); const credFilial=String(ent.filial||'').toUpperCase(); const credNome=String(ent.nome||`CREDIARISTA${credFilial}`); const label=isThird?'CobranÃ§a terceiro':'Crediarista'; const sub=isThird?'Clique para abrir a carteira terceirizada':'Clique para abrir a carteira do crediarista'; const actionAttr=isThird?`data-action="third-card" role="button" tabindex="0"`:`data-action="cred-card" data-login="${esc(credLogin)}" data-filial="${esc(credFilial)}" data-nome="${esc(credNome)}" role="button" tabindex="0"`; return `<div class="glass card ${m.geral>=50?'card-hit':(m.geral<30?'card-low-red':(m.geral<40?'card-low-orange':''))}" style="box-shadow:0 0 0 2px rgba(239,68,68,.12) inset" ${actionAttr}><div class="title">${esc(credNome)}</div><div class="numbers" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="stat-box" style="min-width:0"><div class="mini">Pendente</div><div class="big" style="color:var(--red);font-size:15px;word-break:break-word">${R(ent.pendente||0)}</div></div><div class="stat-box" style="min-width:0"><div class="mini">Recebido</div><div class="big" style="color:var(--green);font-size:15px;word-break:break-word">${R(ent.pago||0)}</div></div></div><div class="meta-row"><div class="mini-chip">ðŸ”´ Grave ${pct(m.grave.perc)}</div><div class="mini-chip">ðŸŸ  Alerta ${pct(m.alerta.perc)}</div><div class="mini-chip">ðŸŸ¡ AtenÃ§Ã£o ${pct(m.atencao.perc)}</div><div class="mini-chip" style="font-size:12px">ðŸ”µ Meta geral ${pct(m.geral)}</div></div>${renderMascotStatus(m.geral,label)}<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>${sub}</span></div></div>`} const bonus=getBonus(m.cfg,m.geral);const sales=summarizeSalesCard(ent);const salesPct=sales?.n||0;const salesBorder=salesPct>=100?'box-shadow:0 0 0 2px rgba(242,201,76,.35) inset':salesPct>=80?'box-shadow:0 0 0 2px rgba(34,197,94,.18) inset':salesPct>=50?'box-shadow:0 0 0 2px rgba(249,115,22,.18) inset':'box-shadow:0 0 0 2px rgba(239,68,68,.12) inset';const cls=m.geral>=50?'card-hit':(m.geral<30?'card-low-red':(m.geral<40?'card-low-orange':''));const pulseNote=m.geral>=50?'<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>Meta atingida no mÃªs</span></div>':'';return `<div class="glass card ${cls}" style="${salesBorder}" onclick='openEntity(${JSON.stringify({type:ent.type,filial:ent.filial,nome:ent.nome})})'><div class="title">${esc(ent.nome)} ${ent.type==='vendedor'?`(${ent.filial})`:''}</div><div class="numbers" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="stat-box" style="min-width:0"><div class="mini">Pendente</div><div class="big" style="color:var(--red);font-size:15px;word-break:break-word">${R(ent.pendente||0)}</div></div><div class="stat-box" style="min-width:0"><div class="mini">Recebido</div><div class="big" style="color:var(--green);font-size:15px;word-break:break-word">${R(ent.pago||0)}</div></div></div><div class="meta-row"><div class="mini-chip">ðŸ”´ Grave ${pct(m.grave.perc)}</div><div class="mini-chip">ðŸŸ  Alerta ${pct(m.alerta.perc)}</div><div class="mini-chip">ðŸŸ¡ AtenÃ§Ã£o ${pct(m.atencao.perc)}</div><div class="mini-chip" style="font-size:12px">ðŸ”µ Meta geral ${pct(m.geral)}</div></div>${renderSalesCardSummary(ent)}${renderDualMascotStatus(ent)}${bonus?`<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>${esc(bonus.text)}</span></div>`:''}${pulseNote}</div>`}
+function renderGroupBars(entities){if(!entities.length) return `<div class="empty">Nenhum dado para exibir.</div>`; const max=Math.max(1,...entities.map(e=>Math.max(Number(e.grave_pend||0),Number(e.alerta_pend||0),Number(e.atencao_pend||0),Number(e.pago||0)))); return `<div class="glass big-chart-card"><div class="section-head"><div><h2>ðŸ“Š Panorama por ${mainTab==='filiais'?'filial':'vendedor'}</h2><div class="hint">Barras por faixa: Grave, Alerta, AtenÃ§Ã£o e Recebido</div></div><div class="legend-inline"><span><i class="dot" style="background:var(--red)"></i>Grave</span><span><i class="dot" style="background:var(--orange)"></i>Alerta</span><span><i class="dot" style="background:var(--yellow)"></i>AtenÃ§Ã£o</span><span><i class="dot" style="background:var(--green)"></i>Recebido</span></div></div><div class="groupbars">${entities.map(e=>{const vals=[{c:'var(--red)',v:Number(e.grave_pend||0),t:'Grave'},{c:'var(--orange)',v:Number(e.alerta_pend||0),t:'Alerta'},{c:'var(--yellow)',v:Number(e.atencao_pend||0),t:'AtenÃ§Ã£o'},{c:'var(--green)',v:Number(e.pago||0),t:'Recebido'}]; return `<div class="group"><div class="bars">${vals.map(v=>`<div title="${v.t}: ${R(v.v)}" class="bar" style="height:${Math.max(12,(v.v/max)*240)}px;background:linear-gradient(180deg,${v.c},${v.c})"></div>`).join('')}<span class="wave one"></span><span class="wave two"></span><span class="bubble b1"></span><span class="bubble b2"></span><span class="bubble b3"></span></div><div class="glabel">${esc(trunc(e.nome,16))}</div></div>`}).join('')}</div><div class="axis"><span>Escala relativa automÃ¡tica</span><span>${entities.length} ${mainTab==='filiais'?'filiais':'colaboradores'}</span></div></div>`}
 
 function renderNoChargeAlerts(){
   const hoje=(new Date()).toISOString().slice(0,10);
@@ -6539,11 +6539,11 @@ function renderNoChargeAlerts(){
     if(pending>0 && done===0) entries.push({tipo:'Crediarista',nome:c.nome,filial:c.filial,pending,done});
   });
 
-  // Cobrança terceiro / Cobrança10
+  // CobranÃ§a terceiro / CobranÃ§a10
   const t=thirdChargeEntity();
   const pendingTer=totalPend(CLIENTES_TERCEIRO||{});
   const doneTer=doneHoje([COBRANCA10_NOME, COBRANCA10_LOGIN, 'cobranca10']);
-  if(pendingTer>0 && doneTer===0) entries.push({tipo:'Cobrança',nome:COBRANCA10_NOME,filial:'FTER',pending:pendingTer,done:doneTer});
+  if(pendingTer>0 && doneTer===0) entries.push({tipo:'CobranÃ§a',nome:COBRANCA10_NOME,filial:'FTER',pending:pendingTer,done:doneTer});
 
   const uniq=[];
   const seen=new Set();
@@ -6555,26 +6555,26 @@ function renderNoChargeAlerts(){
   if(!uniq.length) return '';
   return `<div class="glass panel" style="margin-bottom:16px;padding:14px 18px">
     <div class="section-head" style="margin:0">
-      <div><h2 style="margin:0;font-size:18px">⏰ Sem cobranças hoje</h2><div class="hint">Todos os usuários/carteiras que ainda não registraram cobrança hoje: colaboradores, filiais, crediaristas e cobrança.</div></div>
+      <div><h2 style="margin:0;font-size:18px">â° Sem cobranÃ§as hoje</h2><div class="hint">Todos os usuÃ¡rios/carteiras que ainda nÃ£o registraram cobranÃ§a hoje: colaboradores, filiais, crediaristas e cobranÃ§a.</div></div>
     </div>
-    <div class="sem-cobrancas-grid">${uniq.map(e=>`<div class="sem-cobranca-chip"><i class="dot" style="background:#ef4444"></i><div>${esc(e.nome)}<small>${esc(e.tipo)} ${e.filial?`· ${esc(e.filial)}`:''} · ${e.pending} clientes</small></div></div>`).join('')}</div>
+    <div class="sem-cobrancas-grid">${uniq.map(e=>`<div class="sem-cobranca-chip"><i class="dot" style="background:#ef4444"></i><div>${esc(e.nome)}<small>${esc(e.tipo)} ${e.filial?`Â· ${esc(e.filial)}`:''} Â· ${e.pending} clientes</small></div></div>`).join('')}</div>
   </div>`;
 }
 
-function renderHighlights(){const cobrarParts=[]; const vendasParts=[]; const filiais=flattenFiliais(); const vendedores=flattenVendedores(); const calcDelta=(e)=>{const delta=Number(e.var_pago_delta||0); const prev=Math.max(Math.abs(Number(e.pago||0)-delta),1); const perc=(Math.abs(delta)/prev)*100; return {delta,perc};}; const bestFil=filiais.slice().sort((a,b)=>Number(b.var_pago_delta||0)-Number(a.var_pago_delta||0))[0]; const bestVend=vendedores.slice().sort((a,b)=>Number(b.var_pago_delta||0)-Number(a.var_pago_delta||0))[0]; if(bestFil){const d=calcDelta(bestFil); cobrarParts.push(`<div class="glass panel highlight-pulse" style="margin-bottom:12px;padding:16px 18px"><div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:20px">🏆 Destaque da semana · Filial</h2><div class="hint">${esc(filialLabel(bestFil.filial))} recebeu ${R(d.delta)} a mais</div></div>${renderDeltaPill(d.delta,d.perc)}</div></div>`);} if(bestVend){const d=calcDelta(bestVend); cobrarParts.push(`<div class="glass panel highlight-pulse" style="margin-bottom:16px;padding:16px 18px"><div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:20px">🥇 Destaque da semana · Vendedor</h2><div class="hint">${esc(bestVend.nome)} recebeu ${R(d.delta)} a mais</div></div>${renderDeltaPill(d.delta,d.perc)}</div></div>`);} const achievers=currentEntities().filter(e=>calcMeta(e).geral>=50); if(achievers.length){cobrarParts.push(`<div class="glass panel" style="margin-bottom:16px;padding:14px 18px"><div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:18px">🔔 Metas atingidas</h2><div class="hint">${achievers.length} colaboradores/filiais com meta alcançada</div></div></div><div class="legend-inline">${achievers.slice(0,10).map(e=>`<span><i class="dot" style="background:#2f67f6"></i>${esc(e.nome)} ${pct(calcMeta(e).geral)}</span>`).join('')}</div></div>`);} cobrarParts.push(renderNoChargeAlerts());
+function renderHighlights(){const cobrarParts=[]; const vendasParts=[]; const filiais=flattenFiliais(); const vendedores=flattenVendedores(); const calcDelta=(e)=>{const delta=Number(e.var_pago_delta||0); const prev=Math.max(Math.abs(Number(e.pago||0)-delta),1); const perc=(Math.abs(delta)/prev)*100; return {delta,perc};}; const bestFil=filiais.slice().sort((a,b)=>Number(b.var_pago_delta||0)-Number(a.var_pago_delta||0))[0]; const bestVend=vendedores.slice().sort((a,b)=>Number(b.var_pago_delta||0)-Number(a.var_pago_delta||0))[0]; if(bestFil){const d=calcDelta(bestFil); cobrarParts.push(`<div class="glass panel highlight-pulse" style="margin-bottom:12px;padding:16px 18px"><div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:20px">ðŸ† Destaque da semana Â· Filial</h2><div class="hint">${esc(filialLabel(bestFil.filial))} recebeu ${R(d.delta)} a mais</div></div>${renderDeltaPill(d.delta,d.perc)}</div></div>`);} if(bestVend){const d=calcDelta(bestVend); cobrarParts.push(`<div class="glass panel highlight-pulse" style="margin-bottom:16px;padding:16px 18px"><div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:20px">ðŸ¥‡ Destaque da semana Â· Vendedor</h2><div class="hint">${esc(bestVend.nome)} recebeu ${R(d.delta)} a mais</div></div>${renderDeltaPill(d.delta,d.perc)}</div></div>`);} const achievers=currentEntities().filter(e=>calcMeta(e).geral>=50); if(achievers.length){cobrarParts.push(`<div class="glass panel" style="margin-bottom:16px;padding:14px 18px"><div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:18px">ðŸ”” Metas atingidas</h2><div class="hint">${achievers.length} colaboradores/filiais com meta alcanÃ§ada</div></div></div><div class="legend-inline">${achievers.slice(0,10).map(e=>`<span><i class="dot" style="background:#2f67f6"></i>${esc(e.nome)} ${pct(calcMeta(e).geral)}</span>`).join('')}</div></div>`);} cobrarParts.push(renderNoChargeAlerts());
 const topVendaVend=bestLiveSalesEntity(vendedores,'venda_filial_vendedor_meta'); const topServVend=bestLiveSalesEntity(vendedores,'servico_filial_vendedor_ouro_fob'); const topVendaFil=bestLiveSalesEntity(filiais,'venda_filial_meta'); const topServFil=bestLiveSalesEntity(filiais,'servico_filial_ouro_fob');
-vendasParts.push(`<div class="glass panel sales-panel" style="margin-bottom:16px;padding:16px 18px"><div class="section-head" style="margin:0 0 10px"><div><h2 style="margin:0;font-size:20px">💲 Mural de vendas do dia</h2><div class="hint">Comparativos atuais de venda e serviço do dia/semana.</div></div></div><div class="legend-inline">${topVendaVend?`<span><i class="dot" style="background:#f97316"></i>Venda vendedor: ${esc(topVendaVend.ent.nome)} ${R(topVendaVend.val||0)}</span>`:''}${topServVend?`<span><i class="dot" style="background:#f59e0b"></i>Serviço vendedor: ${esc(topServVend.ent.nome)} ${R(topServVend.val||0)}</span>`:''}${topVendaFil?`<span><i class="dot" style="background:#fb923c"></i>Venda filial: ${esc(filialLabel(topVendaFil.ent.filial))} ${R(topVendaFil.val||0)}</span>`:''}${topServFil?`<span><i class="dot" style="background:#fdba74"></i>Serviço filial: ${esc(filialLabel(topServFil.ent.filial))} ${R(topServFil.val||0)}</span>`:''}</div></div>`);
-return `<div class="section-head" style="margin-bottom:8px"><div><h2>📌 Mural de cobrança</h2><div class="hint">Notificações e destaques do dia da cobrança.</div></div></div>${cobrarParts.join('')}<div class="section-head" style="margin:20px 0 8px"><div><h2>💲 Mural de vendas</h2><div class="hint">Comparativos de venda e serviço do dia/semana.</div></div></div>${vendasParts.join('')}`}
+vendasParts.push(`<div class="glass panel sales-panel" style="margin-bottom:16px;padding:16px 18px"><div class="section-head" style="margin:0 0 10px"><div><h2 style="margin:0;font-size:20px">ðŸ’² Mural de vendas do dia</h2><div class="hint">Comparativos atuais de venda e serviÃ§o do dia/semana.</div></div></div><div class="legend-inline">${topVendaVend?`<span><i class="dot" style="background:#f97316"></i>Venda vendedor: ${esc(topVendaVend.ent.nome)} ${R(topVendaVend.val||0)}</span>`:''}${topServVend?`<span><i class="dot" style="background:#f59e0b"></i>ServiÃ§o vendedor: ${esc(topServVend.ent.nome)} ${R(topServVend.val||0)}</span>`:''}${topVendaFil?`<span><i class="dot" style="background:#fb923c"></i>Venda filial: ${esc(filialLabel(topVendaFil.ent.filial))} ${R(topVendaFil.val||0)}</span>`:''}${topServFil?`<span><i class="dot" style="background:#fdba74"></i>ServiÃ§o filial: ${esc(filialLabel(topServFil.ent.filial))} ${R(topServFil.val||0)}</span>`:''}</div></div>`);
+return `<div class="section-head" style="margin-bottom:8px"><div><h2>ðŸ“Œ Mural de cobranÃ§a</h2><div class="hint">NotificaÃ§Ãµes e destaques do dia da cobranÃ§a.</div></div></div>${cobrarParts.join('')}<div class="section-head" style="margin:20px 0 8px"><div><h2>ðŸ’² Mural de vendas</h2><div class="hint">Comparativos de venda e serviÃ§o do dia/semana.</div></div></div>${vendasParts.join('')}`}
 
 function bindSpecialCards(){document.querySelectorAll('[data-action="cred-card"]').forEach(el=>{el.style.cursor='pointer';el.onclick=(ev)=>{ev.preventDefault();ev.stopPropagation();const node=ev.currentTarget.closest('[data-action="cred-card"]')||ev.currentTarget;const ds=node.dataset||{};openCrediaristaPanel(ds.login||'',ds.filial||'',ds.nome||'');return false};el.onkeydown=(ev)=>{if(ev.key==='Enter' || ev.key===' '){ev.preventDefault();const node=ev.currentTarget.closest('[data-action="cred-card"]')||ev.currentTarget;const ds=node.dataset||{};openCrediaristaPanel(ds.login||'',ds.filial||'',ds.nome||'')}}});document.querySelectorAll('[data-action="third-card"]').forEach(el=>{el.style.cursor='pointer';el.onclick=(ev)=>{ev.preventDefault();ev.stopPropagation();openThirdChargePanel();return false};el.onkeydown=(ev)=>{if(ev.key==='Enter' || ev.key===' '){ev.preventDefault();openThirdChargePanel()}}})}
-function renderList(){const entities=currentEntities();const title=mainTab==='filiais'?'🏬 Filiais':'👥 Colaboradores';const hint=`${entities.length} ${mainTab==='filiais'?'filiais':'colaboradores'} exibidos`; listSection.innerHTML=`${renderCampaignStrip()}${usuarioAtual?.tipo==='master'?renderHighlights():''}<div class="section-head"><div><h2>${title}</h2><div class="hint">Clique em qualquer card para abrir a tela individual completa.</div></div><div class="hint">${hint}</div></div><div class="grid-cards">${entities.map(renderEntityCard).join('')}</div>${renderGroupBars(entities)}`; bindSpecialCards()}
+function renderList(){const entities=currentEntities();const title=mainTab==='filiais'?'ðŸ¬ Filiais':'ðŸ‘¥ Colaboradores';const hint=`${entities.length} ${mainTab==='filiais'?'filiais':'colaboradores'} exibidos`; listSection.innerHTML=`${renderCampaignStrip()}${usuarioAtual?.tipo==='master'?renderHighlights():''}<div class="section-head"><div><h2>${title}</h2><div class="hint">Clique em qualquer card para abrir a tela individual completa.</div></div><div class="hint">${hint}</div></div><div class="grid-cards">${entities.map(renderEntityCard).join('')}</div>${renderGroupBars(entities)}`; bindSpecialCards()}
 function findEntity(ref){const n=String(ref?.nome||'').toLowerCase(); const f=String(ref?.filial||'').toUpperCase(); const t=String(ref?.type||'').toLowerCase(); if(t==='terceiro' || ref?.is_terceiro || n===String(COBRANCA10_NOME).toLowerCase() || n===String(COBRANCA10_LOGIN).toLowerCase() || f==='FTER'){return thirdChargeEntity()} if(t==='crediarista' || ref?.is_crediarista || n.startsWith('crediarista') || String(ref?.login||'').toLowerCase().startsWith('crediaristaf')){return crediaristaEntityByLogin(ref?.login||ref?.nome||ref?.filial)} if(ref.type==='filial'){return flattenFiliais().find(x=>x.filial===ref.filial)} return flattenVendedores().find(x=>x.filial===ref.filial && x.nome===ref.nome)}
-function renderTerceiroCommission(ent){const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista'); const baseCfg=isCred?entityConfig({type:'vendedor',nome:ent.nome,filial:ent.filial}):entityConfig({type:'vendedor',nome:COBRANCA10_NOME,filial:'FTER'}); const cfg=commissionCfg(baseCfg); const policy=(isCred?(cfg.camp_cob_crediarista||[]):(cfg.camp_cobranca_terceiro||[])); const policyOk=Array.isArray(policy)&&policy.length?policy:(isCred?defaultCampCrediarista():defaultCampTerceiro()); const byFaixa={atencao:{pct:0,cobrado:0,recebido:0,comissao:0},alerta:{pct:0,cobrado:0,recebido:0,comissao:0},grave:{pct:0,cobrado:0,recebido:0,comissao:0}}; policyOk.forEach(r=>{const fx=String(r.faixa||'').toLowerCase(); if(byFaixa[fx]) byFaixa[fx].pct=Number(String(r.pct||0).replace(',','.'))||0}); const mesAtual=new Date().toISOString().slice(0,7); const userKeys=isCred?[String(ent.login||'').toLowerCase(),String(ent.nome||'').toLowerCase()]:[COBRANCA10_NOME.toLowerCase(),COBRANCA10_LOGIN]; const cobrados=(COB_LOGS||[]).filter(x=>userKeys.includes(String(x.usuario||'').toLowerCase()) && String(x.server_time||'').slice(0,7)===mesAtual); const keys=new Set(cobrados.map(x=>cobrancaRowKey(x))); const srcCli=isCred?(CLIENTES_CREDIARISTA?.[String(ent.login||'').toLowerCase()]||{grave:[],alerta:[],atencao:[]}):(CLIENTES_TERCEIRO||{grave:[],alerta:[],atencao:[]}); const srcRec=isCred?(RECEBIMENTOS_CREDIARISTA?.[String(ent.login||'').toLowerCase()]||{grave:[],alerta:[],atencao:[]}):(RECEBIMENTOS_TERCEIRO||{grave:[],alerta:[],atencao:[]}); ['atencao','alerta','grave'].forEach(fx=>{byFaixa[fx].cobrado=(srcCli?.[fx]||[]).filter(r=>keys.has(cobrancaRowKey(r))).length; (srcRec?.[fx]||[]).forEach(r=>{const pagMes=String(parseDateBR(r.pagamento)||new Date()).slice(0,7); if(keys.has(cobrancaRowKey(r)) && pagMes===mesAtual){byFaixa[fx].recebido+=Number(r.pago||0)}}); byFaixa[fx].comissao=byFaixa[fx].recebido*(byFaixa[fx].pct/100)}); const total=Object.values(byFaixa).reduce((a,b)=>a+b.comissao,0); const item=(t,v,s='')=>`<div class="commission-item unlocked ${s}"><div class="k">${t}</div><div class="v">${v}</div></div>`; return `<div class="glass panel commission-card"><h3>💵 ${isCred?'Comissão crediarista':'Comissão cobrança terceiro'} <span class="note">· mês atual / pagamento dia 10 do próximo mês</span></h3><div class="commission-grid">${item('Atenção %',String(byFaixa.atencao.pct.toFixed(2)).replace('.',',')+'%')}${item('Alerta %',String(byFaixa.alerta.pct.toFixed(2)).replace('.',',')+'%')}${item('Grave %',String(byFaixa.grave.pct.toFixed(2)).replace('.',',')+'%')}${item('Recebido atenção',R(byFaixa.atencao.recebido||0))}${item('Recebido alerta',R(byFaixa.alerta.recebido||0))}${item('Recebido grave',R(byFaixa.grave.recebido||0))}${item('Comissão atenção',R(byFaixa.atencao.comissao||0))}${item('Comissão alerta',R(byFaixa.alerta.comissao||0))}${item('Comissão grave',R(byFaixa.grave.comissao||0))}${item('Total previsto',R(total||0),'total-final')}</div><div class="commission-note">A comissão reinicia a cada mês e o pagamento é previsto para o dia 10 do mês seguinte.</div></div>`}
+function renderTerceiroCommission(ent){const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista'); const baseCfg=isCred?entityConfig({type:'vendedor',nome:ent.nome,filial:ent.filial}):entityConfig({type:'vendedor',nome:COBRANCA10_NOME,filial:'FTER'}); const cfg=commissionCfg(baseCfg); const policy=(isCred?(cfg.camp_cob_crediarista||[]):(cfg.camp_cobranca_terceiro||[])); const policyOk=Array.isArray(policy)&&policy.length?policy:(isCred?defaultCampCrediarista():defaultCampTerceiro()); const byFaixa={atencao:{pct:0,cobrado:0,recebido:0,comissao:0},alerta:{pct:0,cobrado:0,recebido:0,comissao:0},grave:{pct:0,cobrado:0,recebido:0,comissao:0}}; policyOk.forEach(r=>{const fx=String(r.faixa||'').toLowerCase(); if(byFaixa[fx]) byFaixa[fx].pct=Number(String(r.pct||0).replace(',','.'))||0}); const mesAtual=new Date().toISOString().slice(0,7); const userKeys=isCred?[String(ent.login||'').toLowerCase(),String(ent.nome||'').toLowerCase()]:[COBRANCA10_NOME.toLowerCase(),COBRANCA10_LOGIN]; const cobrados=(COB_LOGS||[]).filter(x=>userKeys.includes(String(x.usuario||'').toLowerCase()) && String(x.server_time||'').slice(0,7)===mesAtual); const keys=new Set(cobrados.map(x=>cobrancaRowKey(x))); const srcCli=isCred?(CLIENTES_CREDIARISTA?.[String(ent.login||'').toLowerCase()]||{grave:[],alerta:[],atencao:[]}):(CLIENTES_TERCEIRO||{grave:[],alerta:[],atencao:[]}); const srcRec=isCred?(RECEBIMENTOS_CREDIARISTA?.[String(ent.login||'').toLowerCase()]||{grave:[],alerta:[],atencao:[]}):(RECEBIMENTOS_TERCEIRO||{grave:[],alerta:[],atencao:[]}); ['atencao','alerta','grave'].forEach(fx=>{byFaixa[fx].cobrado=(srcCli?.[fx]||[]).filter(r=>keys.has(cobrancaRowKey(r))).length; (srcRec?.[fx]||[]).forEach(r=>{const pagMes=String(parseDateBR(r.pagamento)||new Date()).slice(0,7); if(keys.has(cobrancaRowKey(r)) && pagMes===mesAtual){byFaixa[fx].recebido+=Number(r.pago||0)}}); byFaixa[fx].comissao=byFaixa[fx].recebido*(byFaixa[fx].pct/100)}); const total=Object.values(byFaixa).reduce((a,b)=>a+b.comissao,0); const item=(t,v,s='')=>`<div class="commission-item unlocked ${s}"><div class="k">${t}</div><div class="v">${v}</div></div>`; return `<div class="glass panel commission-card"><h3>ðŸ’µ ${isCred?'ComissÃ£o crediarista':'ComissÃ£o cobranÃ§a terceiro'} <span class="note">Â· mÃªs atual / pagamento dia 10 do prÃ³ximo mÃªs</span></h3><div class="commission-grid">${item('AtenÃ§Ã£o %',String(byFaixa.atencao.pct.toFixed(2)).replace('.',',')+'%')}${item('Alerta %',String(byFaixa.alerta.pct.toFixed(2)).replace('.',',')+'%')}${item('Grave %',String(byFaixa.grave.pct.toFixed(2)).replace('.',',')+'%')}${item('Recebido atenÃ§Ã£o',R(byFaixa.atencao.recebido||0))}${item('Recebido alerta',R(byFaixa.alerta.recebido||0))}${item('Recebido grave',R(byFaixa.grave.recebido||0))}${item('ComissÃ£o atenÃ§Ã£o',R(byFaixa.atencao.comissao||0))}${item('ComissÃ£o alerta',R(byFaixa.alerta.comissao||0))}${item('ComissÃ£o grave',R(byFaixa.grave.comissao||0))}${item('Total previsto',R(total||0),'total-final')}</div><div class="commission-note">A comissÃ£o reinicia a cada mÃªs e o pagamento Ã© previsto para o dia 10 do mÃªs seguinte.</div></div>`}
 function openCrediaristaPanel(login, filial, nome){
   const filialNorm=String(filial||'').toUpperCase();
   const loginNorm=String(login||crediaristaLoginByFilial(filialNorm)||'').toLowerCase();
   const nomeNorm=String(nome||`CREDIARISTA${filialNorm}`);
-  // Carteira: usa CLIENTES_CREDIARISTA (Python já espelhou a base da filial)
+  // Carteira: usa CLIENTES_CREDIARISTA (Python jÃ¡ espelhou a base da filial)
   const src=(CLIENTES_CREDIARISTA?.[loginNorm])||CLIENTES_FIL?.[filialNorm]||{grave:[],alerta:[],atencao:[]};
   const rsrc=(RECEBIMENTOS_CREDIARISTA?.[loginNorm])||{grave:[],alerta:[],atencao:[]};
   const pend=[...(src.grave||[]),...(src.alerta||[]),...(src.atencao||[])].reduce((a,b)=>a+Number(b.pendente||0),0);
@@ -6608,7 +6608,7 @@ function openCrediaristaPanel(login, filial, nome){
 }
 function openThirdChargePanel(){const ent=thirdChargeEntity(); currentDetailRef={type:'terceiro',filial:'FTER',nome:ent.nome}; mascotCongrats(ent); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); renderTerceiroDetail(ent)}
 
-// Clique blindado dos cards especiais: não depende de onclick inline.
+// Clique blindado dos cards especiais: nÃ£o depende de onclick inline.
 document.addEventListener('click', function(ev){
   const cred = ev.target.closest('[data-action="cred-card"]');
   if(cred){
@@ -6629,11 +6629,11 @@ document.addEventListener('click', function(ev){
 window.openCrediaristaPanel=openCrediaristaPanel;
 window.openThirdChargePanel=openThirdChargePanel;
 
-function renderTerceiroDetail(ent){const src=getClientesEnt(ent); const totalTit=(src.grave?.length||0)+(src.alerta?.length||0)+(src.atencao?.length||0); detailScreen.innerHTML=`${renderUpdateStrip()}<div class="back-row"><button class="btn soft" onclick="backToMain()">⬅️ Voltar</button><div><h2>${esc(ent.nome)}</h2><div class="sub">${ent.is_crediarista?`Painel de cobrança da filial ${ent.filial} · base configurada ${Number(ent.pct_base||100)}% · recebido só por cobrança própria paga`:`Painel de cobrança terceirizada · percentual global sem duplicidade`}</div></div><div class="badge">${ent.is_crediarista?'🧾 Crediarista':'🤝 Cobrança terceiro'}</div></div><div class="detail-top"><div class="glass panel"><h3>🧾 Resumo da carteira</h3><div class="metrics-grid"><div class="metric"><div class="k">Títulos</div><div class="v">${totalTit}</div></div><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">Cobrado hoje</div><div class="v">${getCobradosHoje(ent).length}</div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave ${src.grave?.length||0}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta ${src.alerta?.length||0}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção ${src.atencao?.length||0}</span></div></div><div>${renderTerceiroCommission(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span>clique para abrir</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span>clique para abrir</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
+function renderTerceiroDetail(ent){const src=getClientesEnt(ent); const totalTit=(src.grave?.length||0)+(src.alerta?.length||0)+(src.atencao?.length||0); detailScreen.innerHTML=`${renderUpdateStrip()}<div class="back-row"><button class="btn soft" onclick="backToMain()">â¬…ï¸ Voltar</button><div><h2>${esc(ent.nome)}</h2><div class="sub">${ent.is_crediarista?`Painel de cobranÃ§a da filial ${ent.filial} Â· base configurada ${Number(ent.pct_base||100)}% Â· recebido sÃ³ por cobranÃ§a prÃ³pria paga`:`Painel de cobranÃ§a terceirizada Â· percentual global sem duplicidade`}</div></div><div class="badge">${ent.is_crediarista?'ðŸ§¾ Crediarista':'ðŸ¤ CobranÃ§a terceiro'}</div></div><div class="detail-top"><div class="glass panel"><h3>ðŸ§¾ Resumo da carteira</h3><div class="metrics-grid"><div class="metric"><div class="k">TÃ­tulos</div><div class="v">${totalTit}</div></div><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">Cobrado hoje</div><div class="v">${getCobradosHoje(ent).length}</div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave ${src.grave?.length||0}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta ${src.alerta?.length||0}</span><span><i class="dot" style="background:var(--yellow)"></i>AtenÃ§Ã£o ${src.atencao?.length||0}</span></div></div><div>${renderTerceiroCommission(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">ðŸ’° Recebimentos por faixa <span>clique para abrir</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">ðŸ§¾ RelatÃ³rio de cobranÃ§as <span>clique para abrir</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
 
-// ── PAINEL CREDIARISTA ─────────────────────────────────────────────────────
-// Mostra: resumo da carteira espelhada + meta de cobrança + recebimentos + cobranças
-// NÃO mostra: painel de vendas, comissão mercantil, campanhas de venda
+// â”€â”€ PAINEL CREDIARISTA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Mostra: resumo da carteira espelhada + meta de cobranÃ§a + recebimentos + cobranÃ§as
+// NÃƒO mostra: painel de vendas, comissÃ£o mercantil, campanhas de venda
 function renderCrediaristaDetail(ent){
   const src=getClientesEnt(ent);
   const totalTit=(src.grave?.length||0)+(src.alerta?.length||0)+(src.atencao?.length||0);
@@ -6642,54 +6642,54 @@ function renderCrediaristaDetail(ent){
     ${renderInboxBanner()}
     ${renderUpdateStrip()}
     <div class="back-row">
-      <button class="btn soft" onclick="backToMain()">⬅️ Voltar</button>
+      <button class="btn soft" onclick="backToMain()">â¬…ï¸ Voltar</button>
       <div>
         <h2>${esc(ent.nome)}</h2>
-        <div class="sub">Painel de cobrança espelhado da filial ${esc(ent.filial)} · mesma base do gerente/filial em tempo real</div>
+        <div class="sub">Painel de cobranÃ§a espelhado da filial ${esc(ent.filial)} Â· mesma base do gerente/filial em tempo real</div>
       </div>
-      <div class="badge">🧾 Crediarista</div>
+      <div class="badge">ðŸ§¾ Crediarista</div>
     </div>
     <div class="detail-top">
       <div class="glass panel">
-        <h3>🎯 Meta de cobrança <span class="note">· espelhada da filial</span></h3>
+        <h3>ðŸŽ¯ Meta de cobranÃ§a <span class="note">Â· espelhada da filial</span></h3>
         <div class="mega-progress">
           <div class="ring-wrap">${renderPiggyBank(meta.geral)}</div>
           <div>
             <div class="metrics-grid">
-              <div class="metric"><div class="k">Títulos na carteira</div><div class="v">${totalTit}</div></div>
+              <div class="metric"><div class="k">TÃ­tulos na carteira</div><div class="v">${totalTit}</div></div>
               <div class="metric"><div class="k">Pendente total</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div>
               <div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div>
               <div class="metric"><div class="k">Cobrado hoje</div><div class="v">${getCobradosHoje(ent).length}</div></div>
             </div>
             <div class="legend-inline" style="margin-top:12px">
-              <span><i class="dot" style="background:var(--red)"></i>Grave ${src.grave?.length||0} títulos</span>
-              <span><i class="dot" style="background:var(--orange)"></i>Alerta ${src.alerta?.length||0} títulos</span>
-              <span><i class="dot" style="background:var(--yellow)"></i>Atenção ${src.atencao?.length||0} títulos</span>
+              <span><i class="dot" style="background:var(--red)"></i>Grave ${src.grave?.length||0} tÃ­tulos</span>
+              <span><i class="dot" style="background:var(--orange)"></i>Alerta ${src.alerta?.length||0} tÃ­tulos</span>
+              <span><i class="dot" style="background:var(--yellow)"></i>AtenÃ§Ã£o ${src.atencao?.length||0} tÃ­tulos</span>
             </div>
           </div>
         </div>
         <div class="meta-grid">
           ${renderMetaBox('Grave','var(--red)',meta.grave)}
           ${renderMetaBox('Alerta','var(--orange)',meta.alerta)}
-          ${renderMetaBox('Atenção','var(--yellow)',meta.atencao)}
+          ${renderMetaBox('AtenÃ§Ã£o','var(--yellow)',meta.atencao)}
           ${renderMetaBox('Meta geral','var(--blue)',{perc:meta.geral,alvo:meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,rec:meta.grave.rec+meta.alerta.rec+meta.atencao.rec})}
         </div>
-        <div style="margin-top:14px">${renderMascotStatus(meta.geral,'Cobrança')}</div>
+        <div style="margin-top:14px">${renderMascotStatus(meta.geral,'CobranÃ§a')}</div>
       </div>
       <div>${renderTerceiroCommission(ent)}</div>
     </div>
     <div class="accordion">
-      <div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span>clique para abrir</span></div>
+      <div class="acc-head" onclick="toggleAcc(this)">ðŸ’° Recebimentos por faixa <span>clique para abrir</span></div>
       <div class="acc-body">${renderRecebimentos(ent)}</div>
     </div>
     <div class="accordion">
-      <div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span>clique para abrir</span></div>
+      <div class="acc-head" onclick="toggleAcc(this)">ðŸ§¾ RelatÃ³rio de cobranÃ§as <span>clique para abrir</span></div>
       <div class="acc-body">${renderCobrancasEnt(ent)}</div>
     </div>
   `;
 }
 
-function openEntity(ref){if(ref && (ref.type==='crediarista' || ref.is_crediarista)){return openCrediaristaPanel(ref.login||'', ref.filial||'', ref.nome||'')} const ent=findEntity(ref); if(!ent) return; currentDetailRef={type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''}; mascotCongrats(ent); try{renderLaranjitoNotify(); showLaranjitoOncePerAccess()}catch(e){}; document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(ent.is_terceiro || ent.type==='terceiro'){return renderTerceiroDetail(ent)} if(ent.is_crediarista || ent.type==='crediarista'){return openCrediaristaPanel(ent.login||'', ent.filial||'', ent.nome||'')} const meta=calcMeta(ent); const bonus=getBonus(meta.cfg,meta.geral); const deltaVal=Number(ent.var_pago_delta||0); const prevBase=Math.max(Math.abs(Number(ent.pago||0)-deltaVal),1); const pctFallback=(Math.abs(deltaVal)/prevBase)*100; const compPerc=(ent.var_pago_perc==null || Math.abs(Number(ent.var_pago_perc||0))<0.01)?pctFallback:Math.abs(Number(ent.var_pago_perc||0)); detailScreen.innerHTML=`${usuarioAtual && usuarioAtual.tipo!=='master' ? renderInboxBanner() : ''}${renderUpdateStrip()}<div class="back-row"><button class="btn soft" onclick="backToMain()">⬅️ Voltar</button><div><h2>${ent.type==='filial'?filialLabel(ent.filial):esc(ent.nome)}</h2><div class="sub">${ent.type==='filial'?'Painel individual da filial':'Painel individual do vendedor'} · ${ent.filial}</div></div><div class="badge">${ent.type==='filial'?'🏬 Filial':'👤 Vendedor'}</div></div><div class="detail-top"><div class="glass panel"><h3>🎯 Meta do mês <span class="note">· Não acumulativo</span></h3><div class="mega-progress"><div class="ring-wrap">${renderPiggyBank(meta.geral)}</div><div><div class="metrics-grid"><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">% da filial</div><div class="v">${pct(ent.perc_filial||100)}</div></div><div class="metric"><div class="k">Configuração usada</div><div class="v">${Number(meta.cfg.grave_pct||0)}/${Number(meta.cfg.alerta_pct||0)}/${Number(meta.cfg.atencao_pct||0)}</div></div><div class="metric"><div class="k">Comparado a ontem</div><div class="v" style="font-size:16px">${renderDeltaPill(ent.var_pago_delta,compPerc)} <span>${R(Math.abs(Number(ent.var_pago_delta||0)))}</span></div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave alvo ${R(meta.grave.alvo)} · recebido ${R(meta.grave.rec)}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta alvo ${R(meta.alerta.alvo)} · recebido ${R(meta.alerta.rec)}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção alvo ${R(meta.atencao.alvo)} · recebido ${R(meta.atencao.rec)}</span></div></div></div><div class="meta-grid">${renderMetaBox('Grave','var(--red)',meta.grave)}${renderMetaBox('Alerta','var(--orange)',meta.alerta)}${renderMetaBox('Atenção','var(--yellow)',meta.atencao)}${renderMetaBox('Meta geral','var(--blue)',{perc:meta.geral,alvo:meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,rec:meta.grave.rec+meta.alerta.rec+meta.atencao.rec})}</div><div style="height:18px"></div><h3>🌊 Gráfico Geral Contas a Receber</h3>${renderSingleBars(ent,meta,true)}<div style="height:16px"></div><div class="glass panel"><h3>🏆 Bônus e premiações <span class="note">· Não acumulativo</span></h3>${renderBonusBox(meta.cfg,meta.geral)}</div></div><div>${renderSalesPanel(ent)}<div style="height:16px"></div>${renderCommissionSummary(ent)}<div style="height:16px"></div>${renderCampaignSummary(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span>clique para ${'abrir'}</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span>clique para ${'abrir'}</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
+function openEntity(ref){if(ref && (ref.type==='crediarista' || ref.is_crediarista)){return openCrediaristaPanel(ref.login||'', ref.filial||'', ref.nome||'')} const ent=findEntity(ref); if(!ent) return; currentDetailRef={type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''}; mascotCongrats(ent); try{renderLaranjitoNotify(); showLaranjitoOncePerAccess()}catch(e){}; document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(ent.is_terceiro || ent.type==='terceiro'){return renderTerceiroDetail(ent)} if(ent.is_crediarista || ent.type==='crediarista'){return openCrediaristaPanel(ent.login||'', ent.filial||'', ent.nome||'')} const meta=calcMeta(ent); const bonus=getBonus(meta.cfg,meta.geral); const deltaVal=Number(ent.var_pago_delta||0); const prevBase=Math.max(Math.abs(Number(ent.pago||0)-deltaVal),1); const pctFallback=(Math.abs(deltaVal)/prevBase)*100; const compPerc=(ent.var_pago_perc==null || Math.abs(Number(ent.var_pago_perc||0))<0.01)?pctFallback:Math.abs(Number(ent.var_pago_perc||0)); detailScreen.innerHTML=`${usuarioAtual && usuarioAtual.tipo!=='master' ? renderInboxBanner() : ''}${renderUpdateStrip()}<div class="back-row"><button class="btn soft" onclick="backToMain()">â¬…ï¸ Voltar</button><div><h2>${ent.type==='filial'?filialLabel(ent.filial):esc(ent.nome)}</h2><div class="sub">${ent.type==='filial'?'Painel individual da filial':'Painel individual do vendedor'} Â· ${ent.filial}</div></div><div class="badge">${ent.type==='filial'?'ðŸ¬ Filial':'ðŸ‘¤ Vendedor'}</div></div><div class="detail-top"><div class="glass panel"><h3>ðŸŽ¯ Meta do mÃªs <span class="note">Â· NÃ£o acumulativo</span></h3><div class="mega-progress"><div class="ring-wrap">${renderPiggyBank(meta.geral)}</div><div><div class="metrics-grid"><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">% da filial</div><div class="v">${pct(ent.perc_filial||100)}</div></div><div class="metric"><div class="k">ConfiguraÃ§Ã£o usada</div><div class="v">${Number(meta.cfg.grave_pct||0)}/${Number(meta.cfg.alerta_pct||0)}/${Number(meta.cfg.atencao_pct||0)}</div></div><div class="metric"><div class="k">Comparado a ontem</div><div class="v" style="font-size:16px">${renderDeltaPill(ent.var_pago_delta,compPerc)} <span>${R(Math.abs(Number(ent.var_pago_delta||0)))}</span></div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave alvo ${R(meta.grave.alvo)} Â· recebido ${R(meta.grave.rec)}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta alvo ${R(meta.alerta.alvo)} Â· recebido ${R(meta.alerta.rec)}</span><span><i class="dot" style="background:var(--yellow)"></i>AtenÃ§Ã£o alvo ${R(meta.atencao.alvo)} Â· recebido ${R(meta.atencao.rec)}</span></div></div></div><div class="meta-grid">${renderMetaBox('Grave','var(--red)',meta.grave)}${renderMetaBox('Alerta','var(--orange)',meta.alerta)}${renderMetaBox('AtenÃ§Ã£o','var(--yellow)',meta.atencao)}${renderMetaBox('Meta geral','var(--blue)',{perc:meta.geral,alvo:meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,rec:meta.grave.rec+meta.alerta.rec+meta.atencao.rec})}</div><div style="height:18px"></div><h3>ðŸŒŠ GrÃ¡fico Geral Contas a Receber</h3>${renderSingleBars(ent,meta,true)}<div style="height:16px"></div><div class="glass panel"><h3>ðŸ† BÃ´nus e premiaÃ§Ãµes <span class="note">Â· NÃ£o acumulativo</span></h3>${renderBonusBox(meta.cfg,meta.geral)}</div></div><div>${renderSalesPanel(ent)}<div style="height:16px"></div>${renderCommissionSummary(ent)}<div style="height:16px"></div>${renderCampaignSummary(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">ðŸ’° Recebimentos por faixa <span>clique para ${'abrir'}</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">ðŸ§¾ RelatÃ³rio de cobranÃ§as <span>clique para ${'abrir'}</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
 function canVerComissionamento(){return usuarioAtual?.tipo==='master'}
 function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';
   const c=calcCommissionSummary(ent);
@@ -6698,9 +6698,9 @@ function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';
   const moneyCell=(title,val,locked=false,extra='')=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''} ${extra}"><div class="k">${title}</div><div class="v">${R(val||0)}</div></div>`;
   const pctCell=(title,val,locked=false)=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''}"><div class="k">${title}</div><div class="v">${String(Number(val||0).toFixed(2)).replace('.',',')}%</div></div>`;
   const rentNote = c.rentUnlocked
-    ? `Rentabilidade atual ${String(Number(c.rentAtual||0).toFixed(2)).replace('.',',')}% · faixa aplicada ${c.rentFaixaTxt}.`
-    : `Rentabilidade atual ${String(Number(c.rentAtual||0).toFixed(2)).replace('.',',')}% · bloqueada até bater 50% da meta de cobrança.`;
-  return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,!(c.rentUnlocked && c.rentAtual>=48))}${moneyCell('Rentab 52,15%',c.rent52,!(c.rentUnlocked && c.rentAtual>=52.15))}${moneyCell('Rentab 55,50%',c.rent55,!(c.rentUnlocked && c.rentAtual>=55.50))}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo vendas ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)} · rentabilidades liberam ao bater 50% da meta de cobrança. ${rentNote}</div></div>`
+    ? `Rentabilidade atual ${String(Number(c.rentAtual||0).toFixed(2)).replace('.',',')}% Â· faixa aplicada ${c.rentFaixaTxt}.`
+    : `Rentabilidade atual ${String(Number(c.rentAtual||0).toFixed(2)).replace('.',',')}% Â· bloqueada atÃ© bater 50% da meta de cobranÃ§a.`;
+  return `<div class="glass panel commission-card"><h3>ðŸ’µ Comissionamento previsto <span class="note">Â· calculado pela polÃ­tica salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito estÃ¡ comemorando sua liberaÃ§Ã£o de comissÃ£o/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissÃ£o mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviÃ§os',c.servPct,!c.elegivelServicos)}${pctCell('% caminhÃ£o',c.camPct,!c.elegivelServicos)}${moneyCell('ComissÃ£o vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('ComissÃ£o serviÃ§os',c.servicosComissao,!c.elegivelServicos)}${moneyCell('ComissÃ£o caminhÃ£o',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('BÃ´nus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,!(c.rentUnlocked && c.rentAtual>=48))}${moneyCell('Rentab 52,15%',c.rent52,!(c.rentUnlocked && c.rentAtual>=52.15))}${moneyCell('Rentab 55,50%',c.rent55,!(c.rentUnlocked && c.rentAtual>=55.50))}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} Â· CaminhÃ£o abatido: ${R(c.camReal||0)} Â· Mercantil lÃ­quido para comissÃ£o: ${R(c.vendaReal||0)} Â· ServiÃ§o: ${R(c.servReal||0)}. MÃ­nimo vendas ${pct(c.minVenda)} Â· mÃ­nimo serviÃ§os/caminhÃ£o ${pct(c.minServico)} Â· rentabilidades liberam ao bater 50% da meta de cobranÃ§a. ${rentNote}</div></div>`
 }
 
 function backToMain(){currentDetailRef=null; try{renderLaranjitoNotify()}catch(e){}; detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden')}
@@ -6740,10 +6740,10 @@ function servicosEntidade(ent){
 function renderServicosEntidade(ent){
   const rows=servicosEntidade(ent).filter(x=>Number(x.real_total||0)>0);
   if(!rows.length){
-    return `<div class="glass panel"><h3>🛠️ Serviços por tipo</h3><div class="empty">Nenhum serviço localizado para ${ent?.type==='filial'?'esta filial':'este vendedor'} no relatório mensal.</div></div>`;
+    return `<div class="glass panel"><h3>ðŸ› ï¸ ServiÃ§os por tipo</h3><div class="empty">Nenhum serviÃ§o localizado para ${ent?.type==='filial'?'esta filial':'este vendedor'} no relatÃ³rio mensal.</div></div>`;
   }
   const total=rows.reduce((a,b)=>a+Number(b.real_total||0),0);
-  return `<div class="glass panel"><div class="section-head" style="margin:0 0 10px"><div><h3 style="margin:0">🛠️ Serviços por tipo</h3><div class="hint">Relatório real de serviços do mês atual · total oficial ${R(total)}</div></div></div><div class="metrics-grid">${rows.slice(0,8).map(r=>`<div class="metric"><div class="k">${esc(String(r.servico||'Serviço').slice(0,34))}</div><div class="v" style="color:var(--blue-400);font-size:18px">${R(r.real_total||0)}</div></div>`).join('')}</div></div>`;
+  return `<div class="glass panel"><div class="section-head" style="margin:0 0 10px"><div><h3 style="margin:0">ðŸ› ï¸ ServiÃ§os por tipo</h3><div class="hint">RelatÃ³rio real de serviÃ§os do mÃªs atual Â· total oficial ${R(total)}</div></div></div><div class="metrics-grid">${rows.slice(0,8).map(r=>`<div class="metric"><div class="k">${esc(String(r.servico||'ServiÃ§o').slice(0,34))}</div><div class="v" style="color:var(--blue-400);font-size:18px">${R(r.real_total||0)}</div></div>`).join('')}</div></div>`;
 }
 
 function servicosEntidadeTotal(ent){
@@ -6754,7 +6754,7 @@ function serviceOfficialOverride(ent,key,row){
   const total=servicosEntidadeTotal(ent);
   if(!(total>0)) return null;
   const metaTotalStr=salesCell(row,['Meta (R$) Total','Meta(R$) Total']);
-  const metaPeriodoStr=salesCell(row,['Meta (R$) Período','Meta(R$) Período']);
+  const metaPeriodoStr=salesCell(row,['Meta (R$) PerÃ­odo','Meta(R$) PerÃ­odo']);
   const metaTotal=salesNum(metaTotalStr);
   const metaPeriodo=salesNum(metaPeriodoStr);
   return {
@@ -6762,7 +6762,7 @@ function serviceOfficialOverride(ent,key,row){
     realizado: R(total),
     atingidoTotal: metaTotal>0 ? pct(total/metaTotal*100) : '0%',
     atingidoPeriodo: metaPeriodo>0 ? pct(total/metaPeriodo*100) : '0%',
-    nota: 'relatório serviços'
+    nota: 'relatÃ³rio serviÃ§os'
   };
 }
 
@@ -6780,9 +6780,9 @@ function renderSalesRows(ent, key, label){
   let rows=getSalesRows(ent,key);
   if(!rows.length) return `<div class="sales-card"><h4>${label}</h4><div class="sales-empty">Sem dados desta meta para ${ent.type==='filial'?'esta filial':'este vendedor'}.</div></div>`;
 
-  // Para SERVIÇOS, o realizado oficial vem do relatório real de serviços por tipo.
+  // Para SERVIÃ‡OS, o realizado oficial vem do relatÃ³rio real de serviÃ§os por tipo.
   // A meta do SGI permanece como alvo, mas os campos "Realizado" e "% atingido" passam a bater
-  // exatamente com o painel "Serviços por tipo" da mesma filial/vendedor.
+  // exatamente com o painel "ServiÃ§os por tipo" da mesma filial/vendedor.
   if(String(key||'').includes('servico') && servicosEntidadeTotal(ent)>0){
     rows=[rows[0]];
   }
@@ -6790,27 +6790,27 @@ function renderSalesRows(ent, key, label){
   return `<div class="sales-card"><h4>${label}</h4><div class="sales-list">${rows.map(r=>{
     const srv=serviceOfficialOverride(ent,key,r);
     const ating=srv ? srv.atingidoTotal : salesCell(r,['Atingido Total']);
-    const atingPeriodo=srv ? srv.atingidoPeriodo : salesCell(r,['Atingido Período']);
+    const atingPeriodo=srv ? srv.atingidoPeriodo : salesCell(r,['Atingido PerÃ­odo']);
     const realizadoTotal=srv ? srv.realizado : esc(salesCell(r,['Realizado (R$) Total','Realizado(R$) Total']));
-    const realizadoPeriodo=srv ? srv.realizado : esc(salesCell(r,['Realizado (R$) Período','Realizado(R$) Período']));
+    const realizadoPeriodo=srv ? srv.realizado : esc(salesCell(r,['Realizado (R$) PerÃ­odo','Realizado(R$) PerÃ­odo']));
     const proj=salesCell(r,['Projetado (R$)','Projetado(R$)']);
     const showMascot=(parseFloat(String(ating).replace('%','').replace(',','.'))||0)>=100;
-    const title=srv ? `${salesTitleForRow(ent,r,key)} · relatório serviços` : salesTitleForRow(ent,r,key);
-    return `<div class="sales-row"><div class="sales-row-title">${esc(title)}</div><div class="sales-metrics">${renderSalesMini('Meta total',esc(salesCell(r,['Meta (R$) Total','Meta(R$) Total'])),'meta')}${renderSalesMini('Realizado total',realizadoTotal,'realizado')}${renderSalesMini('Atingido total',esc(ating),'atingido',showMascot)}${renderSalesMini('Meta período',esc(salesCell(r,['Meta (R$) Período','Meta(R$) Período'])),'meta')}${renderSalesMini('Realizado período',realizadoPeriodo,'realizado')}${renderSalesMini('Atingido período',esc(atingPeriodo),'atingido')}${renderSalesMini('Projetado',esc(proj),'projetado',showMascot)}${renderSalesMini(ent.type==='filial'?'Filial':'Vendedor',esc(salesCell(r, ent.type==='filial'?['Filial']:['Vendedor_2','Vendedor'])),'realizado',false,true)}</div></div>`;
+    const title=srv ? `${salesTitleForRow(ent,r,key)} Â· relatÃ³rio serviÃ§os` : salesTitleForRow(ent,r,key);
+    return `<div class="sales-row"><div class="sales-row-title">${esc(title)}</div><div class="sales-metrics">${renderSalesMini('Meta total',esc(salesCell(r,['Meta (R$) Total','Meta(R$) Total'])),'meta')}${renderSalesMini('Realizado total',realizadoTotal,'realizado')}${renderSalesMini('Atingido total',esc(ating),'atingido',showMascot)}${renderSalesMini('Meta perÃ­odo',esc(salesCell(r,['Meta (R$) PerÃ­odo','Meta(R$) PerÃ­odo'])),'meta')}${renderSalesMini('Realizado perÃ­odo',realizadoPeriodo,'realizado')}${renderSalesMini('Atingido perÃ­odo',esc(atingPeriodo),'atingido')}${renderSalesMini('Projetado',esc(proj),'projetado',showMascot)}${renderSalesMini(ent.type==='filial'?'Filial':'Vendedor',esc(salesCell(r, ent.type==='filial'?['Filial']:['Vendedor_2','Vendedor'])),'realizado',false,true)}</div></div>`;
   }).join('')}</div></div>`;
 }
 function summarizeSalesCard(ent){const keys=ent.type==='filial'?['venda_filial_meta']:['venda_filial_vendedor_meta']; let best=null; keys.forEach(k=>{getSalesRows(ent,k).forEach(r=>{const ating=salesCell(r,['Atingido Total']); const n=parseFloat(String(ating).replace('%','').replace(',','.'))||0; if(!best || n>best.n){best={row:r,key:k,n};}})}); return best}
-function renderSalesCardSummary(ent){const s=summarizeSalesCard(ent); if(!s) return ''; const row=s.row; const showMascot=s.n>=100; return `<div class="card-sales"><div class="card-sales-title">💲 Vendas e metas</div><div class="card-sales-grid">${renderSalesMini('Realizado total',esc(salesCell(row,['Realizado (R$) Total','Realizado(R$) Total'])),'realizado')}${renderSalesMini('Atingido total',esc(salesCell(row,['Atingido Total'])),'atingido',showMascot)}${renderSalesMini('Projetado',esc(salesCell(row,['Projetado (R$)','Projetado(R$)'])),'projetado',showMascot)}</div></div>`}
+function renderSalesCardSummary(ent){const s=summarizeSalesCard(ent); if(!s) return ''; const row=s.row; const showMascot=s.n>=100; return `<div class="card-sales"><div class="card-sales-title">ðŸ’² Vendas e metas</div><div class="card-sales-grid">${renderSalesMini('Realizado total',esc(salesCell(row,['Realizado (R$) Total','Realizado(R$) Total'])),'realizado')}${renderSalesMini('Atingido total',esc(salesCell(row,['Atingido Total'])),'atingido',showMascot)}${renderSalesMini('Projetado',esc(salesCell(row,['Projetado (R$)','Projetado(R$)'])),'projetado',showMascot)}</div></div>`}
 const MASCOTE_FELIZ='https://moveisdolar.com.br/colaborador/mascote%20feliz1.png';
 const MASCOTE_PREOC='https://moveisdolar.com.br/colaborador/mascote%20preocupado1.png';
 const MASCOTE_TRISTE='https://moveisdolar.com.br/colaborador/mascote%20triste1.png';
-function mascotByPerc(p){const n=Number(p||0); if(n>=80) return {src:MASCOTE_FELIZ,txt:'Laranjito feliz: meta em ótimo ritmo!'}; if(n>=60) return {src:MASCOTE_PREOC,txt:'Laranjito preocupado: atenção para a meta.'}; return {src:MASCOTE_TRISTE,txt:'Laranjito triste: precisa reagir já!'} }
+function mascotByPerc(p){const n=Number(p||0); if(n>=80) return {src:MASCOTE_FELIZ,txt:'Laranjito feliz: meta em Ã³timo ritmo!'}; if(n>=60) return {src:MASCOTE_PREOC,txt:'Laranjito preocupado: atenÃ§Ã£o para a meta.'}; return {src:MASCOTE_TRISTE,txt:'Laranjito triste: precisa reagir jÃ¡!'} }
 function renderMascotStatus(p,label=''){const m=mascotByPerc(p); return `<div class="mascot-status"><img src="${m.src}" alt=""><div><strong>${label?label+': ':''}${m.txt}</strong></div></div>`}
-function renderDualMascotStatus(ent){const metaCob=calcMeta(ent).geral||0; if(ent?.is_terceiro || ent?.type==='terceiro'){return `<div>${renderMascotStatus(metaCob,'Cobrança terceiro')}</div>`} const vendaRow=(getSalesRows(ent, ent.type==='filial'?'venda_filial_meta':'venda_filial_vendedor_meta')[0])||null; const vendaPerc=salesNum(salesCell(vendaRow,['Atingido Total'])); return `<div>${renderMascotStatus(metaCob,'Cobrança')}${renderMascotStatus(vendaPerc,'Vendas/serviços')}</div>`}
-function salesCfgHeader(ent){const c=calcMeta(ent).cfg||{}; return ent.type==='filial' ? `mín. vendas ${Number(c.gerente_vendas_min_pct||0)}% · mín. serviços ${Number(c.gerente_servicos_min_pct||0)}%` : `mín. vendas ${Number(c.vendas_min_pct||0)}% · mín. serviços ${Number(c.servicos_min_pct||0)}%`}
+function renderDualMascotStatus(ent){const metaCob=calcMeta(ent).geral||0; if(ent?.is_terceiro || ent?.type==='terceiro'){return `<div>${renderMascotStatus(metaCob,'CobranÃ§a terceiro')}</div>`} const vendaRow=(getSalesRows(ent, ent.type==='filial'?'venda_filial_meta':'venda_filial_vendedor_meta')[0])||null; const vendaPerc=salesNum(salesCell(vendaRow,['Atingido Total'])); return `<div>${renderMascotStatus(metaCob,'CobranÃ§a')}${renderMascotStatus(vendaPerc,'Vendas/serviÃ§os')}</div>`}
+function salesCfgHeader(ent){const c=calcMeta(ent).cfg||{}; return ent.type==='filial' ? `mÃ­n. vendas ${Number(c.gerente_vendas_min_pct||0)}% Â· mÃ­n. serviÃ§os ${Number(c.gerente_servicos_min_pct||0)}%` : `mÃ­n. vendas ${Number(c.vendas_min_pct||0)}% Â· mÃ­n. serviÃ§os ${Number(c.servicos_min_pct||0)}%`}
 function rentabilidadeAtualPct(ent){return Number(ent?.rentabilidade_pct||0)}
-function renderRentabilidadeBadge(ent){const r=rentabilidadeAtualPct(ent); const txt=r?`${r.toFixed(2).replace('.',',')}%`:'Sem dado'; return `<div class="rent-badge"><span>📊 Rentabilidade atual</span><strong>${txt}</strong></div>`}
-function renderSalesPanel(ent){const blocks = ent.type==='filial' ? [['venda_filial_meta','📈 Venda · Meta Filial'],['servico_filial_ouro_fob','🛠️ Serviço · Ouro / FOB'],['venda_filial_subgrupo_20k','🚚 Venda · Caminhão 20K / Subgrupo']] : [['venda_filial_vendedor_meta','📈 Venda · Meta Vendedor'],['servico_filial_vendedor_ouro_fob','🛠️ Serviço · Ouro / FOB Vendedor'],['venda_vendedor_subgrupo_20k','🚚 Venda · Caminhão 20K / Subgrupo']]; return `<div class="glass panel sales-panel"><div class="section-head" style="margin:0 0 10px;align-items:flex-start"><div><h3 style="margin:0">💲 Vendas e metas <span class="sales-note">· SGI / mês atual</span></h3><div style="margin-top:8px">${renderRentabilidadeBadge(ent)}</div></div><div class="sales-note" style="text-align:right;max-width:280px">${salesCfgHeader(ent)}</div></div>${renderDualMascotStatus(ent)}<div class="sales-stack">${blocks.map(([k,t])=>renderSalesRows(ent,k,t)).join('')}</div><div style="height:14px"></div>${renderServicosEntidade(ent)}</div>`}
+function renderRentabilidadeBadge(ent){const r=rentabilidadeAtualPct(ent); const txt=r?`${r.toFixed(2).replace('.',',')}%`:'Sem dado'; return `<div class="rent-badge"><span>ðŸ“Š Rentabilidade atual</span><strong>${txt}</strong></div>`}
+function renderSalesPanel(ent){const blocks = ent.type==='filial' ? [['venda_filial_meta','ðŸ“ˆ Venda Â· Meta Filial'],['servico_filial_ouro_fob','ðŸ› ï¸ ServiÃ§o Â· Ouro / FOB'],['venda_filial_subgrupo_20k','ðŸšš Venda Â· CaminhÃ£o 20K / Subgrupo']] : [['venda_filial_vendedor_meta','ðŸ“ˆ Venda Â· Meta Vendedor'],['servico_filial_vendedor_ouro_fob','ðŸ› ï¸ ServiÃ§o Â· Ouro / FOB Vendedor'],['venda_vendedor_subgrupo_20k','ðŸšš Venda Â· CaminhÃ£o 20K / Subgrupo']]; return `<div class="glass panel sales-panel"><div class="section-head" style="margin:0 0 10px;align-items:flex-start"><div><h3 style="margin:0">ðŸ’² Vendas e metas <span class="sales-note">Â· SGI / mÃªs atual</span></h3><div style="margin-top:8px">${renderRentabilidadeBadge(ent)}</div></div><div class="sales-note" style="text-align:right;max-width:280px">${salesCfgHeader(ent)}</div></div>${renderDualMascotStatus(ent)}<div class="sales-stack">${blocks.map(([k,t])=>renderSalesRows(ent,k,t)).join('')}</div><div style="height:14px"></div>${renderServicosEntidade(ent)}</div>`}
 
 function salesMetricFromRow(row,key){if(!row) return 0; if(key==='venda_realizado') return salesNum(salesCell(row,['Realizado (R$) Total','Realizado(R$) Total'])); if(key==='servico_realizado') return salesNum(salesCell(row,['Realizado (R$) Total','Realizado(R$) Total'])); if(key==='venda_atingido') return salesNum(salesCell(row,['Atingido Total'])); if(key==='servico_atingido') return salesNum(salesCell(row,['Atingido Total'])); return 0}
 function bestLiveSalesEntity(entities,key){let best=null; entities.forEach(ent=>{const rows=getSalesRows(ent,key); rows.forEach(r=>{const val=salesMetricFromRow(r,key.includes('servico')?'servico_realizado':'venda_realizado'); if(!best || val>best.val) best={ent,row:r,val};})}); return best}
@@ -6841,8 +6841,8 @@ function defaultGerPolicy(){return [
 function commissionCfg(cfg){return {
 vendedor_policy:Array.isArray(cfg?.vendedor_policy)&&cfg.vendedor_policy.length?cfg.vendedor_policy:defaultVendPolicy(),
 gerente_policy:Array.isArray(cfg?.gerente_policy)&&cfg.gerente_policy.length?cfg.gerente_policy:defaultGerPolicy(),
-vendedor_policy_headers:Array.isArray(cfg?.vendedor_policy_headers)&&cfg.vendedor_policy_headers.length?cfg.vendedor_policy_headers:['De','Até','% Comissão','Bônus 90%','Bônus 100%','Bônus 120%','Rentab 48%','Rentab 52,15%','Rentab 55,50%','% Serviços','% Caminhão'],
-gerente_policy_headers:Array.isArray(cfg?.gerente_policy_headers)&&cfg.gerente_policy_headers.length?cfg.gerente_policy_headers:['De','Até','Classificação Loja Bônus','% Comissão','Rentab 48%','Rentab 52,15%','Rentab 55,50%','% Serviços','% Caminhão'],
+vendedor_policy_headers:Array.isArray(cfg?.vendedor_policy_headers)&&cfg.vendedor_policy_headers.length?cfg.vendedor_policy_headers:['De','AtÃ©','% ComissÃ£o','BÃ´nus 90%','BÃ´nus 100%','BÃ´nus 120%','Rentab 48%','Rentab 52,15%','Rentab 55,50%','% ServiÃ§os','% CaminhÃ£o'],
+gerente_policy_headers:Array.isArray(cfg?.gerente_policy_headers)&&cfg.gerente_policy_headers.length?cfg.gerente_policy_headers:['De','AtÃ©','ClassificaÃ§Ã£o Loja BÃ´nus','% ComissÃ£o','Rentab 48%','Rentab 52,15%','Rentab 55,50%','% ServiÃ§os','% CaminhÃ£o'],
 camp_meta_diaria_vend:Array.isArray(cfg?.camp_meta_diaria_vend)&&cfg.camp_meta_diaria_vend.length?cfg.camp_meta_diaria_vend:defaultCampMetaDiariaVend(),
 camp_meta_diaria_ger:Array.isArray(cfg?.camp_meta_diaria_ger)&&cfg.camp_meta_diaria_ger.length?cfg.camp_meta_diaria_ger:defaultCampMetaDiariaGer(),
 camp_dindin_vend:Array.isArray(cfg?.camp_dindin_vend)&&cfg.camp_dindin_vend.length?cfg.camp_dindin_vend:defaultCampDindinVend(),
@@ -6860,24 +6860,24 @@ function defaultCampDindinGer(){return [{atingido:'105',extra_pct:'0.50'},{ating
 function defaultCampAdmin(){return [{atingido:'100',extra_pct:'0.15',colaboradores:'5'},{atingido:'105',extra_pct:'0.20',colaboradores:'5'},{atingido:'110',extra_pct:'0.22',colaboradores:'5'}]}
 function defaultCampCrediarista(){return [{faixa:'atencao',pct:'1.00'},{faixa:'alerta',pct:'2.00'},{faixa:'grave',pct:'3.00'}]}
 function renderCommissionPanel(cfg){const pc=commissionCfg(cfg);
-const vendCols=[{key:'faixa1',label:'De'},{key:'faixa2',label:'Até'},{key:'comissao',label:'% Comissão'},{key:'bonus90',label:'Bônus 90%'},{key:'bonus100',label:'Bônus 100%'},{key:'bonus120',label:'Bônus 120%'},{key:'rent48',label:'Rentab 48%'},{key:'rent52',label:'Rentab 52,15%'},{key:'rent55',label:'Rentab 55,50%'},{key:'servico_pct',label:'% Serviços'},{key:'caminhao_pct',label:'% Caminhão'}];
-const gerCols=[{key:'faixa1',label:'De'},{key:'faixa2',label:'Até'},{key:'bonusLoja',label:'Classificação Loja'},{key:'comissao',label:'% Comissão'},{key:'rent48',label:'Rentab 48%'},{key:'rent52',label:'Rentab 52,15%'},{key:'rent55',label:'Rentab 55,50%'},{key:'servico_pct',label:'% Serviços'},{key:'caminhao_pct',label:'% Caminhão'}];
-const cmdCols=[{key:'dias_uteis',label:'Dias úteis'},{key:'bonus_final',label:'Bônus final'}];
+const vendCols=[{key:'faixa1',label:'De'},{key:'faixa2',label:'AtÃ©'},{key:'comissao',label:'% ComissÃ£o'},{key:'bonus90',label:'BÃ´nus 90%'},{key:'bonus100',label:'BÃ´nus 100%'},{key:'bonus120',label:'BÃ´nus 120%'},{key:'rent48',label:'Rentab 48%'},{key:'rent52',label:'Rentab 52,15%'},{key:'rent55',label:'Rentab 55,50%'},{key:'servico_pct',label:'% ServiÃ§os'},{key:'caminhao_pct',label:'% CaminhÃ£o'}];
+const gerCols=[{key:'faixa1',label:'De'},{key:'faixa2',label:'AtÃ©'},{key:'bonusLoja',label:'ClassificaÃ§Ã£o Loja'},{key:'comissao',label:'% ComissÃ£o'},{key:'rent48',label:'Rentab 48%'},{key:'rent52',label:'Rentab 52,15%'},{key:'rent55',label:'Rentab 55,50%'},{key:'servico_pct',label:'% ServiÃ§os'},{key:'caminhao_pct',label:'% CaminhÃ£o'}];
+const cmdCols=[{key:'dias_uteis',label:'Dias Ãºteis'},{key:'bonus_final',label:'BÃ´nus final'}];
 const cdiCols=[{key:'atingido',label:'Atingiu %'},{key:'extra_pct',label:'Extra % sobre mercantil'}];
-const admCols=[{key:'atingido',label:'Atingiu % total geral'},{key:'extra_pct',label:'Extra % sobre mercantil lojas'},{key:'colaboradores',label:'Nº colaboradores'}];
-const credCols=[{key:'faixa',label:'Faixa'},{key:'pct',label:'% Comissão'}];
+const admCols=[{key:'atingido',label:'Atingiu % total geral'},{key:'extra_pct',label:'Extra % sobre mercantil lojas'},{key:'colaboradores',label:'NÂº colaboradores'}];
+const credCols=[{key:'faixa',label:'Faixa'},{key:'pct',label:'% ComissÃ£o'}];
 const box=document.getElementById('commissionPanel'); if(!box) return;
 box.innerHTML=`<div class="comm-wrap">
-<div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">💰 Política de comissão</h2><div class="hint">Tabela global/individual para vendedores e gerente/filial.</div></div></div>
-<div class="comm-box"><div class="comm-subtitle">🧑‍💼 Política do vendedor</div>${renderPolicyTable('vend',pc.vendedor_policy,vendCols,pc.vendedor_policy_headers)}</div>
-<div class="comm-box"><div class="comm-subtitle">🏬 Política do gerente / filial</div>${renderPolicyTable('ger',pc.gerente_policy,gerCols,pc.gerente_policy_headers)}</div>
-<div class="comm-box"><div class="comm-subtitle">🎯 CAMPANHA META DIÁRIA · vendedor</div><div class="hint">Meta geral de vendas dividida pelos dias úteis. Cada dia batido pontua 1 ponto no mês.</div>${renderPolicyTable('cmdv',pc.camp_meta_diaria_vend,cmdCols,['Dias úteis','Bônus final'])}</div>
-<div class="comm-box"><div class="comm-subtitle">🎯 CAMPANHA META DIÁRIA · gerente / filial</div><div class="hint">A loja/filial que mais bater a meta diária soma pontos e recebe o bônus configurado.</div>${renderPolicyTable('cmdg',pc.camp_meta_diaria_ger,cmdCols,['Dias úteis','Bônus final'])}</div>
-<div class="comm-box"><div class="comm-subtitle">💸 CAMPANHA DINDIN NO BOLSO · vendedor</div><div class="hint">Válida só no mercantil. Desbloqueia apenas se recebimentos estiverem acima de 75%.</div>${renderPolicyTable('cdiv',pc.camp_dindin_vend,cdiCols,['Atingiu %','Extra % mercantil'])}</div>
-<div class="comm-box"><div class="comm-subtitle">💸 CAMPANHA DINDIN NO BOLSO · gerente / filial</div><div class="hint">Mesmo conceito para filial/gerente, somente sobre mercantil líquido.</div>${renderPolicyTable('cdig',pc.camp_dindin_ger,cdiCols,['Atingiu %','Extra % mercantil'])}</div>
-<div class="comm-box"><div class="comm-subtitle">🏢 CAMPANHA DINDIN NO BOLSO · administrativo</div><div class="hint">Tabela apenas para consulta manual. O cálculo do administrativo será feito manualmente depois.</div>${renderPolicyTable('cadm',pc.camp_admin,admCols,['Atingiu % total','Extra % lojas','Nº colaboradores'])}</div>
-<div class="comm-box"><div class="comm-subtitle">🤝 COMISSÃO COBRANÇA TERCEIRO · Cobrança10</div><div class="hint">Comissão por faixa somente para clientes realmente cobrados e recebidos no mês.</div>${renderPolicyTable('cter',pc.camp_cobranca_terceiro,credCols,['Faixa','% Comissão'])}</div>
-<div class="comm-box"><div class="comm-subtitle">🧾 COMISSÃO CREDIARISTAS · filiais</div><div class="hint">Configuração padrão para os usuários crediaristas por faixa.</div>${renderPolicyTable('ccred',pc.camp_cob_crediarista,credCols,['Faixa','% Comissão'])}</div>
+<div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">ðŸ’° PolÃ­tica de comissÃ£o</h2><div class="hint">Tabela global/individual para vendedores e gerente/filial.</div></div></div>
+<div class="comm-box"><div class="comm-subtitle">ðŸ§‘â€ðŸ’¼ PolÃ­tica do vendedor</div>${renderPolicyTable('vend',pc.vendedor_policy,vendCols,pc.vendedor_policy_headers)}</div>
+<div class="comm-box"><div class="comm-subtitle">ðŸ¬ PolÃ­tica do gerente / filial</div>${renderPolicyTable('ger',pc.gerente_policy,gerCols,pc.gerente_policy_headers)}</div>
+<div class="comm-box"><div class="comm-subtitle">ðŸŽ¯ CAMPANHA META DIÃRIA Â· vendedor</div><div class="hint">Meta geral de vendas dividida pelos dias Ãºteis. Cada dia batido pontua 1 ponto no mÃªs.</div>${renderPolicyTable('cmdv',pc.camp_meta_diaria_vend,cmdCols,['Dias Ãºteis','BÃ´nus final'])}</div>
+<div class="comm-box"><div class="comm-subtitle">ðŸŽ¯ CAMPANHA META DIÃRIA Â· gerente / filial</div><div class="hint">A loja/filial que mais bater a meta diÃ¡ria soma pontos e recebe o bÃ´nus configurado.</div>${renderPolicyTable('cmdg',pc.camp_meta_diaria_ger,cmdCols,['Dias Ãºteis','BÃ´nus final'])}</div>
+<div class="comm-box"><div class="comm-subtitle">ðŸ’¸ CAMPANHA DINDIN NO BOLSO Â· vendedor</div><div class="hint">VÃ¡lida sÃ³ no mercantil. Desbloqueia apenas se recebimentos estiverem acima de 75%.</div>${renderPolicyTable('cdiv',pc.camp_dindin_vend,cdiCols,['Atingiu %','Extra % mercantil'])}</div>
+<div class="comm-box"><div class="comm-subtitle">ðŸ’¸ CAMPANHA DINDIN NO BOLSO Â· gerente / filial</div><div class="hint">Mesmo conceito para filial/gerente, somente sobre mercantil lÃ­quido.</div>${renderPolicyTable('cdig',pc.camp_dindin_ger,cdiCols,['Atingiu %','Extra % mercantil'])}</div>
+<div class="comm-box"><div class="comm-subtitle">ðŸ¢ CAMPANHA DINDIN NO BOLSO Â· administrativo</div><div class="hint">Tabela apenas para consulta manual. O cÃ¡lculo do administrativo serÃ¡ feito manualmente depois.</div>${renderPolicyTable('cadm',pc.camp_admin,admCols,['Atingiu % total','Extra % lojas','NÂº colaboradores'])}</div>
+<div class="comm-box"><div class="comm-subtitle">ðŸ¤ COMISSÃƒO COBRANÃ‡A TERCEIRO Â· CobranÃ§a10</div><div class="hint">ComissÃ£o por faixa somente para clientes realmente cobrados e recebidos no mÃªs.</div>${renderPolicyTable('cter',pc.camp_cobranca_terceiro,credCols,['Faixa','% ComissÃ£o'])}</div>
+<div class="comm-box"><div class="comm-subtitle">ðŸ§¾ COMISSÃƒO CREDIARISTAS Â· filiais</div><div class="hint">ConfiguraÃ§Ã£o padrÃ£o para os usuÃ¡rios crediaristas por faixa.</div>${renderPolicyTable('ccred',pc.camp_cob_crediarista,credCols,['Faixa','% ComissÃ£o'])}</div>
 </div>`}
 function readCommissionPanel(){const vendRows=[], gerRows=[]; const vendHeaders=[], gerHeaders=[]; const cmdv=[], cmdg=[], cdiv=[], cdig=[], cadm=[], cter=[], ccred=[];
 document.querySelectorAll('[data-comm="vend"]').forEach(el=>{const i=Number(el.dataset.row||0); vendRows[i]=vendRows[i]||{}; vendRows[i][el.dataset.key]=el.value});
@@ -6970,7 +6970,7 @@ function calcCommissionSummary(ent){
     elegivelMercantil,elegivelServicos,rentUnlocked,rent48,rent52,rent55,
     rentAtual,rentPremio,rentFaixaTxt,rentAppliedKey,
     totalPrevisto:(vendasComissao+servicosComissao+caminhaoComissao+bonusMeta+rentPremio),
-    faixaTxt:`${faixa.faixa1||'-'} até ${faixa.faixa2||'-'}`,
+    faixaTxt:`${faixa.faixa1||'-'} atÃ© ${faixa.faixa2||'-'}`,
     metaAtingida,minVenda,minServico,geralMeta
   }
 }
@@ -6987,13 +6987,13 @@ function campaignMetaDailyData(ent){
 
   const diasUteis = Math.max(1, Number(metaDiaRow.dias_uteis || 26));
 
-  // CORRETO: meta diária usa META TOTAL, não Meta Período.
+  // CORRETO: meta diÃ¡ria usa META TOTAL, nÃ£o Meta PerÃ­odo.
   const metaTotal = moneyNum(salesCell(vendaRow, [
     'Meta (R$) Total',
     'Meta(R$) Total'
   ]));
 
-  // CORRETO: pontos usam REALIZADO TOTAL acumulado do mês.
+  // CORRETO: pontos usam REALIZADO TOTAL acumulado do mÃªs.
   const realizadoTotal = moneyNum(salesCell(vendaRow, [
     'Realizado (R$) Total',
     'Realizado(R$) Total'
@@ -7001,8 +7001,8 @@ function campaignMetaDailyData(ent){
 
   const metaDiaria = metaTotal > 0 ? (metaTotal / diasUteis) : 0;
 
-  // REGRA DEFINITIVA: ponto é diário real, salvo no histórico.
-  // Não pode pegar realizado acumulado e dividir pela meta diária.
+  // REGRA DEFINITIVA: ponto Ã© diÃ¡rio real, salvo no histÃ³rico.
+  // NÃ£o pode pegar realizado acumulado e dividir pela meta diÃ¡ria.
   const mesAtual = new Date().toISOString().slice(0, 7);
   const mdMes = HIST_DASH?.daily_meta?.months?.[mesAtual] || {filiais:{}, vendedores:{}};
   let histObj = null;
@@ -7131,7 +7131,7 @@ function calcCampaignSummary(ent){
 function renderCampaignSummary(ent){
   const c = calcCampaignSummary(ent);
 
-  // REGRA NOVA: se não estiver em 1º lugar, oculta a campanha Meta Diária.
+  // REGRA NOVA: se nÃ£o estiver em 1Âº lugar, oculta a campanha Meta DiÃ¡ria.
   if (!c.liderMetaDiaria) return '';
 
   const item = (k, v, locked = false) =>
@@ -7141,30 +7141,30 @@ function renderCampaignSummary(ent){
     </div>`;
 
   return `<div class="glass panel campaign-card">
-    <h3>🎯 Campanhas ativas <span class="note">· acompanhamento do mês</span></h3>
+    <h3>ðŸŽ¯ Campanhas ativas <span class="note">Â· acompanhamento do mÃªs</span></h3>
 
     <div class="campaign-grid">
-      ${item('Meta diária', R(c.metaDiaria || 0), false)}
-      ${item('Pontos no mês', `${c.pontosMetaDiaria || 0} / ${c.diasUteis || 26}`, false)}
-      ${item('Bônus meta diária', String(c.bonusMetaDiaria || '0'), false)}
+      ${item('Meta diÃ¡ria', R(c.metaDiaria || 0), false)}
+      ${item('Pontos no mÃªs', `${c.pontosMetaDiaria || 0} / ${c.diasUteis || 26}`, false)}
+      ${item('BÃ´nus meta diÃ¡ria', String(c.bonusMetaDiaria || '0'), false)}
       ${item('Dindin no bolso %', String((c.dindinExtraPct || 0).toFixed(2)).replace('.', ',') + '%', !c.dindinLiberado)}
       ${item('Dindin no bolso valor', R(c.dindinExtra || 0), !c.dindinLiberado)}
     </div>
 
     <div class="commission-note">
-      Campanha Meta Diária aparece somente para o 1º colocado.
-      Cálculo: Meta Total ${R(c.metaTotal || 0)} ÷ ${c.diasUteis || 26} dias úteis =
-      ${R(c.metaDiaria || 0)} por dia. Pontos: só soma quando a venda DO DIA bate a meta diária.
-      Hoje: ${R(c.realizadoDia || 0)} ${c.pontoHoje ? '✅ ponto ganho' : '⏳ sem ponto'} .
+      Campanha Meta DiÃ¡ria aparece somente para o 1Âº colocado.
+      CÃ¡lculo: Meta Total ${R(c.metaTotal || 0)} Ã· ${c.diasUteis || 26} dias Ãºteis =
+      ${R(c.metaDiaria || 0)} por dia. Pontos: sÃ³ soma quando a venda DO DIA bate a meta diÃ¡ria.
+      Hoje: ${R(c.realizadoDia || 0)} ${c.pontoHoje ? 'âœ… ponto ganho' : 'â³ sem ponto'} .
     </div>
   </div>`;
 }
 
-function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';const c=calcCommissionSummary(ent); const totalLiberado = c.elegivelMercantil && c.elegivelServicos; const totalExibido = totalLiberado ? c.totalPrevisto : 0; const moneyCell=(title,val,locked=false,extra='')=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''} ${extra}"><div class="k">${title}</div><div class="v">${R(val||0)}</div></div>`; const pctCell=(title,val,locked=false)=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''}"><div class="k">${title}</div><div class="v">${String(Number(val||0).toFixed(2)).replace('.',',')}%</div></div>`; return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,!c.rentUnlocked)}${moneyCell('Rentab 52,15%',c.rent52,!c.rentUnlocked)}${moneyCell('Rentab 55,50%',c.rent55,!c.rentUnlocked)}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo vendas ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)} · rentabilidades liberam ao bater 50% da meta de cobrança.</div></div>`}
+function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';const c=calcCommissionSummary(ent); const totalLiberado = c.elegivelMercantil && c.elegivelServicos; const totalExibido = totalLiberado ? c.totalPrevisto : 0; const moneyCell=(title,val,locked=false,extra='')=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''} ${extra}"><div class="k">${title}</div><div class="v">${R(val||0)}</div></div>`; const pctCell=(title,val,locked=false)=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''}"><div class="k">${title}</div><div class="v">${String(Number(val||0).toFixed(2)).replace('.',',')}%</div></div>`; return `<div class="glass panel commission-card"><h3>ðŸ’µ Comissionamento previsto <span class="note">Â· calculado pela polÃ­tica salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito estÃ¡ comemorando sua liberaÃ§Ã£o de comissÃ£o/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissÃ£o mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviÃ§os',c.servPct,!c.elegivelServicos)}${pctCell('% caminhÃ£o',c.camPct,!c.elegivelServicos)}${moneyCell('ComissÃ£o vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('ComissÃ£o serviÃ§os',c.servicosComissao,!c.elegivelServicos)}${moneyCell('ComissÃ£o caminhÃ£o',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('BÃ´nus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,!c.rentUnlocked)}${moneyCell('Rentab 52,15%',c.rent52,!c.rentUnlocked)}${moneyCell('Rentab 55,50%',c.rent55,!c.rentUnlocked)}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} Â· CaminhÃ£o abatido: ${R(c.camReal||0)} Â· Mercantil lÃ­quido para comissÃ£o: ${R(c.vendaReal||0)} Â· ServiÃ§o: ${R(c.servReal||0)}. MÃ­nimo vendas ${pct(c.minVenda)} Â· mÃ­nimo serviÃ§os/caminhÃ£o ${pct(c.minServico)} Â· rentabilidades liberam ao bater 50% da meta de cobranÃ§a.</div></div>`}
 function backToMain(){currentDetailRef=null; try{renderLaranjitoNotify()}catch(e){}; detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden')}
 function renderMetaBox(title,color,obj){return `<div class="meta-card"><div class="meta-title">${title}</div><div class="meta-main" style="color:${color}">${pct(obj.perc||0)}</div><div class="meta-sub">Alvo: ${R(obj.alvo||0)}</div><div class="meta-sub">Recebido: ${R(obj.rec||0)}</div></div>`}
-function renderBonusBox(cfg,geral){const achieved=(geral>=100&&cfg.bonus_100)?100:(geral>=85&&cfg.bonus_85)?85:(geral>=75&&cfg.bonus_75)?75:(geral>=50&&cfg.bonus_50)?50:0; const items=[[50,cfg.bonus_50||'-'],[75,cfg.bonus_75||'-'],[85,cfg.bonus_85||'-'],[100,cfg.bonus_100||'-']];return `<div class="bonus-box"><h4>Faixas configuradas</h4><div class="bonus-list">${items.map(([p,t])=>`<div class="bonus-item ${achieved===p?'active':''}" style="${achieved===p?'box-shadow:0 0 0 2px rgba(59,130,246,.18),0 0 26px rgba(59,130,246,.2);animation:liquid 1.6s ease-in-out infinite alternate':''}"><div class="left"><span>🎯</span><span>${p}%</span></div><div style="display:flex;align-items:center;gap:10px">${achieved===p?`<img src="${LARANJITO}" alt="laranjito" style="width:34px;height:34px;border-radius:10px;object-fit:cover">`:''}<span>${esc(t)}</span></div></div>`).join('')}</div></div>`}
-function renderSingleBars(ent,meta,big=false){const vals=[['Grave',meta.grave.pend,'var(--red)'],['Alerta',meta.alerta.pend,'var(--orange)'],['Atenção',meta.atencao.pend,'var(--yellow)'],['Recebido',Number(ent.pago||0),'var(--green)']]; const max=Math.max(1,...vals.map(v=>v[1])); return `<div class="glass big-chart-card" style="margin-top:0"><div class="legend-inline"><span><i class="dot" style="background:var(--red)"></i>Grave</span><span><i class="dot" style="background:var(--orange)"></i>Alerta</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção</span><span><i class="dot" style="background:var(--green)"></i>Recebido</span></div><div class="groupbars" style="justify-content:center"><div class="group" style="min-width:100%"><div class="bars" style="height:${big?320:260}px;justify-content:space-around;border-left:none">${vals.map(v=>`<div style="text-align:center"><div class="bar" style="width:${big?72:54}px;height:${Math.max(18,(v[1]/max)*(big?250:200))}px;background:linear-gradient(180deg,rgba(255,255,255,.18),transparent),linear-gradient(180deg,${v[2]},${v[2]})"><span class="wave one"></span><span class="wave two"></span><span class="bubble b1"></span><span class="bubble b2"></span><span class="bubble b3"></span></div><div class="glabel" style="margin-top:10px">${v[0]}<br><strong>${R(v[1])}</strong></div></div>`).join('')}</div></div></div></div>`}
+function renderBonusBox(cfg,geral){const achieved=(geral>=100&&cfg.bonus_100)?100:(geral>=85&&cfg.bonus_85)?85:(geral>=75&&cfg.bonus_75)?75:(geral>=50&&cfg.bonus_50)?50:0; const items=[[50,cfg.bonus_50||'-'],[75,cfg.bonus_75||'-'],[85,cfg.bonus_85||'-'],[100,cfg.bonus_100||'-']];return `<div class="bonus-box"><h4>Faixas configuradas</h4><div class="bonus-list">${items.map(([p,t])=>`<div class="bonus-item ${achieved===p?'active':''}" style="${achieved===p?'box-shadow:0 0 0 2px rgba(59,130,246,.18),0 0 26px rgba(59,130,246,.2);animation:liquid 1.6s ease-in-out infinite alternate':''}"><div class="left"><span>ðŸŽ¯</span><span>${p}%</span></div><div style="display:flex;align-items:center;gap:10px">${achieved===p?`<img src="${LARANJITO}" alt="laranjito" style="width:34px;height:34px;border-radius:10px;object-fit:cover">`:''}<span>${esc(t)}</span></div></div>`).join('')}</div></div>`}
+function renderSingleBars(ent,meta,big=false){const vals=[['Grave',meta.grave.pend,'var(--red)'],['Alerta',meta.alerta.pend,'var(--orange)'],['AtenÃ§Ã£o',meta.atencao.pend,'var(--yellow)'],['Recebido',Number(ent.pago||0),'var(--green)']]; const max=Math.max(1,...vals.map(v=>v[1])); return `<div class="glass big-chart-card" style="margin-top:0"><div class="legend-inline"><span><i class="dot" style="background:var(--red)"></i>Grave</span><span><i class="dot" style="background:var(--orange)"></i>Alerta</span><span><i class="dot" style="background:var(--yellow)"></i>AtenÃ§Ã£o</span><span><i class="dot" style="background:var(--green)"></i>Recebido</span></div><div class="groupbars" style="justify-content:center"><div class="group" style="min-width:100%"><div class="bars" style="height:${big?320:260}px;justify-content:space-around;border-left:none">${vals.map(v=>`<div style="text-align:center"><div class="bar" style="width:${big?72:54}px;height:${Math.max(18,(v[1]/max)*(big?250:200))}px;background:linear-gradient(180deg,rgba(255,255,255,.18),transparent),linear-gradient(180deg,${v[2]},${v[2]})"><span class="wave one"></span><span class="wave two"></span><span class="bubble b1"></span><span class="bubble b2"></span><span class="bubble b3"></span></div><div class="glabel" style="margin-top:10px">${v[0]}<br><strong>${R(v[1])}</strong></div></div>`).join('')}</div></div></div></div>`}
 function recebKeyVend(ent){return `${ent.nome}_${ent.filial}`}
 
 function normConc(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim()}
@@ -7271,7 +7271,7 @@ function getRecebimentos(ent){
   let base;
   if(ent.type==='terceiro' || ent.is_terceiro) base=RECEBIMENTOS_TERCEIRO||{grave:[],alerta:[],atencao:[]};
   else if(ent.type==='crediarista' || ent.is_crediarista){
-    // Crediarista: somente recebimentos conciliados com cobrança feita pelo próprio usuário antes do pagamento.
+    // Crediarista: somente recebimentos conciliados com cobranÃ§a feita pelo prÃ³prio usuÃ¡rio antes do pagamento.
     base={grave:[],alerta:[],atencao:[]};
   } else if(ent.type==='vendedor') base=RECEBIMENTOS[recebKeyVend(ent)]||{grave:[],alerta:[],atencao:[]};
   else {
@@ -7282,7 +7282,7 @@ function getRecebimentos(ent){
   ['grave','alerta','atencao'].forEach(fx=>base[fx].sort((a,b)=>Number(b.pago||0)-Number(a.pago||0)));
   return base;
 }
-function renderRecebimentos(ent){const src=getRecebimentos(ent); let out=''; ['grave','alerta','atencao'].forEach(fx=>{const arr=src[fx]||[]; const label=fx==='grave'?'Grave':fx==='alerta'?'Alerta':'Atenção'; if(!arr.length){out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>Sem recebimentos</span></div></div>`; return} out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${arr.length} títulos · ${R(arr.reduce((a,b)=>a+Number(b.pago||0),0))}</span></div><div class="tableish">${arr.slice(0,80).map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · Parcela ${esc(r.parcela||'')}</div></div><div><strong>${esc(r.pagamento||'')}</strong><div class="small muted">Pagamento</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${R(r.pago||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${esc(r.vendedor||'')}</strong><div class="small muted">Origem</div></div></div></div>`).join('')}</div></div>`}); return out}
+function renderRecebimentos(ent){const src=getRecebimentos(ent); let out=''; ['grave','alerta','atencao'].forEach(fx=>{const arr=src[fx]||[]; const label=fx==='grave'?'Grave':fx==='alerta'?'Alerta':'AtenÃ§Ã£o'; if(!arr.length){out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>Sem recebimentos</span></div></div>`; return} out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${arr.length} tÃ­tulos Â· ${R(arr.reduce((a,b)=>a+Number(b.pago||0),0))}</span></div><div class="tableish">${arr.slice(0,80).map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">TÃ­tulo ${esc(r.titulo||'')} Â· Parcela ${esc(r.parcela||'')}</div></div><div><strong>${esc(r.pagamento||'')}</strong><div class="small muted">Pagamento</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${R(r.pago||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${esc(r.vendedor||'')}</strong><div class="small muted">Origem</div></div></div></div>`).join('')}</div></div>`}); return out}
 function cobrancaRowKey(r){return [String(r.cliente||r.nome||'').trim().toUpperCase(),String(r.titulo||'').trim(),String(r.parcela||'').trim(),String(r.vencimento||'').trim()].join('|')}
 function dedupeCobrancaBuckets(src){const out={grave:[],alerta:[],atencao:[]}; const seen=new Set(); ['grave','alerta','atencao'].forEach(fx=>{(src?.[fx]||[]).forEach(r=>{const k=cobrancaRowKey(r); if(!seen.has(k)){seen.add(k); out[fx].push(r);}})}); return out}
 function vendorAssignedKeysByFilial(filial){const keys=new Set(); const arr=(TODOS?.[filial]||[]); arr.forEach(v=>{const buckets=CLIENTES_VEND?.[v.nome]||{grave:[],alerta:[],atencao:[]}; ['grave','alerta','atencao'].forEach(fx=>(buckets[fx]||[]).forEach(r=>keys.add(cobrancaRowKey(r))))}); return keys}
@@ -7313,11 +7313,11 @@ function getCobradosHoje(ent){
   return (COB_LOGS||[]).filter(x=>isTodayStr(x.server_time||x.data||'') && String(x.filial||'')===String(ent.filial||'') && (ent.type==='filial' || String(x.destino_nome||'')===String(ent.nome||'')));
 }
 
-const DEFAULT_COBRANCA_TEMPLATE = `Olá, {primeiro_nome} tudo bem?
-Aqui é da Lojas MDL - Móveis do Lar.
+const DEFAULT_COBRANCA_TEMPLATE = `OlÃ¡, {primeiro_nome} tudo bem?
+Aqui Ã© da Lojas MDL - MÃ³veis do Lar.
 Passando para lembrar que tem uma parcelinha vencida na data de {vencimento}, no valor de {valor}.
-Caso o pagamento já tenha sido realizado, por gentileza, desconsidere esta mensagem.
-Se precisar do boleto, chave PIX ou tiver qualquer dúvida, fico à disposição para ajudar.`;
+Caso o pagamento jÃ¡ tenha sido realizado, por gentileza, desconsidere esta mensagem.
+Se precisar do boleto, chave PIX ou tiver qualquer dÃºvida, fico Ã  disposiÃ§Ã£o para ajudar.`;
 
 function cobrancaTemplateAtual(){
   return String(CONFIG_META?.cobranca_msg_template || DEFAULT_COBRANCA_TEMPLATE);
@@ -7400,13 +7400,13 @@ function cobStatusTitulo(reg,ent=null){
   };
 }
 function cobrancaTemplateTerceiraAtual(){
-  return String(CONFIG_META?.cobranca_msg_template_terceira || `Olá, {primeiro_nome}. Tudo bem?
-Aqui é da Lojas MDL - Móveis do Lar.
+  return String(CONFIG_META?.cobranca_msg_template_terceira || `OlÃ¡, {primeiro_nome}. Tudo bem?
+Aqui Ã© da Lojas MDL - MÃ³veis do Lar.
 
-Já tentamos contato sobre a parcela vencida em {vencimento}, no valor de {valor}, referente ao título {titulo}/{parcela}.
+JÃ¡ tentamos contato sobre a parcela vencida em {vencimento}, no valor de {valor}, referente ao tÃ­tulo {titulo}/{parcela}.
 
-Para evitar novos encargos e restrições, pedimos que regularize o pagamento o quanto antes.
-Caso já tenha pago, por gentileza desconsidere esta mensagem.`);
+Para evitar novos encargos e restriÃ§Ãµes, pedimos que regularize o pagamento o quanto antes.
+Caso jÃ¡ tenha pago, por gentileza desconsidere esta mensagem.`);
 }
 
 function montarMensagemCobranca(reg){
@@ -7466,7 +7466,7 @@ async function salvarMensagemCobrancaGlobal(){
   const tpl=String(document.getElementById('cobMsgTemplate')?.value||'').trim();
   const tpl3=String(document.getElementById('cobMsgTemplate3')?.value||'').trim();
   if(!tpl){
-    if(msgEl) msgEl.textContent='⚠️ A mensagem não pode ficar vazia.';
+    if(msgEl) msgEl.textContent='âš ï¸ A mensagem nÃ£o pode ficar vazia.';
     return;
   }
   CONFIG_META.cobranca_msg_template=tpl;
@@ -7477,15 +7477,15 @@ async function salvarMensagemCobrancaGlobal(){
     const j=await resp.json();
     if(j.ok){
       await carregarConfigOnline();
-      if(msgEl) msgEl.textContent='✅ Mensagem global de cobrança salva online.';
-      toast('Mensagem de cobrança atualizada.','success');
+      if(msgEl) msgEl.textContent='âœ… Mensagem global de cobranÃ§a salva online.';
+      toast('Mensagem de cobranÃ§a atualizada.','success');
       renderLogsTab();
     }else{
-      if(msgEl) msgEl.textContent='⚠️ Não consegui salvar online.';
+      if(msgEl) msgEl.textContent='âš ï¸ NÃ£o consegui salvar online.';
     }
   }catch(e){
-    console.log('Erro ao salvar mensagem de cobrança',e);
-    if(msgEl) msgEl.textContent='⚠️ Falha ao salvar online.';
+    console.log('Erro ao salvar mensagem de cobranÃ§a',e);
+    if(msgEl) msgEl.textContent='âš ï¸ Falha ao salvar online.';
   }
 }
 function restaurarMensagemCobrancaPadrao(){
@@ -7501,19 +7501,19 @@ function renderCobrancaConfigPanel(){
   return `<div class="glass panel" style="margin-bottom:14px">
     <div class="section-head" style="margin:0 0 10px">
       <div>
-        <h2 style="margin:0">💬 Mensagens de cobrança</h2>
-        <div class="hint">Configuração global usada ao abrir WhatsApp. O sistema usa a mensagem padrão na 1ª e 2ª cobrança. A partir da 3ª, usa a Terceira Mensagem.</div>
+        <h2 style="margin:0">ðŸ’¬ Mensagens de cobranÃ§a</h2>
+        <div class="hint">ConfiguraÃ§Ã£o global usada ao abrir WhatsApp. O sistema usa a mensagem padrÃ£o na 1Âª e 2Âª cobranÃ§a. A partir da 3Âª, usa a Terceira Mensagem.</div>
       </div>
       <button class="btn primary" onclick="salvarMensagemCobrancaGlobal()">Salvar global</button>
     </div>
     <div class="cobranca-config-grid">
       <div>
         <div class="input-card">
-          <label>Mensagem padrão de cobrança</label>
+          <label>Mensagem padrÃ£o de cobranÃ§a</label>
           <textarea id="cobMsgTemplate" class="cobranca-template" oninput="atualizarPreviewCobranca()">${tpl}</textarea>
         </div>
         <div class="input-card" style="margin-top:12px">
-          <label>Terceira Mensagem de Cobrança</label>
+          <label>Terceira Mensagem de CobranÃ§a</label>
           <textarea id="cobMsgTemplate3" class="cobranca-template" oninput="atualizarPreviewCobranca()">${tpl3}</textarea>
         </div>
         <div class="placeholder-list">
@@ -7525,17 +7525,17 @@ function renderCobrancaConfigPanel(){
         </div>
         <div style="display:flex;gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap">
           <button class="btn primary" onclick="salvarMensagemCobrancaGlobal()">Salvar global</button>
-          <button class="btn soft" onclick="restaurarMensagemCobrancaPadrao()">Restaurar padrão</button>
+          <button class="btn soft" onclick="restaurarMensagemCobrancaPadrao()">Restaurar padrÃ£o</button>
           <span id="cobMsgSaveStatus" class="hint"></span>
         </div>
       </div>
       <div>
         <div class="input-card">
-          <label>Prévia mensagem padrão</label>
+          <label>PrÃ©via mensagem padrÃ£o</label>
           <div id="cobMsgPreview" class="preview-whats">${esc(exemploMensagemCobranca())}</div>
         </div>
         <div class="input-card" style="margin-top:12px">
-          <label>Prévia terceira mensagem</label>
+          <label>PrÃ©via terceira mensagem</label>
           <div id="cobMsgPreview3" class="preview-whats">${esc((()=>{const old=CONFIG_META.cobranca_msg_template_terceira; const ex={cliente:'MARIA APARECIDA DA SILVA',vencimento:'10/05/2026',pendente:199.90,titulo:'123456',parcela:'03',filial:'F1',vendedor:'VENDEDOR EXEMPLO',dias:25,_cob_status:{qtd:2,proxima_tentativa:3,ultima_fmt:'20/05/2026 10:30'}}; return montarMensagemCobranca(ex);})())}</div>
         </div>
       </div>
@@ -7573,15 +7573,15 @@ function renderCobrancasEnt(ent){
     const retry=Boolean(st.deve_voltar);
     const tentativa=Number(st.proxima_tentativa||1);
     const statusChip = retry
-      ? `<span class="cob-retry-chip">🔁 Cobrar novamente · ${tentativa}ª tentativa</span>`
-      : (cobrado ? `<span class="cob-history-chip">🕒 Cobrado ${st.qtd}x</span>` : '');
+      ? `<span class="cob-retry-chip">ðŸ” Cobrar novamente Â· ${tentativa}Âª tentativa</span>`
+      : (cobrado ? `<span class="cob-history-chip">ðŸ•’ Cobrado ${st.qtd}x</span>` : '');
     const info = cobrado
-      ? `<div class="cob-info-box ${bloqueado?'waiting':''}">${retry?'⚠️ Cliente já foi cobrado e não pagou em 3 dias.':'✅ Cliente cobrado recentemente.'} Última cobrança: <strong>${esc(st.ultima_fmt||'')}</strong> · Total de cobranças: <strong>${st.qtd||0}</strong>${tentativa>=3?' · A próxima mensagem será a <strong>Terceira Mensagem de Cobrança</strong>.':''}</div>`
+      ? `<div class="cob-info-box ${bloqueado?'waiting':''}">${retry?'âš ï¸ Cliente jÃ¡ foi cobrado e nÃ£o pagou em 3 dias.':'âœ… Cliente cobrado recentemente.'} Ãšltima cobranÃ§a: <strong>${esc(st.ultima_fmt||'')}</strong> Â· Total de cobranÃ§as: <strong>${st.qtd||0}</strong>${tentativa>=3?' Â· A prÃ³xima mensagem serÃ¡ a <strong>Terceira Mensagem de CobranÃ§a</strong>.':''}</div>`
       : '';
     const btn = bloqueado
-      ? `<button class="btn soft" title="Só volta para cobrança após 3 dias sem pagamento" disabled>⏳ Aguardando 3 dias</button>`
-      : `<button class="btn wa" onclick='abrirWhats(${JSON.stringify(r)}, ${JSON.stringify({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''})})'>💬 ${retry?'Cobrar novamente':'WhatsApp'}</button>`;
-    return `<div class="row-item ${retry?'retry-due':''}"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')} ${r.novo?'<span class="mini-chip" style="margin-left:6px;background:#eef7ff;color:#1e3a8a;border-color:#93c5fd">Novo hoje</span>':''} ${statusChip}</div>${info}<div class="small muted">✍️ Avalista: ${esc((r.avalista && String(r.avalista).toLowerCase()!=='nan')?r.avalista:'Sem Aval')}</div>${(r.avalista && String(r.avalista).toLowerCase()!=='nan')?'<div class="small avalista-alert">⚠️ Atenção, lembre de cobrar o AVALISTA</div>':''}<div class="small muted">🔒 Restrição crédito: ${/sem restr/i.test(String(r.restricao||''))?`<span class="restr-ok">${esc(r.restricao||'Sem Restrição')}</span>`:esc(r.restricao||'Sem informação')}</div><div class="small muted">👤 ${esc(r.vendedor||'')}</div><div class="small muted">☎️ ${esc(Array.isArray(r.telefones)?r.telefones.join(', '):(r.contato||''))}</div></div><div><strong>${esc(r.titulo||'')}</strong><div class="small muted">Título</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${R(r.pendente||0)}</strong><div class="small muted">Pendente</div></div><div>${showFaixa?`<div class="small muted">${esc(r.faixa_label||'')}</div>`:''}${btn}</div></div></div>`;
+      ? `<button class="btn soft" title="SÃ³ volta para cobranÃ§a apÃ³s 3 dias sem pagamento" disabled>â³ Aguardando 3 dias</button>`
+      : `<button class="btn wa" onclick='abrirWhats(${JSON.stringify(r)}, ${JSON.stringify({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''})})'>ðŸ’¬ ${retry?'Cobrar novamente':'WhatsApp'}</button>`;
+    return `<div class="row-item ${retry?'retry-due':''}"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')} ${r.novo?'<span class="mini-chip" style="margin-left:6px;background:#eef7ff;color:#1e3a8a;border-color:#93c5fd">Novo hoje</span>':''} ${statusChip}</div>${info}<div class="small muted">âœï¸ Avalista: ${esc((r.avalista && String(r.avalista).toLowerCase()!=='nan')?r.avalista:'Sem Aval')}</div>${(r.avalista && String(r.avalista).toLowerCase()!=='nan')?'<div class="small avalista-alert">âš ï¸ AtenÃ§Ã£o, lembre de cobrar o AVALISTA</div>':''}<div class="small muted">ðŸ”’ RestriÃ§Ã£o crÃ©dito: ${/sem restr/i.test(String(r.restricao||''))?`<span class="restr-ok">${esc(r.restricao||'Sem RestriÃ§Ã£o')}</span>`:esc(r.restricao||'Sem informaÃ§Ã£o')}</div><div class="small muted">ðŸ‘¤ ${esc(r.vendedor||'')}</div><div class="small muted">â˜Žï¸ ${esc(Array.isArray(r.telefones)?r.telefones.join(', '):(r.contato||''))}</div></div><div><strong>${esc(r.titulo||'')}</strong><div class="small muted">TÃ­tulo</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${R(r.pendente||0)}</strong><div class="small muted">Pendente</div></div><div>${showFaixa?`<div class="small muted">${esc(r.faixa_label||'')}</div>`:''}${btn}</div></div></div>`;
   }).join('');
 
   const faixas=['grave','alerta','atencao'];
@@ -7592,8 +7592,8 @@ function renderCobrancasEnt(ent){
     const arr=(src[fx]||[]).map(r=>decorateRow({...r,faixa_label:fx}));
     aguardando.push(...arr.filter(r=>r._cob_status?.bloqueado));
     const vis=arr.filter(shouldShowInGeral);
-    const label=fx==='grave'?'Grave':fx==='alerta'?'Alerta':'Atenção';
-    geral+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${vis.length} títulos · ${R(vis.reduce((a,b)=>a+Number(b.pendente||0),0))}</span></div><div class="tableish">${renderRows(vis,false)}</div></div>`;
+    const label=fx==='grave'?'Grave':fx==='alerta'?'Alerta':'AtenÃ§Ã£o';
+    geral+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${vis.length} tÃ­tulos Â· ${R(vis.reduce((a,b)=>a+Number(b.pendente||0),0))}</span></div><div class="tableish">${renderRows(vis,false)}</div></div>`;
   });
 
   const cobradosRows=(cobradosHoje||[]).map(x=>{
@@ -7604,7 +7604,7 @@ function renderCobrancasEnt(ent){
   return `${tabs}<div class="cob-pane" data-cobpane="geral">${geral}</div><div class="cob-pane hidden" data-cobpane="novos">${renderRows(allHoje.map(r=>decorateRow({...r,faixa_label:r.faixa||''})).filter(shouldShowInGeral),true)}</div><div class="cob-pane hidden" data-cobpane="cobrados">${renderRows(cobradosRows,true)}</div><div class="cob-pane hidden" data-cobpane="aguardando">${renderRows(aguardando,true)}</div>`;
 }
 function switchCobTab(btn,name){const box=btn.closest('.acc-body'); box.querySelectorAll('[data-cobtab]').forEach(b=>b.classList.toggle('active',b===btn)); box.querySelectorAll('[data-cobpane]').forEach(p=>p.classList.toggle('hidden',p.dataset.cobpane!==name));}
-function abrirWhats(reg,entRef){const nums=normalizarListaTelefones((reg.telefones&&reg.telefones.length)?reg.telefones:reg.contato); if(!nums.length){toast('Cliente sem telefone válido.'); return} reg._cob_status=cobStatusTitulo(reg,entRef); phoneContext={reg,entRef}; if(nums.length===1){enviarWhats(nums[0]); return} const phoneList=document.getElementById('phoneList'); phoneList.innerHTML=nums.map(n=>`<button class="btn soft" style="width:100%" onclick="enviarWhats('${n}')">${n}</button>`).join(''); document.getElementById('phoneModal').classList.add('show')}
+function abrirWhats(reg,entRef){const nums=normalizarListaTelefones((reg.telefones&&reg.telefones.length)?reg.telefones:reg.contato); if(!nums.length){toast('Cliente sem telefone vÃ¡lido.'); return} reg._cob_status=cobStatusTitulo(reg,entRef); phoneContext={reg,entRef}; if(nums.length===1){enviarWhats(nums[0]); return} const phoneList=document.getElementById('phoneList'); phoneList.innerHTML=nums.map(n=>`<button class="btn soft" style="width:100%" onclick="enviarWhats('${n}')">${n}</button>`).join(''); document.getElementById('phoneModal').classList.add('show')}
 function closePhoneModal(){document.getElementById('phoneModal').classList.remove('show'); phoneContext=null}
 function enviarWhats(numero){if(!phoneContext) return; const {reg,entRef}=phoneContext; const msg=montarMensagemCobranca(reg); window.open(`https://wa.me/${numero}?text=${encodeURIComponent(msg)}`,'_blank'); registrarCobrancaOnline(reg,entRef,numero); closePhoneModal()}
 async function registrarCobrancaOnline(r,entRef,numero){
@@ -7623,7 +7623,7 @@ async function registrarCobrancaOnline(r,entRef,numero){
     const j=await resp.json();
     if(j.ok){
       await carregarCobrancasOnline();
-      toast('Cobrança registrada online com sucesso.','success');
+      toast('CobranÃ§a registrada online com sucesso.','success');
       if(!detailScreen.classList.contains('hidden')){
         if(entRef.type==='crediarista'||entRef.is_crediarista){
           openCrediaristaPanel(entRef.login||'',entRef.filial||'',entRef.nome||'');
@@ -7631,16 +7631,16 @@ async function registrarCobrancaOnline(r,entRef,numero){
           openEntity(entRef);
         }
       }
-    } else toast('Não consegui gravar a cobrança online.');
-  }catch(e){toast('Falha ao salvar cobrança online.');}
+    } else toast('NÃ£o consegui gravar a cobranÃ§a online.');
+  }catch(e){toast('Falha ao salvar cobranÃ§a online.');}
 }
-async function carregarCobrancasOnline(){try{const r=await fetchComTimeout(API_COB+'?_='+Date.now(),{},3000); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} COB_LOGS=(j.ok&&Array.isArray(j.data))?j.data:[]; RECEBIMENTOS_CONCILIADOS=getQuitadosConciliados(); console.log('🔗 Quitados conciliados:', RECEBIMENTOS_CONCILIADOS); if(!j.ok && txt) console.log('cobrancas_api retorno:', txt);}catch(e){console.log(e); COB_LOGS=[]}}
+async function carregarCobrancasOnline(){try{const r=await fetchComTimeout(API_COB+'?_='+Date.now(),{},3000); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} COB_LOGS=(j.ok&&Array.isArray(j.data))?j.data:[]; RECEBIMENTOS_CONCILIADOS=getQuitadosConciliados(); console.log('ðŸ”— Quitados conciliados:', RECEBIMENTOS_CONCILIADOS); if(!j.ok && txt) console.log('cobrancas_api retorno:', txt);}catch(e){console.log(e); COB_LOGS=[]}}
 
-async function removerCobranca(id,cliente='',titulo='',parcela=''){if(!confirm('Remover esta cobrança do histórico?')) return; try{const r=await fetch(API_COB,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete',id,cliente,titulo,parcela})}); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} if(j.ok){toast('Cobrança removida.','success'); await carregarCobrancasOnline(); renderLogsTab(); renderList(); if(currentDetailRef) openEntity(currentDetailRef);}else{console.log('Falha remover cobrança:', txt); toast('Não consegui remover.')}}catch(e){console.log(e); toast('Falha ao remover cobrança.')}}
+async function removerCobranca(id,cliente='',titulo='',parcela=''){if(!confirm('Remover esta cobranÃ§a do histÃ³rico?')) return; try{const r=await fetch(API_COB,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete',id,cliente,titulo,parcela})}); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} if(j.ok){toast('CobranÃ§a removida.','success'); await carregarCobrancasOnline(); renderLogsTab(); renderList(); if(currentDetailRef) openEntity(currentDetailRef);}else{console.log('Falha remover cobranÃ§a:', txt); toast('NÃ£o consegui remover.')}}catch(e){console.log(e); toast('Falha ao remover cobranÃ§a.')}}
 function toggleAcc(el){el.parentElement.classList.toggle('open')}
 async function carregarConfigOnline(){try{const r=await fetchComTimeout(API_CFG+'?_='+Date.now(),{},2500); const j=await r.json(); if(j.ok && j.data){CONFIG_META={...CONFIG_META,...(j.data.global||{})}; CREDIARISTAS_CONFIG=getCrediaristasConfig(); const ind=(j.data.individual && typeof j.data.individual==='object' && !Array.isArray(j.data.individual))?j.data.individual:{}; CONFIG_META_IND=ind;}}catch(e){console.log('Falha ao carregar config meta',e);}}
 
-function optionTargets(){let opts=''; flattenFiliais().forEach(f=>{opts+=`<option value="FILIAL::${f.filial}">🏬 ${filialLabel(f.filial)}</option>`}); opts+=`<option value="VEND::${COBRANCA10_NOME}_FTER">🤝 ${COBRANCA10_NOME} (Cobranças Terceiro)</option>`; crediaristaEntities().forEach(c=>{opts+=`<option value="VEND::${c.nome}_${c.filial}">🧾 ${c.nome} (${c.filial})</option>`}); flattenVendedores().forEach(v=>{opts+=`<option value="VEND::${v.nome}_${v.filial}">👤 ${v.nome} (${v.filial})</option>`}); return opts}
+function optionTargets(){let opts=''; flattenFiliais().forEach(f=>{opts+=`<option value="FILIAL::${f.filial}">ðŸ¬ ${filialLabel(f.filial)}</option>`}); opts+=`<option value="VEND::${COBRANCA10_NOME}_FTER">ðŸ¤ ${COBRANCA10_NOME} (CobranÃ§as Terceiro)</option>`; crediaristaEntities().forEach(c=>{opts+=`<option value="VEND::${c.nome}_${c.filial}">ðŸ§¾ ${c.nome} (${c.filial})</option>`}); flattenVendedores().forEach(v=>{opts+=`<option value="VEND::${v.nome}_${v.filial}">ðŸ‘¤ ${v.nome} (${v.filial})</option>`}); return opts}
 function fillMetaForm(mode,val){const cfg=mode==='global'?{...CONFIG_META}:mergedMetaConfig(metaAliasesFromRaw(val)); ['grave_pct','alerta_pct','atencao_pct','peso_grave','peso_alerta','peso_atencao','bonus_50','bonus_75','bonus_85','bonus_100','vendas_min_pct','servicos_min_pct','gerente_vendas_min_pct','gerente_servicos_min_pct','cobranca_global_rateio_pct'].forEach(k=>{const el=document.getElementById('cfg_'+k); if(el) el.value=cfg[k]??''}); renderCommissionPanel(cfg)}
 function canonicalMetaLabelFromKey(k){
   const v=String(k||'').trim();
@@ -7658,28 +7658,28 @@ function renderSavedMetaList(){
   Object.keys(CONFIG_META_IND||{}).forEach(k=>{const canon=canonicalMetaLabelFromKey(k); if(canon && !seen.has(canon)){seen.add(canon); labels.push(canon);}});
   labels.sort();
   const lst=document.getElementById('metaSavedList');
-  if(lst) lst.innerHTML=labels.length?('Individuais salvos: '+labels.map(k=>`<span class="mini-chip">${esc(k)}</span>`).join(' ')):'Nenhuma configuração individual salva.';
+  if(lst) lst.innerHTML=labels.length?('Individuais salvos: '+labels.map(k=>`<span class="mini-chip">${esc(k)}</span>`).join(' ')):'Nenhuma configuraÃ§Ã£o individual salva.';
 }
 
 function renderCrediaristasConfigPanel(){
   const rows=getCrediaristasConfig();
-  return `<div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🧾 Crediaristas configuráveis</h2><div class="hint">Fluxo correto: primeiro crie o login em Senhas. Depois, aqui, vincule esse login à filial/base e ao %. Quando trocar a pessoa, crie novo login, exemplo CREDIARISTAF2_02, e remova o antigo daqui. O histórico antigo permanece salvo. O % é só da carteira que o crediarista enxerga; não altera o rateio 60% filial / 40% vendedores.</div></div></div>
+  return `<div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">ðŸ§¾ Crediaristas configurÃ¡veis</h2><div class="hint">Fluxo correto: primeiro crie o login em Senhas. Depois, aqui, vincule esse login Ã  filial/base e ao %. Quando trocar a pessoa, crie novo login, exemplo CREDIARISTAF2_02, e remova o antigo daqui. O histÃ³rico antigo permanece salvo. O % Ã© sÃ³ da carteira que o crediarista enxerga; nÃ£o altera o rateio 60% filial / 40% vendedores.</div></div></div>
   <div id="credConfigRows">${rows.map(r=>`<div class="glass" style="padding:10px;margin-bottom:8px;border-radius:14px"><div class="form-grid bonus">
-    <div class="input-card"><label>Login do usuário</label><input class="cred-login" value="${esc(r.login||'')}" placeholder="crediaristaf2_01"></div>
+    <div class="input-card"><label>Login do usuÃ¡rio</label><input class="cred-login" value="${esc(r.login||'')}" placeholder="crediaristaf2_01"></div>
     <div class="input-card"><label>Nome exibido</label><input class="cred-nome" value="${esc(r.nome||'')}" placeholder="Maria - crediarista F2"></div>
     <div class="input-card"><label>Filial/base</label><select class="cred-filial">${ORDEM.map(f=>`<option value="${f}" ${String(r.filial||'').toUpperCase()===f?'selected':''}>${f}</option>`).join('')}</select></div>
     <div class="input-card"><label>% da base</label><input class="cred-pct" type="number" step="0.01" value="${Number(r.pct||100)}"></div>
-  </div><button type="button" class="btn soft" onclick="this.closest('.glass').remove()">🗑️ Remover</button></div>`).join('')}</div>
-  <button type="button" class="btn soft" onclick="addCrediaristaConfigRow()">➕ Adicionar crediarista</button>`;
+  </div><button type="button" class="btn soft" onclick="this.closest('.glass').remove()">ðŸ—‘ï¸ Remover</button></div>`).join('')}</div>
+  <button type="button" class="btn soft" onclick="addCrediaristaConfigRow()">âž• Adicionar crediarista</button>`;
 }
 function addCrediaristaConfigRow(){
   const box=document.getElementById('credConfigRows'); if(!box) return;
   box.insertAdjacentHTML('beforeend', `<div class="glass" style="padding:10px;margin-bottom:8px;border-radius:14px"><div class="form-grid bonus">
-    <div class="input-card"><label>Login do usuário</label><input class="cred-login" placeholder="crediaristaf2_01"></div>
+    <div class="input-card"><label>Login do usuÃ¡rio</label><input class="cred-login" placeholder="crediaristaf2_01"></div>
     <div class="input-card"><label>Nome exibido</label><input class="cred-nome" placeholder="Nome da crediarista"></div>
     <div class="input-card"><label>Filial/base</label><select class="cred-filial">${ORDEM.map(f=>`<option value="${f}">${f}</option>`).join('')}</select></div>
     <div class="input-card"><label>% da base</label><input class="cred-pct" type="number" step="0.01" value="100"></div>
-  </div><button type="button" class="btn soft" onclick="this.closest('.glass').remove()">🗑️ Remover</button></div>`);
+  </div><button type="button" class="btn soft" onclick="this.closest('.glass').remove()">ðŸ—‘ï¸ Remover</button></div>`);
 }
 function readCrediaristasConfigFromUI(){
   const box=document.getElementById('credConfigRows'); if(!box) return getCrediaristasConfig();
@@ -7692,7 +7692,7 @@ function readCrediaristasConfigFromUI(){
   }).filter(r=>r.login&&r.filial&&r.pct>0);
 }
 
-function renderMetasTab(){const cards=[...flattenVendedores(),...flattenFiliais()]; const currentMode=window._metaMode||'global'; const currentTarget=window._metaSelectedTarget||''; metaSection.innerHTML=`<div class="section-head"><div><h2>🎯 Configuração de metas e bônus</h2><div class="hint">Altere globalmente ou por vendedor/filial. Ao salvar, já fica online.</div></div></div><div class="meta-layout"><div class="glass panel"><div class="tabs" style="justify-content:flex-start;margin-top:0"><button id="btnModeGlobal" class="tab" onclick="setMetaMode('global')">🌐 Padrão global</button><button id="btnModeInd" class="tab" onclick="setMetaMode('individual')">👤 Por vendedor/filial</button></div><div id="metaSelectWrap" class="hidden" style="margin:8px 0 14px"><div class="input-card"><label>Selecionar alvo</label><select id="metaTarget" onchange="loadMetaSelected()"><option value="">Selecione...</option>${optionTargets()}</select></div></div><div class="section-head" style="margin-top:10px"><div><h2 style="font-size:18px">% de meta por faixa</h2></div></div><div class="form-grid"><div class="input-card"><label>Grave</label><input id="cfg_grave_pct" type="number" step="0.01"></div><div class="input-card"><label>Alerta</label><input id="cfg_alerta_pct" type="number" step="0.01"></div><div class="input-card"><label>Atenção</label><input id="cfg_atencao_pct" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">Pesos da meta geral</h2></div></div><div class="form-grid"><div class="input-card"><label>Peso Grave</label><input id="cfg_peso_grave" type="number" step="0.01"></div><div class="input-card"><label>Peso Alerta</label><input id="cfg_peso_alerta" type="number" step="0.01"></div><div class="input-card"><label>Peso Atenção</label><input id="cfg_peso_atencao" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">Bônus / mensagem da faixa <span class="note">· Não acumulativo</span></h2></div></div><div class="form-grid bonus"><div class="input-card"><label>50%</label><input id="cfg_bonus_50" placeholder="Ex: Parabéns, você ganhou R$ 100,00"></div><div class="input-card"><label>75%</label><input id="cfg_bonus_75"></div><div class="input-card"><label>85%</label><input id="cfg_bonus_85"></div><div class="input-card"><label>100%</label><input id="cfg_bonus_100"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">💲 Meta mínima Vendas e Serviços</h2><div class="hint">Configuração inicial para comissão de vendedor e gerente/filial.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Vendedor · mínimo vendas (%)</label><input id="cfg_vendas_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Vendedor · mínimo serviços (%)</label><input id="cfg_servicos_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial · mínimo vendas (%)</label><input id="cfg_gerente_vendas_min_pct" type="number" step="0.01" placeholder="90"></div><div class="input-card"><label>Gerente/Filial · mínimo serviços (%)</label><input id="cfg_gerente_servicos_min_pct" type="number" step="0.01" placeholder="90"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🤝 Rateio cobrança global</h2><div class="hint">Percentual do total único da cobrança geral distribuído para os usuários do tipo cobrança global (ex.: Cobrança10).</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Usuários de cobrança global (%)</label><input id="cfg_cobranca_global_rateio_pct" type="number" step="0.01" placeholder="20"></div></div>${renderCrediaristasConfigPanel()}<div id="commissionPanel"></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button class="btn primary" onclick="salvarMeta()">💾 Salvar configuração</button><button class="btn ghost" onclick="removerMetaIndividual()">🗑️ Remover individual</button></div><div id="metaSaveMsg" class="note" style="margin-top:10px"></div><div id="metaSavedList" class="note" style="margin-top:10px"></div></div></div>`; const sel=document.getElementById('metaTarget'); if(sel && currentTarget) sel.value=currentTarget; setMetaMode(currentMode); renderSavedMetaList();}
+function renderMetasTab(){const cards=[...flattenVendedores(),...flattenFiliais()]; const currentMode=window._metaMode||'global'; const currentTarget=window._metaSelectedTarget||''; metaSection.innerHTML=`<div class="section-head"><div><h2>ðŸŽ¯ ConfiguraÃ§Ã£o de metas e bÃ´nus</h2><div class="hint">Altere globalmente ou por vendedor/filial. Ao salvar, jÃ¡ fica online.</div></div></div><div class="meta-layout"><div class="glass panel"><div class="tabs" style="justify-content:flex-start;margin-top:0"><button id="btnModeGlobal" class="tab" onclick="setMetaMode('global')">ðŸŒ PadrÃ£o global</button><button id="btnModeInd" class="tab" onclick="setMetaMode('individual')">ðŸ‘¤ Por vendedor/filial</button></div><div id="metaSelectWrap" class="hidden" style="margin:8px 0 14px"><div class="input-card"><label>Selecionar alvo</label><select id="metaTarget" onchange="loadMetaSelected()"><option value="">Selecione...</option>${optionTargets()}</select></div></div><div class="section-head" style="margin-top:10px"><div><h2 style="font-size:18px">% de meta por faixa</h2></div></div><div class="form-grid"><div class="input-card"><label>Grave</label><input id="cfg_grave_pct" type="number" step="0.01"></div><div class="input-card"><label>Alerta</label><input id="cfg_alerta_pct" type="number" step="0.01"></div><div class="input-card"><label>AtenÃ§Ã£o</label><input id="cfg_atencao_pct" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">Pesos da meta geral</h2></div></div><div class="form-grid"><div class="input-card"><label>Peso Grave</label><input id="cfg_peso_grave" type="number" step="0.01"></div><div class="input-card"><label>Peso Alerta</label><input id="cfg_peso_alerta" type="number" step="0.01"></div><div class="input-card"><label>Peso AtenÃ§Ã£o</label><input id="cfg_peso_atencao" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">BÃ´nus / mensagem da faixa <span class="note">Â· NÃ£o acumulativo</span></h2></div></div><div class="form-grid bonus"><div class="input-card"><label>50%</label><input id="cfg_bonus_50" placeholder="Ex: ParabÃ©ns, vocÃª ganhou R$ 100,00"></div><div class="input-card"><label>75%</label><input id="cfg_bonus_75"></div><div class="input-card"><label>85%</label><input id="cfg_bonus_85"></div><div class="input-card"><label>100%</label><input id="cfg_bonus_100"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">ðŸ’² Meta mÃ­nima Vendas e ServiÃ§os</h2><div class="hint">ConfiguraÃ§Ã£o inicial para comissÃ£o de vendedor e gerente/filial.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Vendedor Â· mÃ­nimo vendas (%)</label><input id="cfg_vendas_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Vendedor Â· mÃ­nimo serviÃ§os (%)</label><input id="cfg_servicos_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial Â· mÃ­nimo vendas (%)</label><input id="cfg_gerente_vendas_min_pct" type="number" step="0.01" placeholder="90"></div><div class="input-card"><label>Gerente/Filial Â· mÃ­nimo serviÃ§os (%)</label><input id="cfg_gerente_servicos_min_pct" type="number" step="0.01" placeholder="90"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">ðŸ¤ Rateio cobranÃ§a global</h2><div class="hint">Percentual do total Ãºnico da cobranÃ§a geral distribuÃ­do para os usuÃ¡rios do tipo cobranÃ§a global (ex.: CobranÃ§a10).</div></div></div><div class="form-grid bonus"><div class="input-card"><label>UsuÃ¡rios de cobranÃ§a global (%)</label><input id="cfg_cobranca_global_rateio_pct" type="number" step="0.01" placeholder="20"></div></div>${renderCrediaristasConfigPanel()}<div id="commissionPanel"></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button class="btn primary" onclick="salvarMeta()">ðŸ’¾ Salvar configuraÃ§Ã£o</button><button class="btn ghost" onclick="removerMetaIndividual()">ðŸ—‘ï¸ Remover individual</button></div><div id="metaSaveMsg" class="note" style="margin-top:10px"></div><div id="metaSavedList" class="note" style="margin-top:10px"></div></div></div>`; const sel=document.getElementById('metaTarget'); if(sel && currentTarget) sel.value=currentTarget; setMetaMode(currentMode); renderSavedMetaList();}
 function setMetaMode(mode){window._metaMode=mode; const bg=document.getElementById('btnModeGlobal'); const bi=document.getElementById('btnModeInd'); if(bg) bg.classList.toggle('active',mode==='global'); if(bi) bi.classList.toggle('active',mode==='individual'); const wrap=document.getElementById('metaSelectWrap'); if(wrap) wrap.classList.toggle('hidden',mode!=='individual'); if(mode==='global'){fillMetaForm('global')} else {const raw=(document.getElementById('metaTarget')?.value)||window._metaSelectedTarget||''; if(raw){window._metaSelectedTarget=raw; fillMetaForm('individual',raw)} else {fillMetaForm('global')}}}
 function loadMetaSelected(){const val=document.getElementById('metaTarget').value; window._metaSelectedTarget=val; if(!val){fillMetaForm('global'); return;} fillMetaForm('individual',val)}
 function collectMetaForm(){const out={}; ['grave_pct','alerta_pct','atencao_pct','peso_grave','peso_alerta','peso_atencao','vendas_min_pct','servicos_min_pct','gerente_vendas_min_pct','gerente_servicos_min_pct','cobranca_global_rateio_pct'].forEach(k=>out[k]=Number(document.getElementById('cfg_'+k).value||0)); ['bonus_50','bonus_75','bonus_85','bonus_100'].forEach(k=>out[k]=document.getElementById('cfg_'+k).value||''); return {...out,crediaristas_config:readCrediaristasConfigFromUI(),...readCommissionPanel()}}
@@ -7713,15 +7713,15 @@ async function salvarMeta(){
     const payload={global:CONFIG_META,individual:CONFIG_META_IND};
     const resp=await fetch(API_CFG,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const j=await resp.json();
-    if(msgEl) msgEl.textContent=j.ok?'✅ Salvo online com sucesso.':'⚠️ Não consegui salvar online.';
+    if(msgEl) msgEl.textContent=j.ok?'âœ… Salvo online com sucesso.':'âš ï¸ NÃ£o consegui salvar online.';
     if(j.ok){
       await carregarConfigOnline();
       renderMetasTab();
       renderList();
       const restoreMsg=document.getElementById('metaSaveMsg');
-      if(restoreMsg) restoreMsg.textContent='✅ Salvo online com sucesso.';
+      if(restoreMsg) restoreMsg.textContent='âœ… Salvo online com sucesso.';
     }
-  }catch(e){console.log('Erro ao salvar meta',e); if(msgEl) msgEl.textContent='⚠️ Não consegui salvar online.';}
+  }catch(e){console.log('Erro ao salvar meta',e); if(msgEl) msgEl.textContent='âš ï¸ NÃ£o consegui salvar online.';}
 }
 async function removerMetaIndividual(){
   const msgEl=document.getElementById('metaSaveMsg');
@@ -7731,14 +7731,14 @@ async function removerMetaIndividual(){
   try{
     const resp=await fetch(API_CFG,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({global:CONFIG_META,individual:CONFIG_META_IND})});
     const j=await resp.json();
-    if(msgEl) msgEl.textContent=j.ok?'✅ Configuração individual removida.':'⚠️ Não consegui remover online.';
-    if(j.ok){await carregarConfigOnline(); renderMetasTab(); const restoreMsg=document.getElementById('metaSaveMsg'); if(restoreMsg) restoreMsg.textContent='✅ Configuração individual removida.';}
-  }catch(e){console.log('Erro ao remover meta individual',e); if(msgEl) msgEl.textContent='⚠️ Não consegui remover online.';}
+    if(msgEl) msgEl.textContent=j.ok?'âœ… ConfiguraÃ§Ã£o individual removida.':'âš ï¸ NÃ£o consegui remover online.';
+    if(j.ok){await carregarConfigOnline(); renderMetasTab(); const restoreMsg=document.getElementById('metaSaveMsg'); if(restoreMsg) restoreMsg.textContent='âœ… ConfiguraÃ§Ã£o individual removida.';}
+  }catch(e){console.log('Erro ao remover meta individual',e); if(msgEl) msgEl.textContent='âš ï¸ NÃ£o consegui remover online.';}
 }
-function renderLogsTab(){const cfgPanel=renderCobrancaConfigPanel(); const filOpts=['<option value="">Todas as filiais</option>',...ORDEM.map(f=>`<option value="${f}">${f}</option>`)].join(''); const vendOpts=['<option value="">Todos os usuários</option>',...Array.from(new Set(COB_LOGS.map(x=>x.usuario).filter(Boolean))).sort().map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)].join(''); logSection.innerHTML=cfgPanel+`<div class="section-head"><div><h2>🧾 Histórico de cobranças</h2><div class="hint">Filtre por data, usuário ou filial. Também é possível remover lançamentos indevidos.</div></div></div><div class="glass panel"><div class="search-row"><div class="input-card"><label>Buscar cliente/título</label><input id="logQ" placeholder="Nome, título, parcela"></div><div class="input-card"><label>Data inicial</label><input id="logDe" type="date"></div><div class="input-card"><label>Data final</label><input id="logAte" type="date"></div><div class="input-card"><label>Filial</label><select id="logFil">${filOpts}</select></div></div><div class="search-row" style="margin-top:10px"><div class="input-card"><label>Usuário</label><select id="logVend">${vendOpts}</select></div><div style="display:flex;align-items:end;gap:10px"><button class="btn primary" onclick="applyLogFilter()">Filtrar</button><button class="btn soft" onclick="clearLogFilter()">Limpar</button></div></div><div id="logsList" class="logs-list"></div></div>`; applyLogFilter()}
+function renderLogsTab(){const cfgPanel=renderCobrancaConfigPanel(); const filOpts=['<option value="">Todas as filiais</option>',...ORDEM.map(f=>`<option value="${f}">${f}</option>`)].join(''); const vendOpts=['<option value="">Todos os usuÃ¡rios</option>',...Array.from(new Set(COB_LOGS.map(x=>x.usuario).filter(Boolean))).sort().map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)].join(''); logSection.innerHTML=cfgPanel+`<div class="section-head"><div><h2>ðŸ§¾ HistÃ³rico de cobranÃ§as</h2><div class="hint">Filtre por data, usuÃ¡rio ou filial. TambÃ©m Ã© possÃ­vel remover lanÃ§amentos indevidos.</div></div></div><div class="glass panel"><div class="search-row"><div class="input-card"><label>Buscar cliente/tÃ­tulo</label><input id="logQ" placeholder="Nome, tÃ­tulo, parcela"></div><div class="input-card"><label>Data inicial</label><input id="logDe" type="date"></div><div class="input-card"><label>Data final</label><input id="logAte" type="date"></div><div class="input-card"><label>Filial</label><select id="logFil">${filOpts}</select></div></div><div class="search-row" style="margin-top:10px"><div class="input-card"><label>UsuÃ¡rio</label><select id="logVend">${vendOpts}</select></div><div style="display:flex;align-items:end;gap:10px"><button class="btn primary" onclick="applyLogFilter()">Filtrar</button><button class="btn soft" onclick="clearLogFilter()">Limpar</button></div></div><div id="logsList" class="logs-list"></div></div>`; applyLogFilter()}
 function parseDateBR(s){if(!s) return null; const v=String(s).trim(); let m=v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); if(m){const d=new Date(Number(m[3]), Number(m[2])-1, Number(m[1])); return isNaN(d)?null:d} const d=new Date(v); return isNaN(d)?null:d}
 function parseDate(s){if(!s) return null; const d=new Date(s); return isNaN(d)?null:d}
-function applyLogFilter(){const q=(document.getElementById('logQ')?.value||'').toLowerCase(); const de=parseDate(document.getElementById('logDe')?.value); const ate=parseDate(document.getElementById('logAte')?.value); const fil=document.getElementById('logFil')?.value||''; const vend=document.getElementById('logVend')?.value||''; let arr=[...COB_LOGS].reverse(); arr=arr.filter(x=>{const txt=`${x.cliente||''} ${x.titulo||''} ${x.parcela||''}`.toLowerCase(); const dt=parseDate(x.server_time||x.data||''); if(q && !txt.includes(q)) return false; if(fil && String(x.filial||'')!==fil) return false; if(vend && String(x.usuario||'')!==vend) return false; if(de && (!dt || dt<de)) return false; if(ate){const end=new Date(ate); end.setHours(23,59,59,999); if(!dt || dt>end) return false;} return true}); _logFiltered=arr; const host=document.getElementById('logsList'); if(!host) return; host.innerHTML=arr.length?arr.map((x,i)=>`<div class="log-row"><div><div style="font-weight:900">${esc(x.cliente||'')}</div><div class="small muted">${esc(x.titulo||'')} · Parcela ${esc(x.parcela||'')}</div></div><div><strong>${R(x.pendente||0)}</strong><div class="small muted">${esc(x.filial||'')} · ${esc(x.usuario||'')}</div></div><div><strong>${esc(x.telefone||'')}</strong><div class="small muted">Telefone</div></div><div><strong>${esc((x.server_time||'').replace('T',' ').slice(0,16))}</strong><div class="small muted">Data</div></div><div><button class="btn danger" onclick="removerCobrancaIdx(${i})">Remover</button></div></div>`).join(''):'<div class="empty">Nenhuma cobrança encontrada para esse filtro.</div>'}
+function applyLogFilter(){const q=(document.getElementById('logQ')?.value||'').toLowerCase(); const de=parseDate(document.getElementById('logDe')?.value); const ate=parseDate(document.getElementById('logAte')?.value); const fil=document.getElementById('logFil')?.value||''; const vend=document.getElementById('logVend')?.value||''; let arr=[...COB_LOGS].reverse(); arr=arr.filter(x=>{const txt=`${x.cliente||''} ${x.titulo||''} ${x.parcela||''}`.toLowerCase(); const dt=parseDate(x.server_time||x.data||''); if(q && !txt.includes(q)) return false; if(fil && String(x.filial||'')!==fil) return false; if(vend && String(x.usuario||'')!==vend) return false; if(de && (!dt || dt<de)) return false; if(ate){const end=new Date(ate); end.setHours(23,59,59,999); if(!dt || dt>end) return false;} return true}); _logFiltered=arr; const host=document.getElementById('logsList'); if(!host) return; host.innerHTML=arr.length?arr.map((x,i)=>`<div class="log-row"><div><div style="font-weight:900">${esc(x.cliente||'')}</div><div class="small muted">${esc(x.titulo||'')} Â· Parcela ${esc(x.parcela||'')}</div></div><div><strong>${R(x.pendente||0)}</strong><div class="small muted">${esc(x.filial||'')} Â· ${esc(x.usuario||'')}</div></div><div><strong>${esc(x.telefone||'')}</strong><div class="small muted">Telefone</div></div><div><strong>${esc((x.server_time||'').replace('T',' ').slice(0,16))}</strong><div class="small muted">Data</div></div><div><button class="btn danger" onclick="removerCobrancaIdx(${i})">Remover</button></div></div>`).join(''):'<div class="empty">Nenhuma cobranÃ§a encontrada para esse filtro.</div>'}
 function removerCobrancaIdx(i){const x=_logFiltered[i]; if(!x) return; removerCobranca(x.id||'', x.cliente||'', x.titulo||'', x.parcela||'');}
 function clearLogFilter(){['logQ','logDe','logAte'].forEach(id=>{const e=document.getElementById(id); if(e) e.value=''}); ['logFil','logVend'].forEach(id=>{const e=document.getElementById(id); if(e) e.value=''}); applyLogFilter()}
 
@@ -7782,25 +7782,25 @@ function renderMsgCard(m, showRemove=false, showClear=false, compact=false){
     else if(String(m.media_type||'').startsWith('audio')) media = compact ? `<div class="msg-media compact"><audio src="${m.media_url}" controls></audio></div>` : `<div class="msg-media"><audio src="${m.media_url}" controls></audio></div>`;
     else media = `<div class="msg-media"><a href="${m.media_url}" target="_blank" class="btn soft">Abrir anexo</a></div>`;
   }
-  const masterRead = (usuarioAtual?.tipo==='master') ? ((Array.isArray(m.read_by)&&m.read_by.length>0)?`<span class="read-chip">Lido por ${m.read_by.length}</span>`:'<span class="unread-chip">Não lido</span>') : null;
-  const status = masterRead || (isReadMsg(m) ? '<span class="read-chip">Lido</span>' : '<span class="unread-chip">Não lido</span>');
-  const markBtn = (!isReadMsg(m) && !isCampaign(m) && usuarioAtual?.tipo!=='master') ? `<button class="btn soft" onclick="marcarMsgLida('${m.id||''}')">✔️ Marcar como lido</button>` : '';
+  const masterRead = (usuarioAtual?.tipo==='master') ? ((Array.isArray(m.read_by)&&m.read_by.length>0)?`<span class="read-chip">Lido por ${m.read_by.length}</span>`:'<span class="unread-chip">NÃ£o lido</span>') : null;
+  const status = masterRead || (isReadMsg(m) ? '<span class="read-chip">Lido</span>' : '<span class="unread-chip">NÃ£o lido</span>');
+  const markBtn = (!isReadMsg(m) && !isCampaign(m) && usuarioAtual?.tipo!=='master') ? `<button class="btn soft" onclick="marcarMsgLida('${m.id||''}')">âœ”ï¸ Marcar como lido</button>` : '';
   const removeBtn = showRemove ? `<button class="btn danger" onclick="removerMensagem('${m.id||''}')">Remover</button>` : '';
   const clearBtn = showClear ? `<button class="btn soft" onclick="limparMensagemTela('${m.id||''}')">Limpar</button>` : '';
-  const detailBtn = compact && m.media_url ? `<button class="btn soft" onclick="openMsgPreview('${m.id||''}')">🔎 Detalhes</button>` : '';
+  const detailBtn = compact && m.media_url ? `<button class="btn soft" onclick="openMsgPreview('${m.id||''}')">ðŸ”Ž Detalhes</button>` : '';
   const typeTag = isCampaign(m) ? '<span class="mini-chip" style="background:#fff7ed;border-color:#fdba74;color:#c2410c">Campanha</span>' : '<span class="mini-chip">Aviso</span>';
-  return `<div class="msg-card ${isCampaign(m)?'campaign-banner':''}"><div class="msg-head"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><strong>${esc(m.title||'Aviso')}</strong>${typeTag}${status}</div><span class="small muted">${esc((m.server_time||'').replace('T',' ').slice(0,16))}</span></div><div class="small muted">Para: ${esc(m.target_label||m.target_type||'Todos')}${m.expires_at?` · Até ${esc(m.expires_at)}`:''}</div><div style="margin-top:8px;white-space:pre-wrap">${esc(m.body||'')}</div>${media}<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">${detailBtn}${markBtn}${clearBtn}${removeBtn}</div></div>`;
+  return `<div class="msg-card ${isCampaign(m)?'campaign-banner':''}"><div class="msg-head"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><strong>${esc(m.title||'Aviso')}</strong>${typeTag}${status}</div><span class="small muted">${esc((m.server_time||'').replace('T',' ').slice(0,16))}</span></div><div class="small muted">Para: ${esc(m.target_label||m.target_type||'Todos')}${m.expires_at?` Â· AtÃ© ${esc(m.expires_at)}`:''}</div><div style="margin-top:8px;white-space:pre-wrap">${esc(m.body||'')}</div>${media}<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">${detailBtn}${markBtn}${clearBtn}${removeBtn}</div></div>`;
 }
 function openBell(){
   const arr=(MSGS||[]).filter(m=>msgMatchesUser(m) && !isExpiredCampaign(m)).reverse();
-  document.getElementById('bellList').innerHTML=arr.length?arr.map(m=>renderMsgCard(m,false,false,true)).join(''):'<div class="empty">Nenhum aviso para você no momento.</div>';
+  document.getElementById('bellList').innerHTML=arr.length?arr.map(m=>renderMsgCard(m,false,false,true)).join(''):'<div class="empty">Nenhum aviso para vocÃª no momento.</div>';
   document.getElementById('bellModal').classList.add('show')
 }
 function closeBell(){document.getElementById('bellModal').classList.remove('show')}
 function renderCampaignStrip(){
   const arr=(MSGS||[]).filter(m=>msgMatchesUser(m) && isCampaign(m) && !isExpiredCampaign(m)).reverse();
   if(!arr.length) return '';
-  return `<div class="campaign-banner highlight-pulse" style="background:linear-gradient(180deg,#f7f1df,#f2ead7);border:1px solid #e4d8b2;color:#1f2937"><div class="section-head" style="margin:0 0 8px"><div><h2 style="margin:0;font-size:22px">📣 Campanha ativa</h2><div class="hint">Mensagem destacada do Master</div></div><button class="btn soft" onclick="openBell()">Ver detalhes</button></div>${arr.map(m=>renderMsgCard(m,false,false,true)).join('')}</div>`;
+  return `<div class="campaign-banner highlight-pulse" style="background:linear-gradient(180deg,#f7f1df,#f2ead7);border:1px solid #e4d8b2;color:#1f2937"><div class="section-head" style="margin:0 0 8px"><div><h2 style="margin:0;font-size:22px">ðŸ“£ Campanha ativa</h2><div class="hint">Mensagem destacada do Master</div></div><button class="btn soft" onclick="openBell()">Ver detalhes</button></div>${arr.map(m=>renderMsgCard(m,false,false,true)).join('')}</div>`;
 }
 function renderInboxBanner(){
   const arr=(MSGS||[]).filter(m=>msgMatchesUser(m) && !isExpiredCampaign(m));
@@ -7809,10 +7809,10 @@ function renderInboxBanner(){
   const pieces=[];
   if(campaigns.length) pieces.push(renderCampaignStrip());
   if(!unread.length){
-    if(!pieces.length) return `<div class="glass panel msg-banner"><h3 style="margin:0 0 6px">🔔 Avisos do Master</h3><div class="small muted">Nenhum aviso novo no momento.</div></div>`;
+    if(!pieces.length) return `<div class="glass panel msg-banner"><h3 style="margin:0 0 6px">ðŸ”” Avisos do Master</h3><div class="small muted">Nenhum aviso novo no momento.</div></div>`;
     return pieces.join('');
   }
-  pieces.push(`<div class="glass panel msg-banner highlight-pulse"><div class="section-head" style="margin:0 0 10px"><div><h2 style="font-size:20px;margin:0">🔔 Avisos do Master</h2><div class="hint">Atualizados online em tempo real.</div></div><button class="btn soft" onclick="openBell()">Ver todos</button></div>${unread.map(m=>renderMsgCard(m,false,false,true)).join('')}</div>`);
+  pieces.push(`<div class="glass panel msg-banner highlight-pulse"><div class="section-head" style="margin:0 0 10px"><div><h2 style="font-size:20px;margin:0">ðŸ”” Avisos do Master</h2><div class="hint">Atualizados online em tempo real.</div></div><button class="btn soft" onclick="openBell()">Ver todos</button></div>${unread.map(m=>renderMsgCard(m,false,false,true)).join('')}</div>`);
   return pieces.join('');
 }
 async function marcarMsgLida(id){
@@ -7820,8 +7820,8 @@ async function marcarMsgLida(id){
   try{
     const r=await fetch(API_MSG,{method:'POST',body:fd}); const j=await r.json();
     if(j.ok){await carregarMsgsOnline(); if(!detailScreen.classList.contains('hidden')){const titleEl=detailScreen.querySelector('.back-row h2'); const subEl=detailScreen.querySelector('.back-row .sub'); if(titleEl && subEl){}} openBell(); if(usuarioAtual?.tipo!=='master'){const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); if(usuarioAtual?.is_terceiro){openThirdChargePanel()} else if(usuarioAtual?.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome});} }
-    else {toast('Não consegui marcar como lido.')}
-  }catch(e){toast('Não consegui marcar como lido.')}
+    else {toast('NÃ£o consegui marcar como lido.')}
+  }catch(e){toast('NÃ£o consegui marcar como lido.')}
 }
 function targetOptionsMsg(){
   let o='<option value="all|ALL">Todos</option>';
@@ -7844,7 +7844,7 @@ function targetOptionsMsg(){
     addUserOpt(`${v.nome}_${v.filial}`, `${v.nome} (${v.filial})`);
   });
 
-  // usuários especiais das credenciais online
+  // usuÃ¡rios especiais das credenciais online
   const users = Object.values((AUTH_STATE && AUTH_STATE.users) || {});
   users.forEach(u=>{
     const login = String((u && u.login) || '').trim();
@@ -7883,18 +7883,18 @@ function renderSenhaCard(u, isDirector=false){
     <div class="title" style="min-height:auto">${esc(isDirector?'Diretor Comercial':u.nome)} ${!isDirector?`(${u.filial||''})`:''}</div>
     <div class="legend-inline">
       <span><i class="dot" style="background:${u.must_change_password?'#f59e0b':'#22c55e'}"></i>${u.must_change_password?'Precisa trocar senha':'Senha ativa'}</span>
-      ${pend?`<span><i class="dot" style="background:#ef4444"></i>${pend} solicitação(ões)</span>`:''}
+      ${pend?`<span><i class="dot" style="background:#ef4444"></i>${pend} solicitaÃ§Ã£o(Ãµes)</span>`:''}
     </div>
     <div class="note" style="margin-top:10px;background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-radius:14px;padding:10px 12px">
       <div><b>Login:</b> <code>${esc(key)}</code></div>
-      <div><b>Senha definida agora:</b> <code style="font-size:14px">${esc(senhaAtual||'—')}</code></div>
+      <div><b>Senha definida agora:</b> <code style="font-size:14px">${esc(senhaAtual||'â€”')}</code></div>
       ${senhaIni && senhaIni!==senhaAtual?`<div class="small muted">Senha inicial: <code>${esc(senhaIni)}</code></div>`:''}
     </div>
     <div class="form-grid bonus" style="grid-template-columns:1.1fr .9fr;margin-top:12px">
       <div class="input-card"><label>Nova senha para ${esc(key)}</label><input id="pwd_${key}" placeholder="Digite a nova senha"></div>
-      <div class="input-card"><label>Ações</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="adminSalvarSenha('${key}')">💾 Salvar senha</button><button class="btn soft" type="button" onclick="adminMarcarTroca('${key}')">🔁 Exigir troca</button></div></div>
+      <div class="input-card"><label>AÃ§Ãµes</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="adminSalvarSenha('${key}')">ðŸ’¾ Salvar senha</button><button class="btn soft" type="button" onclick="adminMarcarTroca('${key}')">ðŸ” Exigir troca</button></div></div>
     </div>
-    ${pend?`<div class="note" style="margin-top:10px">Solicitação pendente de recuperação. <button class="btn soft" style="margin-left:8px" onclick="adminResolverReset('${key}')">Resolver solicitação</button></div>`:''}
+    ${pend?`<div class="note" style="margin-top:10px">SolicitaÃ§Ã£o pendente de recuperaÃ§Ã£o. <button class="btn soft" style="margin-left:8px" onclick="adminResolverReset('${key}')">Resolver solicitaÃ§Ã£o</button></div>`:''}
     <div id="pwd_msg_${key}" class="note" style="margin-top:8px"></div>
   </div>`
 }
@@ -7912,9 +7912,9 @@ function _histSalesEntityOptions(dateVal, scope){const d=HIST_DASH?.sales_dates?
 function _histSalesMonthEntityOptions(monthVal, scope){const d=HIST_DASH?.sales_months?.[monthVal]||{}; let opts='<option value="">Todos</option>'; if(scope==='vendedores'){Object.entries(d.vendedores||{}).sort((a,b)=>String(a[1].nome||'').localeCompare(String(b[1].nome||''),'pt-BR')).forEach(([k,v])=>{opts+=`<option value="${k}">${esc(v.nome)} (${v.filial||''})</option>`})} else if(scope==='filiais'){Object.entries(d.filiais||{}).forEach(([k,v])=>{opts+=`<option value="${k}">${esc(v.nome||k)}</option>`})} return opts}
 function updateHistSalesEntityFilter(){const dateVal=_histSalesCurrentDate(); const scope=document.getElementById('histSalesScope')?.value||'empresa'; const wrap=document.getElementById('histSalesEntityWrap'); const sel=document.getElementById('histSalesEntity'); if(!wrap||!sel) return; wrap.classList.toggle('hidden',!(scope==='vendedores'||scope==='filiais')); sel.innerHTML=_histSalesEntityOptions(dateVal, scope);}
 function updateHistSalesMonthEntityFilter(){const monthVal=_histSalesCurrentMonth(); const scope=document.getElementById('histSalesMonthScope')?.value||'empresa'; const wrap=document.getElementById('histSalesMonthEntityWrap'); const sel=document.getElementById('histSalesMonthEntity'); if(!wrap||!sel) return; wrap.classList.toggle('hidden',!(scope==='vendedores'||scope==='filiais')); sel.innerHTML=_histSalesMonthEntityOptions(monthVal, scope);}
-function renderSalesHistoricoTable(rows,title='💲 Histórico de vendas'){if(!rows.length) return `<div class="empty">Nenhum registro de vendas encontrado para o filtro escolhido.</div>`; return `<div class="glass panel sales-panel"><div class="section-head" style="margin:0 0 10px"><div><h2 style="font-size:18px">${title}</h2></div></div>${rows.map(r=>`<div class="log-row" style="margin-bottom:10px"><div><strong>${esc(r.nome||r.filial||'Empresa')}</strong><div class="small muted">${esc(r.filial||'Resumo')}</div></div><div><strong>${R(r.venda_realizado_total||0)}</strong><div class="small muted">Venda realizada</div></div><div><strong>${pct(r.venda_atingido_total||0)}</strong><div class="small muted">Venda atingida</div></div><div><strong>${R(r.servico_realizado_total||0)}</strong><div class="small muted">Serviço realizado</div></div><div><strong>${pct(r.servico_atingido_total||0)}</strong><div class="small muted">Serviço atingido</div></div></div>`).join('')}</div>`}
-function renderHistoricoSalesResults(){const dateVal=_histSalesCurrentDate(); const scope=document.getElementById('histSalesScope')?.value||'empresa'; const entity=document.getElementById('histSalesEntity')?.value||''; const box=document.getElementById('histSalesResults'); const d=HIST_DASH?.sales_dates?.[dateVal]; if(!box) return; if(!d){box.innerHTML='<div class="empty">Nenhum histórico de vendas salvo para esta data.</div>'; return} let top=`<div class="kpis">${makeKpi('Venda realizada',R(d.empresa?.venda_realizado_total||0),'var(--orange)')}${makeKpi('Venda atingida',pct(d.empresa?.venda_atingido_total||0),'var(--orange)')}${makeKpi('Serviço realizado',R(d.empresa?.servico_realizado_total||0),'var(--orange)')}${makeKpi('Serviço atingido',pct(d.empresa?.servico_atingido_total||0),'var(--orange)')}</div>`; if(scope==='empresa'){box.innerHTML=top + renderSalesHistoricoTable([{nome:'Empresa',filial:'Resumo geral',...(d.empresa||{})}],'💲 Histórico diário de vendas da empresa'); return} const source = scope==='filiais' ? Object.entries(d.filiais||{}).map(([k,v])=>({...v,key:k})) : Object.entries(d.vendedores||{}).map(([k,v])=>({...v,key:k})); const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=top + renderSalesHistoricoTable(rows,`💲 Histórico diário de vendas ${scope==='filiais'?'de filiais':'de vendedores'}`)}
-function renderHistoricoSalesMonthResults(){const monthVal=_histSalesCurrentMonth(); const scope=document.getElementById('histSalesMonthScope')?.value||'empresa'; const entity=document.getElementById('histSalesMonthEntity')?.value||''; const box=document.getElementById('histSalesMonthResults'); const d=HIST_DASH?.sales_months?.[monthVal]; if(!box) return; if(!d){box.innerHTML='<div class="empty">Nenhum fechamento de vendas salvo para este mês.</div>'; return} let top=`<div class="kpis">${makeKpi('Venda realizada',R(d.empresa?.venda_realizado_total||0),'var(--orange)')}${makeKpi('Venda atingida',pct(d.empresa?.venda_atingido_total||0),'var(--orange)')}${makeKpi('Serviço realizado',R(d.empresa?.servico_realizado_total||0),'var(--orange)')}${makeKpi('Serviço atingido',pct(d.empresa?.servico_atingido_total||0),'var(--orange)')}</div>`; if(scope==='empresa'){box.innerHTML=top + renderSalesHistoricoTable([{nome:'Empresa',filial:'Resumo mensal',...(d.empresa||{})}],'🧡 Fechamento mensal de vendas'); return} const source = scope==='filiais' ? Object.entries(d.filiais||{}).map(([k,v])=>({...v,key:k})) : Object.entries(d.vendedores||{}).map(([k,v])=>({...v,key:k})); const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=top + renderSalesHistoricoTable(rows,`🧡 Fechamento mensal de vendas ${scope==='filiais'?'de filiais':'de vendedores'}`)}
+function renderSalesHistoricoTable(rows,title='ðŸ’² HistÃ³rico de vendas'){if(!rows.length) return `<div class="empty">Nenhum registro de vendas encontrado para o filtro escolhido.</div>`; return `<div class="glass panel sales-panel"><div class="section-head" style="margin:0 0 10px"><div><h2 style="font-size:18px">${title}</h2></div></div>${rows.map(r=>`<div class="log-row" style="margin-bottom:10px"><div><strong>${esc(r.nome||r.filial||'Empresa')}</strong><div class="small muted">${esc(r.filial||'Resumo')}</div></div><div><strong>${R(r.venda_realizado_total||0)}</strong><div class="small muted">Venda realizada</div></div><div><strong>${pct(r.venda_atingido_total||0)}</strong><div class="small muted">Venda atingida</div></div><div><strong>${R(r.servico_realizado_total||0)}</strong><div class="small muted">ServiÃ§o realizado</div></div><div><strong>${pct(r.servico_atingido_total||0)}</strong><div class="small muted">ServiÃ§o atingido</div></div></div>`).join('')}</div>`}
+function renderHistoricoSalesResults(){const dateVal=_histSalesCurrentDate(); const scope=document.getElementById('histSalesScope')?.value||'empresa'; const entity=document.getElementById('histSalesEntity')?.value||''; const box=document.getElementById('histSalesResults'); const d=HIST_DASH?.sales_dates?.[dateVal]; if(!box) return; if(!d){box.innerHTML='<div class="empty">Nenhum histÃ³rico de vendas salvo para esta data.</div>'; return} let top=`<div class="kpis">${makeKpi('Venda realizada',R(d.empresa?.venda_realizado_total||0),'var(--orange)')}${makeKpi('Venda atingida',pct(d.empresa?.venda_atingido_total||0),'var(--orange)')}${makeKpi('ServiÃ§o realizado',R(d.empresa?.servico_realizado_total||0),'var(--orange)')}${makeKpi('ServiÃ§o atingido',pct(d.empresa?.servico_atingido_total||0),'var(--orange)')}</div>`; if(scope==='empresa'){box.innerHTML=top + renderSalesHistoricoTable([{nome:'Empresa',filial:'Resumo geral',...(d.empresa||{})}],'ðŸ’² HistÃ³rico diÃ¡rio de vendas da empresa'); return} const source = scope==='filiais' ? Object.entries(d.filiais||{}).map(([k,v])=>({...v,key:k})) : Object.entries(d.vendedores||{}).map(([k,v])=>({...v,key:k})); const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=top + renderSalesHistoricoTable(rows,`ðŸ’² HistÃ³rico diÃ¡rio de vendas ${scope==='filiais'?'de filiais':'de vendedores'}`)}
+function renderHistoricoSalesMonthResults(){const monthVal=_histSalesCurrentMonth(); const scope=document.getElementById('histSalesMonthScope')?.value||'empresa'; const entity=document.getElementById('histSalesMonthEntity')?.value||''; const box=document.getElementById('histSalesMonthResults'); const d=HIST_DASH?.sales_months?.[monthVal]; if(!box) return; if(!d){box.innerHTML='<div class="empty">Nenhum fechamento de vendas salvo para este mÃªs.</div>'; return} let top=`<div class="kpis">${makeKpi('Venda realizada',R(d.empresa?.venda_realizado_total||0),'var(--orange)')}${makeKpi('Venda atingida',pct(d.empresa?.venda_atingido_total||0),'var(--orange)')}${makeKpi('ServiÃ§o realizado',R(d.empresa?.servico_realizado_total||0),'var(--orange)')}${makeKpi('ServiÃ§o atingido',pct(d.empresa?.servico_atingido_total||0),'var(--orange)')}</div>`; if(scope==='empresa'){box.innerHTML=top + renderSalesHistoricoTable([{nome:'Empresa',filial:'Resumo mensal',...(d.empresa||{})}],'ðŸ§¡ Fechamento mensal de vendas'); return} const source = scope==='filiais' ? Object.entries(d.filiais||{}).map(([k,v])=>({...v,key:k})) : Object.entries(d.vendedores||{}).map(([k,v])=>({...v,key:k})); const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=top + renderSalesHistoricoTable(rows,`ðŸ§¡ Fechamento mensal de vendas ${scope==='filiais'?'de filiais':'de vendedores'}`)}
 function _histMonthEntityOptions(monthVal, scope){const d=HIST_DASH?.months_closed?.[monthVal]||{}; let opts='<option value="">Todos</option>'; if(scope==='vendedores'){Object.entries(d.vendedores_finais||{}).sort((a,b)=>String(a[1].nome||'').localeCompare(String(b[1].nome||''),'pt-BR')).forEach(([k,v])=>{opts+=`<option value="${k}">${esc(v.nome)} (${v.filial})</option>`})} else if(scope==='filiais'){Object.entries(d.filiais_finais||{}).forEach(([k,v])=>{opts+=`<option value="${k}">${esc(v.nome||k)}</option>`})} return opts}
 
 function mesAtualComissao(){const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`}
@@ -7938,18 +7938,18 @@ function snapSalesRows(ent, key, label){
   return `<div class="snap-box"><h3>${label}</h3>${rows.slice(0,1).map(r=>{
     const srv=serviceOfficialOverride(ent,key,r);
     const ating=srv ? srv.atingidoTotal : salesCell(r,['Atingido Total']);
-    const atingPeriodo=srv ? srv.atingidoPeriodo : salesCell(r,['Atingido Período']);
+    const atingPeriodo=srv ? srv.atingidoPeriodo : salesCell(r,['Atingido PerÃ­odo']);
     const realizadoTotal=srv ? srv.realizado : esc(salesCell(r,['Realizado (R$) Total','Realizado(R$) Total']));
-    const realizadoPeriodo=srv ? srv.realizado : esc(salesCell(r,['Realizado (R$) Período','Realizado(R$) Período']));
+    const realizadoPeriodo=srv ? srv.realizado : esc(salesCell(r,['Realizado (R$) PerÃ­odo','Realizado(R$) PerÃ­odo']));
     const proj=salesCell(r,['Projetado (R$)','Projetado(R$)']);
-    const title=srv ? `${salesTitleForRow(ent,r,key)} · relatório serviços` : salesTitleForRow(ent,r,key);
+    const title=srv ? `${salesTitleForRow(ent,r,key)} Â· relatÃ³rio serviÃ§os` : salesTitleForRow(ent,r,key);
     return `<div class="snap-sales-title">${esc(title)}</div><div class="snap-grid4">
       ${snapKV('Meta total',esc(salesCell(r,['Meta (R$) Total','Meta(R$) Total'])))}
       ${snapKV('Realizado total',realizadoTotal,'#34d399')}
       ${snapKV('Atingido total',esc(ating),'#f59e0b')}
-      ${snapKV('Meta período',esc(salesCell(r,['Meta (R$) Período','Meta(R$) Período'])))}
-      ${snapKV('Realizado período',realizadoPeriodo,'#34d399')}
-      ${snapKV('Atingido período',esc(atingPeriodo),'#f59e0b')}
+      ${snapKV('Meta perÃ­odo',esc(salesCell(r,['Meta (R$) PerÃ­odo','Meta(R$) PerÃ­odo'])))}
+      ${snapKV('Realizado perÃ­odo',realizadoPeriodo,'#34d399')}
+      ${snapKV('Atingido perÃ­odo',esc(atingPeriodo),'#f59e0b')}
       ${snapKV('Projetado',esc(proj),'#fb7185')}
       ${snapKV(ent.type==='filial'?'Filial':'Vendedor',esc(salesCell(r, ent.type==='filial'?['Filial']:['Vendedor_2','Vendedor'])))} 
     </div>`;
@@ -7958,7 +7958,7 @@ function snapSalesRows(ent, key, label){
 function snapServices(ent){
   const rows=servicosEntidade(ent).filter(x=>Number(x.real_total||0)>0);
   const total=rows.reduce((a,b)=>a+Number(b.real_total||0),0);
-  return `<div class="snap-box"><h3>🛠️ Serviços por tipo</h3><div class="snap-sub">Relatório real de serviços · total oficial ${R(total)}</div><div class="snap-grid3">${rows.slice(0,6).map(r=>snapKV(String(r.servico||'Serviço').slice(0,36),R(r.real_total||0),'#60a5fa')).join('') || '<div class="snap-sub">Sem serviços localizados.</div>'}</div></div>`;
+  return `<div class="snap-box"><h3>ðŸ› ï¸ ServiÃ§os por tipo</h3><div class="snap-sub">RelatÃ³rio real de serviÃ§os Â· total oficial ${R(total)}</div><div class="snap-grid3">${rows.slice(0,6).map(r=>snapKV(String(r.servico||'ServiÃ§o').slice(0,36),R(r.real_total||0),'#60a5fa')).join('') || '<div class="snap-sub">Sem serviÃ§os localizados.</div>'}</div></div>`;
 }
 function snapCommission(ent){
   if(!(ent.type==='vendedor'||ent.type==='filial')) return '';
@@ -7966,19 +7966,19 @@ function snapCommission(ent){
   const totalLiberado = c.elegivelMercantil && c.elegivelServicos;
   const totalExibido = totalLiberado ? c.totalPrevisto : 0;
   const cell=(t,v,color='')=>snapKV(t, v, color);
-  return `<div class="snap-box"><h3>💵 Comissionamento previsto</h3><div class="snap-grid3">
+  return `<div class="snap-box"><h3>ðŸ’µ Comissionamento previsto</h3><div class="snap-grid3">
     ${cell('Faixa aplicada',esc(c.faixaTxt||'-'))}
-    ${cell('% comissão mercantil',`${String(Number(c.comPerc||0).toFixed(2)).replace('.',',')}%`)}
-    ${cell('% serviços',`${String(Number(c.servPct||0).toFixed(2)).replace('.',',')}%`)}
-    ${cell('Comissão vendas',R(c.vendasComissao||0),'#34d399')}
-    ${cell('Comissão serviços',R(c.servicosComissao||0),'#34d399')}
-    ${cell('Comissão caminhão',R(c.caminhaoComissao||0),'#34d399')}
-    ${cell('Bônus por meta',R(c.bonusMeta||0),'#fbbf24')}
+    ${cell('% comissÃ£o mercantil',`${String(Number(c.comPerc||0).toFixed(2)).replace('.',',')}%`)}
+    ${cell('% serviÃ§os',`${String(Number(c.servPct||0).toFixed(2)).replace('.',',')}%`)}
+    ${cell('ComissÃ£o vendas',R(c.vendasComissao||0),'#34d399')}
+    ${cell('ComissÃ£o serviÃ§os',R(c.servicosComissao||0),'#34d399')}
+    ${cell('ComissÃ£o caminhÃ£o',R(c.caminhaoComissao||0),'#34d399')}
+    ${cell('BÃ´nus por meta',R(c.bonusMeta||0),'#fbbf24')}
     ${cell('Rentab 48%',R(c.rent48||0),'#fbbf24')}
     ${cell('Rentab 52,15%',R(c.rent52||0),'#fbbf24')}
     ${cell('Rentab 55,50%',R(c.rent55||0),'#fbbf24')}
     ${cell('Total previsto',R(totalExibido),'#fff')}
-  </div><div class="snap-sub">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Serviço: ${R(c.servReal||0)}.</div></div>`;
+  </div><div class="snap-sub">Base mercantil bruta: ${R(c.vendaRealBruto||0)} Â· CaminhÃ£o abatido: ${R(c.camReal||0)} Â· ServiÃ§o: ${R(c.servReal||0)}.</div></div>`;
 }
 function snapshotEntityHTML(ent){
   try{
@@ -7990,8 +7990,8 @@ function snapshotEntityHTML(ent){
     const sub=ent.type==='filial'?'Painel individual da filial':(ent.type==='crediarista'?'Painel de crediarista':'Painel individual do vendedor');
     const bonus=getBonus(meta.cfg,meta.geral);
     const salesBlocks = ent.type==='filial'
-      ? [['venda_filial_meta','📈 Venda · Meta Filial'],['servico_filial_ouro_fob','🛠️ Serviço · Ouro / FOB'],['venda_filial_subgrupo_20k','🚚 Venda · Caminhão 20K']]
-      : [['venda_filial_vendedor_meta','📈 Venda · Meta Vendedor'],['servico_filial_vendedor_ouro_fob','🛠️ Serviço · Ouro / FOB Vendedor'],['venda_vendedor_subgrupo_20k','🚚 Venda · Caminhão 20K']];
+      ? [['venda_filial_meta','ðŸ“ˆ Venda Â· Meta Filial'],['servico_filial_ouro_fob','ðŸ› ï¸ ServiÃ§o Â· Ouro / FOB'],['venda_filial_subgrupo_20k','ðŸšš Venda Â· CaminhÃ£o 20K']]
+      : [['venda_filial_vendedor_meta','ðŸ“ˆ Venda Â· Meta Vendedor'],['servico_filial_vendedor_ouro_fob','ðŸ› ï¸ ServiÃ§o Â· Ouro / FOB Vendedor'],['venda_vendedor_subgrupo_20k','ðŸšš Venda Â· CaminhÃ£o 20K']];
     const vendasHtml=(ent.type==='crediarista'||ent.is_crediarista)?'':salesBlocks.map(([k,l])=>snapSalesRows(ent,k,l)).join('');
     const bonusItems=[[50,meta.cfg.bonus_50||'-'],[75,meta.cfg.bonus_75||'-'],[85,meta.cfg.bonus_85||'-'],[100,meta.cfg.bonus_100||'-']];
     return `<div class="snap-sheet">
@@ -8011,22 +8011,22 @@ function snapshotEntityHTML(ent){
       .snap-bonus{display:grid;gap:8px}.snap-bonus-item{display:flex;justify-content:space-between;gap:12px;border:1px solid rgba(255,255,255,.1);background:#10131a;border-radius:12px;padding:10px 12px;font-size:13px}.snap-bonus-item.active{outline:2px solid rgba(245,158,11,.45)}
       @media print{body{background:#0d0f14}.snap-sheet{width:1180px}}
       </style>
-      <div class="snap-head"><div><h1>${nome}</h1><div class="snap-sub">${sub} · ${esc(ent.filial||'')} · ${mesAtualComissao()}</div></div><div class="snap-sub">🕒 ${esc(ULTIMA_ATUALIZACAO_DASHBOARD_BR||'')}</div></div>
+      <div class="snap-head"><div><h1>${nome}</h1><div class="snap-sub">${sub} Â· ${esc(ent.filial||'')} Â· ${mesAtualComissao()}</div></div><div class="snap-sub">ðŸ•’ ${esc(ULTIMA_ATUALIZACAO_DASHBOARD_BR||'')}</div></div>
       <div class="snap-two">
         <div>
-          <div class="snap-box"><h2>🎯 Meta do mês · Não acumulativo</h2><div class="snap-topmeta"><div class="snap-ring">${renderPiggyBank(meta.geral)}</div><div><div class="snap-grid2">
+          <div class="snap-box"><h2>ðŸŽ¯ Meta do mÃªs Â· NÃ£o acumulativo</h2><div class="snap-topmeta"><div class="snap-ring">${renderPiggyBank(meta.geral)}</div><div><div class="snap-grid2">
             ${snapMetric('Pendente',R(ent.pendente||0),'','#ff5a6a')}
             ${snapMetric('Recebido',R(ent.pago||0),'','#34d399')}
             ${snapMetric('% da filial',pct(ent.perc_filial||100))}
-            ${snapMetric('Configuração usada',`${Number(meta.cfg.grave_pct||0)}/${Number(meta.cfg.alerta_pct||0)}/${Number(meta.cfg.atencao_pct||0)}`)}
-          </div><div style="height:12px"></div><div class="snap-sub">🔴 Grave alvo ${R(meta.grave.alvo)} · recebido ${R(meta.grave.rec)}<br>🟠 Alerta alvo ${R(meta.alerta.alvo)} · recebido ${R(meta.alerta.rec)}<br>🟡 Atenção alvo ${R(meta.atencao.alvo)} · recebido ${R(meta.atencao.rec)}</div></div></div><div style="height:14px"></div><div class="snap-grid4">
+            ${snapMetric('ConfiguraÃ§Ã£o usada',`${Number(meta.cfg.grave_pct||0)}/${Number(meta.cfg.alerta_pct||0)}/${Number(meta.cfg.atencao_pct||0)}`)}
+          </div><div style="height:12px"></div><div class="snap-sub">ðŸ”´ Grave alvo ${R(meta.grave.alvo)} Â· recebido ${R(meta.grave.rec)}<br>ðŸŸ  Alerta alvo ${R(meta.alerta.alvo)} Â· recebido ${R(meta.alerta.rec)}<br>ðŸŸ¡ AtenÃ§Ã£o alvo ${R(meta.atencao.alvo)} Â· recebido ${R(meta.atencao.rec)}</div></div></div><div style="height:14px"></div><div class="snap-grid4">
             ${snapMiniBox('Grave',meta.grave.perc,meta.grave.alvo,meta.grave.rec,'#ff5a6a')}
             ${snapMiniBox('Alerta',meta.alerta.perc,meta.alerta.alvo,meta.alerta.rec,'#fb923c')}
-            ${snapMiniBox('Atenção',meta.atencao.perc,meta.atencao.alvo,meta.atencao.rec,'#facc15')}
+            ${snapMiniBox('AtenÃ§Ã£o',meta.atencao.perc,meta.atencao.alvo,meta.atencao.rec,'#facc15')}
             ${snapMiniBox('Meta geral',meta.geral,meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,meta.grave.rec+meta.alerta.rec+meta.atencao.rec,'#60a5fa')}
           </div></div>
-          <div class="snap-box"><h3>🌊 Gráfico Geral Contas a Receber</h3>${(()=>{const vals=[['Grave',meta.grave.pend,'#ff5a6a'],['Alerta',meta.alerta.pend,'#fb923c'],['Atenção',meta.atencao.pend,'#facc15'],['Recebido',Number(ent.pago||0),'#34d399']]; const max=Math.max(1,...vals.map(v=>v[1])); return `<div class="snap-chart-bars">${vals.map(v=>`<div class="snap-barwrap"><div class="snap-bar" style="--c:${v[2]};height:${Math.max(24,(v[1]/max)*190)}px"></div><div class="snap-barlabel">${v[0]}<br><strong>${R(v[1])}</strong></div></div>`).join('')}</div>`})()}</div>
-          <div class="snap-box"><h3>🏆 Bônus e premiações · Não acumulativo</h3><div class="snap-bonus">${bonusItems.map(([p,t])=>`<div class="snap-bonus-item ${bonus?.perc===p?'active':''}"><strong>🎯 ${p}%</strong><span>${esc(t)}</span></div>`).join('')}</div></div>
+          <div class="snap-box"><h3>ðŸŒŠ GrÃ¡fico Geral Contas a Receber</h3>${(()=>{const vals=[['Grave',meta.grave.pend,'#ff5a6a'],['Alerta',meta.alerta.pend,'#fb923c'],['AtenÃ§Ã£o',meta.atencao.pend,'#facc15'],['Recebido',Number(ent.pago||0),'#34d399']]; const max=Math.max(1,...vals.map(v=>v[1])); return `<div class="snap-chart-bars">${vals.map(v=>`<div class="snap-barwrap"><div class="snap-bar" style="--c:${v[2]};height:${Math.max(24,(v[1]/max)*190)}px"></div><div class="snap-barlabel">${v[0]}<br><strong>${R(v[1])}</strong></div></div>`).join('')}</div>`})()}</div>
+          <div class="snap-box"><h3>ðŸ† BÃ´nus e premiaÃ§Ãµes Â· NÃ£o acumulativo</h3><div class="snap-bonus">${bonusItems.map(([p,t])=>`<div class="snap-bonus-item ${bonus?.perc===p?'active':''}"><strong>ðŸŽ¯ ${p}%</strong><span>${esc(t)}</span></div>`).join('')}</div></div>
         </div>
         <div>
           ${vendasHtml}
@@ -8054,7 +8054,7 @@ function snapshotComissaoEntidade(ent){
     grave_alvo:Number(meta.grave?.alvo||0), alerta_alvo:Number(meta.alerta?.alvo||0), atencao_alvo:Number(meta.atencao?.alvo||0),
     venda_real:Number(c.vendaReal||0), servico_real:Number(c.servReal||0), caminhao_real:Number(c.camReal||0),
     faixa:String(c.faixaTxt||''), comissao_vendas:Number(c.vendasComissao||0), comissao_servicos:Number(c.servicosComissao||0), comissao_caminhao:Number(c.caminhaoComissao||0), bonus_meta:Number(c.bonusMeta||0), rent48:Number(c.rent48||0), rent52:Number(c.rent52||0), rent55:Number(c.rent55||0), total_previsto:totalPrev,
-    elegivel_mercantil:Boolean(c.elegivelMercantil), elegivel_servicos:Boolean(c.elegivelServicos), html_individual:(()=>{try{return snapshotEntityHTML(ent)||''}catch(e){console.error('snapshot individual erro',e);return ''}})(), observacao:(ent.type==='crediarista'?'Crediarista: somente pagos conciliados após cobrança própria.':(ent.type==='terceiro'?'Cobrança terceiro.':''))
+    elegivel_mercantil:Boolean(c.elegivelMercantil), elegivel_servicos:Boolean(c.elegivelServicos), html_individual:(()=>{try{return snapshotEntityHTML(ent)||''}catch(e){console.error('snapshot individual erro',e);return ''}})(), observacao:(ent.type==='crediarista'?'Crediarista: somente pagos conciliados apÃ³s cobranÃ§a prÃ³pria.':(ent.type==='terceiro'?'CobranÃ§a terceiro.':''))
   };
 }
 function buildSnapshotComissionamentoMensal(month=mesAtualComissao()){
@@ -8070,24 +8070,24 @@ async function salvarSnapshotComissionamentoMensal(auto=false){
   const fd=new FormData(); fd.append('month',month); fd.append('payload',JSON.stringify(payload));
   try{
     const r=await fetch(API_COMIS,{method:'POST',body:fd}); const j=await r.json();
-    if(j.ok){HIST_COMISSAO=j.data||{months:{}}; if(!auto) toast('✅ Histórico de comissionamento salvo.'); renderHistoricoComissaoResults();}
-    else if(!auto) toast('⚠️ Não consegui salvar histórico de comissionamento.');
-  }catch(e){console.log('Erro salvar comissionamento',e); if(!auto) toast('⚠️ Erro ao salvar histórico de comissionamento.');}
+    if(j.ok){HIST_COMISSAO=j.data||{months:{}}; if(!auto) toast('âœ… HistÃ³rico de comissionamento salvo.'); renderHistoricoComissaoResults();}
+    else if(!auto) toast('âš ï¸ NÃ£o consegui salvar histÃ³rico de comissionamento.');
+  }catch(e){console.log('Erro salvar comissionamento',e); if(!auto) toast('âš ï¸ Erro ao salvar histÃ³rico de comissionamento.');}
 }
 function baixarComissionamentoXLS(monthOverride){
   try{
     const month=monthOverride || document.getElementById('histComMonth')?.value || _histComMeses()[0] || mesAtualComissao();
     const snap=HIST_COMISSAO?.months?.[month];
     const rows=[...(snap?.entidades||[])];
-    if(!rows.length){toast('Nenhum comissionamento salvo para exportar neste mês.'); return;}
+    if(!rows.length){toast('Nenhum comissionamento salvo para exportar neste mÃªs.'); return;}
     const cols=[
       ['nome','Nome'],['tipo','Tipo'],['filial','Filial'],['login','Login'],
       ['pendente','Pendente'],['recebido','Recebido'],['recebido_conciliado','Recebido conciliado'],['qtd_recebidos','Qtd recebidos'],
-      ['meta_geral','Meta cobrança %'],['grave_rec','Recebido grave'],['alerta_rec','Recebido alerta'],['atencao_rec','Recebido atenção'],
-      ['grave_alvo','Alvo grave'],['alerta_alvo','Alvo alerta'],['atencao_alvo','Alvo atenção'],
-      ['venda_real','Venda real'],['servico_real','Serviço real'],['caminhao_real','Caminhão real'],
-      ['faixa','Faixa'],['comissao_vendas','Comissão vendas'],['comissao_servicos','Comissão serviços'],['comissao_caminhao','Comissão caminhão'],
-      ['bonus_meta','Bônus meta'],['rent48','Rent. 48'],['rent52','Rent. 52'],['rent55','Rent. 55'],['total_previsto','Total previsto'],['observacao','Observação']
+      ['meta_geral','Meta cobranÃ§a %'],['grave_rec','Recebido grave'],['alerta_rec','Recebido alerta'],['atencao_rec','Recebido atenÃ§Ã£o'],
+      ['grave_alvo','Alvo grave'],['alerta_alvo','Alvo alerta'],['atencao_alvo','Alvo atenÃ§Ã£o'],
+      ['venda_real','Venda real'],['servico_real','ServiÃ§o real'],['caminhao_real','CaminhÃ£o real'],
+      ['faixa','Faixa'],['comissao_vendas','ComissÃ£o vendas'],['comissao_servicos','ComissÃ£o serviÃ§os'],['comissao_caminhao','ComissÃ£o caminhÃ£o'],
+      ['bonus_meta','BÃ´nus meta'],['rent48','Rent. 48'],['rent52','Rent. 52'],['rent55','Rent. 55'],['total_previsto','Total previsto'],['observacao','ObservaÃ§Ã£o']
     ];
     const td=(v)=>`<td style="border:1px solid #999;padding:4px">${esc(v==null?'':String(v))}</td>`;
     const html=`<html><head><meta charset="utf-8"></head><body><table><thead><tr>${cols.map(c=>`<th style="border:1px solid #999;padding:4px;background:#eee">${esc(c[1])}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>td(r[c[0]])).join('')}</tr>`).join('')}</tbody></table></body></html>`;
@@ -8101,9 +8101,9 @@ function baixarComissionamentoXLS(monthOverride){
 function renderLinksRelatoriosCobranca(){
   const r=RELATORIOS_PUBLICOS||{};
   return `<div class="glass panel" style="margin-bottom:14px;border-color:rgba(96,165,250,.35)">
-    <div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">📥 Relatórios XLS da última execução</h2><div class="hint">Use estes arquivos para auditar se houve pagamento nas faixas grave, alerta e atenção. Eles são atualizados automaticamente a cada execução do robô.</div></div></div>
+    <div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">ðŸ“¥ RelatÃ³rios XLS da Ãºltima execuÃ§Ã£o</h2><div class="hint">Use estes arquivos para auditar se houve pagamento nas faixas grave, alerta e atenÃ§Ã£o. Eles sÃ£o atualizados automaticamente a cada execuÃ§Ã£o do robÃ´.</div></div></div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <a class="btn primary" href="${esc(r.zip||'#')}?_=${Date.now()}" target="_blank" download>📦 Baixar pacote ZIP</a>
+      <a class="btn primary" href="${esc(r.zip||'#')}?_=${Date.now()}" target="_blank" download>ðŸ“¦ Baixar pacote ZIP</a>
       <a class="btn soft" href="${esc(r.principal_xls||'#')}?_=${Date.now()}" target="_blank" download>Contas a receber principal</a>
       <a class="btn soft" href="${esc(r.quitados_original_xls||'#')}?_=${Date.now()}" target="_blank" download>Quitados original SGI</a>
       <a class="btn soft" href="${esc(r.quitados_processado_xlsx||'#')}?_=${Date.now()}" target="_blank" download>Quitados processado</a>
@@ -8113,8 +8113,8 @@ function renderLinksRelatoriosCobranca(){
 }
 
 function renderComissionamentoHistoricoTable(rows){
-  if(!rows.length) return '<div class="empty">Nenhum comissionamento salvo para este mês.</div>';
-  return `<div class="glass panel"><div class="tableish">${rows.map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.nome||'')}</div><div class="small muted">${esc(r.tipo||'')} · ${esc(r.filial||'')}</div></div><div><strong>${pct(r.meta_geral||0)}</strong><div class="small muted">Meta cobrança</div></div><div><strong>${R(r.recebido||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${R(r.comissao_vendas||0)}</strong><div class="small muted">Vendas</div></div><div><strong>${R(r.comissao_servicos||0)}</strong><div class="small muted">Serviços</div></div><div><strong>${R(r.bonus_meta||0)}</strong><div class="small muted">Bônus</div></div><div><strong>${R(r.total_previsto||0)}</strong><div class="small muted">Total previsto</div></div></div>${r.observacao?`<div class="small muted" style="margin-top:6px">${esc(r.observacao)}</div>`:''}</div>`).join('')}</div></div>`;
+  if(!rows.length) return '<div class="empty">Nenhum comissionamento salvo para este mÃªs.</div>';
+  return `<div class="glass panel"><div class="tableish">${rows.map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.nome||'')}</div><div class="small muted">${esc(r.tipo||'')} Â· ${esc(r.filial||'')}</div></div><div><strong>${pct(r.meta_geral||0)}</strong><div class="small muted">Meta cobranÃ§a</div></div><div><strong>${R(r.recebido||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${R(r.comissao_vendas||0)}</strong><div class="small muted">Vendas</div></div><div><strong>${R(r.comissao_servicos||0)}</strong><div class="small muted">ServiÃ§os</div></div><div><strong>${R(r.bonus_meta||0)}</strong><div class="small muted">BÃ´nus</div></div><div><strong>${R(r.total_previsto||0)}</strong><div class="small muted">Total previsto</div></div></div>${r.observacao?`<div class="small muted" style="margin-top:6px">${esc(r.observacao)}</div>`:''}</div>`).join('')}</div></div>`;
 }
 
 function findEntityBySnapshotRow(row){
@@ -8142,17 +8142,17 @@ function snapshotHtmlFallbackFromRow(row,month){
       .snap-head{border:1px solid rgba(255,255,255,.12);background:#161922;border-radius:18px;padding:16px 18px;margin-bottom:16px}.snap-head h1{margin:0;font-size:28px;color:#fff}.snap-sub{color:#aeb7ca;font-size:13px;margin-top:6px}
       .snap-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.snap-card{border:1px solid rgba(255,255,255,.12);background:#151821;border-radius:16px;padding:16px}.snap-title{font-size:12px;text-transform:uppercase;color:#8c96ab;font-weight:900;letter-spacing:.08em}.snap-value{font-size:25px;font-weight:950;margin-top:8px}.green{color:#34d399}.orange{color:#f59e0b}.blue{color:#60a5fa}.red{color:#fb7185}
       .snap-note{margin-top:14px;border:1px solid rgba(245,158,11,.35);background:rgba(245,158,11,.08);border-radius:16px;padding:14px;color:#fde68a;font-weight:800}
-    </style><div class="snap-head"><h1>${esc(row.nome||'')}</h1><div class="snap-sub">${esc(row.tipo||'')} · ${esc(row.filial||'')} · fechamento ${esc(month||'')}</div></div><div class="snap-grid">
-      <div class="snap-card"><div class="snap-title">Meta cobrança</div><div class="snap-value blue">${pct2(row.meta_geral||0)}</div></div>
+    </style><div class="snap-head"><h1>${esc(row.nome||'')}</h1><div class="snap-sub">${esc(row.tipo||'')} Â· ${esc(row.filial||'')} Â· fechamento ${esc(month||'')}</div></div><div class="snap-grid">
+      <div class="snap-card"><div class="snap-title">Meta cobranÃ§a</div><div class="snap-value blue">${pct2(row.meta_geral||0)}</div></div>
       <div class="snap-card"><div class="snap-title">Recebido</div><div class="snap-value green">${R2(row.recebido||0)}</div></div>
       <div class="snap-card"><div class="snap-title">Vendas</div><div class="snap-value orange">${R2(row.comissao_vendas||0)}</div></div>
-      <div class="snap-card"><div class="snap-title">Serviços</div><div class="snap-value orange">${R2(row.comissao_servicos||0)}</div></div>
-      <div class="snap-card"><div class="snap-title">Bônus meta</div><div class="snap-value green">${R2(row.bonus_meta||0)}</div></div>
-      <div class="snap-card"><div class="snap-title">Comissão caminhão</div><div class="snap-value orange">${R2(row.comissao_caminhao||0)}</div></div>
+      <div class="snap-card"><div class="snap-title">ServiÃ§os</div><div class="snap-value orange">${R2(row.comissao_servicos||0)}</div></div>
+      <div class="snap-card"><div class="snap-title">BÃ´nus meta</div><div class="snap-value green">${R2(row.bonus_meta||0)}</div></div>
+      <div class="snap-card"><div class="snap-title">ComissÃ£o caminhÃ£o</div><div class="snap-value orange">${R2(row.comissao_caminhao||0)}</div></div>
       <div class="snap-card"><div class="snap-title">Faixa</div><div class="snap-value blue">${esc(row.faixa||'-')}</div></div>
       <div class="snap-card"><div class="snap-title">Total previsto</div><div class="snap-value green">${R2(row.total_previsto||0)}</div></div>
-    </div><div class="snap-note">Resumo reconstruído automaticamente porque a tela visual completa não estava salva neste fechamento. Clique em salvar fechamento novamente para gerar o modelo visual completo.</div></div>`;
-  }catch(e){return `<div style="padding:20px;background:#111;color:#fff">Resumo indisponível: ${esc(String(e))}</div>`}
+    </div><div class="snap-note">Resumo reconstruÃ­do automaticamente porque a tela visual completa nÃ£o estava salva neste fechamento. Clique em salvar fechamento novamente para gerar o modelo visual completo.</div></div>`;
+  }catch(e){return `<div style="padding:20px;background:#111;color:#fff">Resumo indisponÃ­vel: ${esc(String(e))}</div>`}
 }
 
 function getSnapshotHtmlFromSelection(){
@@ -8160,7 +8160,7 @@ function getSnapshotHtmlFromSelection(){
   const key=document.getElementById('histComEntityView')?.value||'';
   const snap=HIST_COMISSAO?.months?.[month];
   const row=(snap?.entidades||[]).find(x=>String(x.key)===String(key));
-  if(!row) return {ok:false,msg:'Registro não encontrado no histórico.'};
+  if(!row) return {ok:false,msg:'Registro nÃ£o encontrado no histÃ³rico.'};
 
   let html=String(row.html_individual||'');
   let fonte='tela congelada salva no fechamento';
@@ -8168,12 +8168,12 @@ function getSnapshotHtmlFromSelection(){
     const ent=findEntityBySnapshotRow(row);
     if(ent){
       try{html=String(snapshotEntityHTML(ent)||'');}catch(e){console.error('snapshotEntityHTML falhou',e); html='';}
-      fonte='gerada agora porque este fechamento antigo não tinha a tela salva';
+      fonte='gerada agora porque este fechamento antigo nÃ£o tinha a tela salva';
     }
   }
   if(!html){
     html=snapshotHtmlFallbackFromRow(row,month);
-    fonte='resumo reconstruído do histórico salvo';
+    fonte='resumo reconstruÃ­do do histÃ³rico salvo';
   }
   return {ok:true,html,row,month,fonte};
 }
@@ -8191,9 +8191,9 @@ function abrirTelaComissionamentoCongeladaPorSelect(){
     }
 
     viewer.innerHTML=`<div class="snapshot-inline-toolbar">
-      <div><strong>📌 Tela congelada</strong><div class="hint">${esc(data.row.nome||'')} · ${esc(data.row.filial||'')} · ${esc(data.month)} · ${esc(data.fonte)}</div></div>
+      <div><strong>ðŸ“Œ Tela congelada</strong><div class="hint">${esc(data.row.nome||'')} Â· ${esc(data.row.filial||'')} Â· ${esc(data.month)} Â· ${esc(data.fonte)}</div></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn primary" onclick="imprimirSnapshotInline()">🖨️ Imprimir / Salvar PDF</button>
+        <button class="btn primary" onclick="imprimirSnapshotInline()">ðŸ–¨ï¸ Imprimir / Salvar PDF</button>
         <button class="btn soft" onclick="abrirSnapshotNovaAba()">Abrir em nova aba</button>
         <button class="btn soft" onclick="fecharSnapshotInline()">Fechar</button>
       </div>
@@ -8237,25 +8237,25 @@ function renderHistoricoComissaoResults(){
   const box=document.getElementById('histComResults'); if(!box) return;
   const snap=HIST_COMISSAO?.months?.[current];
   const saveInput=document.getElementById('histComMonthSave'); if(saveInput && !saveInput.value) saveInput.value=mesAtualComissao();
-  if(!snap){box.innerHTML=renderLinksRelatoriosCobranca()+`<div class="empty">Nenhum histórico salvo para ${esc(current)}. Clique em “Salvar fechamento do mês atual” para gravar o resultado visível agora.</div>`; return;}
+  if(!snap){box.innerHTML=renderLinksRelatoriosCobranca()+`<div class="empty">Nenhum histÃ³rico salvo para ${esc(current)}. Clique em â€œSalvar fechamento do mÃªs atualâ€ para gravar o resultado visÃ­vel agora.</div>`; return;}
   const rows=[...(snap.entidades||[])].sort((a,b)=>String(a.tipo).localeCompare(String(b.tipo),'pt-BR')||String(a.nome).localeCompare(String(b.nome),'pt-BR'));
-  box.innerHTML=renderLinksRelatoriosCobranca()+`<div class="kpis">${makeKpi('Mês',esc(snap.month||current),'var(--blue)')}${makeKpi('Total previsto',R(snap.total_previsto||0),'var(--green)')}${makeKpi('Entidades',String(rows.length),'var(--orange)')}${makeKpi('Salvo em',esc((snap.atualizado_em_br||snap.gerado_em||'').replace('T',' ').slice(0,19)),'var(--blue)')}</div>`+`<div class="glass panel"><div class="form-grid"><div class="input-card"><label>Ver tela congelada individual</label><div class="hint">Selecione 2026-05 no mês e escolha o colaborador/filial para abrir a tela congelada salva naquele fechamento.</div><select id="histComEntityView">${rows.map(r=>`<option value="${esc(r.key||'')}">${esc(r.nome||'')} · ${esc(r.filial||'')}</option>`).join('')}</select></div><div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap"><button class="btn primary" onclick="abrirTelaComissionamentoCongeladaPorSelect()">Abrir tela congelada</button><button class="btn soft" onclick="baixarComissionamentoXLS()">📊 Baixar XLS do mês</button></div></div></div>`+renderComissionamentoHistoricoTable(rows);
+  box.innerHTML=renderLinksRelatoriosCobranca()+`<div class="kpis">${makeKpi('MÃªs',esc(snap.month||current),'var(--blue)')}${makeKpi('Total previsto',R(snap.total_previsto||0),'var(--green)')}${makeKpi('Entidades',String(rows.length),'var(--orange)')}${makeKpi('Salvo em',esc((snap.atualizado_em_br||snap.gerado_em||'').replace('T',' ').slice(0,19)),'var(--blue)')}</div>`+`<div class="glass panel"><div class="form-grid"><div class="input-card"><label>Ver tela congelada individual</label><div class="hint">Selecione 2026-05 no mÃªs e escolha o colaborador/filial para abrir a tela congelada salva naquele fechamento.</div><select id="histComEntityView">${rows.map(r=>`<option value="${esc(r.key||'')}">${esc(r.nome||'')} Â· ${esc(r.filial||'')}</option>`).join('')}</select></div><div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap"><button class="btn primary" onclick="abrirTelaComissionamentoCongeladaPorSelect()">Abrir tela congelada</button><button class="btn soft" onclick="baixarComissionamentoXLS()">ðŸ“Š Baixar XLS do mÃªs</button></div></div></div>`+renderComissionamentoHistoricoTable(rows);
 }
 
 function setHistMode(mode){window._histMode=mode; document.getElementById('histDailyPane')?.classList.toggle('hidden',mode!=='daily'); document.getElementById('histMonthPane')?.classList.toggle('hidden',mode!=='monthly'); document.getElementById('histSalesPane')?.classList.toggle('hidden',mode!=='sales'); document.getElementById('histThirdPane')?.classList.toggle('hidden',mode!=='third'); document.getElementById('histComPane')?.classList.toggle('hidden',mode!=='comissao'); document.getElementById('histTabDaily')?.classList.toggle('active',mode==='daily'); document.getElementById('histTabMonthly')?.classList.toggle('active',mode==='monthly'); document.getElementById('histTabSales')?.classList.toggle('active',mode==='sales'); document.getElementById('histTabThird')?.classList.toggle('active',mode==='third'); document.getElementById('histTabCom')?.classList.toggle('active',mode==='comissao'); if(mode==='daily'){updateHistEntityFilter(); renderHistoricoResults();} else if(mode==='monthly'){updateHistMonthEntityFilter(); renderHistoricoMonthResults();} else if(mode==='third'){renderHistoricoTerceiro();} else if(mode==='comissao'){renderHistoricoComissaoResults();} else {updateHistSalesEntityFilter(); updateHistSalesMonthEntityFilter(); renderHistoricoSalesResults(); renderHistoricoSalesMonthResults();}}
 function updateHistEntityFilter(){const dateVal=_histCurrentDate(); const scope=document.getElementById('histScope')?.value||'empresa'; const wrap=document.getElementById('histEntityWrap'); const sel=document.getElementById('histEntity'); if(!wrap||!sel) return; wrap.classList.toggle('hidden',!(scope==='vendedores'||scope==='filiais')); sel.innerHTML=_histEntityOptions(dateVal, scope);}
 function updateHistMonthEntityFilter(){const monthVal=_histCurrentMonth(); const scope=document.getElementById('histMonthScope')?.value||'empresa'; const wrap=document.getElementById('histMonthEntityWrap'); const sel=document.getElementById('histMonthEntity'); if(!wrap||!sel) return; wrap.classList.toggle('hidden',!(scope==='vendedores'||scope==='filiais')); sel.innerHTML=_histMonthEntityOptions(monthVal, scope);}
-function renderHistoricoTable(rows, scope, title='📋 Histórico'){if(!rows.length) return `<div class="empty">Nenhum registro encontrado para o filtro escolhido.</div>`; return `<div class="glass panel"><div class="section-head" style="margin:0 0 10px"><div><h2 style="font-size:18px">${title}</h2></div></div>${rows.map(r=>`<div class="log-row" style="margin-bottom:10px"><div><strong>${esc(r.nome||r.filial||'Empresa')}</strong><div class="small muted">${esc(r.filial||'Resumo')}</div></div><div><strong>${R(r.pendente||0)}</strong><div class="small muted">Pendente</div></div><div><strong>${R(r.recebido||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${pct(r.perc_meta||0)}</strong><div class="small muted">Meta</div></div><div><strong>${R(r.grave_alvo||0)} / ${R(r.alerta_alvo||0)} / ${R(r.atencao_alvo||0)}</strong><div class="small muted">Alvos G/A/At</div></div></div>`).join('')}</div>`}
-function renderHistoricoResults(){const dateVal=_histCurrentDate(); const scope=document.getElementById('histScope')?.value||'empresa'; const entity=document.getElementById('histEntity')?.value||''; const box=document.getElementById('histResults'); const d=HIST_DASH?.dates?.[dateVal]; if(!box){return} if(!d){box.innerHTML='<div class="empty">Nenhum histórico salvo para esta data.</div>'; return} let top=`<div class="kpis">${makeKpi('Pendente do dia',R(d.empresa?.pendente||0),'var(--red)')}${makeKpi('Recebido do dia',R(d.empresa?.recebido||0),'var(--green)')}${makeKpi('Grave do dia',R(d.empresa?.grave||0),'var(--red)')}${makeKpi('Alerta do dia',R(d.empresa?.alerta||0),'var(--orange)')}</div><div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0"><div><h2 style="font-size:18px">⚙️ Meta usada no dia</h2><div class="hint">Global: G ${Number(d.empresa?.config_global?.grave_pct||0)}% · A ${Number(d.empresa?.config_global?.alerta_pct||0)}% · At ${Number(d.empresa?.config_global?.atencao_pct||0)}% · Pesos ${Number(d.empresa?.config_global?.peso_grave||0)}/${Number(d.empresa?.config_global?.peso_alerta||0)}/${Number(d.empresa?.config_global?.peso_atencao||0)}</div></div><div class="small muted">${esc(dateVal)}</div></div></div>`; if(scope==='empresa'){box.innerHTML=top + renderHistoricoTable([{nome:'Empresa',filial:'Resumo geral',pendente:d.empresa?.pendente||0,recebido:d.empresa?.recebido||0,perc_meta:0,grave_alvo:0,alerta_alvo:0,atencao_alvo:0}], 'empresa','📋 Histórico diário da empresa'); return} const source = scope==='filiais' ? Object.entries(d.filiais||{}).map(([k,v])=>({...v,key:k})) : Object.entries(d.vendedores||{}).map(([k,v])=>({...v,key:k})); const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=top + renderHistoricoTable(rows, scope, `📋 Histórico diário ${scope==='filiais'?'de filiais':'de vendedores'}`);}
-function renderHistoricoMonthResults(){const monthVal=_histCurrentMonth(); const scope=document.getElementById('histMonthScope')?.value||'empresa'; const entity=document.getElementById('histMonthEntity')?.value||''; const box=document.getElementById('histMonthResults'); const d=HIST_DASH?.months_closed?.[monthVal]; if(!box){return} if(!d){box.innerHTML='<div class="empty">Nenhum fechamento mensal salvo para este mês.</div>'; return} const cfg=d.config_global_fechamento||{}; let top=`<div class="kpis">${makeKpi('Mês fechado',esc(monthVal),'var(--blue)')}${makeKpi('Último dia',esc(d.ultimo_dia_historico||'-'),'var(--blue)')}${makeKpi('Snapshot final',esc(d.snapshot_final_data||'-'),'var(--blue)')}${makeKpi('Meta mês',esc(d.meta_file||'-'),'var(--blue)')}</div><div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0"><div><h2 style="font-size:18px">📦 Fechamento mensal travado</h2><div class="hint">Global no fechamento: G ${Number(cfg.grave_pct||0)}% · A ${Number(cfg.alerta_pct||0)}% · At ${Number(cfg.atencao_pct||0)}% · Pesos ${Number(cfg.peso_grave||0)}/${Number(cfg.peso_alerta||0)}/${Number(cfg.peso_atencao||0)}</div></div><div class="small muted">Fechado em ${esc((d.fechado_em||'').replace('T',' ').slice(0,16))}</div></div></div>`;
- if(scope==='empresa'){const e=d.empresa_final||{}; box.innerHTML=top+renderHistoricoTable([{nome:'Empresa',filial:'Resultado final do mês',pendente:e.pendente||0,recebido:e.recebido||0,perc_meta:e.perc_meta||0,grave_alvo:e.grave_alvo||0,alerta_alvo:e.alerta_alvo||0,atencao_alvo:e.atencao_alvo||0}], 'empresa','📋 Resultado final mensal da empresa'); return}
+function renderHistoricoTable(rows, scope, title='ðŸ“‹ HistÃ³rico'){if(!rows.length) return `<div class="empty">Nenhum registro encontrado para o filtro escolhido.</div>`; return `<div class="glass panel"><div class="section-head" style="margin:0 0 10px"><div><h2 style="font-size:18px">${title}</h2></div></div>${rows.map(r=>`<div class="log-row" style="margin-bottom:10px"><div><strong>${esc(r.nome||r.filial||'Empresa')}</strong><div class="small muted">${esc(r.filial||'Resumo')}</div></div><div><strong>${R(r.pendente||0)}</strong><div class="small muted">Pendente</div></div><div><strong>${R(r.recebido||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${pct(r.perc_meta||0)}</strong><div class="small muted">Meta</div></div><div><strong>${R(r.grave_alvo||0)} / ${R(r.alerta_alvo||0)} / ${R(r.atencao_alvo||0)}</strong><div class="small muted">Alvos G/A/At</div></div></div>`).join('')}</div>`}
+function renderHistoricoResults(){const dateVal=_histCurrentDate(); const scope=document.getElementById('histScope')?.value||'empresa'; const entity=document.getElementById('histEntity')?.value||''; const box=document.getElementById('histResults'); const d=HIST_DASH?.dates?.[dateVal]; if(!box){return} if(!d){box.innerHTML='<div class="empty">Nenhum histÃ³rico salvo para esta data.</div>'; return} let top=`<div class="kpis">${makeKpi('Pendente do dia',R(d.empresa?.pendente||0),'var(--red)')}${makeKpi('Recebido do dia',R(d.empresa?.recebido||0),'var(--green)')}${makeKpi('Grave do dia',R(d.empresa?.grave||0),'var(--red)')}${makeKpi('Alerta do dia',R(d.empresa?.alerta||0),'var(--orange)')}</div><div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0"><div><h2 style="font-size:18px">âš™ï¸ Meta usada no dia</h2><div class="hint">Global: G ${Number(d.empresa?.config_global?.grave_pct||0)}% Â· A ${Number(d.empresa?.config_global?.alerta_pct||0)}% Â· At ${Number(d.empresa?.config_global?.atencao_pct||0)}% Â· Pesos ${Number(d.empresa?.config_global?.peso_grave||0)}/${Number(d.empresa?.config_global?.peso_alerta||0)}/${Number(d.empresa?.config_global?.peso_atencao||0)}</div></div><div class="small muted">${esc(dateVal)}</div></div></div>`; if(scope==='empresa'){box.innerHTML=top + renderHistoricoTable([{nome:'Empresa',filial:'Resumo geral',pendente:d.empresa?.pendente||0,recebido:d.empresa?.recebido||0,perc_meta:0,grave_alvo:0,alerta_alvo:0,atencao_alvo:0}], 'empresa','ðŸ“‹ HistÃ³rico diÃ¡rio da empresa'); return} const source = scope==='filiais' ? Object.entries(d.filiais||{}).map(([k,v])=>({...v,key:k})) : Object.entries(d.vendedores||{}).map(([k,v])=>({...v,key:k})); const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=top + renderHistoricoTable(rows, scope, `ðŸ“‹ HistÃ³rico diÃ¡rio ${scope==='filiais'?'de filiais':'de vendedores'}`);}
+function renderHistoricoMonthResults(){const monthVal=_histCurrentMonth(); const scope=document.getElementById('histMonthScope')?.value||'empresa'; const entity=document.getElementById('histMonthEntity')?.value||''; const box=document.getElementById('histMonthResults'); const d=HIST_DASH?.months_closed?.[monthVal]; if(!box){return} if(!d){box.innerHTML='<div class="empty">Nenhum fechamento mensal salvo para este mÃªs.</div>'; return} const cfg=d.config_global_fechamento||{}; let top=`<div class="kpis">${makeKpi('MÃªs fechado',esc(monthVal),'var(--blue)')}${makeKpi('Ãšltimo dia',esc(d.ultimo_dia_historico||'-'),'var(--blue)')}${makeKpi('Snapshot final',esc(d.snapshot_final_data||'-'),'var(--blue)')}${makeKpi('Meta mÃªs',esc(d.meta_file||'-'),'var(--blue)')}</div><div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0"><div><h2 style="font-size:18px">ðŸ“¦ Fechamento mensal travado</h2><div class="hint">Global no fechamento: G ${Number(cfg.grave_pct||0)}% Â· A ${Number(cfg.alerta_pct||0)}% Â· At ${Number(cfg.atencao_pct||0)}% Â· Pesos ${Number(cfg.peso_grave||0)}/${Number(cfg.peso_alerta||0)}/${Number(cfg.peso_atencao||0)}</div></div><div class="small muted">Fechado em ${esc((d.fechado_em||'').replace('T',' ').slice(0,16))}</div></div></div>`;
+ if(scope==='empresa'){const e=d.empresa_final||{}; box.innerHTML=top+renderHistoricoTable([{nome:'Empresa',filial:'Resultado final do mÃªs',pendente:e.pendente||0,recebido:e.recebido||0,perc_meta:e.perc_meta||0,grave_alvo:e.grave_alvo||0,alerta_alvo:e.alerta_alvo||0,atencao_alvo:e.atencao_alvo||0}], 'empresa','ðŸ“‹ Resultado final mensal da empresa'); return}
  const source=scope==='filiais'?Object.entries(d.filiais_finais||{}).map(([k,v])=>({...v,key:k})) : Object.entries(d.vendedores_finais||{}).map(([k,v])=>({...v,key:k}));
- const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=top + renderHistoricoTable(rows, scope, `📋 Resultado final mensal ${scope==='filiais'?'de filiais':'de vendedores'}`);}
-function renderHistoricoTerceiro(){const box=document.getElementById('histThirdResults'); if(!box) return; const logs=(COB_LOGS||[]).filter(x=>String(x.usuario||'').toLowerCase()===COBRANCA10_LOGIN || String(x.usuario||'').toLowerCase()===COBRANCA10_NOME.toLowerCase()).slice().reverse(); const ent=thirdChargeEntity(); const top=`<div class="kpis">${makeKpi('Títulos na carteira',String((CLIENTES_TERCEIRO?.grave?.length||0)+(CLIENTES_TERCEIRO?.alerta?.length||0)+(CLIENTES_TERCEIRO?.atencao?.length||0)),'var(--blue)')}${makeKpi('Pendente',R(ent.pendente||0),'var(--red)')}${makeKpi('Recebido',R(ent.pago||0),'var(--green)')}${makeKpi('Cobranças lançadas',String(logs.length),'var(--orange)')}</div>`; const comm=renderTerceiroCommission(ent); const rows=logs.length?logs.map(x=>`<div class="log-row"><div><strong>${esc(x.cliente||'')}</strong><div class="small muted">${esc(x.titulo||'')} · Parcela ${esc(x.parcela||'')}</div></div><div><strong>${R(x.pendente||0)}</strong><div class="small muted">${esc(x.filial||'')}</div></div><div><strong>${esc((x.server_time||'').replace('T',' ').slice(0,16))}</strong><div class="small muted">Data</div></div><div><strong>${esc(x.telefone||'')}</strong><div class="small muted">Telefone</div></div></div>`).join(''):'<div class="empty">Nenhuma cobrança do Cobrança10 encontrada.</div>'; box.innerHTML=top+comm+`<div class="glass panel"><div class="section-head"><div><h2 style="font-size:18px">🤝 Cobranças Terceiro</h2><div class="hint">Histórico apenas do usuário Cobrança10.</div></div></div><div class="logs-list">${rows}</div></div>`}
+ const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=top + renderHistoricoTable(rows, scope, `ðŸ“‹ Resultado final mensal ${scope==='filiais'?'de filiais':'de vendedores'}`);}
+function renderHistoricoTerceiro(){const box=document.getElementById('histThirdResults'); if(!box) return; const logs=(COB_LOGS||[]).filter(x=>String(x.usuario||'').toLowerCase()===COBRANCA10_LOGIN || String(x.usuario||'').toLowerCase()===COBRANCA10_NOME.toLowerCase()).slice().reverse(); const ent=thirdChargeEntity(); const top=`<div class="kpis">${makeKpi('TÃ­tulos na carteira',String((CLIENTES_TERCEIRO?.grave?.length||0)+(CLIENTES_TERCEIRO?.alerta?.length||0)+(CLIENTES_TERCEIRO?.atencao?.length||0)),'var(--blue)')}${makeKpi('Pendente',R(ent.pendente||0),'var(--red)')}${makeKpi('Recebido',R(ent.pago||0),'var(--green)')}${makeKpi('CobranÃ§as lanÃ§adas',String(logs.length),'var(--orange)')}</div>`; const comm=renderTerceiroCommission(ent); const rows=logs.length?logs.map(x=>`<div class="log-row"><div><strong>${esc(x.cliente||'')}</strong><div class="small muted">${esc(x.titulo||'')} Â· Parcela ${esc(x.parcela||'')}</div></div><div><strong>${R(x.pendente||0)}</strong><div class="small muted">${esc(x.filial||'')}</div></div><div><strong>${esc((x.server_time||'').replace('T',' ').slice(0,16))}</strong><div class="small muted">Data</div></div><div><strong>${esc(x.telefone||'')}</strong><div class="small muted">Telefone</div></div></div>`).join(''):'<div class="empty">Nenhuma cobranÃ§a do CobranÃ§a10 encontrada.</div>'; box.innerHTML=top+comm+`<div class="glass panel"><div class="section-head"><div><h2 style="font-size:18px">ðŸ¤ CobranÃ§as Terceiro</h2><div class="hint">HistÃ³rico apenas do usuÃ¡rio CobranÃ§a10.</div></div></div><div class="logs-list">${rows}</div></div>`}
 function setHistMode(mode){window._histMode=mode; document.getElementById('histDailyPane')?.classList.toggle('hidden',mode!=='daily'); document.getElementById('histMonthPane')?.classList.toggle('hidden',mode!=='monthly'); document.getElementById('histSalesPane')?.classList.toggle('hidden',mode!=='sales'); document.getElementById('histThirdPane')?.classList.toggle('hidden',mode!=='third'); document.getElementById('histTabDaily')?.classList.toggle('active',mode==='daily'); document.getElementById('histTabMonthly')?.classList.toggle('active',mode==='monthly'); document.getElementById('histTabSales')?.classList.toggle('active',mode==='sales'); document.getElementById('histTabThird')?.classList.toggle('active',mode==='third'); if(mode==='daily'){updateHistEntityFilter(); renderHistoricoResults();} else if(mode==='monthly'){updateHistMonthEntityFilter(); renderHistoricoMonthResults();} else if(mode==='sales'){updateHistSalesEntityFilter(); updateHistSalesMonthEntityFilter(); renderHistoricoSalesResults(); renderHistoricoSalesMonthResults();} else {renderHistoricoTerceiro();}}
-function renderHistoricoTab(){const dates=_histDates(); const months=_histMonths(); const salesDates=_histSalesDates(); const salesMonths=_histSalesMonths(); histSection.innerHTML=`<div class="section-head"><div><h2>🗂️ Histórico</h2><div class="hint">Consulte o histórico diário, vendas e os fechamentos mensais travados do Master/Diretor.</div></div></div><div class="tabs" style="justify-content:flex-start;margin:0 0 14px"><button id="histTabDaily" class="tab active" onclick="setHistMode('daily')">📅 Diário</button><button id="histTabMonthly" class="tab" onclick="setHistMode('monthly')">📦 Fechamento mensal</button><button id="histTabSales" class="tab" onclick="setHistMode('sales')">🧡 Vendas</button><button id="histTabThird" class="tab" onclick="setHistMode('third')">🤝 Cobranças Terceiro</button></div><div id="histDailyPane"><div class="glass panel" style="margin-bottom:14px"><div class="search-row"><div class="input-card"><label>Data</label><select id="histDate" onchange="updateHistEntityFilter();renderHistoricoResults()">${dates.map(d=>`<option value="${d}">${d}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histScope" onchange="updateHistEntityFilter();renderHistoricoResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histEntity" onchange="renderHistoricoResults()"><option value="">Todos</option></select></div></div></div><div id="histResults"></div></div><div id="histMonthPane" class="hidden"><div class="glass panel" style="margin-bottom:14px"><div class="search-row"><div class="input-card"><label>Mês fechado</label><select id="histMonth" onchange="updateHistMonthEntityFilter();renderHistoricoMonthResults()">${months.map(m=>`<option value="${m}">${m}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histMonthScope" onchange="updateHistMonthEntityFilter();renderHistoricoMonthResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histMonthEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histMonthEntity" onchange="renderHistoricoMonthResults()"><option value="">Todos</option></select></div></div></div><div id="histMonthResults"></div></div><div id="histSalesPane" class="hidden"><div class="glass panel" style="margin-bottom:14px"><div class="search-row"><div class="input-card"><label>Data de vendas</label><select id="histSalesDate" onchange="updateHistSalesEntityFilter();renderHistoricoSalesResults()">${salesDates.map(d=>`<option value="${d}">${d}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histSalesScope" onchange="updateHistSalesEntityFilter();renderHistoricoSalesResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histSalesEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histSalesEntity" onchange="renderHistoricoSalesResults()"><option value="">Todos</option></select></div></div></div><div id="histSalesResults"></div><div class="glass panel" style="margin:14px 0"><div class="search-row"><div class="input-card"><label>Mês de vendas</label><select id="histSalesMonth" onchange="updateHistSalesMonthEntityFilter();renderHistoricoSalesMonthResults()">${salesMonths.map(m=>`<option value="${m}">${m}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histSalesMonthScope" onchange="updateHistSalesMonthEntityFilter();renderHistoricoSalesMonthResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histSalesMonthEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histSalesMonthEntity" onchange="renderHistoricoSalesMonthResults()"><option value="">Todos</option></select></div></div></div><div id="histSalesMonthResults"></div></div><div id="histThirdPane" class="hidden"><div id="histThirdResults"></div></div>`; if(dates.length){document.getElementById('histDate').value=dates[0]} if(months.length){document.getElementById('histMonth').value=months[0]} if(salesDates.length){document.getElementById('histSalesDate').value=salesDates[0]} if(salesMonths.length){document.getElementById('histSalesMonth').value=salesMonths[0]} setHistMode(window._histMode||'daily');}
+function renderHistoricoTab(){const dates=_histDates(); const months=_histMonths(); const salesDates=_histSalesDates(); const salesMonths=_histSalesMonths(); histSection.innerHTML=`<div class="section-head"><div><h2>ðŸ—‚ï¸ HistÃ³rico</h2><div class="hint">Consulte o histÃ³rico diÃ¡rio, vendas e os fechamentos mensais travados do Master/Diretor.</div></div></div><div class="tabs" style="justify-content:flex-start;margin:0 0 14px"><button id="histTabDaily" class="tab active" onclick="setHistMode('daily')">ðŸ“… DiÃ¡rio</button><button id="histTabMonthly" class="tab" onclick="setHistMode('monthly')">ðŸ“¦ Fechamento mensal</button><button id="histTabSales" class="tab" onclick="setHistMode('sales')">ðŸ§¡ Vendas</button><button id="histTabThird" class="tab" onclick="setHistMode('third')">ðŸ¤ CobranÃ§as Terceiro</button></div><div id="histDailyPane"><div class="glass panel" style="margin-bottom:14px"><div class="search-row"><div class="input-card"><label>Data</label><select id="histDate" onchange="updateHistEntityFilter();renderHistoricoResults()">${dates.map(d=>`<option value="${d}">${d}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histScope" onchange="updateHistEntityFilter();renderHistoricoResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histEntity" onchange="renderHistoricoResults()"><option value="">Todos</option></select></div></div></div><div id="histResults"></div></div><div id="histMonthPane" class="hidden"><div class="glass panel" style="margin-bottom:14px"><div class="search-row"><div class="input-card"><label>MÃªs fechado</label><select id="histMonth" onchange="updateHistMonthEntityFilter();renderHistoricoMonthResults()">${months.map(m=>`<option value="${m}">${m}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histMonthScope" onchange="updateHistMonthEntityFilter();renderHistoricoMonthResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histMonthEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histMonthEntity" onchange="renderHistoricoMonthResults()"><option value="">Todos</option></select></div></div></div><div id="histMonthResults"></div></div><div id="histSalesPane" class="hidden"><div class="glass panel" style="margin-bottom:14px"><div class="search-row"><div class="input-card"><label>Data de vendas</label><select id="histSalesDate" onchange="updateHistSalesEntityFilter();renderHistoricoSalesResults()">${salesDates.map(d=>`<option value="${d}">${d}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histSalesScope" onchange="updateHistSalesEntityFilter();renderHistoricoSalesResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histSalesEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histSalesEntity" onchange="renderHistoricoSalesResults()"><option value="">Todos</option></select></div></div></div><div id="histSalesResults"></div><div class="glass panel" style="margin:14px 0"><div class="search-row"><div class="input-card"><label>MÃªs de vendas</label><select id="histSalesMonth" onchange="updateHistSalesMonthEntityFilter();renderHistoricoSalesMonthResults()">${salesMonths.map(m=>`<option value="${m}">${m}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histSalesMonthScope" onchange="updateHistSalesMonthEntityFilter();renderHistoricoSalesMonthResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histSalesMonthEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histSalesMonthEntity" onchange="renderHistoricoSalesMonthResults()"><option value="">Todos</option></select></div></div></div><div id="histSalesMonthResults"></div></div><div id="histThirdPane" class="hidden"><div id="histThirdResults"></div></div>`; if(dates.length){document.getElementById('histDate').value=dates[0]} if(months.length){document.getElementById('histMonth').value=months[0]} if(salesDates.length){document.getElementById('histSalesDate').value=salesDates[0]} if(salesMonths.length){document.getElementById('histSalesMonth').value=salesMonths[0]} setHistMode(window._histMode||'daily');}
 
-// ===== OVERRIDE HISTÓRICO COMISSIONAMENTO VISÍVEL =====
+// ===== OVERRIDE HISTÃ“RICO COMISSIONAMENTO VISÃVEL =====
 
 function setHistMode(mode){
   window._histMode=mode;
@@ -8296,17 +8296,17 @@ function renderHistoricoTab(){
   histSection.innerHTML=`
     <div class="section-head">
       <div>
-        <h2>🗂️ Histórico</h2>
-        <div class="hint">Consulte o histórico diário, vendas, fechamentos mensais e o histórico de comissionamento para folha.</div>
+        <h2>ðŸ—‚ï¸ HistÃ³rico</h2>
+        <div class="hint">Consulte o histÃ³rico diÃ¡rio, vendas, fechamentos mensais e o histÃ³rico de comissionamento para folha.</div>
       </div>
     </div>
 
     <div class="tabs" style="justify-content:flex-start;margin:0 0 14px">
-      <button id="histTabDaily" class="tab active" onclick="setHistMode('daily')">📅 Diário</button>
-      <button id="histTabMonthly" class="tab" onclick="setHistMode('monthly')">📦 Fechamento mensal</button>
-      <button id="histTabSales" class="tab" onclick="setHistMode('sales')">🧡 Vendas</button>
-      <button id="histTabThird" class="tab" onclick="setHistMode('third')">🤝 Cobranças Terceiro</button>
-      <button id="histTabCom" class="tab" onclick="setHistMode('comissao')">💰 Comissionamento</button>
+      <button id="histTabDaily" class="tab active" onclick="setHistMode('daily')">ðŸ“… DiÃ¡rio</button>
+      <button id="histTabMonthly" class="tab" onclick="setHistMode('monthly')">ðŸ“¦ Fechamento mensal</button>
+      <button id="histTabSales" class="tab" onclick="setHistMode('sales')">ðŸ§¡ Vendas</button>
+      <button id="histTabThird" class="tab" onclick="setHistMode('third')">ðŸ¤ CobranÃ§as Terceiro</button>
+      <button id="histTabCom" class="tab" onclick="setHistMode('comissao')">ðŸ’° Comissionamento</button>
     </div>
 
     <div id="histDailyPane">
@@ -8323,7 +8323,7 @@ function renderHistoricoTab(){
     <div id="histMonthPane" class="hidden">
       <div class="glass panel" style="margin-bottom:14px">
         <div class="search-row">
-          <div class="input-card"><label>Mês fechado</label><select id="histMonth" onchange="updateHistMonthEntityFilter();renderHistoricoMonthResults()">${months.map(m=>`<option value="${m}">${m}</option>`).join('')}</select></div>
+          <div class="input-card"><label>MÃªs fechado</label><select id="histMonth" onchange="updateHistMonthEntityFilter();renderHistoricoMonthResults()">${months.map(m=>`<option value="${m}">${m}</option>`).join('')}</select></div>
           <div class="input-card"><label>Escopo</label><select id="histMonthScope" onchange="updateHistMonthEntityFilter();renderHistoricoMonthResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div>
           <div id="histMonthEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histMonthEntity" onchange="renderHistoricoMonthResults()"><option value="">Todos</option></select></div>
         </div>
@@ -8342,7 +8342,7 @@ function renderHistoricoTab(){
       <div id="histSalesResults"></div>
       <div class="glass panel" style="margin:14px 0">
         <div class="search-row">
-          <div class="input-card"><label>Mês de vendas</label><select id="histSalesMonth" onchange="updateHistSalesMonthEntityFilter();renderHistoricoSalesMonthResults()">${salesMonths.map(m=>`<option value="${m}">${m}</option>`).join('')}</select></div>
+          <div class="input-card"><label>MÃªs de vendas</label><select id="histSalesMonth" onchange="updateHistSalesMonthEntityFilter();renderHistoricoSalesMonthResults()">${salesMonths.map(m=>`<option value="${m}">${m}</option>`).join('')}</select></div>
           <div class="input-card"><label>Escopo</label><select id="histSalesMonthScope" onchange="updateHistSalesMonthEntityFilter();renderHistoricoSalesMonthResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div>
           <div id="histSalesMonthEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histSalesMonthEntity" onchange="renderHistoricoSalesMonthResults()"><option value="">Todos</option></select></div>
         </div>
@@ -8356,23 +8356,23 @@ function renderHistoricoTab(){
       <div class="glass panel" style="margin-bottom:14px">
         <div class="section-head" style="margin:0 0 10px">
           <div>
-            <h2 style="font-size:18px">💰 Histórico mensal de comissionamento</h2>
-            <div class="hint">Use para fechar o mês e consultar depois os valores para a folha de pagamento.</div>
+            <h2 style="font-size:18px">ðŸ’° HistÃ³rico mensal de comissionamento</h2>
+            <div class="hint">Use para fechar o mÃªs e consultar depois os valores para a folha de pagamento.</div>
           </div>
         </div>
         <div class="search-row">
           <div class="input-card">
-            <label>Mês para consultar</label>
+            <label>MÃªs para consultar</label>
             <select id="histComMonth" onchange="renderHistoricoComissaoResults()">
               ${(comMonths.length?comMonths:[currentComMonth]).map(m=>`<option value="${m}">${m}</option>`).join('')}
             </select>
           </div>
           <div class="input-card">
-            <label>Mês para salvar/atualizar</label>
+            <label>MÃªs para salvar/atualizar</label>
             <input id="histComMonthSave" value="${currentComMonth}" placeholder="AAAA-MM">
           </div>
           <div class="input-card" style="display:flex;align-items:end">
-            <button class="btn" onclick="salvarSnapshotComissionamentoMensal(false)">💾 Salvar fechamento do mês atual</button>
+            <button class="btn" onclick="salvarSnapshotComissionamentoMensal(false)">ðŸ’¾ Salvar fechamento do mÃªs atual</button>
           </div>
         </div>
       </div>
@@ -8393,36 +8393,36 @@ function renderSenhasTab(){
   const reqs=[...(AUTH_STATE?.password_reset_requests||[])].reverse();
   const resets=reqs.filter(r=>String(r.status||'pendente')==='pendente');
   const resolved=reqs.filter(r=>String(r.status||'pendente')==='resolvido');
-  senhasSection.innerHTML=`<div class="section-head"><div><h2>🔐 Gerenciar senhas</h2><div class="hint">Master e Diretor Comercial podem redefinir senhas online, exigir troca no primeiro acesso e visualizar solicitações.</div></div></div>
+  senhasSection.innerHTML=`<div class="section-head"><div><h2>ðŸ” Gerenciar senhas</h2><div class="hint">Master e Diretor Comercial podem redefinir senhas online, exigir troca no primeiro acesso e visualizar solicitaÃ§Ãµes.</div></div></div>
   <div class="glass panel" style="margin-bottom:14px">
     <div class="section-head" style="margin:0 0 8px">
-      <div><h2 style="font-size:18px">📩 Solicitações de recuperação</h2><div class="hint">Pedidos enviados pelo botão de recuperar senha.</div></div>
+      <div><h2 style="font-size:18px">ðŸ“© SolicitaÃ§Ãµes de recuperaÃ§Ã£o</h2><div class="hint">Pedidos enviados pelo botÃ£o de recuperar senha.</div></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn soft" onclick="adminLimparHistoricoReset('all')">🧹 Limpar histórico</button>
+        <button class="btn soft" onclick="adminLimparHistoricoReset('all')">ðŸ§¹ Limpar histÃ³rico</button>
       </div>
     </div>
     ${resets.length?resets.map(r=>`<div class="log-row" style="margin-bottom:8px">
-      <div><div style="font-weight:900">${esc(r.login||'')}</div><div class="small muted">${esc(r.obs||'Sem observação')}</div></div>
+      <div><div style="font-weight:900">${esc(r.login||'')}</div><div class="small muted">${esc(r.obs||'Sem observaÃ§Ã£o')}</div></div>
       <div><strong>${esc((r.created_at||'').replace('T',' ').slice(0,16))}</strong><div class="small muted">Data</div></div>
       <div><span class="mini-chip" style="background:#fff7ed;color:#b45309;border:1px solid #fdba74">Pendente</span></div>
       <div><button class="btn primary" onclick="adminResolverReset('${'${'}String(r.login||'').replace(/'/g,"\\'")${'}'}')">Resolver</button></div>
-    </div>`).join(''):'<div class="empty">Nenhuma solicitação pendente.</div>'}
-    ${resolved.length?`<div style="margin-top:14px"><h4 style="margin:0 0 8px">Histórico resolvido</h4>${resolved.map(r=>`<div class="log-row" style="margin-bottom:8px;opacity:.9">
-      <div><div style="font-weight:900">${esc(r.login||'')}</div><div class="small muted">${esc(r.obs||'Sem observação')}</div></div>
+    </div>`).join(''):'<div class="empty">Nenhuma solicitaÃ§Ã£o pendente.</div>'}
+    ${resolved.length?`<div style="margin-top:14px"><h4 style="margin:0 0 8px">HistÃ³rico resolvido</h4>${resolved.map(r=>`<div class="log-row" style="margin-bottom:8px;opacity:.9">
+      <div><div style="font-weight:900">${esc(r.login||'')}</div><div class="small muted">${esc(r.obs||'Sem observaÃ§Ã£o')}</div></div>
       <div><strong>${esc(((r.resolved_at||r.created_at||'').replace('T',' ').slice(0,16)))}</strong><div class="small muted">Resolvido em</div></div>
       <div><span class="mini-chip" style="background:#ecfdf5;color:#166534;border:1px solid #86efac">Resolvido</span></div>
       <div></div>
     </div>`).join('')}</div>`:''}
   </div>
-  <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">👑 Contas administrativas</h2><div class="hint">O Master visualiza aqui a senha definida para cada acesso. A senha Master é fixa no arquivo do robô.</div></div></div><div class="grid-cards"><div class="glass card" style="cursor:default"><div class="title" style="min-height:auto">Master</div><div class="note" style="margin-top:10px;background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-radius:14px;padding:10px 12px"><div><b>Login:</b> <code>${esc(LOGIN_MASTER)}</code></div><div><b>Senha definida agora:</b> <code style="font-size:14px">${esc(SENHA_MASTER)}</code></div></div></div>${renderSenhaCard(AUTH_STATE?.director||{login:'diretorcomercial',nome:'Diretor Comercial',password:SENHA_DIRETOR,initial_password:SENHA_DIRETOR,must_change_password:true}, true)}</div></div>
-  <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">➕ Criar usuário de acesso</h2><div class="hint">Aqui você cria apenas o login/senha de acesso. Depois vá em Metas > Crediaristas configuráveis para vincular esse usuário à filial/base e ao percentual.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Login</label><input id="newUserLogin" placeholder="ex: crediaristaf07"></div><div class="input-card"><label>Nome</label><input id="newUserNome" placeholder="ex: CREDIARISTAF07"></div><div class="input-card"><label>Filial</label><input id="newUserFilial" placeholder="ex: F7"></div><div class="input-card"><label>Senha inicial</label><input id="newUserSenha" placeholder="mín. 4 caracteres"></div></div><div class="form-grid bonus" style="margin-top:10px"><div class="input-card"><label>Tipo</label><select id="newUserTipo"><option value="crediarista">Crediarista</option><option value="cobranca">Cobrança</option></select></div></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="adminCriarUsuarioCobranca()">💾 Criar usuário</button></div><div id="newUserMsg" class="note" style="margin-top:10px"></div></div>
-  <div class="section-head"><div><h2>👥 Usuários do dashboard</h2><div class="hint">As senhas permanecem congeladas e só mudam se você alterar aqui ou se surgir um usuário novo.</div></div></div>
+  <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">ðŸ‘‘ Contas administrativas</h2><div class="hint">O Master visualiza aqui a senha definida para cada acesso. A senha Master Ã© fixa no arquivo do robÃ´.</div></div></div><div class="grid-cards"><div class="glass card" style="cursor:default"><div class="title" style="min-height:auto">Master</div><div class="note" style="margin-top:10px;background:rgba(15,23,42,.04);border:1px solid rgba(15,23,42,.08);border-radius:14px;padding:10px 12px"><div><b>Login:</b> <code>${esc(LOGIN_MASTER)}</code></div><div><b>Senha definida agora:</b> <code style="font-size:14px">${esc(SENHA_MASTER)}</code></div></div></div>${renderSenhaCard(AUTH_STATE?.director||{login:'diretorcomercial',nome:'Diretor Comercial',password:SENHA_DIRETOR,initial_password:SENHA_DIRETOR,must_change_password:true}, true)}</div></div>
+  <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">âž• Criar usuÃ¡rio de acesso</h2><div class="hint">Aqui vocÃª cria apenas o login/senha de acesso. Depois vÃ¡ em Metas > Crediaristas configurÃ¡veis para vincular esse usuÃ¡rio Ã  filial/base e ao percentual.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Login</label><input id="newUserLogin" placeholder="ex: crediaristaf07"></div><div class="input-card"><label>Nome</label><input id="newUserNome" placeholder="ex: CREDIARISTAF07"></div><div class="input-card"><label>Filial</label><input id="newUserFilial" placeholder="ex: F7"></div><div class="input-card"><label>Senha inicial</label><input id="newUserSenha" placeholder="mÃ­n. 4 caracteres"></div></div><div class="form-grid bonus" style="margin-top:10px"><div class="input-card"><label>Tipo</label><select id="newUserTipo"><option value="crediarista">Crediarista</option><option value="cobranca">CobranÃ§a</option></select></div></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="adminCriarUsuarioCobranca()">ðŸ’¾ Criar usuÃ¡rio</button></div><div id="newUserMsg" class="note" style="margin-top:10px"></div></div>
+  <div class="section-head"><div><h2>ðŸ‘¥ UsuÃ¡rios do dashboard</h2><div class="hint">As senhas permanecem congeladas e sÃ³ mudam se vocÃª alterar aqui ou se surgir um usuÃ¡rio novo.</div></div></div>
   <div class="grid-cards">${users.map(u=>renderSenhaCard(u,false)).join('')}</div>`;
 }
-async function adminSalvarSenha(login){const box=document.getElementById(`pwd_msg_${login}`); const senha=(document.getElementById(`pwd_${login}`)?.value||'').trim(); if(!senha || senha.length<4){if(box) box.textContent='Digite uma senha com pelo menos 4 caracteres.'; return;} try{const fd=new FormData(); fd.append('action','admin_set_password'); fd.append('login',login); fd.append('new_password',senha); fd.append('must_change_password','0'); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(box) box.textContent=j.ok?'✅ Senha atualizada online.':'⚠️ Não consegui atualizar a senha.'; if(j.ok){await carregarCredenciaisOnline(); renderSenhasTab();}}catch(e){if(box) box.textContent='⚠️ Não consegui atualizar a senha.';}}
-async function adminMarcarTroca(login){const box=document.getElementById(`pwd_msg_${login}`); try{const fd=new FormData(); fd.append('action','admin_force_change'); fd.append('login',login); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(box) box.textContent=j.ok?'✅ Usuário marcado para trocar a senha no próximo acesso.':'⚠️ Não consegui marcar troca de senha.'; if(j.ok){await carregarCredenciaisOnline(); renderSenhasTab();}}catch(e){if(box) box.textContent='⚠️ Não consegui marcar troca de senha.';}}
-async function adminResolverReset(login){try{const fd=new FormData(); fd.append('action','resolve_reset'); fd.append('login',login); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){toast('Solicitação resolvida. Usuário terá que criar nova senha no próximo acesso.','success'); await carregarCredenciaisOnline(); renderSenhasTab();}else{toast('Não consegui resolver a solicitação.')}}catch(e){toast('Não consegui resolver a solicitação.')}}
-async function adminLimparHistoricoReset(mode='resolved'){try{const fd=new FormData(); fd.append('action','clear_reset_history'); fd.append('mode',mode); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){toast(mode==='all'?'Solicitações limpas da tela.':'Histórico de solicitações limpo.','success'); await carregarCredenciaisOnline(); renderSenhasTab();}else{toast('Não consegui limpar o histórico.')}}catch(e){toast('Não consegui limpar o histórico.')}}
+async function adminSalvarSenha(login){const box=document.getElementById(`pwd_msg_${login}`); const senha=(document.getElementById(`pwd_${login}`)?.value||'').trim(); if(!senha || senha.length<4){if(box) box.textContent='Digite uma senha com pelo menos 4 caracteres.'; return;} try{const fd=new FormData(); fd.append('action','admin_set_password'); fd.append('login',login); fd.append('new_password',senha); fd.append('must_change_password','0'); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(box) box.textContent=j.ok?'âœ… Senha atualizada online.':'âš ï¸ NÃ£o consegui atualizar a senha.'; if(j.ok){await carregarCredenciaisOnline(); renderSenhasTab();}}catch(e){if(box) box.textContent='âš ï¸ NÃ£o consegui atualizar a senha.';}}
+async function adminMarcarTroca(login){const box=document.getElementById(`pwd_msg_${login}`); try{const fd=new FormData(); fd.append('action','admin_force_change'); fd.append('login',login); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(box) box.textContent=j.ok?'âœ… UsuÃ¡rio marcado para trocar a senha no prÃ³ximo acesso.':'âš ï¸ NÃ£o consegui marcar troca de senha.'; if(j.ok){await carregarCredenciaisOnline(); renderSenhasTab();}}catch(e){if(box) box.textContent='âš ï¸ NÃ£o consegui marcar troca de senha.';}}
+async function adminResolverReset(login){try{const fd=new FormData(); fd.append('action','resolve_reset'); fd.append('login',login); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){toast('SolicitaÃ§Ã£o resolvida. UsuÃ¡rio terÃ¡ que criar nova senha no prÃ³ximo acesso.','success'); await carregarCredenciaisOnline(); renderSenhasTab();}else{toast('NÃ£o consegui resolver a solicitaÃ§Ã£o.')}}catch(e){toast('NÃ£o consegui resolver a solicitaÃ§Ã£o.')}}
+async function adminLimparHistoricoReset(mode='resolved'){try{const fd=new FormData(); fd.append('action','clear_reset_history'); fd.append('mode',mode); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){toast(mode==='all'?'SolicitaÃ§Ãµes limpas da tela.':'HistÃ³rico de solicitaÃ§Ãµes limpo.','success'); await carregarCredenciaisOnline(); renderSenhasTab();}else{toast('NÃ£o consegui limpar o histÃ³rico.')}}catch(e){toast('NÃ£o consegui limpar o histÃ³rico.')}}
 
 async function adminCriarUsuarioCobranca(){
   const msg=document.getElementById('newUserMsg');
@@ -8438,31 +8438,31 @@ async function adminCriarUsuarioCobranca(){
     fd.append('login',login); fd.append('nome',nome); fd.append('filial',filial); fd.append('password',senha); fd.append('tipo',tipo);
     const r=await fetch(API_CRED,{method:'POST',body:fd});
     const j=await r.json();
-    if(msg) msg.textContent=j.ok?'✅ Usuário criado online.':'⚠️ Não consegui criar o usuário.';
+    if(msg) msg.textContent=j.ok?'âœ… UsuÃ¡rio criado online.':'âš ï¸ NÃ£o consegui criar o usuÃ¡rio.';
     if(j.ok){ await carregarCredenciaisOnline(); renderSenhasTab(); }
-  }catch(e){ if(msg) msg.textContent='⚠️ Não consegui criar o usuário.'; }
+  }catch(e){ if(msg) msg.textContent='âš ï¸ NÃ£o consegui criar o usuÃ¡rio.'; }
 }
 
 function renderAvisosTab(){
-  avisosSection.innerHTML=`<div class="section-head"><div><h2>📣 Central de avisos</h2><div class="hint">Envie mensagens, imagens, vídeos e áudios para um usuário, uma filial ou todos.</div></div></div>
+  avisosSection.innerHTML=`<div class="section-head"><div><h2>ðŸ“£ Central de avisos</h2><div class="hint">Envie mensagens, imagens, vÃ­deos e Ã¡udios para um usuÃ¡rio, uma filial ou todos.</div></div></div>
   ${renderCampaignStrip()}
   <div class="meta-layout">
     <div class="glass panel">
       <div class="form-grid bonus" style="grid-template-columns:1fr 1fr">
         <div class="input-card"><label>Destino</label><select id="msgTarget">${targetOptionsMsg()}</select></div>
-        <div class="input-card"><label>Título</label><input id="msgTitle" placeholder="Ex: Campanha do dia"></div>
+        <div class="input-card"><label>TÃ­tulo</label><input id="msgTitle" placeholder="Ex: Campanha do dia"></div>
       </div>
       <div class="form-grid bonus" style="grid-template-columns:1fr 1fr;margin-top:12px">
         <div class="input-card"><label>Tipo</label><select id="msgKind"><option value="notice">Aviso</option><option value="campaign">Campanha</option></select></div>
-        <div class="input-card"><label>Duração da campanha (até)</label><input id="msgExpires" type="date"></div>
+        <div class="input-card"><label>DuraÃ§Ã£o da campanha (atÃ©)</label><input id="msgExpires" type="date"></div>
       </div>
       <div class="input-card" style="margin-top:12px"><label>Mensagem</label><input id="msgBody" placeholder="Digite a mensagem"></div>
-      <div class="input-card" style="margin-top:12px"><label>Anexo (imagem, vídeo ou áudio)</label><input id="msgFile" type="file" accept="image/*,video/*,audio/*"></div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="enviarMensagemOnline()">📨 Enviar agora</button></div>
+      <div class="input-card" style="margin-top:12px"><label>Anexo (imagem, vÃ­deo ou Ã¡udio)</label><input id="msgFile" type="file" accept="image/*,video/*,audio/*"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="enviarMensagemOnline()">ðŸ“¨ Enviar agora</button></div>
       <div id="msgSendInfo" class="note" style="margin-top:10px"></div>
     </div>
     <div class="glass panel">
-      <h3>🗂️ Histórico de avisos</h3>
+      <h3>ðŸ—‚ï¸ HistÃ³rico de avisos</h3>
       <div id="msgHistory"></div>
     </div>
   </div>`;
@@ -8474,7 +8474,7 @@ function renderMsgHistory(){
   const arr=[...(MSGS||[])].reverse();
   const ativos=arr.filter(m=>!m.hidden_on_master && (!q || String(m.server_time||'').startsWith(q)));
   const hist=arr.filter(m=>m.hidden_on_master && (!q || String(m.server_time||'').startsWith(q)));
-  host.innerHTML=`<div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:10px"><div class="input-card" style="min-width:220px"><label>Filtrar por data</label><input id="msgDate" type="date" value="${q}"></div><button class="btn soft" onclick="renderMsgHistory()">Filtrar</button></div>${ativos.length?'<h4 style="margin:6px 0">Na tela</h4>'+ativos.map(m=>renderMsgCard(m,true,true)).join(''):'<div class="empty">Nenhum aviso ativo na tela.</div>'}${hist.length?'<h4 style="margin:16px 0 6px">Histórico</h4>'+hist.map(m=>renderMsgCard(m,true,false)).join(''):''}`;
+  host.innerHTML=`<div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:10px"><div class="input-card" style="min-width:220px"><label>Filtrar por data</label><input id="msgDate" type="date" value="${q}"></div><button class="btn soft" onclick="renderMsgHistory()">Filtrar</button></div>${ativos.length?'<h4 style="margin:6px 0">Na tela</h4>'+ativos.map(m=>renderMsgCard(m,true,true)).join(''):'<div class="empty">Nenhum aviso ativo na tela.</div>'}${hist.length?'<h4 style="margin:16px 0 6px">HistÃ³rico</h4>'+hist.map(m=>renderMsgCard(m,true,false)).join(''):''}`;
 }
 async function enviarMensagemOnline(){
   const target=document.getElementById('msgTarget').value;
@@ -8491,29 +8491,29 @@ async function enviarMensagemOnline(){
   try{
     const r=await fetch(API_MSG,{method:'POST',body:fd});
     const j=await r.json();
-    document.getElementById('msgSendInfo').textContent=j.ok?'✅ Aviso enviado online com sucesso.':'⚠️ Não consegui enviar o aviso.';
+    document.getElementById('msgSendInfo').textContent=j.ok?'âœ… Aviso enviado online com sucesso.':'âš ï¸ NÃ£o consegui enviar o aviso.';
     if(j.ok){document.getElementById('msgTitle').value=''; document.getElementById('msgBody').value=''; document.getElementById('msgFile').value=''; document.getElementById('msgExpires').value=''; await carregarMsgsOnline(); renderMsgHistory(); renderList();}
-  }catch(e){document.getElementById('msgSendInfo').textContent='⚠️ Não consegui enviar o aviso.'}
+  }catch(e){document.getElementById('msgSendInfo').textContent='âš ï¸ NÃ£o consegui enviar o aviso.'}
 }
 async function removerMensagem(id){
   if(!confirm('Remover esta mensagem?')) return;
   const fd=new FormData(); fd.append('action','delete'); fd.append('id',id);
-  try{const r=await fetch(API_MSG,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){toast('Mensagem removida.','success'); await carregarMsgsOnline(); renderMsgHistory(); renderList();}else{toast('Não consegui remover a mensagem.')}}catch(e){toast('Não consegui remover a mensagem.')}}
+  try{const r=await fetch(API_MSG,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){toast('Mensagem removida.','success'); await carregarMsgsOnline(); renderMsgHistory(); renderList();}else{toast('NÃ£o consegui remover a mensagem.')}}catch(e){toast('NÃ£o consegui remover a mensagem.')}}
 async function limparMensagemTela(id){
   const fd=new FormData(); fd.append('action','archive_master'); fd.append('id',id);
-  try{const r=await fetch(API_MSG,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){toast('Mensagem removida da tela e enviada ao histórico.','success'); await carregarMsgsOnline(); renderMsgHistory(); renderList();}else{toast('Não consegui limpar a mensagem.')}}catch(e){toast('Não consegui limpar a mensagem.')}}
+  try{const r=await fetch(API_MSG,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){toast('Mensagem removida da tela e enviada ao histÃ³rico.','success'); await carregarMsgsOnline(); renderMsgHistory(); renderList();}else{toast('NÃ£o consegui limpar a mensagem.')}}catch(e){toast('NÃ£o consegui limpar a mensagem.')}}
 async function openPrimeiroAcesso(prefillLogin=''){document.getElementById('faLogin').value=prefillLogin||document.getElementById('loginUser').value||''; document.getElementById('faCurrentPass').value=document.getElementById('loginPass').value||''; document.getElementById('faNewPass').value=''; document.getElementById('faNewPass2').value=''; document.getElementById('faMsg').textContent=''; document.getElementById('firstAccessModal').classList.add('show')}
 function closeFirstAccess(){document.getElementById('firstAccessModal').classList.remove('show')}
 function openRecuperarSenha(){document.getElementById('recLogin').value=document.getElementById('loginUser').value||''; document.getElementById('recObs').value=''; document.getElementById('recMsg').textContent=''; document.getElementById('recoverModal').classList.add('show')}
 function closeRecover(){document.getElementById('recoverModal').classList.remove('show')}
-async function enviarRecuperacaoSenha(){const login=(document.getElementById('recLogin').value||'').trim().toLowerCase(); const obs=(document.getElementById('recObs').value||'').trim(); const box=document.getElementById('recMsg'); if(!login){box.textContent='Informe o usuário.'; return;} try{const fd=new FormData(); fd.append('action','request_reset'); fd.append('login',login); fd.append('obs',obs); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); box.textContent=j.ok?'✅ Solicitação enviada ao Master.':'⚠️ Não consegui enviar a solicitação.';}catch(e){box.textContent='⚠️ Não consegui enviar a solicitação.';}}
-async function salvarPrimeiroAcesso(){const login=(document.getElementById('faLogin').value||'').trim().toLowerCase(); const atual=(document.getElementById('faCurrentPass').value||'').trim(); const nova=(document.getElementById('faNewPass').value||'').trim(); const nova2=(document.getElementById('faNewPass2').value||'').trim(); const box=document.getElementById('faMsg'); box.textContent=''; if(!login||!atual||!nova||!nova2){box.textContent='Preencha todos os campos.'; return;} if(nova.length<4){box.textContent='A nova senha deve ter pelo menos 4 caracteres.'; return;} if(nova!==nova2){box.textContent='A confirmação da senha não confere.'; return;} const auth=getAuthUser(login); if(!auth || String(auth.password)!==atual){box.textContent='Usuário ou senha atual inválidos.'; return;} try{const fd=new FormData(); fd.append('action','change_password'); fd.append('login',login); fd.append('current_password',atual); fd.append('new_password',nova); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); box.textContent=j.ok?'✅ Senha alterada com sucesso. Entre com a nova senha.':'⚠️ Não consegui alterar a senha.'; if(j.ok){await carregarCredenciaisOnline(); document.getElementById('loginPass').value=''; setTimeout(()=>{closeFirstAccess();},700);}}catch(e){box.textContent='⚠️ Não consegui alterar a senha.';}}
+async function enviarRecuperacaoSenha(){const login=(document.getElementById('recLogin').value||'').trim().toLowerCase(); const obs=(document.getElementById('recObs').value||'').trim(); const box=document.getElementById('recMsg'); if(!login){box.textContent='Informe o usuÃ¡rio.'; return;} try{const fd=new FormData(); fd.append('action','request_reset'); fd.append('login',login); fd.append('obs',obs); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); box.textContent=j.ok?'âœ… SolicitaÃ§Ã£o enviada ao Master.':'âš ï¸ NÃ£o consegui enviar a solicitaÃ§Ã£o.';}catch(e){box.textContent='âš ï¸ NÃ£o consegui enviar a solicitaÃ§Ã£o.';}}
+async function salvarPrimeiroAcesso(){const login=(document.getElementById('faLogin').value||'').trim().toLowerCase(); const atual=(document.getElementById('faCurrentPass').value||'').trim(); const nova=(document.getElementById('faNewPass').value||'').trim(); const nova2=(document.getElementById('faNewPass2').value||'').trim(); const box=document.getElementById('faMsg'); box.textContent=''; if(!login||!atual||!nova||!nova2){box.textContent='Preencha todos os campos.'; return;} if(nova.length<4){box.textContent='A nova senha deve ter pelo menos 4 caracteres.'; return;} if(nova!==nova2){box.textContent='A confirmaÃ§Ã£o da senha nÃ£o confere.'; return;} const auth=getAuthUser(login); if(!auth || String(auth.password)!==atual){box.textContent='UsuÃ¡rio ou senha atual invÃ¡lidos.'; return;} try{const fd=new FormData(); fd.append('action','change_password'); fd.append('login',login); fd.append('current_password',atual); fd.append('new_password',nova); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); box.textContent=j.ok?'âœ… Senha alterada com sucesso. Entre com a nova senha.':'âš ï¸ NÃ£o consegui alterar a senha.'; if(j.ok){await carregarCredenciaisOnline(); document.getElementById('loginPass').value=''; setTimeout(()=>{closeFirstAccess();},700);}}catch(e){box.textContent='âš ï¸ NÃ£o consegui alterar a senha.';}}
 async function fazerLogin(){
   const u=(document.getElementById('loginUser').value||'').trim().toLowerCase();
   const s=(document.getElementById('loginPass').value||'').trim();
   const msg=document.getElementById('loginMsg');
   msg.textContent='';
-  if(!u || !s){msg.textContent='Informe usuário e senha.'; return;}
+  if(!u || !s){msg.textContent='Informe usuÃ¡rio e senha.'; return;}
 
   // Master abre imediatamente, sem depender de API PHP online.
   if(u===LOGIN_MASTER.toLowerCase() && s===SENHA_MASTER){
@@ -8522,7 +8522,7 @@ async function fazerLogin(){
     return abrirApp();
   }
 
-  // Demais usuários tentam atualizar credenciais, mas com timeout curto.
+  // Demais usuÃ¡rios tentam atualizar credenciais, mas com timeout curto.
   try{await carregarCredenciaisOnline();}catch(e){console.log('Login seguindo com credenciais embutidas',e);}
 
   if(u===LOGIN_DIRETOR.toLowerCase()){
@@ -8550,11 +8550,11 @@ async function fazerLogin(){
     return abrirApp();
   }
 
-  msg.textContent='Login ou senha inválidos.';
+  msg.textContent='Login ou senha invÃ¡lidos.';
 }
 async function abrirApp(){
   try{document.body.classList.toggle('master-view', String(usuarioAtual?.tipo||'').toLowerCase()==='master'); document.body.classList.toggle('diretor-view', String(usuarioAtual?.tipo||'').toLowerCase()==='diretor');}catch(e){}
- loginScreen.classList.add('hidden'); app.classList.remove('hidden'); if(usuarioAtual.tipo==='master'){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); const isDiretor=usuarioAtual?.roleLabel==='Diretor Comercial'; userBadge.textContent=isDiretor?'👑 Diretor Comercial':'👑 Master'; masterTabs.classList.remove('hidden'); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{const t=btn.dataset.tab; btn.classList.toggle('hidden', isDiretor && ['cobrancas','senhas'].includes(t));}); setMainTab('vendedores')} else if(usuarioAtual.is_viewer){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); userBadge.textContent='📺 Painel'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); listSection.classList.add('hidden'); metaSection.classList.add('hidden'); logSection.classList.add('hidden'); avisosSection.classList.add('hidden'); senhasSection.classList.add('hidden'); histSection.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden');} else {document.getElementById('kpis').classList.add('hidden'); userBadge.textContent=usuarioAtual.is_terceiro?`🤝 ${usuarioAtual.nome}`:(usuarioAtual.is_crediarista?`🧾 ${usuarioAtual.nome}`:(usuarioAtual.is_gerente?`🏬 ${usuarioAtual.filial}`:`👤 ${usuarioAtual.nome}`)); masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(usuarioAtual.is_terceiro){openThirdChargePanel()} else if(usuarioAtual.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login}) }
+ loginScreen.classList.add('hidden'); app.classList.remove('hidden'); if(usuarioAtual.tipo==='master'){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); const isDiretor=usuarioAtual?.roleLabel==='Diretor Comercial'; userBadge.textContent=isDiretor?'ðŸ‘‘ Diretor Comercial':'ðŸ‘‘ Master'; masterTabs.classList.remove('hidden'); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{const t=btn.dataset.tab; btn.classList.toggle('hidden', isDiretor && ['cobrancas','senhas'].includes(t));}); setMainTab('vendedores')} else if(usuarioAtual.is_viewer){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); userBadge.textContent='ðŸ“º Painel'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); listSection.classList.add('hidden'); metaSection.classList.add('hidden'); logSection.classList.add('hidden'); avisosSection.classList.add('hidden'); senhasSection.classList.add('hidden'); histSection.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden');} else {document.getElementById('kpis').classList.add('hidden'); userBadge.textContent=usuarioAtual.is_terceiro?`ðŸ¤ ${usuarioAtual.nome}`:(usuarioAtual.is_crediarista?`ðŸ§¾ ${usuarioAtual.nome}`:(usuarioAtual.is_gerente?`ðŸ¬ ${usuarioAtual.filial}`:`ðŸ‘¤ ${usuarioAtual.nome}`)); masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(usuarioAtual.is_terceiro){openThirdChargePanel()} else if(usuarioAtual.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login}) }
   setTimeout(()=>{tentarAtualizarOnlineDepoisLogin();}, 80);
 }
 function logout(){clearSession(); location.reload()}
@@ -8639,10 +8639,10 @@ for k,v in repls.items():
 html_path = os.path.join(pasta, 'dashboard_vendedores.html')
 with open(html_path, 'w', encoding='utf-8') as f:
     f.write(html)
-print(f'🌐 HTML salvo: {html_path}')
+print(f'ðŸŒ HTML salvo: {html_path}')
 
 # =========================================
-# 📡 APIs PHP PARA LOG ONLINE / CONFIG ONLINE
+# ðŸ“¡ APIs PHP PARA LOG ONLINE / CONFIG ONLINE
 # =========================================
 
 HISTORICO_COMISSIONAMENTO_API_PHP = r"""<?php
@@ -8912,7 +8912,7 @@ echo json_encode(['ok'=>true,'data'=>$data], JSON_UNESCAPED_UNICODE); exit;
 ?>"""
 
 # =========================================
-# 📤 UPLOAD AUTOMÁTICO VIA FTP
+# ðŸ“¤ UPLOAD AUTOMÃTICO VIA FTP
 # =========================================
 import ftplib
 from io import BytesIO
@@ -8924,7 +8924,7 @@ FTP_DIR   = '/public_html/colaborador'
 
 if FTP_USER and FTP_PASS:
     try:
-        print('\n📤 Enviando arquivos para o servidor FTP...')
+        print('\nðŸ“¤ Enviando arquivos para o servidor FTP...')
         ftp = ftplib.FTP()
         ftp.connect(FTP_HOST, 21, timeout=30)
         ftp.login(FTP_USER, FTP_PASS)
@@ -8978,10 +8978,10 @@ if FTP_USER and FTP_PASS:
                 with open(quitados_180_info['xlsx_path'], 'rb') as f_q_xlsx:
                     ftp.storbinary('STOR quitados_180d_contas_receber.xlsx', f_q_xlsx)
         except Exception as e_q_ftp:
-            print(f'⚠️ Erro ao enviar quitados 180d ao FTP: {e_q_ftp}')
+            print(f'âš ï¸ Erro ao enviar quitados 180d ao FTP: {e_q_ftp}')
 
         try:
-            # Publica os relatórios auditáveis em /public_html/colaborador/relatorios
+            # Publica os relatÃ³rios auditÃ¡veis em /public_html/colaborador/relatorios
             try:
                 ftp.mkd('relatorios')
             except Exception:
@@ -8998,14 +8998,14 @@ if FTP_USER and FTP_PASS:
                 if os.path.exists(_p_rel):
                     with open(_p_rel, 'rb') as _f_rel:
                         ftp.storbinary(f'STOR {_fname}', _f_rel)
-                    print(f'📤 Relatório publicado no FTP: /colaborador/relatorios/{_fname}')
+                    print(f'ðŸ“¤ RelatÃ³rio publicado no FTP: /colaborador/relatorios/{_fname}')
             ftp.cwd('..')
         except Exception as e_rel_ftp:
-            print(f'⚠️ Erro ao publicar relatórios XLS no FTP: {e_rel_ftp}')
+            print(f'âš ï¸ Erro ao publicar relatÃ³rios XLS no FTP: {e_rel_ftp}')
 
-        # Pacote de vendas/margem/rentabilidade/serviços/diária fica exclusivo do dashboard_sales_worker_headless.py.
-        # Isso evita o navegador misturar arquivos de horários diferentes.
-        print('ℹ️ MAIN: não publica metas_vendas/margens/sales_version; pacote de vendas é exclusivo do sales worker.')
+        # Pacote de vendas/margem/rentabilidade/serviÃ§os/diÃ¡ria fica exclusivo do dashboard_sales_worker_headless.py.
+        # Isso evita o navegador misturar arquivos de horÃ¡rios diferentes.
+        print('â„¹ï¸ MAIN: nÃ£o publica metas_vendas/margens/sales_version; pacote de vendas Ã© exclusivo do sales worker.')
         try:
             ftp.size('cobrancas_log.json')
         except Exception:
@@ -9017,17 +9017,19 @@ if FTP_USER and FTP_PASS:
         try:
             _dashboard_ver = json.dumps({'updated_at': now_brasilia().isoformat(), 'updated_at_label': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'), 'timezone': 'America/Sao_Paulo', 'scope': 'dashboard_full'}, ensure_ascii=False).encode('utf-8')
             ftp.storbinary('STOR dashboard_version.json', BytesIO(_dashboard_ver))
-            # sales_version.json é exclusivo do dashboard_sales_worker_headless.py para sincronizar vendas/margens/serviços juntos.
+            # sales_version.json Ã© exclusivo do dashboard_sales_worker_headless.py para sincronizar vendas/margens/serviÃ§os juntos.
         except Exception as e_ver_ftp:
-            print(f'⚠️ Erro enviando arquivos de versão: {e_ver_ftp}')
+            print(f'âš ï¸ Erro enviando arquivos de versÃ£o: {e_ver_ftp}')
         ftp.quit()
-        print('✅ Upload concluído → https://moveisdolar.com.br/colaborador/')
+        print('âœ… Upload concluÃ­do â†’ https://moveisdolar.com.br/colaborador/')
     except Exception as e:
-        print(f'⚠️ Erro no upload FTP: {e}')
+        print(f'âš ï¸ Erro no upload FTP: {e}')
 else:
-    print('\nℹ️ FTP não configurado. Envie manualmente:')
-    print(f'   {html_path} → {FTP_DIR}/dashboard_vendedores.html')
+    print('\nâ„¹ï¸ FTP nÃ£o configurado. Envie manualmente:')
+    print(f'   {html_path} â†’ {FTP_DIR}/dashboard_vendedores.html')
 
-print('\n🔥 FINALIZADO!')
-print("🔎 Fechamento automático em ambiente Railway")
+print('\nðŸ”¥ FINALIZADO!')
+print("ðŸ”Ž Fechamento automÃ¡tico em ambiente Railway")
 driver.quit()
+
+print('✅ V11_RECEBIMENTO_MES_COMPLETO: pagamentos na data de corte entram no recebimento por faixa')
