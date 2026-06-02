@@ -1,4 +1,4 @@
-# VERSAO: TELEGRAM_MONITOR_MDL_V1
+# VERSAO: TELEGRAM_MONITOR_MDL_V2_FIX_SYNTAX
 import json
 import os
 import re
@@ -192,7 +192,7 @@ def build_daily_summary(base_dir, date_str=None):
     logs_day = [x for x in logs if _date_from_server_time(x.get("server_time") or x.get("data") or x.get("created_at")) == date_str]
     counts = {}
     for x in logs_day:
-        user = str(x.get("usuario") or x.get("user") or x.get("login") or "Sem usuário").strip() or "Sem usuário")
+        user = str(x.get("usuario") or x.get("user") or x.get("login") or "Sem usuário").strip() or "Sem usuário"
         counts[user] = counts.get(user, 0) + 1
     top = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
 
