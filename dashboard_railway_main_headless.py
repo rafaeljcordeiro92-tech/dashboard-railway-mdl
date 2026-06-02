@@ -1,4 +1,4 @@
-# VERSAO: COBRANCA10_V3_FIX_NAMEERROR
+# VERSAO: COBRANCA10_V4_RELATORIOS_XLS_HISTORICO
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -37,6 +37,50 @@ data_fim    = (hoje - timedelta(days=15)).strftime("%d/%m/%Y")
 IS_RAILWAY = bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RUN_ON_RAILWAY") == "1")
 pasta = os.path.dirname(os.path.abspath(__file__))
 download_dir = pasta if not IS_RAILWAY else tempfile.gettempdir()
+
+# ===== RELATÓRIOS AUDITÁVEIS DA ÚLTIMA EXECUÇÃO
+# No Railway, downloads em /tmp somem quando o container reinicia.
+# Por isso copiamos os XLS/JSON para /app/relatorios_publicos e depois publicamos no FTP.
+RELATORIOS_DIR = os.path.join(pasta, "relatorios_publicos")
+os.makedirs(RELATORIOS_DIR, exist_ok=True)
+RELATORIOS_PUBLIC_BASE = "https://moveisdolar.com.br/colaborador/relatorios"
+relatorios_publicos = {
+    "principal_xls": None,
+    "quitados_original_xls": None,
+    "quitados_processado_xlsx": None,
+    "quitados_json": None,
+    "zip": None,
+}
+
+def _copiar_relatorio_publico(src, nome_destino):
+    try:
+        if not src or not os.path.exists(src):
+            print(f"⚠️ Relatório não encontrado para publicar: {src}")
+            return None
+        dst = os.path.join(RELATORIOS_DIR, nome_destino)
+        shutil.copy2(src, dst)
+        print(f"💾 Relatório público salvo: {dst}")
+        return dst
+    except Exception as e:
+        print(f"⚠️ Falha ao copiar relatório público {src} -> {nome_destino}: {e}")
+        return None
+
+def _gerar_zip_relatorios_publicos():
+    try:
+        import zipfile
+        zip_path = os.path.join(RELATORIOS_DIR, "ultimos_relatorios_cobranca.zip")
+        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for label, path in relatorios_publicos.items():
+                if label == "zip":
+                    continue
+                if path and os.path.exists(path):
+                    zf.write(path, arcname=os.path.basename(path))
+        relatorios_publicos["zip"] = zip_path
+        print(f"📦 ZIP de relatórios salvo: {zip_path}")
+        return zip_path
+    except Exception as e:
+        print(f"⚠️ Falha ao gerar ZIP de relatórios: {e}")
+        return None
 
 from selenium.webdriver.chrome.service import Service
 from selenium.common.exceptions import WebDriverException, SessionNotCreatedException
@@ -851,6 +895,10 @@ def coletar_quitados_180d_contas_receber():
         if novos:
             caminho_q = max([os.path.join(download_dir, f) for f in novos], key=os.path.getctime)
             print(f"✅ Download quitados OK: {caminho_q}")
+            try:
+                relatorios_publicos["quitados_original_xls"] = _copiar_relatorio_publico(caminho_q, "ultimo_contas_receber_quitados_original.xls")
+            except Exception as e_pub_q:
+                print(f"⚠️ Não consegui copiar XLS original de quitados: {e_pub_q}")
             break
 
     if not caminho_q:
@@ -875,6 +923,12 @@ def coletar_quitados_180d_contas_receber():
     print(f"💾 Quitados JSON: {out_json}")
     if out_xlsx:
         print(f"💾 Quitados XLSX: {out_xlsx}")
+    try:
+        relatorios_publicos["quitados_json"] = _copiar_relatorio_publico(out_json, "quitados_180d_contas_receber.json")
+        if out_xlsx:
+            relatorios_publicos["quitados_processado_xlsx"] = _copiar_relatorio_publico(out_xlsx, "quitados_180d_contas_receber.xlsx")
+    except Exception as e_pub_q2:
+        print(f"⚠️ Não consegui preparar quitados para publicação: {e_pub_q2}")
 
     return {"xlsx_path": out_xlsx, "json_path": out_json, "dados": {"quitados": quitados}}
 
@@ -1691,7 +1745,9 @@ for _ in range(60):
     ) - arquivos_antes
     if novos:
         caminho = max([os.path.join(download_dir, f) for f in novos], key=os.path.getctime)
-        print(f"✅ Download OK: {caminho}"); break
+        print(f"✅ Download OK: {caminho}")
+        relatorios_publicos["principal_xls"] = _copiar_relatorio_publico(caminho, "ultimo_contas_receber_principal.xls")
+        break
 
 if not caminho:
     print(f"📂 download_dir: {download_dir}")
@@ -5840,6 +5896,7 @@ const API_MSG='mensagens_api.php';
 const API_CRED='credenciais_api.php';
 const API_HIST='historico_api.php';
 const API_COMIS='historico_comissionamento_api.php';
+const RELATORIOS_PUBLICOS=__JS_RELATORIOS_PUBLICOS__;
 
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
 async function fetchComTimeout(url, opts={}, ms=3500){
@@ -8017,6 +8074,44 @@ async function salvarSnapshotComissionamentoMensal(auto=false){
     else if(!auto) toast('⚠️ Não consegui salvar histórico de comissionamento.');
   }catch(e){console.log('Erro salvar comissionamento',e); if(!auto) toast('⚠️ Erro ao salvar histórico de comissionamento.');}
 }
+function baixarComissionamentoXLS(monthOverride){
+  try{
+    const month=monthOverride || document.getElementById('histComMonth')?.value || _histComMeses()[0] || mesAtualComissao();
+    const snap=HIST_COMISSAO?.months?.[month];
+    const rows=[...(snap?.entidades||[])];
+    if(!rows.length){toast('Nenhum comissionamento salvo para exportar neste mês.'); return;}
+    const cols=[
+      ['nome','Nome'],['tipo','Tipo'],['filial','Filial'],['login','Login'],
+      ['pendente','Pendente'],['recebido','Recebido'],['recebido_conciliado','Recebido conciliado'],['qtd_recebidos','Qtd recebidos'],
+      ['meta_geral','Meta cobrança %'],['grave_rec','Recebido grave'],['alerta_rec','Recebido alerta'],['atencao_rec','Recebido atenção'],
+      ['grave_alvo','Alvo grave'],['alerta_alvo','Alvo alerta'],['atencao_alvo','Alvo atenção'],
+      ['venda_real','Venda real'],['servico_real','Serviço real'],['caminhao_real','Caminhão real'],
+      ['faixa','Faixa'],['comissao_vendas','Comissão vendas'],['comissao_servicos','Comissão serviços'],['comissao_caminhao','Comissão caminhão'],
+      ['bonus_meta','Bônus meta'],['rent48','Rent. 48'],['rent52','Rent. 52'],['rent55','Rent. 55'],['total_previsto','Total previsto'],['observacao','Observação']
+    ];
+    const td=(v)=>`<td style="border:1px solid #999;padding:4px">${esc(v==null?'':String(v))}</td>`;
+    const html=`<html><head><meta charset="utf-8"></head><body><table><thead><tr>${cols.map(c=>`<th style="border:1px solid #999;padding:4px;background:#eee">${esc(c[1])}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>td(r[c[0]])).join('')}</tr>`).join('')}</tbody></table></body></html>`;
+    const blob=new Blob([html],{type:'application/vnd.ms-excel;charset=utf-8'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download=`comissionamento_${String(month).replace(/[^0-9-]/g,'')}.xls`;
+    document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},500);
+  }catch(e){console.error(e); toast('Erro ao gerar XLS de comissionamento.');}
+}
+function renderLinksRelatoriosCobranca(){
+  const r=RELATORIOS_PUBLICOS||{};
+  return `<div class="glass panel" style="margin-bottom:14px;border-color:rgba(96,165,250,.35)">
+    <div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">📥 Relatórios XLS da última execução</h2><div class="hint">Use estes arquivos para auditar se houve pagamento nas faixas grave, alerta e atenção. Eles são atualizados automaticamente a cada execução do robô.</div></div></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <a class="btn primary" href="${esc(r.zip||'#')}?_=${Date.now()}" target="_blank" download>📦 Baixar pacote ZIP</a>
+      <a class="btn soft" href="${esc(r.principal_xls||'#')}?_=${Date.now()}" target="_blank" download>Contas a receber principal</a>
+      <a class="btn soft" href="${esc(r.quitados_original_xls||'#')}?_=${Date.now()}" target="_blank" download>Quitados original SGI</a>
+      <a class="btn soft" href="${esc(r.quitados_processado_xlsx||'#')}?_=${Date.now()}" target="_blank" download>Quitados processado</a>
+      <a class="btn soft" href="${esc(r.quitados_json||'#')}?_=${Date.now()}" target="_blank">JSON quitados</a>
+    </div>
+  </div>`;
+}
+
 function renderComissionamentoHistoricoTable(rows){
   if(!rows.length) return '<div class="empty">Nenhum comissionamento salvo para este mês.</div>';
   return `<div class="glass panel"><div class="tableish">${rows.map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.nome||'')}</div><div class="small muted">${esc(r.tipo||'')} · ${esc(r.filial||'')}</div></div><div><strong>${pct(r.meta_geral||0)}</strong><div class="small muted">Meta cobrança</div></div><div><strong>${R(r.recebido||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${R(r.comissao_vendas||0)}</strong><div class="small muted">Vendas</div></div><div><strong>${R(r.comissao_servicos||0)}</strong><div class="small muted">Serviços</div></div><div><strong>${R(r.bonus_meta||0)}</strong><div class="small muted">Bônus</div></div><div><strong>${R(r.total_previsto||0)}</strong><div class="small muted">Total previsto</div></div></div>${r.observacao?`<div class="small muted" style="margin-top:6px">${esc(r.observacao)}</div>`:''}</div>`).join('')}</div></div>`;
@@ -8142,9 +8237,9 @@ function renderHistoricoComissaoResults(){
   const box=document.getElementById('histComResults'); if(!box) return;
   const snap=HIST_COMISSAO?.months?.[current];
   const saveInput=document.getElementById('histComMonthSave'); if(saveInput && !saveInput.value) saveInput.value=mesAtualComissao();
-  if(!snap){box.innerHTML=`<div class="empty">Nenhum histórico salvo para ${esc(current)}. Clique em “Salvar fechamento do mês atual” para gravar o resultado visível agora.</div>`; return;}
+  if(!snap){box.innerHTML=renderLinksRelatoriosCobranca()+`<div class="empty">Nenhum histórico salvo para ${esc(current)}. Clique em “Salvar fechamento do mês atual” para gravar o resultado visível agora.</div>`; return;}
   const rows=[...(snap.entidades||[])].sort((a,b)=>String(a.tipo).localeCompare(String(b.tipo),'pt-BR')||String(a.nome).localeCompare(String(b.nome),'pt-BR'));
-  box.innerHTML=`<div class="kpis">${makeKpi('Mês',esc(snap.month||current),'var(--blue)')}${makeKpi('Total previsto',R(snap.total_previsto||0),'var(--green)')}${makeKpi('Entidades',String(rows.length),'var(--orange)')}${makeKpi('Salvo em',esc((snap.atualizado_em_br||snap.gerado_em||'').replace('T',' ').slice(0,19)),'var(--blue)')}</div>`+`<div class="glass panel"><div class="form-grid"><div class="input-card"><label>Ver tela congelada individual</label><div class="hint">Agora a tela congelada salva um resumo visual compacto, sem a lista enorme de recebimentos/cobranças. Para atualizar este mês com o novo modelo, clique em Salvar fechamento do mês atual novamente.</div><select id="histComEntityView">${rows.map(r=>`<option value="${esc(r.key||'')}">${esc(r.nome||'')} · ${esc(r.filial||'')}</option>`).join('')}</select></div><div style="display:flex;align-items:end"><button class="btn primary" onclick="abrirTelaComissionamentoCongeladaPorSelect()">Abrir tela congelada</button></div></div></div>`+renderComissionamentoHistoricoTable(rows);
+  box.innerHTML=renderLinksRelatoriosCobranca()+`<div class="kpis">${makeKpi('Mês',esc(snap.month||current),'var(--blue)')}${makeKpi('Total previsto',R(snap.total_previsto||0),'var(--green)')}${makeKpi('Entidades',String(rows.length),'var(--orange)')}${makeKpi('Salvo em',esc((snap.atualizado_em_br||snap.gerado_em||'').replace('T',' ').slice(0,19)),'var(--blue)')}</div>`+`<div class="glass panel"><div class="form-grid"><div class="input-card"><label>Ver tela congelada individual</label><div class="hint">Selecione 2026-05 no mês e escolha o colaborador/filial para abrir a tela congelada salva naquele fechamento.</div><select id="histComEntityView">${rows.map(r=>`<option value="${esc(r.key||'')}">${esc(r.nome||'')} · ${esc(r.filial||'')}</option>`).join('')}</select></div><div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap"><button class="btn primary" onclick="abrirTelaComissionamentoCongeladaPorSelect()">Abrir tela congelada</button><button class="btn soft" onclick="baixarComissionamentoXLS()">📊 Baixar XLS do mês</button></div></div></div>`+renderComissionamentoHistoricoTable(rows);
 }
 
 function setHistMode(mode){window._histMode=mode; document.getElementById('histDailyPane')?.classList.toggle('hidden',mode!=='daily'); document.getElementById('histMonthPane')?.classList.toggle('hidden',mode!=='monthly'); document.getElementById('histSalesPane')?.classList.toggle('hidden',mode!=='sales'); document.getElementById('histThirdPane')?.classList.toggle('hidden',mode!=='third'); document.getElementById('histComPane')?.classList.toggle('hidden',mode!=='comissao'); document.getElementById('histTabDaily')?.classList.toggle('active',mode==='daily'); document.getElementById('histTabMonthly')?.classList.toggle('active',mode==='monthly'); document.getElementById('histTabSales')?.classList.toggle('active',mode==='sales'); document.getElementById('histTabThird')?.classList.toggle('active',mode==='third'); document.getElementById('histTabCom')?.classList.toggle('active',mode==='comissao'); if(mode==='daily'){updateHistEntityFilter(); renderHistoricoResults();} else if(mode==='monthly'){updateHistMonthEntityFilter(); renderHistoricoMonthResults();} else if(mode==='third'){renderHistoricoTerceiro();} else if(mode==='comissao'){renderHistoricoComissaoResults();} else {updateHistSalesEntityFilter(); updateHistSalesMonthEntityFilter(); renderHistoricoSalesResults(); renderHistoricoSalesMonthResults();}}
@@ -8491,6 +8586,15 @@ window.addEventListener('load',async ()=>{
 </html>
 """
 
+_gerar_zip_relatorios_publicos()
+js_relatorios_publicos = json.dumps({
+    "principal_xls": f"{RELATORIOS_PUBLIC_BASE}/ultimo_contas_receber_principal.xls",
+    "quitados_original_xls": f"{RELATORIOS_PUBLIC_BASE}/ultimo_contas_receber_quitados_original.xls",
+    "quitados_processado_xlsx": f"{RELATORIOS_PUBLIC_BASE}/quitados_180d_contas_receber.xlsx",
+    "quitados_json": f"{RELATORIOS_PUBLIC_BASE}/quitados_180d_contas_receber.json",
+    "zip": f"{RELATORIOS_PUBLIC_BASE}/ultimos_relatorios_cobranca.zip",
+}, ensure_ascii=False)
+
 html = template
 repls = {
     '__JS_CREDS__': js_creds,
@@ -8515,6 +8619,7 @@ repls = {
     '__JS_DESTAQUE__': js_destaque,
     '__JS_HIST_DASH__': js_hist_dash,
     '__JS_QUITADOS_180__': js_quitados_180,
+    '__JS_RELATORIOS_PUBLICOS__': js_relatorios_publicos,
     '__LOGIN_MASTER__': json.dumps(LOGIN_MASTER, ensure_ascii=False),
     '__SENHA_MASTER__': json.dumps(SENHA_MASTER, ensure_ascii=False),
     '__LOGIN_DIRETOR__': json.dumps(LOGIN_DIRETOR, ensure_ascii=False),
@@ -8874,6 +8979,29 @@ if FTP_USER and FTP_PASS:
                     ftp.storbinary('STOR quitados_180d_contas_receber.xlsx', f_q_xlsx)
         except Exception as e_q_ftp:
             print(f'⚠️ Erro ao enviar quitados 180d ao FTP: {e_q_ftp}')
+
+        try:
+            # Publica os relatórios auditáveis em /public_html/colaborador/relatorios
+            try:
+                ftp.mkd('relatorios')
+            except Exception:
+                pass
+            ftp.cwd('relatorios')
+            for _fname in [
+                'ultimo_contas_receber_principal.xls',
+                'ultimo_contas_receber_quitados_original.xls',
+                'quitados_180d_contas_receber.xlsx',
+                'quitados_180d_contas_receber.json',
+                'ultimos_relatorios_cobranca.zip',
+            ]:
+                _p_rel = os.path.join(RELATORIOS_DIR, _fname)
+                if os.path.exists(_p_rel):
+                    with open(_p_rel, 'rb') as _f_rel:
+                        ftp.storbinary(f'STOR {_fname}', _f_rel)
+                    print(f'📤 Relatório publicado no FTP: /colaborador/relatorios/{_fname}')
+            ftp.cwd('..')
+        except Exception as e_rel_ftp:
+            print(f'⚠️ Erro ao publicar relatórios XLS no FTP: {e_rel_ftp}')
 
         # Pacote de vendas/margem/rentabilidade/serviços/diária fica exclusivo do dashboard_sales_worker_headless.py.
         # Isso evita o navegador misturar arquivos de horários diferentes.
