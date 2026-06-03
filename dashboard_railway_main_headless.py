@@ -1,4 +1,4 @@
-# VERSAO: COBRANCA10_V19_SENHAS_VISIVEIS_LAYOUT_FIX
+# VERSAO: COBRANCA10_V3_FIX_NAMEERROR
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -37,51 +37,6 @@ data_fim    = (hoje - timedelta(days=15)).strftime("%d/%m/%Y")
 IS_RAILWAY = bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RUN_ON_RAILWAY") == "1")
 pasta = os.path.dirname(os.path.abspath(__file__))
 download_dir = pasta if not IS_RAILWAY else tempfile.gettempdir()
-
-
-# ===== RELATÓRIOS AUDITÁVEIS DA ÚLTIMA EXECUÇÃO - V18
-# Os downloads em /tmp somem quando o container reinicia. Copiamos para /app/relatorios_publicos
-# e publicamos em /public_html/colaborador/relatorios para auditoria pelo dashboard.
-RELATORIOS_DIR = os.path.join(pasta, "relatorios_publicos")
-os.makedirs(RELATORIOS_DIR, exist_ok=True)
-RELATORIOS_PUBLIC_BASE = "https://moveisdolar.com.br/colaborador/relatorios"
-relatorios_publicos = {
-    "principal_xls": None,
-    "quitados_original_xls": None,
-    "quitados_processado_xlsx": None,
-    "quitados_json": None,
-    "zip": None,
-}
-
-def _copiar_relatorio_publico(src, nome_destino):
-    try:
-        if not src or not os.path.exists(src):
-            print(f"⚠️ Relatório não encontrado para publicar: {src}")
-            return None
-        dst = os.path.join(RELATORIOS_DIR, nome_destino)
-        shutil.copy2(src, dst)
-        print(f"💾 Relatório público salvo: {dst}")
-        return dst
-    except Exception as e:
-        print(f"⚠️ Falha ao copiar relatório público {src} -> {nome_destino}: {e}")
-        return None
-
-def _gerar_zip_relatorios_publicos():
-    try:
-        import zipfile
-        zip_path = os.path.join(RELATORIOS_DIR, "ultimos_relatorios_cobranca.zip")
-        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-            for label, path in relatorios_publicos.items():
-                if label == "zip":
-                    continue
-                if path and os.path.exists(path):
-                    zf.write(path, arcname=os.path.basename(path))
-        relatorios_publicos["zip"] = zip_path
-        print(f"📦 ZIP de relatórios salvo: {zip_path}")
-        return zip_path
-    except Exception as e:
-        print(f"⚠️ Falha ao gerar ZIP de relatórios: {e}")
-        return None
 
 from selenium.webdriver.chrome.service import Service
 from selenium.common.exceptions import WebDriverException, SessionNotCreatedException
@@ -896,7 +851,6 @@ def coletar_quitados_180d_contas_receber():
         if novos:
             caminho_q = max([os.path.join(download_dir, f) for f in novos], key=os.path.getctime)
             print(f"✅ Download quitados OK: {caminho_q}")
-            relatorios_publicos["quitados_original_xls"] = _copiar_relatorio_publico(caminho_q, "ultimo_contas_receber_quitados_original.xls")
             break
 
     if not caminho_q:
@@ -921,9 +875,6 @@ def coletar_quitados_180d_contas_receber():
     print(f"💾 Quitados JSON: {out_json}")
     if out_xlsx:
         print(f"💾 Quitados XLSX: {out_xlsx}")
-    relatorios_publicos["quitados_json"] = _copiar_relatorio_publico(out_json, "quitados_180d_contas_receber.json")
-    if out_xlsx:
-        relatorios_publicos["quitados_processado_xlsx"] = _copiar_relatorio_publico(out_xlsx, "quitados_180d_contas_receber.xlsx")
 
     return {"xlsx_path": out_xlsx, "json_path": out_json, "dados": {"quitados": quitados}}
 
@@ -1740,9 +1691,7 @@ for _ in range(60):
     ) - arquivos_antes
     if novos:
         caminho = max([os.path.join(download_dir, f) for f in novos], key=os.path.getctime)
-        print(f"✅ Download OK: {caminho}")
-        relatorios_publicos["principal_xls"] = _copiar_relatorio_publico(caminho, "ultimo_contas_receber_principal.xls")
-        break
+        print(f"✅ Download OK: {caminho}"); break
 
 if not caminho:
     print(f"📂 download_dir: {download_dir}")
@@ -1761,8 +1710,16 @@ df_raw = pd.read_excel(caminho, header=None, engine="openpyxl")
 print(f"📋 {df_raw.shape[0]} linhas lidas")
 
 metas_vendas_info = {"json_path": None, "xlsx_path": None, "dados": {}}
+try:
+    metas_vendas_info = coletar_metas_vendas_mes_atual()
+except Exception as e:
+    print(f"⚠️ Erro ao coletar metas/vendas do SGI: {e}")
+
 margens_brutas_info = {"json_path": None, "xlsx_path": None, "dados": {}}
-print("✅ V18_MAIN_SEM_COLETA_VENDAS: MAIN roda somente cobrança/recebimentos; vendas+margem+diária ficam 100% no worker")
+try:
+    margens_brutas_info = coletar_margens_brutas_mes_atual()
+except Exception as e:
+    print(f"⚠️ Erro ao coletar Margem Bruta/Rentabilidade do SGI: {e}")
 
 # ===== MAPA DE COLUNAS DO XLS NOVO
 COL = {
@@ -2128,7 +2085,7 @@ for _i in range(len(df_raw)):
     # =========================================
     # RECEBIMENTOS
     # =========================================
-    if _faixa and _pagto and _pago_val > 0 and _pagto >= _data_corte_parse:
+    if _faixa and _pagto and _pago_val > 0 and _pagto > _data_corte_parse:
         if _key_vend not in recebido_faixa:
             recebido_faixa[_key_vend] = {
                 "grave": 0.0,
@@ -2190,7 +2147,6 @@ _nt = sum(1 for c in clientes_cobrar if c['faixa']=='atencao')
 _nr = sum(1 for v in recebido_faixa.values() if v.get('is_ativo'))
 print(f"👥 Clientes a cobrar: {len(clientes_cobrar)} ({_ng}g/{_na}a/{_nt}t)")
 print(f"💰 Vendedores com recebimento no período: {_nr}")
-print("✅ V18_RECEBIMENTO_MES_COMPLETO: pagamentos do dia de corte entram nos recebimentos por faixa")
 
 print(f"\U0001f465 Clientes a cobrar: {len(clientes_cobrar)} títulos ({_ng} grave / {_na} alerta / {_nt} atenção)")
 
@@ -3389,7 +3345,7 @@ for _i2 in range(len(df_raw)):
 
     if not _venc2 or not _pagto2 or _pago2 <= 0:
         continue
-    if _pagto2 < _data_corte_parse:
+    if _pagto2 <= _data_corte_parse:
         continue
 
     if str(_row2[COL["conta_caixa"]]).strip() == "Caixa Filial 100":
@@ -4864,7 +4820,7 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 .section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap}
 .section-head h2{font-size:20px;font-weight:800;letter-spacing:-.025em;color:var(--text-primary)}
 .section-head .hint{font-size:12px;color:var(--text-secondary);margin-top:4px}
-.grid-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.grid-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.senhas-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;align-items:stretch}.senha-card .input-card{min-width:0}.senha-card input{width:100%;box-sizing:border-box}.senha-value{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .card{padding:20px;border-radius:var(--radius-lg);cursor:pointer;position:relative;overflow:hidden;transition:var(--transition-slow);border:1px solid var(--glass-border);background:var(--glass)}
 .card:hover{transform:translateY(-4px) scale(1.01);border-color:rgba(255,255,255,.18);box-shadow:0 20px 60px rgba(0,0,0,.5),0 0 0 1px rgba(249,168,50,.12)}
 .card::before{content:'';position:absolute;inset:0;background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,.04) 50%,transparent 60%);background-size:200% 100%;background-position:200% 0;transition:background-position .6s ease;pointer-events:none}
@@ -5078,12 +5034,6 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 @keyframes mascotPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
 @keyframes realPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.02)}}
 @keyframes liquidGlow{0%{transform:translateY(0)}100%{transform:translateY(12px)}}
-
-.senha-card{display:flex;flex-direction:column;gap:0;max-width:100%;}
-.senha-card .input-card{overflow:hidden;}
-.senha-card .btn{min-width:0;text-align:center;}
-.senhas-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;align-items:stretch;}
-@media(max-width:760px){.senhas-grid{grid-template-columns:1fr}.senha-card .input-card>div{grid-template-columns:1fr!important}.senha-card .input-card .btn{width:100%}}
 @media(max-width:1100px){.detail-top,.meta-layout,.search-row,.mega-progress{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}.meta-grid{grid-template-columns:repeat(2,1fr)}.sales-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.card-sales-grid{grid-template-columns:1fr}}
 @media(max-width:760px){.app-shell{padding:14px 14px 80px}.brand h1{font-size:20px}.kpis{grid-template-columns:1fr}.grid-cards,.meta-preview-grid{grid-template-columns:1fr}.form-grid,.form-grid.bonus,.meta-grid,.metrics-grid,.commission-grid,.campaign-grid{grid-template-columns:1fr}.row-top,.log-row{grid-template-columns:1fr}.tabs{gap:4px}.tab{padding:9px 12px;font-size:12px}.group{min-width:88px}.group .bars{height:220px}.bar{width:16px}}
 
@@ -5778,7 +5728,7 @@ function getRentEmpresa(){
   return e || {};
 }
 
-let SERVICOS_RELATORIO={empresa:{},servicos:{},filiais:{},vendedores:{},detalhes:[]}; // V16: relatório individual de serviços desativado; serviços só via Controle de Metas SGI
+let SERVICOS_RELATORIO=__JS_SERVICOS_RELATORIO__||{empresa:{},servicos:{},filiais:{},vendedores:{},detalhes:[]};
 let CONFIG_META={grave_pct:20,alerta_pct:15,atencao_pct:10,peso_grave:60,peso_alerta:30,peso_atencao:10,bonus_50:'',bonus_75:'',bonus_85:'',bonus_100:'',cob_cred_rateio_filial_pct:50,cob_cred_rateio_cred_pct:50,cobranca_global_rateio_pct:20,cobranca_msg_template_terceira:`Olá, {primeiro_nome}. Tudo bem?
 Aqui é da Lojas MDL - Móveis do Lar.
 
@@ -5804,7 +5754,6 @@ const API_MSG='mensagens_api.php';
 const API_CRED='credenciais_api.php';
 const API_HIST='historico_api.php';
 const API_COMIS='historico_comissionamento_api.php';
-const RELATORIOS_PUBLICOS=__JS_RELATORIOS_PUBLICOS__;
 
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
 async function fetchComTimeout(url, opts={}, ms=3500){
@@ -6095,10 +6044,9 @@ function laranjitoSrc(status){
 
 
 function renderKPIs(){
-  console.log('✅ V17_DASH_RELOGIO_FLUXO_VENDAS_ATOMICO');
   const grave=flattenFiliais().reduce((a,b)=>a+Number(b.grave_pend||0),0);
   const alerta=flattenFiliais().reduce((a,b)=>a+Number(b.alerta_pend||0),0);
-  let rentPct=0;
+  const rentPct=Number(RENT_EMPRESA?.margem_bruta_pct||0);
   const sales=SALES_EMPRESA||{};
   const salesDates=Object.keys(HIST_DASH?.sales_dates||{}).sort();
   const hojeIso=new Date().toISOString().slice(0,10);
@@ -6115,11 +6063,7 @@ function renderKPIs(){
     : Number(sales.servico_atingido_total||0);
 
   const prevServicoReal = Number(prevEmpresa.servico_realizado_total || 0);
-  // V16: Venda diária vem do relatório oficial /relatorio_analises_totais_vendas.
-  // Pode ser negativa e mesmo assim deve aparecer no dashboard.
-  const vendaDiaria = (sales.venda_diaria_total!==undefined && sales.venda_diaria_total!==null)
-    ? Number(sales.venda_diaria_total||0)
-    : ((Number(sales.venda_realizado_total||0)-Number(prevEmpresa.venda_realizado_total||0)) + (servicoRealizadoOficial-prevServicoReal));
+  const vendaDiaria=Math.max(0, Number(sales.venda_realizado_total||0)-Number(prevEmpresa.venda_realizado_total||0)) + Math.max(0, servicoRealizadoOficial-prevServicoReal);
   try{
     console.log('[MDL serviços]', {
       total_controle_meta_sgi: Number(sales.servico_realizado_total||0),
@@ -6130,7 +6074,6 @@ function renderKPIs(){
 
   const RENT_OK=getRentEmpresa();
   RENT_EMPRESA=RENT_OK;
-  rentPct=Number(RENT_OK?.margem_bruta_pct||0);
   const markupBase=(Number(sales.venda_realizado_total||0)+servicoRealizadoOficial);
   const markupCost=Number(RENT_OK?.custo_total||0);
   const markupTotal=markupCost>0?(markupBase/markupCost):0;
@@ -6166,7 +6109,11 @@ function renderKPIs(){
     if(n.includes('COPA') || n.includes('CUPOM')) return '⚽';
     return '🛠️';
   }
-  const topServiceCards = []; // V16: removidos cards do relatório individual de serviços; serviços só do Controle de Metas SGI.
+  const topServiceCards = Object.values((SERVICOS_RELATORIO && SERVICOS_RELATORIO.servicos) || {})
+    .slice()
+    .sort((a,b)=>Number(_srvTotal(b)||0)-Number(_srvTotal(a)||0))
+    .slice(0,4)
+    .map(s=>makeKpi(`${servicoIcone(s.servico)} ${String(s.servico||'Serviço').slice(0,30)}`, R(_srvTotal(s)||0), 'var(--blue-400)', `${Number(s.quantidade||0).toLocaleString('pt-BR')} item(ns)`));
 
   const cards=[
     makeKpi('💰 Total pendente',R(TOTAL_P),'var(--red)','', 'card-cobranca'),
@@ -6177,6 +6124,7 @@ function renderKPIs(){
     makeKpi('📈 Mercantil projetado',R(sales.venda_projetado||0),'var(--amber-500)',`Meta período ${R(sales.venda_meta_periodo||0)}`),
     makeKpi('🛠️ Serviços realizado',R(servicoRealizadoOficial),'var(--blue)',`Meta ${R(sales.servico_meta_total||0)} · Atingido ${pct(servicoAtingidoOficial)} · controle de meta SGI`),
     makeKpi('🧰 Serviços projetado',R(sales.servico_projetado||0),'var(--blue-400)',`Meta período ${R(sales.servico_meta_periodo||0)}`),
+    ...topServiceCards,
     makeKpi('🚚 Caminhão realizado',R(sales.caminhao_realizado_total||0),'var(--yellow)',`Meta ${R(sales.caminhao_meta_total||0)} · Atingido ${pct(sales.caminhao_atingido_total||0)}`),
     makeKpi('🛣️ Caminhão projetado',R(sales.caminhao_projetado||0),'var(--yellow-400)',`Meta período ${R(sales.caminhao_meta_periodo||0)}`),
     (isPrivileged ? makeKpi('💵 Faturamento total',R((Number(sales.venda_realizado_total||0)+servicoRealizadoOficial)),'var(--green-400)','Mercantil + serviços realizado', 'card-financeiro') : ''),
@@ -6184,7 +6132,7 @@ function renderKPIs(){
     makeKpi('📊 Rentabilidade total', rentPct?`${rentPct.toFixed(2).replace('.',',')}%`:'Sem dado','var(--green-400)','Última linha do relatório de margem bruta por filial', 'card-financeiro'),
     makeKpi('🧮 Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)', isViewer ? 'Índice mercantil + serviços / custo oculto' : `(Mercantil + serviços) / custo total ${R(markupCost||0)}`, 'card-financeiro', statusLaranjitoMarkup(markupTotal))
   ];
-  document.getElementById('kpis').innerHTML=cards.join('') + `<div class="glass" style="grid-column:1/-1;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:46px;flex-wrap:wrap"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div><div id="nextUpdateClock" style="font-size:12px;color:#fbbf24;font-weight:900">⏳ Próxima atualização: calculando...</div><div id="nextUpdateClock" style="font-size:12px;color:#fbbf24;font-weight:900">⏳ Próxima atualização: calculando...</div></div>`;
+  document.getElementById('kpis').innerHTML=cards.join('') + `<div class="glass" style="grid-column:1/-1;padding:10px 14px;display:flex;align-items:center;justify-content:flex-start;min-height:46px"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div></div>`;
 }
 
 async function fetchJsonNoCache(url){
@@ -6227,42 +6175,8 @@ function latestUpdatedLabel(){
   return b || a;
 }
 
-function _pad2(n){return String(n).padStart(2,'0')}
-function _fmtCountdown(ms){
-  ms=Math.max(0, Number(ms||0));
-  const total=Math.floor(ms/1000), m=Math.floor(total/60), s=total%60;
-  return `${_pad2(m)}m ${_pad2(s)}s`;
-}
-function _nextSalesDate(now){
-  const d=new Date(now.getTime());
-  const interval=20;
-  const nextMin=(Math.floor(d.getMinutes()/interval)+1)*interval;
-  if(nextMin>=60){d.setHours(d.getHours()+1); d.setMinutes(0,0,0);} else {d.setMinutes(nextMin,0,0);}
-  return d;
-}
-function _nextCobrancaDate(now){
-  const hours=[7,9,11,13,15,17,19,21];
-  const d=new Date(now.getTime());
-  for(const h of hours){
-    const cand=new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, 0, 0, 0);
-    if(cand>now) return cand;
-  }
-  const cand=new Date(d.getFullYear(), d.getMonth(), d.getDate()+1, 7, 0, 0, 0);
-  return cand;
-}
-function updateNextUpdateClock(){
-  const el=document.getElementById('nextUpdateClock');
-  if(!el) return;
-  const now=new Date();
-  const ns=_nextSalesDate(now), nc=_nextCobrancaDate(now);
-  const target=(ns<=nc)?ns:nc;
-  const label=(ns<=nc)?'vendas':'cobrança';
-  el.innerHTML=`⏳ Próxima atualização: <strong>${label}</strong> em <strong>${_fmtCountdown(target-now)}</strong>`;
-}
-setInterval(updateNextUpdateClock,1000);
-
 function renderUpdateStrip(){
-  return `<div class="glass" style="margin:10px 0 14px;padding:10px 14px;display:flex;align-items:center;justify-content:flex-start;min-height:42px;border-color:rgba(148,163,184,.20)"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div><div id="nextUpdateClock" style="font-size:12px;color:#fbbf24;font-weight:900">⏳ Próxima atualização: calculando...</div></div>`;
+  return `<div class="glass" style="margin:10px 0 14px;padding:10px 14px;display:flex;align-items:center;justify-content:flex-start;min-height:42px;border-color:rgba(148,163,184,.20)"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div></div>`;
 }
 
 
@@ -6298,10 +6212,6 @@ function calcSalesEmpresaFromMetas(payload){
     caminhao_projetado:cam.proj,
     caminhao_meta_total:cam.meta_total,
     caminhao_meta_periodo:cam.meta_per,
-    venda_diaria_total:Number(((payload||{}).venda_diaria||{}).empresa?.venda_diaria_total || ((payload||{}).venda_diaria||{}).venda_diaria_total || 0),
-    venda_diaria_total_vendido:Number(((payload||{}).venda_diaria||{}).empresa?.total_vendido || 0),
-    venda_diaria_valor_servico:Number(((payload||{}).venda_diaria||{}).empresa?.valor_servico || 0),
-    venda_diaria_acrescimo_servico:Number(((payload||{}).venda_diaria||{}).empresa?.valor_acrescimo_servico || 0),
   };
 }
 async function pollSalesLive(){
@@ -6317,18 +6227,19 @@ async function pollSalesLive(){
       return;
     }
 
-    let metasWrap=null, margensWrap=null;
+    let metasWrap=null, margensWrap=null, servWrap=null;
     try{ metasWrap=await fetchJsonNoCache('metas_vendas_mes_atual.json'); }catch(_e){}
     try{ margensWrap=await fetchJsonNoCache('margens_brutas_mes_atual.json'); }catch(_e){}
+    try{ servWrap=await fetchJsonNoCache('relatorio_servicos_mes_atual.json'); }catch(_e){}
 
     if(metasWrap) SALES_EMPRESA=calcSalesEmpresaFromMetas(metasWrap||{});
     if(margensWrap) RENT_EMPRESA=((margensWrap||{}).empresa)||{};
-    SERVICOS_RELATORIO={empresa:{},servicos:{},filiais:{},vendedores:{},detalhes:[]};
+    if(servWrap) SERVICOS_RELATORIO=(servWrap||{});
 
     if(stamp) window.__lastSalesVersion=stamp;
     window.__salesBundleLoaded=true;
 
-    if(typeof renderKPIs==='function' && document.getElementById('kpis')){ renderKPIs(); updateNextUpdateClock(); }
+    if(typeof renderKPIs==='function' && document.getElementById('kpis')) renderKPIs();
     if(typeof renderServicosTab==='function' && (!servicesSection.classList.contains('hidden') || usuarioAtual?.is_viewer)) renderServicosTab(!!usuarioAtual?.is_viewer);
     if(!detailScreen.classList.contains('hidden') && currentDetailRef){
       try{ openEntity(currentDetailRef); }catch(_e){}
@@ -6341,7 +6252,7 @@ async function pollDashboardLiveReload(){
     const stamp=String(ver?.updated_at||ver?.updated_at_label||'');
     if(stamp){
       window.__dashboardUpdatedAtLabel = stamp;
-      if(typeof renderKPIs==='function' && document.getElementById('kpis')){ renderKPIs(); updateNextUpdateClock(); }
+      if(typeof renderKPIs==='function' && document.getElementById('kpis')) renderKPIs();
     }
     if(!stamp) return;
     if(window.__lastDashboardVersion===undefined){window.__lastDashboardVersion=stamp; return;}
@@ -7820,66 +7731,7 @@ function targetOptionsMsg(){
 
   return o;
 }
-function senhaAtualUsuario(u, isDirector=false){
-  if(isDirector){ return String((AUTH_STATE?.director?.password)||''); }
-  return String((u&&u.password)||'');
-}
-function toggleSenhaVisivel(id){
-  const el=document.getElementById(id);
-  if(!el) return;
-  el.type = el.type==='password' ? 'text' : 'password';
-}
-async function copiarSenhaAtual(id){
-  const el=document.getElementById(id);
-  if(!el) return;
-  try{
-    await navigator.clipboard.writeText(el.value||'');
-    toast('Senha copiada.','success');
-  }catch(e){
-    el.select();
-    try{document.execCommand('copy'); toast('Senha copiada.','success');}catch(_e){toast('Não consegui copiar a senha.');}
-  }
-}
-function renderSenhaCard(u, isDirector=false){
-  const key=isDirector?'diretorcomercial':String(u.login||'');
-  const safeId=String(key).replace(/[^a-zA-Z0-9_-]/g,'_');
-  const nome=isDirector?'Diretor Comercial':(u.nome||key);
-  const filial=!isDirector && u.filial ? ` (${u.filial})` : '';
-  const senhaAtual=senhaAtualUsuario(u,isDirector);
-  const pend=(AUTH_STATE?.password_reset_requests||[]).filter(r=>String(r.login||'').toLowerCase()===String(key).toLowerCase() && String(r.status||'pendente')==='pendente').length;
-  const statusTxt=u.must_change_password?'Precisa trocar senha':'Senha ativa';
-  const statusColor=u.must_change_password?'#f59e0b':'#22c55e';
-  return `<div class="glass card senha-card" style="cursor:default;overflow:hidden;min-height:0">
-    <div class="title" style="min-height:auto;margin-bottom:8px">${esc(nome)}${esc(filial)}</div>
-    <div class="legend-inline" style="gap:8px;margin-bottom:12px;flex-wrap:wrap">
-      <span><i class="dot" style="background:${statusColor}"></i>${statusTxt}</span>
-      ${pend?`<span><i class="dot" style="background:#ef4444"></i>${pend} solicitação(ões)</span>`:''}
-    </div>
-    <div style="display:grid;grid-template-columns:1fr;gap:10px">
-      <div class="input-card" style="min-width:0">
-        <label>Senha ativa de ${esc(key)}</label>
-        <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center">
-          <input id="pwd_current_${safeId}" type="password" value="${esc(senhaAtual)}" readonly style="font-weight:900;color:#fef3c7;min-width:0">
-          <button class="btn soft" type="button" style="padding:10px 12px;white-space:nowrap" onclick="toggleSenhaVisivel('pwd_current_${safeId}')">👁️</button>
-          <button class="btn soft" type="button" style="padding:10px 12px;white-space:nowrap" onclick="copiarSenhaAtual('pwd_current_${safeId}')">📋</button>
-        </div>
-      </div>
-      <div class="input-card" style="min-width:0">
-        <label>Nova senha</label>
-        <input id="pwd_${safeId}" placeholder="Digite a nova senha" style="min-width:0">
-      </div>
-      <div class="input-card" style="min-width:0">
-        <label>Ações</label>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <button class="btn primary" type="button" style="width:100%;white-space:nowrap" onclick="adminSalvarSenha('${key.replace(/'/g,"\\'")}','${safeId}')">💾 Salvar</button>
-          <button class="btn soft" type="button" style="width:100%;white-space:nowrap" onclick="adminMarcarTroca('${key.replace(/'/g,"\\'")}')">🔁 Exigir troca</button>
-        </div>
-      </div>
-    </div>
-    ${pend?`<div class="note" style="margin-top:10px">Solicitação pendente de recuperação. <button class="btn soft" style="margin-left:8px" onclick="adminResolverReset('${key.replace(/'/g,"\\'")}')">Resolver solicitação</button></div>`:''}
-    <div id="pwd_msg_${safeId}" class="note" style="margin-top:8px"></div>
-  </div>`
-}
+function renderSenhaCard(u, isDirector=false){const key=isDirector?'diretorcomercial':u.login; const pend=(AUTH_STATE?.password_reset_requests||[]).filter(r=>String(r.login||'').toLowerCase()===String(key).toLowerCase() && String(r.status||'pendente')==='pendente').length; return `<div class="glass card" style="cursor:default"><div class="title" style="min-height:auto">${esc(isDirector?'Diretor Comercial':u.nome)} ${!isDirector?`(${u.filial||''})`:''}</div><div class="legend-inline"><span><i class="dot" style="background:${u.must_change_password?'#f59e0b':'#22c55e'}"></i>${u.must_change_password?'Precisa trocar senha':'Senha ativa'}</span>${pend?`<span><i class="dot" style="background:#ef4444"></i>${pend} solicitação(ões)</span>`:''}</div><div class="form-grid bonus" style="grid-template-columns:1.1fr .9fr;margin-top:12px"><div class="input-card"><label>Nova senha para ${esc(key)}</label><input id="pwd_${key}" placeholder="Digite a nova senha"></div><div class="input-card"><label>Ações</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="adminSalvarSenha('${key}')">💾 Salvar senha</button><button class="btn soft" type="button" onclick="adminMarcarTroca('${key}')">🔁 Exigir troca</button></div></div></div>${pend?`<div class="note" style="margin-top:10px">Solicitação pendente de recuperação. <button class="btn soft" style="margin-left:8px" onclick="adminResolverReset('${key}')">Resolver solicitação</button></div>`:''}<div id="pwd_msg_${key}" class="note" style="margin-top:8px"></div></div>`}
 
 function _histDates(){return Object.keys(HIST_DASH?.dates||{}).sort().reverse()}
 function _histMonths(){return Object.keys(HIST_DASH?.months_closed||{}).sort().reverse()}
@@ -8190,26 +8042,11 @@ function setHistMode(mode){window._histMode=mode; document.getElementById('histD
 function updateHistEntityFilter(){const dateVal=_histCurrentDate(); const scope=document.getElementById('histScope')?.value||'empresa'; const wrap=document.getElementById('histEntityWrap'); const sel=document.getElementById('histEntity'); if(!wrap||!sel) return; wrap.classList.toggle('hidden',!(scope==='vendedores'||scope==='filiais')); sel.innerHTML=_histEntityOptions(dateVal, scope);}
 function updateHistMonthEntityFilter(){const monthVal=_histCurrentMonth(); const scope=document.getElementById('histMonthScope')?.value||'empresa'; const wrap=document.getElementById('histMonthEntityWrap'); const sel=document.getElementById('histMonthEntity'); if(!wrap||!sel) return; wrap.classList.toggle('hidden',!(scope==='vendedores'||scope==='filiais')); sel.innerHTML=_histMonthEntityOptions(monthVal, scope);}
 function renderHistoricoTable(rows, scope, title='📋 Histórico'){if(!rows.length) return `<div class="empty">Nenhum registro encontrado para o filtro escolhido.</div>`; return `<div class="glass panel"><div class="section-head" style="margin:0 0 10px"><div><h2 style="font-size:18px">${title}</h2></div></div>${rows.map(r=>`<div class="log-row" style="margin-bottom:10px"><div><strong>${esc(r.nome||r.filial||'Empresa')}</strong><div class="small muted">${esc(r.filial||'Resumo')}</div></div><div><strong>${R(r.pendente||0)}</strong><div class="small muted">Pendente</div></div><div><strong>${R(r.recebido||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${pct(r.perc_meta||0)}</strong><div class="small muted">Meta</div></div><div><strong>${R(r.grave_alvo||0)} / ${R(r.alerta_alvo||0)} / ${R(r.atencao_alvo||0)}</strong><div class="small muted">Alvos G/A/At</div></div></div>`).join('')}</div>`}
-function renderHistoricoResults(){const dateVal=_histCurrentDate(); const scope=document.getElementById('histScope')?.value||'empresa'; const entity=document.getElementById('histEntity')?.value||''; const box=document.getElementById('histResults'); const d=HIST_DASH?.dates?.[dateVal]; if(!box){return} if(!d){box.innerHTML='<div class="empty">Nenhum histórico salvo para esta data.</div>'; return} let top=`<div class="kpis">${makeKpi('Pendente do dia',R(d.empresa?.pendente||0),'var(--red)')}${makeKpi('Recebido do dia',R(d.empresa?.recebido||0),'var(--green)')}${makeKpi('Grave do dia',R(d.empresa?.grave||0),'var(--red)')}${makeKpi('Alerta do dia',R(d.empresa?.alerta||0),'var(--orange)')}</div><div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0"><div><h2 style="font-size:18px">⚙️ Meta usada no dia</h2><div class="hint">Global: G ${Number(d.empresa?.config_global?.grave_pct||0)}% · A ${Number(d.empresa?.config_global?.alerta_pct||0)}% · At ${Number(d.empresa?.config_global?.atencao_pct||0)}% · Pesos ${Number(d.empresa?.config_global?.peso_grave||0)}/${Number(d.empresa?.config_global?.peso_alerta||0)}/${Number(d.empresa?.config_global?.peso_atencao||0)}</div></div><div class="small muted">${esc(dateVal)}</div></div></div>`; if(scope==='empresa'){box.innerHTML=top + renderHistoricoTable([{nome:'Empresa',filial:'Resumo geral',pendente:d.empresa?.pendente||0,recebido:d.empresa?.recebido||0,perc_meta:0,grave_alvo:0,alerta_alvo:0,atencao_alvo:0}], 'empresa','📋 Histórico diário da empresa'); return} const source = scope==='filiais' ? Object.entries(d.filiais||{}).map(([k,v])=>({...v,key:k})) : Object.entries(d.vendedores||{}).map(([k,v])=>({...v,key:k})); const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=renderLinksRelatoriosCobranca()+top + renderHistoricoTable(rows, scope, `📋 Histórico diário ${scope==='filiais'?'de filiais':'de vendedores'}`);}
-
-function renderLinksRelatoriosCobranca(){
-  const r=RELATORIOS_PUBLICOS||{};
-  return `<div class="glass panel" style="margin-bottom:14px;border-color:rgba(96,165,250,.35)">
-    <div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">📥 Relatórios XLS da última execução</h2><div class="hint">Use estes arquivos para auditar recebimentos por faixa, pendentes e quitados. Atualiza a cada execução de cobrança.</div></div></div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <a class="btn primary" href="${esc(r.zip||'#')}?_=${Date.now()}" target="_blank" download>📦 Baixar pacote ZIP</a>
-      <a class="btn soft" href="${esc(r.principal_xls||'#')}?_=${Date.now()}" target="_blank" download>Contas a receber principal</a>
-      <a class="btn soft" href="${esc(r.quitados_original_xls||'#')}?_=${Date.now()}" target="_blank" download>Quitados original SGI</a>
-      <a class="btn soft" href="${esc(r.quitados_processado_xlsx||'#')}?_=${Date.now()}" target="_blank" download>Quitados processado</a>
-      <a class="btn soft" href="${esc(r.quitados_json||'#')}?_=${Date.now()}" target="_blank">JSON quitados</a>
-    </div>
-  </div>`;
-}
-
-function renderHistoricoMonthResults(){const monthVal=_histCurrentMonth(); const scope=document.getElementById('histMonthScope')?.value||'empresa'; const entity=document.getElementById('histMonthEntity')?.value||''; const box=document.getElementById('histMonthResults'); const d=HIST_DASH?.months_closed?.[monthVal]; if(!box){return} if(!d){box.innerHTML=renderLinksRelatoriosCobranca()+'<div class="empty">Nenhum fechamento mensal salvo para este mês.</div>'; return} const cfg=d.config_global_fechamento||{}; let top=`<div class="kpis">${makeKpi('Mês fechado',esc(monthVal),'var(--blue)')}${makeKpi('Último dia',esc(d.ultimo_dia_historico||'-'),'var(--blue)')}${makeKpi('Snapshot final',esc(d.snapshot_final_data||'-'),'var(--blue)')}${makeKpi('Meta mês',esc(d.meta_file||'-'),'var(--blue)')}</div><div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0"><div><h2 style="font-size:18px">📦 Fechamento mensal travado</h2><div class="hint">Global no fechamento: G ${Number(cfg.grave_pct||0)}% · A ${Number(cfg.alerta_pct||0)}% · At ${Number(cfg.atencao_pct||0)}% · Pesos ${Number(cfg.peso_grave||0)}/${Number(cfg.peso_alerta||0)}/${Number(cfg.peso_atencao||0)}</div></div><div class="small muted">Fechado em ${esc((d.fechado_em||'').replace('T',' ').slice(0,16))}</div></div></div>`;
- if(scope==='empresa'){const e=d.empresa_final||{}; box.innerHTML=renderLinksRelatoriosCobranca()+top+renderHistoricoTable([{nome:'Empresa',filial:'Resultado final do mês',pendente:e.pendente||0,recebido:e.recebido||0,perc_meta:e.perc_meta||0,grave_alvo:e.grave_alvo||0,alerta_alvo:e.alerta_alvo||0,atencao_alvo:e.atencao_alvo||0}], 'empresa','📋 Resultado final mensal da empresa'); return}
+function renderHistoricoResults(){const dateVal=_histCurrentDate(); const scope=document.getElementById('histScope')?.value||'empresa'; const entity=document.getElementById('histEntity')?.value||''; const box=document.getElementById('histResults'); const d=HIST_DASH?.dates?.[dateVal]; if(!box){return} if(!d){box.innerHTML='<div class="empty">Nenhum histórico salvo para esta data.</div>'; return} let top=`<div class="kpis">${makeKpi('Pendente do dia',R(d.empresa?.pendente||0),'var(--red)')}${makeKpi('Recebido do dia',R(d.empresa?.recebido||0),'var(--green)')}${makeKpi('Grave do dia',R(d.empresa?.grave||0),'var(--red)')}${makeKpi('Alerta do dia',R(d.empresa?.alerta||0),'var(--orange)')}</div><div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0"><div><h2 style="font-size:18px">⚙️ Meta usada no dia</h2><div class="hint">Global: G ${Number(d.empresa?.config_global?.grave_pct||0)}% · A ${Number(d.empresa?.config_global?.alerta_pct||0)}% · At ${Number(d.empresa?.config_global?.atencao_pct||0)}% · Pesos ${Number(d.empresa?.config_global?.peso_grave||0)}/${Number(d.empresa?.config_global?.peso_alerta||0)}/${Number(d.empresa?.config_global?.peso_atencao||0)}</div></div><div class="small muted">${esc(dateVal)}</div></div></div>`; if(scope==='empresa'){box.innerHTML=top + renderHistoricoTable([{nome:'Empresa',filial:'Resumo geral',pendente:d.empresa?.pendente||0,recebido:d.empresa?.recebido||0,perc_meta:0,grave_alvo:0,alerta_alvo:0,atencao_alvo:0}], 'empresa','📋 Histórico diário da empresa'); return} const source = scope==='filiais' ? Object.entries(d.filiais||{}).map(([k,v])=>({...v,key:k})) : Object.entries(d.vendedores||{}).map(([k,v])=>({...v,key:k})); const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=top + renderHistoricoTable(rows, scope, `📋 Histórico diário ${scope==='filiais'?'de filiais':'de vendedores'}`);}
+function renderHistoricoMonthResults(){const monthVal=_histCurrentMonth(); const scope=document.getElementById('histMonthScope')?.value||'empresa'; const entity=document.getElementById('histMonthEntity')?.value||''; const box=document.getElementById('histMonthResults'); const d=HIST_DASH?.months_closed?.[monthVal]; if(!box){return} if(!d){box.innerHTML='<div class="empty">Nenhum fechamento mensal salvo para este mês.</div>'; return} const cfg=d.config_global_fechamento||{}; let top=`<div class="kpis">${makeKpi('Mês fechado',esc(monthVal),'var(--blue)')}${makeKpi('Último dia',esc(d.ultimo_dia_historico||'-'),'var(--blue)')}${makeKpi('Snapshot final',esc(d.snapshot_final_data||'-'),'var(--blue)')}${makeKpi('Meta mês',esc(d.meta_file||'-'),'var(--blue)')}</div><div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0"><div><h2 style="font-size:18px">📦 Fechamento mensal travado</h2><div class="hint">Global no fechamento: G ${Number(cfg.grave_pct||0)}% · A ${Number(cfg.alerta_pct||0)}% · At ${Number(cfg.atencao_pct||0)}% · Pesos ${Number(cfg.peso_grave||0)}/${Number(cfg.peso_alerta||0)}/${Number(cfg.peso_atencao||0)}</div></div><div class="small muted">Fechado em ${esc((d.fechado_em||'').replace('T',' ').slice(0,16))}</div></div></div>`;
+ if(scope==='empresa'){const e=d.empresa_final||{}; box.innerHTML=top+renderHistoricoTable([{nome:'Empresa',filial:'Resultado final do mês',pendente:e.pendente||0,recebido:e.recebido||0,perc_meta:e.perc_meta||0,grave_alvo:e.grave_alvo||0,alerta_alvo:e.alerta_alvo||0,atencao_alvo:e.atencao_alvo||0}], 'empresa','📋 Resultado final mensal da empresa'); return}
  const source=scope==='filiais'?Object.entries(d.filiais_finais||{}).map(([k,v])=>({...v,key:k})) : Object.entries(d.vendedores_finais||{}).map(([k,v])=>({...v,key:k}));
- const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=renderLinksRelatoriosCobranca()+top + renderHistoricoTable(rows, scope, `📋 Resultado final mensal ${scope==='filiais'?'de filiais':'de vendedores'}`);}
+ const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=top + renderHistoricoTable(rows, scope, `📋 Resultado final mensal ${scope==='filiais'?'de filiais':'de vendedores'}`);}
 function renderHistoricoTerceiro(){const box=document.getElementById('histThirdResults'); if(!box) return; const logs=(COB_LOGS||[]).filter(x=>String(x.usuario||'').toLowerCase()===COBRANCA10_LOGIN || String(x.usuario||'').toLowerCase()===COBRANCA10_NOME.toLowerCase()).slice().reverse(); const ent=thirdChargeEntity(); const top=`<div class="kpis">${makeKpi('Títulos na carteira',String((CLIENTES_TERCEIRO?.grave?.length||0)+(CLIENTES_TERCEIRO?.alerta?.length||0)+(CLIENTES_TERCEIRO?.atencao?.length||0)),'var(--blue)')}${makeKpi('Pendente',R(ent.pendente||0),'var(--red)')}${makeKpi('Recebido',R(ent.pago||0),'var(--green)')}${makeKpi('Cobranças lançadas',String(logs.length),'var(--orange)')}</div>`; const comm=renderTerceiroCommission(ent); const rows=logs.length?logs.map(x=>`<div class="log-row"><div><strong>${esc(x.cliente||'')}</strong><div class="small muted">${esc(x.titulo||'')} · Parcela ${esc(x.parcela||'')}</div></div><div><strong>${R(x.pendente||0)}</strong><div class="small muted">${esc(x.filial||'')}</div></div><div><strong>${esc((x.server_time||'').replace('T',' ').slice(0,16))}</strong><div class="small muted">Data</div></div><div><strong>${esc(x.telefone||'')}</strong><div class="small muted">Telefone</div></div></div>`).join(''):'<div class="empty">Nenhuma cobrança do Cobrança10 encontrada.</div>'; box.innerHTML=top+comm+`<div class="glass panel"><div class="section-head"><div><h2 style="font-size:18px">🤝 Cobranças Terceiro</h2><div class="hint">Histórico apenas do usuário Cobrança10.</div></div></div><div class="logs-list">${rows}</div></div>`}
 function setHistMode(mode){window._histMode=mode; document.getElementById('histDailyPane')?.classList.toggle('hidden',mode!=='daily'); document.getElementById('histMonthPane')?.classList.toggle('hidden',mode!=='monthly'); document.getElementById('histSalesPane')?.classList.toggle('hidden',mode!=='sales'); document.getElementById('histThirdPane')?.classList.toggle('hidden',mode!=='third'); document.getElementById('histTabDaily')?.classList.toggle('active',mode==='daily'); document.getElementById('histTabMonthly')?.classList.toggle('active',mode==='monthly'); document.getElementById('histTabSales')?.classList.toggle('active',mode==='sales'); document.getElementById('histTabThird')?.classList.toggle('active',mode==='third'); if(mode==='daily'){updateHistEntityFilter(); renderHistoricoResults();} else if(mode==='monthly'){updateHistMonthEntityFilter(); renderHistoricoMonthResults();} else if(mode==='sales'){updateHistSalesEntityFilter(); updateHistSalesMonthEntityFilter(); renderHistoricoSalesResults(); renderHistoricoSalesMonthResults();} else {renderHistoricoTerceiro();}}
 function renderHistoricoTab(){const dates=_histDates(); const months=_histMonths(); const salesDates=_histSalesDates(); const salesMonths=_histSalesMonths(); histSection.innerHTML=`<div class="section-head"><div><h2>🗂️ Histórico</h2><div class="hint">Consulte o histórico diário, vendas e os fechamentos mensais travados do Master/Diretor.</div></div></div><div class="tabs" style="justify-content:flex-start;margin:0 0 14px"><button id="histTabDaily" class="tab active" onclick="setHistMode('daily')">📅 Diário</button><button id="histTabMonthly" class="tab" onclick="setHistMode('monthly')">📦 Fechamento mensal</button><button id="histTabSales" class="tab" onclick="setHistMode('sales')">🧡 Vendas</button><button id="histTabThird" class="tab" onclick="setHistMode('third')">🤝 Cobranças Terceiro</button></div><div id="histDailyPane"><div class="glass panel" style="margin-bottom:14px"><div class="search-row"><div class="input-card"><label>Data</label><select id="histDate" onchange="updateHistEntityFilter();renderHistoricoResults()">${dates.map(d=>`<option value="${d}">${d}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histScope" onchange="updateHistEntityFilter();renderHistoricoResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histEntity" onchange="renderHistoricoResults()"><option value="">Todos</option></select></div></div></div><div id="histResults"></div></div><div id="histMonthPane" class="hidden"><div class="glass panel" style="margin-bottom:14px"><div class="search-row"><div class="input-card"><label>Mês fechado</label><select id="histMonth" onchange="updateHistMonthEntityFilter();renderHistoricoMonthResults()">${months.map(m=>`<option value="${m}">${m}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histMonthScope" onchange="updateHistMonthEntityFilter();renderHistoricoMonthResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histMonthEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histMonthEntity" onchange="renderHistoricoMonthResults()"><option value="">Todos</option></select></div></div></div><div id="histMonthResults"></div></div><div id="histSalesPane" class="hidden"><div class="glass panel" style="margin-bottom:14px"><div class="search-row"><div class="input-card"><label>Data de vendas</label><select id="histSalesDate" onchange="updateHistSalesEntityFilter();renderHistoricoSalesResults()">${salesDates.map(d=>`<option value="${d}">${d}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histSalesScope" onchange="updateHistSalesEntityFilter();renderHistoricoSalesResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histSalesEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histSalesEntity" onchange="renderHistoricoSalesResults()"><option value="">Todos</option></select></div></div></div><div id="histSalesResults"></div><div class="glass panel" style="margin:14px 0"><div class="search-row"><div class="input-card"><label>Mês de vendas</label><select id="histSalesMonth" onchange="updateHistSalesMonthEntityFilter();renderHistoricoSalesMonthResults()">${salesMonths.map(m=>`<option value="${m}">${m}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histSalesMonthScope" onchange="updateHistSalesMonthEntityFilter();renderHistoricoSalesMonthResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histSalesMonthEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histSalesMonthEntity" onchange="renderHistoricoSalesMonthResults()"><option value="">Todos</option></select></div></div></div><div id="histSalesMonthResults"></div></div><div id="histThirdPane" class="hidden"><div id="histThirdResults"></div></div>`; if(dates.length){document.getElementById('histDate').value=dates[0]} if(months.length){document.getElementById('histMonth').value=months[0]} if(salesDates.length){document.getElementById('histSalesDate').value=salesDates[0]} if(salesMonths.length){document.getElementById('histSalesMonth').value=salesMonths[0]} setHistMode(window._histMode||'daily');}
@@ -8376,10 +8213,10 @@ function renderSenhasTab(){
   <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">👑 Contas administrativas</h2></div></div>${renderSenhaCard(AUTH_STATE?.director||{login:'diretorcomercial',nome:'Diretor Comercial',must_change_password:true}, true)}</div>
   <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">➕ Criar usuário de acesso</h2><div class="hint">Aqui você cria apenas o login/senha de acesso. Depois vá em Metas > Crediaristas configuráveis para vincular esse usuário à filial/base e ao percentual.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Login</label><input id="newUserLogin" placeholder="ex: crediaristaf07"></div><div class="input-card"><label>Nome</label><input id="newUserNome" placeholder="ex: CREDIARISTAF07"></div><div class="input-card"><label>Filial</label><input id="newUserFilial" placeholder="ex: F7"></div><div class="input-card"><label>Senha inicial</label><input id="newUserSenha" placeholder="mín. 4 caracteres"></div></div><div class="form-grid bonus" style="margin-top:10px"><div class="input-card"><label>Tipo</label><select id="newUserTipo"><option value="crediarista">Crediarista</option><option value="cobranca">Cobrança</option></select></div></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="adminCriarUsuarioCobranca()">💾 Criar usuário</button></div><div id="newUserMsg" class="note" style="margin-top:10px"></div></div>
   <div class="section-head"><div><h2>👥 Usuários do dashboard</h2><div class="hint">As senhas permanecem congeladas e só mudam se você alterar aqui ou se surgir um usuário novo.</div></div></div>
-  <div class="senhas-grid">${users.map(u=>renderSenhaCard(u,false)).join('')}</div>`;
+  <div class="senhas-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;align-items:stretch">${users.map(u=>renderSenhaCard(u,false)).join('')}</div>`;
 }
-async function adminSalvarSenha(login,safeId=null){const sid=safeId||String(login).replace(/[^a-zA-Z0-9_-]/g,'_'); const box=document.getElementById(`pwd_msg_${sid}`); const senha=(document.getElementById(`pwd_${sid}`)?.value||'').trim(); if(!senha || senha.length<4){if(box) box.textContent='Digite uma senha com pelo menos 4 caracteres.'; return;} try{const fd=new FormData(); fd.append('action','admin_set_password'); fd.append('login',login); fd.append('new_password',senha); fd.append('must_change_password','0'); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(box) box.textContent=j.ok?'✅ Senha atualizada online.':'⚠️ Não consegui atualizar a senha.'; if(j.ok){await carregarCredenciaisOnline(); renderSenhasTab();}}catch(e){if(box) box.textContent='⚠️ Não consegui atualizar a senha.';}}
-async function adminMarcarTroca(login){const sid=String(login).replace(/[^a-zA-Z0-9_-]/g,'_'); const box=document.getElementById(`pwd_msg_${sid}`); try{const fd=new FormData(); fd.append('action','admin_force_change'); fd.append('login',login); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(box) box.textContent=j.ok?'✅ Usuário marcado para trocar a senha no próximo acesso.':'⚠️ Não consegui marcar troca de senha.'; if(j.ok){await carregarCredenciaisOnline(); renderSenhasTab();}}catch(e){if(box) box.textContent='⚠️ Não consegui marcar troca de senha.';}}
+async function adminSalvarSenha(login){const box=document.getElementById(`pwd_msg_${login}`); const senha=(document.getElementById(`pwd_${login}`)?.value||'').trim(); if(!senha || senha.length<4){if(box) box.textContent='Digite uma senha com pelo menos 4 caracteres.'; return;} try{const fd=new FormData(); fd.append('action','admin_set_password'); fd.append('login',login); fd.append('new_password',senha); fd.append('must_change_password','0'); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(box) box.textContent=j.ok?'✅ Senha atualizada online.':'⚠️ Não consegui atualizar a senha.'; if(j.ok){await carregarCredenciaisOnline(); renderSenhasTab();}}catch(e){if(box) box.textContent='⚠️ Não consegui atualizar a senha.';}}
+async function adminMarcarTroca(login){const box=document.getElementById(`pwd_msg_${login}`); try{const fd=new FormData(); fd.append('action','admin_force_change'); fd.append('login',login); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(box) box.textContent=j.ok?'✅ Usuário marcado para trocar a senha no próximo acesso.':'⚠️ Não consegui marcar troca de senha.'; if(j.ok){await carregarCredenciaisOnline(); renderSenhasTab();}}catch(e){if(box) box.textContent='⚠️ Não consegui marcar troca de senha.';}}
 async function adminResolverReset(login){try{const fd=new FormData(); fd.append('action','resolve_reset'); fd.append('login',login); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){toast('Solicitação resolvida. Usuário terá que criar nova senha no próximo acesso.','success'); await carregarCredenciaisOnline(); renderSenhasTab();}else{toast('Não consegui resolver a solicitação.')}}catch(e){toast('Não consegui resolver a solicitação.')}}
 async function adminLimparHistoricoReset(mode='resolved'){try{const fd=new FormData(); fd.append('action','clear_reset_history'); fd.append('mode',mode); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){toast(mode==='all'?'Solicitações limpas da tela.':'Histórico de solicitações limpo.','success'); await carregarCredenciaisOnline(); renderSenhasTab();}else{toast('Não consegui limpar o histórico.')}}catch(e){toast('Não consegui limpar o histórico.')}}
 
@@ -8545,20 +8382,10 @@ window.addEventListener('load',async ()=>{
 </html>
 """
 
-_gerar_zip_relatorios_publicos()
-js_relatorios_publicos = json.dumps({
-    "principal_xls": f"{RELATORIOS_PUBLIC_BASE}/ultimo_contas_receber_principal.xls",
-    "quitados_original_xls": f"{RELATORIOS_PUBLIC_BASE}/ultimo_contas_receber_quitados_original.xls",
-    "quitados_processado_xlsx": f"{RELATORIOS_PUBLIC_BASE}/quitados_180d_contas_receber.xlsx",
-    "quitados_json": f"{RELATORIOS_PUBLIC_BASE}/quitados_180d_contas_receber.json",
-    "zip": f"{RELATORIOS_PUBLIC_BASE}/ultimos_relatorios_cobranca.zip",
-}, ensure_ascii=False)
-
 html = template
 repls = {
     '__JS_CREDS__': js_creds,
     '__JS_AUTH_STATE__': js_auth_state,
-    '__JS_RELATORIOS_PUBLICOS__': js_relatorios_publicos,
     '__JS_TODOS__': js_todos,
     '__JS_FILIAIS__': js_filiais,
     '__JS_CLIENTES__': js_clientes,
@@ -8938,30 +8765,6 @@ if FTP_USER and FTP_PASS:
                     ftp.storbinary('STOR quitados_180d_contas_receber.xlsx', f_q_xlsx)
         except Exception as e_q_ftp:
             print(f'⚠️ Erro ao enviar quitados 180d ao FTP: {e_q_ftp}')
-
-
-        try:
-            # Publica relatórios auditáveis em /public_html/colaborador/relatorios
-            try:
-                ftp.mkd('relatorios')
-            except Exception:
-                pass
-            ftp.cwd('relatorios')
-            for _fname in [
-                'ultimo_contas_receber_principal.xls',
-                'ultimo_contas_receber_quitados_original.xls',
-                'quitados_180d_contas_receber.xlsx',
-                'quitados_180d_contas_receber.json',
-                'ultimos_relatorios_cobranca.zip',
-            ]:
-                _p_rel = os.path.join(RELATORIOS_DIR, _fname)
-                if os.path.exists(_p_rel):
-                    with open(_p_rel, 'rb') as _f_rel:
-                        ftp.storbinary(f'STOR {_fname}', _f_rel)
-                    print(f'📤 Relatório publicado no FTP: /colaborador/relatorios/{_fname}')
-            ftp.cwd('..')
-        except Exception as e_rel_ftp:
-            print(f'⚠️ Erro ao publicar relatórios XLS no FTP: {e_rel_ftp}')
 
         # Pacote de vendas/margem/rentabilidade/serviços/diária fica exclusivo do dashboard_sales_worker_headless.py.
         # Isso evita o navegador misturar arquivos de horários diferentes.
