@@ -1,4 +1,4 @@
-# VERSAO: COBRANCA10_WORKER_V15_SERVICOS_SOMENTE_META_SGI_MARGEM_OK
+# VERSAO: COBRANCA10_WORKER_V16_MARGEM_DIARIA_SERVICOS_SO_META
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -879,12 +879,16 @@ def _select_relatorio_por_label(label_texto, texto_opcao=None, value=None):
 
 
 def _tratar_valor_margem(v):
+    """Converte valores BR e valores numéricos puros sem quebrar markup 2.13 -> 213."""
     try:
+        if isinstance(v, (int, float)):
+            return float(v)
         s = str(v).strip()
         if s in ("", "nan", "None"):
             return 0.0
         s = s.replace("R$", "").replace("%", "").strip()
-        s = s.replace(".", "").replace(",", ".")
+        if "," in s:
+            s = s.replace(".", "").replace(",", ".")
         return float(s)
     except Exception:
         return 0.0
@@ -1072,7 +1076,7 @@ def _gerar_relatorio_margem(tipo):
     except Exception as e:
         print(f"⚠️ Não consegui selecionar formato XLS de Margem Bruta: {e}")
 
-    arquivos_antes = set(f for f in os.listdir(pasta) if _nome_arquivo_margem_valido(f))
+    arquivos_antes = set(f for f in os.listdir(download_dir) if _nome_arquivo_margem_valido(f))
 
     gerar_btn = wait.until(EC.presence_of_element_located((By.ID, 'gerar')))
     driver.execute_script("arguments[0].scrollIntoView({block:'center'});", gerar_btn)
@@ -1086,16 +1090,16 @@ def _gerar_relatorio_margem(tipo):
     caminho = None
     for _ in range(60):
         time.sleep(2)
-        baixando = any(f.endswith('.crdownload') or f.endswith('.tmp') for f in os.listdir(pasta))
+        baixando = any(f.endswith('.crdownload') or f.endswith('.tmp') for f in os.listdir(download_dir))
         if baixando:
             continue
-        novos = set(f for f in os.listdir(pasta) if _nome_arquivo_margem_valido(f)) - arquivos_antes
+        novos = set(f for f in os.listdir(download_dir) if _nome_arquivo_margem_valido(f)) - arquivos_antes
         if novos:
-            caminho = max([os.path.join(pasta, f) for f in novos], key=os.path.getctime)
+            caminho = max([os.path.join(download_dir, f) for f in novos], key=os.path.getctime)
             break
 
     if not caminho:
-        todos = [os.path.join(pasta, f) for f in os.listdir(pasta) if _nome_arquivo_margem_valido(f)]
+        todos = [os.path.join(download_dir, f) for f in os.listdir(download_dir) if _nome_arquivo_margem_valido(f)]
         if not todos:
             raise Exception('Nenhum arquivo XLS/XLSX de margem foi baixado')
         caminho = max(todos, key=os.path.getctime)
@@ -1634,6 +1638,182 @@ def aplicar_relatorio_servicos_em_metas(metas_info, servicos_info):
         print(f'⚠️ Erro ao aplicar relatório de serviços sobre metas: {e}')
     return metas_info
 
+
+
+# =========================================
+# 🕒 VENDA DIÁRIA OFICIAL — /relatorio_analises_totais_vendas
+# Soma Total Vendido + Valor Serviço + Valor Acréscimo Serviço.
+# Mantém valores negativos quando houver devolução/estorno.
+# =========================================
+def _nome_arquivo_venda_diaria_valido(fname):
+    s = str(fname or '').lower().strip()
+    if s.startswith('~$'):
+        return False
+    if not (s.endswith('.xls') or s.endswith('.xlsx')):
+        return False
+    return ('analise_total_venda' in s) or ('analises_totais_vendas' in s) or ('total_venda' in s)
+
+def _set_all_visible_date_inputs(valor):
+    inputs = driver.find_elements(By.XPATH, "//input[not(@type='hidden') and (contains(@id,'data') or contains(@name,'data') or contains(@class,'date'))]")
+    count = 0
+    for el in inputs:
+        try:
+            if not el.is_displayed():
+                continue
+            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
+            try:
+                el.click()
+                el.send_keys(Keys.CONTROL, "a")
+                el.send_keys(Keys.DELETE)
+                el.send_keys(valor)
+            except Exception:
+                driver.execute_script("arguments[0].value = arguments[1];", el, valor)
+            driver.execute_script("arguments[0].dispatchEvent(new Event('input',{bubbles:true}));", el)
+            driver.execute_script("arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", el)
+            count += 1
+        except Exception:
+            pass
+    print(f"✅ Campos de data preenchidos na venda diária: {count} campo(s) = {valor}")
+    return count
+
+def _parse_venda_diaria_xls(caminho):
+    dfv = _ler_xls_ou_xlsx(caminho).fillna('')
+    if dfv.empty:
+        raise Exception('Relatório de venda diária veio vazio')
+    headers = [normalizar_texto_match(x) for x in dfv.iloc[0].tolist()]
+    data = dfv.iloc[1:].copy()
+
+    def col_idx(*names):
+        targets = [normalizar_texto_match(n) for n in names]
+        for i, h in enumerate(headers):
+            for t in targets:
+                if t and t in h:
+                    return i
+        return None
+
+    idx_filial = col_idx('Filial')
+    idx_total = col_idx('Total Vendido')
+    idx_serv = col_idx('Valor Serviço', 'Valor Servico')
+    idx_acresc = col_idx('Valor Acréscimo Serviço', 'Valor Acrescimo Servico')
+    idx_qtd = col_idx('Qtde Vendida')
+
+    if idx_total is None:
+        raise Exception(f'Coluna Total Vendido não encontrada no relatório de venda diária. Headers={headers}')
+
+    def val(row, idx):
+        if idx is None:
+            return 0.0
+        return _tratar_valor_margem(row.iloc[idx])
+
+    total_row = None
+    if idx_filial is not None:
+        for _, row in data.iterrows():
+            if normalizar_texto_match(row.iloc[idx_filial]) == 'TOTAL':
+                total_row = row
+                break
+
+    rows_filiais = []
+    if total_row is None:
+        total_vendido = valor_servico = valor_acrescimo = qtd = 0.0
+        for _, row in data.iterrows():
+            label = str(row.iloc[idx_filial] if idx_filial is not None else '').strip()
+            if not label or normalizar_texto_match(label) in ('FILIAL', 'TOTAL'):
+                continue
+            tv = val(row, idx_total)
+            vs = val(row, idx_serv)
+            va = val(row, idx_acresc)
+            qv = val(row, idx_qtd)
+            total_vendido += tv
+            valor_servico += vs
+            valor_acrescimo += va
+            qtd += qv
+            rows_filiais.append({'filial': label, 'total_vendido': tv, 'valor_servico': vs, 'valor_acrescimo_servico': va, 'venda_diaria_total': round(tv+vs+va, 2), 'qtde_vendida': qv})
+    else:
+        total_vendido = val(total_row, idx_total)
+        valor_servico = val(total_row, idx_serv)
+        valor_acrescimo = val(total_row, idx_acresc)
+        qtd = val(total_row, idx_qtd)
+
+    venda_diaria_total = round(total_vendido + valor_servico + valor_acrescimo, 2)
+    return {
+        'empresa': {
+            'total_vendido': round(total_vendido, 2),
+            'valor_servico': round(valor_servico, 2),
+            'valor_acrescimo_servico': round(valor_acrescimo, 2),
+            'venda_diaria_total': venda_diaria_total,
+            'qtde_vendida': qtd,
+        },
+        'filiais': rows_filiais,
+    }
+
+def coletar_venda_diaria_oficial():
+    data_hoje = hoje.strftime("%d/%m/%Y")
+    print("\\n🕒 Iniciando coleta de venda diária oficial...")
+    driver.get(URL + "/relatorio_analises_totais_vendas")
+    wait.until(EC.presence_of_element_located((By.ID, "gerar")))
+    time.sleep(1.5)
+    esperar_sumir_overlays(10)
+    _set_all_visible_date_inputs(data_hoje)
+
+    try:
+        Select(wait.until(EC.presence_of_element_located((By.ID, "_formato")))).select_by_value("xls")
+        print("✅ Formato XLS para venda diária")
+    except Exception as e:
+        print(f"⚠️ Não consegui selecionar XLS na venda diária: {e}")
+
+    arquivos_antes = set(f for f in os.listdir(download_dir) if _nome_arquivo_venda_diaria_valido(f))
+    gerar_btn = wait.until(EC.presence_of_element_located((By.ID, "gerar")))
+    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", gerar_btn)
+    esperar_sumir_overlays(10)
+    try:
+        wait.until(EC.element_to_be_clickable((By.ID, "gerar"))).click()
+    except Exception:
+        driver.execute_script("arguments[0].click();", gerar_btn)
+    print("📥 Gerando XLS venda diária... aguardando download...")
+
+    caminho = None
+    for _ in range(60):
+        time.sleep(2)
+        baixando = any(f.endswith(".crdownload") or f.endswith(".tmp") for f in os.listdir(download_dir))
+        if baixando:
+            continue
+        novos = set(f for f in os.listdir(download_dir) if _nome_arquivo_venda_diaria_valido(f)) - arquivos_antes
+        if novos:
+            caminho = max([os.path.join(download_dir, f) for f in novos], key=os.path.getctime)
+            break
+
+    if not caminho:
+        todos = [os.path.join(download_dir, f) for f in os.listdir(download_dir) if _nome_arquivo_venda_diaria_valido(f)]
+        if not todos:
+            raise Exception("Nenhum arquivo XLS/XLSX de venda diária foi baixado")
+        caminho = max(todos, key=os.path.getctime)
+        print(f"⚠️ Usando último arquivo de venda diária encontrado: {caminho}")
+    else:
+        print(f"✅ Download venda diária OK: {caminho}")
+
+    dados = _parse_venda_diaria_xls(caminho)
+    payload = {'coletado_em': now_brasilia().strftime("%Y-%m-%d %H:%M:%S"), 'data': data_hoje, **dados}
+    json_path = os.path.join(pasta, "venda_diaria_mes_atual.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    print(f"✅ Venda diária oficial: total_vendido={dados['empresa']['total_vendido']:.2f} servico={dados['empresa']['valor_servico']:.2f} acrescimo={dados['empresa']['valor_acrescimo_servico']:.2f} total={dados['empresa']['venda_diaria_total']:.2f}")
+    return {"json_path": json_path, "xlsx_path": caminho, "dados": payload}
+
+def aplicar_venda_diaria_em_metas(metas_info, venda_diaria_info):
+    try:
+        if not metas_info.get("json_path") or not os.path.exists(metas_info["json_path"]):
+            return metas_info
+        with open(metas_info["json_path"], "r", encoding="utf-8") as f:
+            dados_metas = json.load(f)
+        dados_metas["venda_diaria"] = venda_diaria_info.get("dados", {})
+        with open(metas_info["json_path"], "w", encoding="utf-8") as f:
+            json.dump(dados_metas, f, ensure_ascii=False, indent=2)
+        print("✅ Venda diária oficial anexada ao metas_vendas_mes_atual.json")
+    except Exception as e:
+        print(f"⚠️ Erro ao anexar venda diária ao metas: {e}")
+    return metas_info
+
+
 # ===== LOGIN ROBUSTO — UMA ÚNICA VEZ
 def fazer_login_sgi():
     driver.get(URL)
@@ -1718,8 +1898,8 @@ def fazer_login_sgi():
 
     time.sleep(5)
 
-print("✅ WORKER V15 ativo: metas+vendas+margem+diária; serviços somente Controle de Metas SGI")
 fazer_login_sgi()
+print('✅ COBRANCA10_WORKER_V16_MARGEM_DIARIA_SERVICOS_SO_META')
 
 metas_vendas_info = {"json_path": None, "xlsx_path": None, "dados": {}}
 try:
@@ -1733,10 +1913,17 @@ try:
 except Exception as e:
     print(f"⚠️ Erro ao coletar Margem Bruta/Rentabilidade do SGI: {e}")
 
-# V15: serviços SOMENTE pelo Controle de Metas SGI.
-# Não coletar /relatorio_servicos e não sobrescrever os blocos servico_filial_ouro_fob.
-relatorio_servicos_info = {"json_path": None, "xlsx_path": None, "dados": {}}
-print("✅ V15_SERVICOS_SOMENTE_CONTROLE_META: relatório individual de serviços desativado; total vem apenas de /metas/consulta")
+# V16: Serviços são SOMENTE do Controle de Metas SGI.
+# Não coletar /relatorio_servicos e não aplicar relatório individual nos blocos de meta.
+relatorio_servicos_info = {"json_path": None, "xlsx_path": None, "dados": {"empresa": {}, "servicos": {}, "filiais": {}, "vendedores": {}, "detalhes": []}}
+print("✅ V16_SERVICOS_SOMENTE_CONTROLE_META: relatório individual de serviços desativado")
+
+venda_diaria_info = {"json_path": None, "xlsx_path": None, "dados": {}}
+try:
+    venda_diaria_info = coletar_venda_diaria_oficial()
+    metas_vendas_info = aplicar_venda_diaria_em_metas(metas_vendas_info, venda_diaria_info)
+except Exception as e:
+    print(f"⚠️ Erro ao coletar venda diária oficial do SGI: {e}")
 
 FTP_HOST  = "moveisdolar.com.br"
 FTP_USER  = "moveisdolar3"
@@ -1766,12 +1953,11 @@ try:
         with open(margens_brutas_info['xlsx_path'], 'rb') as f_mxlsx:
             ftp.storbinary('STOR margens_brutas_mes_atual.xlsx', f_mxlsx)
 
-    # V15: não publica relatorio_servicos_mes_atual.* para não contaminar serviços oficiais.
-    try:
-        from io import BytesIO as _BytesIO
-        ftp.storbinary('STOR relatorio_servicos_mes_atual.json', _BytesIO(b'{"empresa":{},"servicos":{},"filiais":{},"vendedores":{},"detalhes":[],"disabled":"V15_SERVICOS_SOMENTE_CONTROLE_META"}'))
-    except Exception as _e_srv_clear:
-        print(f"⚠️ Não consegui limpar relatorio_servicos_mes_atual.json remoto: {_e_srv_clear}")
+    # V16: limpa arquivo remoto antigo do relatório individual de serviços para não contaminar a tela.
+    ftp.storbinary('STOR relatorio_servicos_mes_atual.json', BytesIO(b'{"empresa":{},"servicos":{},"filiais":{},"vendedores":{},"detalhes":[]}'))
+    if venda_diaria_info.get('json_path') and os.path.exists(venda_diaria_info['json_path']):
+        with open(venda_diaria_info['json_path'], 'rb') as f_djson:
+            ftp.storbinary('STOR venda_diaria_mes_atual.json', f_djson)
 
     ver = json.dumps({'updated_at': now_brasilia().isoformat(), 'updated_at_label': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'), 'timezone': 'America/Sao_Paulo', 'scope': 'sales_only'}, ensure_ascii=False).encode('utf-8')
     ftp.storbinary('STOR sales_version.json', BytesIO(ver))
