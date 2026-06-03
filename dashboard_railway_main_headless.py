@@ -1,4 +1,4 @@
-# VERSAO: COBRANCA10_V22_GERENTE_LOGIN_TIMER_FIX
+# VERSAO: COBRANCA10_V23_USUARIOS_VENDAS_BLOQUEIO_ACESSO
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -2147,7 +2147,6 @@ _nt = sum(1 for c in clientes_cobrar if c['faixa']=='atencao')
 _nr = sum(1 for v in recebido_faixa.values() if v.get('is_ativo'))
 print(f"👥 Clientes a cobrar: {len(clientes_cobrar)} ({_ng}g/{_na}a/{_nt}t)")
 print(f"💰 Vendedores com recebimento no período: {_nr}")
-print("✅ V21_RECEBIMENTO_MES_COMPLETO: pagamentos no dia de corte entram também no relatório visual por faixa")
 
 print(f"\U0001f465 Clientes a cobrar: {len(clientes_cobrar)} títulos ({_ng} grave / {_na} alerta / {_nt} atenção)")
 
@@ -2443,6 +2442,119 @@ diff_pg = total_final_pg - total_bruto_pg
 print(f"  DIFERENÇA      : pend={diff_p:>+12,.2f}  pago={diff_pg:>+12,.2f}  {'✅ OK' if abs(diff_p)<0.02 and abs(diff_pg)<0.02 else '⚠️ VERIFICAR'}")
 print(f"{'='*55}")
 
+
+# =========================================
+# V23 — USUÁRIOS COMERCIAIS AUTOMÁTICOS
+# Gera usuários também a partir das metas de vendas/serviços.
+# Assim, vendedor/gerente novo que já aparece no SGI em metas/vendas
+# ganha login no dashboard mesmo antes de aparecer na carteira de cobrança.
+# A cobrança/rateio continua usando a regra vigente do relatório de cobrança.
+# =========================================
+def _v23_norm_name_key(nome):
+    s = limpar_nome_display(limpar_nome_erp(str(nome or ""))).strip()
+    s = unicodedata.normalize("NFKD", s.upper())
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = re.sub(r"[^A-Z0-9 ]", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+def _v23_filial_from_any_text(*vals):
+    joined = " ".join(str(v or "") for v in vals)
+    filial, is_ger = extrair_filial_nome(joined)
+    if filial:
+        return filial.upper(), bool(is_ger)
+    m = re.search(r"FILIAL\s*0*(\d{1,3})", joined.upper())
+    if m:
+        n = int(m.group(1))
+        return (f"F{n}" if n not in (90, 99) else "FDEP"), False
+    m = re.search(r"\bF\s*0*(\d{1,2})\b", joined.upper())
+    if m:
+        return f"F{int(m.group(1))}", False
+    return "", False
+
+def _v23_nome_from_meta_row(row):
+    vals = []
+    for k, v in (row or {}).items():
+        if str(k).startswith("_"):
+            continue
+        sv = str(v or "").strip()
+        if not sv or sv.lower() in ("nan", "none", "total"):
+            continue
+        if re.search(r"^\s*(R\$)?\s*-?\d+([.,]\d+)?\s*%?\s*$", sv):
+            continue
+        vals.append(sv)
+
+    for sv in vals:
+        if re.search(r"\((GER\s*)?F\d+\)", sv, flags=re.I):
+            return limpar_nome_display(limpar_nome_erp(sv)).strip(), sv
+
+    for sv in vals:
+        if "FILIAL" not in sv.upper() and len(sv) >= 3:
+            return limpar_nome_display(limpar_nome_erp(sv)).strip(), sv
+
+    return "", ""
+
+def _v23_extrair_usuarios_das_metas_vendas(metas_info):
+    out = {}
+    dados = (metas_info or {}).get("dados", {}) if isinstance(metas_info, dict) else {}
+    metas = dados.get("metas", {}) if isinstance(dados, dict) else {}
+
+    for chave in ("venda_filial_vendedor_meta", "servico_filial_vendedor_ouro_fob", "venda_vendedor_subgrupo_20k"):
+        obj = metas.get(chave, {}) if isinstance(metas, dict) else {}
+        linhas = obj.get("linhas", []) if isinstance(obj, dict) else []
+        if not isinstance(linhas, list):
+            continue
+        for row in linhas:
+            if not isinstance(row, dict) or row.get("_is_total"):
+                continue
+            nome, raw_nome = _v23_nome_from_meta_row(row)
+            if not nome or nome.upper() == "TOTAL":
+                continue
+            filial, is_ger = _v23_filial_from_any_text(raw_nome, *[row.get(k) for k in row.keys() if not str(k).startswith("_")])
+            if not filial or filial == "FDEP":
+                continue
+            if re.search(r"\(GER\s*F\d+\)", str(raw_nome), flags=re.I) or re.search(r"\bGERENTE\b", str(raw_nome), flags=re.I):
+                is_ger = True
+            key = f"{_v23_norm_name_key(nome)}_{filial}_{1 if is_ger else 0}"
+            out[key] = {"nome": nome, "filial": filial, "is_gerente": bool(is_ger), "origem": chave}
+    return list(out.values())
+
+_usuarios_vendas_auto = _v23_extrair_usuarios_das_metas_vendas(metas_vendas_info)
+_existentes_v23 = set()
+for _, _r_exist in df_vend.iterrows():
+    _existentes_v23.add(f"{_v23_norm_name_key(_r_exist.get('nome_exibicao', _r_exist.get('vendedor','')))}_{str(_r_exist.get('filial_vendedor','')).upper()}_{1 if bool(_r_exist.get('is_gerente')) else 0}")
+
+_novos_v23 = []
+for _u_auto in _usuarios_vendas_auto:
+    _key_auto = f"{_v23_norm_name_key(_u_auto['nome'])}_{_u_auto['filial']}_{1 if _u_auto.get('is_gerente') else 0}"
+    if _key_auto in _existentes_v23:
+        continue
+    _novos_v23.append({
+        "vendedor": f"{_u_auto['nome']} ({_u_auto['filial']})",
+        "filial_vendedor": _u_auto["filial"],
+        "is_gerente": bool(_u_auto.get("is_gerente")),
+        "pendente": 0.0,
+        "pago": 0.0,
+        "filial": _u_auto["filial"],
+        "_synthetic_sales_user": True,
+        "nome_exibicao": _u_auto["nome"],
+        "total": 0.0,
+        "total_filial": 0.0,
+        "perc_filial": 0.0,
+        "filial_ordem": _u_auto["filial"],
+    })
+
+if _novos_v23:
+    df_vend = pd.concat([df_vend, pd.DataFrame(_novos_v23)], ignore_index=True)
+    try:
+        df_vend["filial_ordem"] = pd.Categorical(df_vend["filial_vendedor"], categories=ORDEM_FILIAIS, ordered=True)
+        df_vend = df_vend.sort_values(["filial_ordem","is_gerente","pendente"], ascending=[True,False,False]).reset_index(drop=True)
+    except Exception:
+        pass
+    print("✅ V23_USUARIOS_VENDAS_AUTO: criados usuários vindos das metas de vendas/serviços:", ", ".join([f"{u['nome_exibicao']} ({u['filial_vendedor']})" for u in _novos_v23]))
+else:
+    print("ℹ️ V23_USUARIOS_VENDAS_AUTO: nenhum usuário novo vindo das metas de vendas/serviços.")
+
+
 # ===== SALVAR CSV
 csv_path = os.path.join(pasta, "dashboard_vendedores.csv")
 df_vend.to_csv(csv_path, index=False)
@@ -2506,29 +2618,16 @@ auth_users  = {}
 
 for _, row in df_vend.iterrows():
     nome_exib = str(row["nome_exibicao"]).strip()
-    filial    = str(row["filial_vendedor"]).strip().upper()
+    filial    = str(row["filial_vendedor"]).strip()
     is_ger    = bool(row["is_gerente"])
-
-    # V22: gerentes usam login fixo por filial.
-    # Ex.: F1 => gerentef1, F2 => gerentef2.
-    # Vendedores continuam usando o login pelo nome, como antes.
-    login_original = normalizar_login(nome_exib)
-    login = f"gerente{filial.lower()}" if (is_ger and filial) else login_original
-
-    chave = f"{login}_{filial}"
-    chave_antiga = f"{login_original}_{filial}"
-    senha_inicial = (
-        creds_salvas.get(chave)
-        or creds_salvas.get(chave_antiga)
-        or (login.upper() + str(random.randint(100,999)))
-    )
+    login     = normalizar_login(nome_exib)
+    chave     = f"{login}_{filial}"
+    senha_inicial = creds_salvas.get(chave) or (login.upper() + str(random.randint(100,999)))
     login_fin = login
     if login in credenciais and credenciais[login]["filial"] != filial:
         login_fin = f"{login}_{filial.lower()}"
 
-    users_ant = cred_state.get("users", {}) if isinstance(cred_state.get("users", {}), dict) else {}
-    # Se o gerente já tinha senha no login antigo pelo nome, reaproveita para não bloquear acesso.
-    estado_ant = users_ant.get(login_fin, {}) or users_ant.get(login, {}) or users_ant.get(login_original, {})
+    estado_ant = cred_state.get("users", {}).get(login_fin, {})
     senha_atual = estado_ant.get("password") or senha_inicial
     precisa_trocar = bool(estado_ant.get("must_change_password", senha_atual == senha_inicial))
 
@@ -2671,6 +2770,12 @@ cred_state["director"] = {
     "email_recuperacao": EMAIL_RECUPERACAO,
 }
 cred_state.setdefault("password_reset_requests", [])
+# V23: bloqueio geral de acesso controlado pelo Master.
+# Mantém o estado remoto entre execuções; Master/Diretor continuam podendo entrar para desbloquear.
+cred_state["access_blocked"] = bool(cred_state.get("access_blocked", False))
+cred_state.setdefault("access_blocked_reason", "Sistema em atualização. Aguarde liberação pelo Master.")
+cred_state.setdefault("access_blocked_at", "")
+cred_state.setdefault("access_unblocked_at", "")
 
 with open(cred_state_path, "w", encoding="utf-8") as f:
     json.dump(cred_state, f, ensure_ascii=False, indent=2)
@@ -2692,7 +2797,6 @@ with open(cred_path, "w", encoding="utf-8") as f:
     f.write("\n" + "=" * 70 + "\n")
 
 print(f"🔐 Credenciais: {cred_path} ({len(credenciais)} vendedores)")
-print("✅ V22_GERENTE_LOGIN: gerentes padronizados como gerentef1/gerentef2/gerentef3...")
 js_auth_state = json.dumps(cred_state, ensure_ascii=False)
 
 
@@ -3360,7 +3464,7 @@ for _i2 in range(len(df_raw)):
 
     if not _venc2 or not _pagto2 or _pago2 <= 0:
         continue
-    if _pagto2 < _data_corte_parse:
+    if _pagto2 <= _data_corte_parse:
         continue
 
     if str(_row2[COL["conta_caixa"]]).strip() == "Caixa Filial 100":
@@ -4835,7 +4939,7 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 .section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap}
 .section-head h2{font-size:20px;font-weight:800;letter-spacing:-.025em;color:var(--text-primary)}
 .section-head .hint{font-size:12px;color:var(--text-secondary);margin-top:4px}
-.grid-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.senhas-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:18px;align-items:stretch}.senha-card .input-card{min-width:0}.senha-card input{width:100%;box-sizing:border-box}.senha-value{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.senha-card{max-width:100%}@media(max-width:680px){.senha-actions{grid-template-columns:1fr!important}.senhas-grid{grid-template-columns:1fr!important}}
+.grid-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
 .card{padding:20px;border-radius:var(--radius-lg);cursor:pointer;position:relative;overflow:hidden;transition:var(--transition-slow);border:1px solid var(--glass-border);background:var(--glass)}
 .card:hover{transform:translateY(-4px) scale(1.01);border-color:rgba(255,255,255,.18);box-shadow:0 20px 60px rgba(0,0,0,.5),0 0 0 1px rgba(249,168,50,.12)}
 .card::before{content:'';position:absolute;inset:0;background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,.04) 50%,transparent 60%);background-size:200% 100%;background-position:200% 0;transition:background-position .6s ease;pointer-events:none}
@@ -5817,6 +5921,8 @@ let HIST_COMISSAO={months:{}};
 const SESSION_KEY='mdl_dashboard_session_v1';
 function getAuthUser(login){const k=String(login||'').trim().toLowerCase(); if(k===LOGIN_DIRETOR.toLowerCase()) return AUTH_STATE?.director||null; return (AUTH_STATE?.users||{})[k]||null}
 async function carregarCredenciaisOnline(){try{const r=await fetchComTimeout(API_CRED+'?_='+Date.now(),{},2500); const j=await r.json(); if(j.ok && j.data){AUTH_STATE=j.data;}}catch(e){console.log('Falha ao carregar credenciais online',e);}}
+function acessoGeralBloqueado(){return !!(AUTH_STATE && AUTH_STATE.access_blocked);}
+function textoBloqueioAcesso(){return String(AUTH_STATE?.access_blocked_reason || 'Sistema em atualização. Aguarde liberação pelo Master.');}
 
 async function carregarHistoricoOnline(){try{const r=await fetchComTimeout(API_HIST+'?_='+Date.now(),{},2500); const j=await r.json(); if(j.ok && j.data){HIST_DASH=j.data;}}catch(e){console.log('Falha ao carregar histórico online',e);}}
 async function carregarHistoricoComissaoOnline(){try{const r=await fetchComTimeout(API_COMIS+'?_='+Date.now(),{},3000); const j=await r.json(); if(j.ok && j.data){HIST_COMISSAO=j.data;}}catch(e){console.log('Falha ao carregar histórico de comissionamento',e);}}
@@ -6058,42 +6164,6 @@ function laranjitoSrc(status){
 }
 
 
-
-function _nextDateAt(hour, minute=0){
-  const n=new Date();
-  const d=new Date(n);
-  d.setHours(hour, minute, 0, 0);
-  if(d <= n) d.setDate(d.getDate()+1);
-  return d;
-}
-function nextUpdateInfo(){
-  const now=new Date();
-  const salesInterval=20;
-  const nSales=new Date(now);
-  const nextMin=(Math.floor(now.getMinutes()/salesInterval)+1)*salesInterval;
-  if(nextMin>=60){nSales.setHours(now.getHours()+1,0,0,0);} else {nSales.setMinutes(nextMin,0,0);}
-  const horasCob=[7,9,11,13,15,17,19,21];
-  let nCob=null;
-  for(const h of horasCob){
-    const c=new Date(now); c.setHours(h,0,0,0);
-    if(c>now){nCob=c; break;}
-  }
-  if(!nCob){nCob=new Date(now); nCob.setDate(nCob.getDate()+1); nCob.setHours(horasCob[0],0,0,0);}
-  const target=(nSales<=nCob)?nSales:nCob;
-  const tipo=(nSales<=nCob)?'vendas':'cobrança';
-  const sec=Math.max(0,Math.floor((target-now)/1000));
-  const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), ss=sec%60;
-  const tempo=h>0?`${h}h ${String(m).padStart(2,'0')}m ${String(ss).padStart(2,'0')}s`:`${String(m).padStart(2,'0')}m ${String(ss).padStart(2,'0')}s`;
-  return {tipo,tempo,label:`${tipo} em ${tempo}`};
-}
-function nextUpdateClockHtml(){
-  return `<div style="font-size:12px;color:#fbbf24;font-weight:900;white-space:nowrap">⏳ Próxima atualização: <span data-next-update-clock>${esc(nextUpdateInfo().label)}</span></div>`;
-}
-function updateNextUpdateClocks(){
-  const info=nextUpdateInfo();
-  document.querySelectorAll('[data-next-update-clock]').forEach(el=>{el.textContent=info.label;});
-}
-
 function renderKPIs(){
   const grave=flattenFiliais().reduce((a,b)=>a+Number(b.grave_pend||0),0);
   const alerta=flattenFiliais().reduce((a,b)=>a+Number(b.alerta_pend||0),0);
@@ -6183,7 +6253,7 @@ function renderKPIs(){
     makeKpi('📊 Rentabilidade total', rentPct?`${rentPct.toFixed(2).replace('.',',')}%`:'Sem dado','var(--green-400)','Última linha do relatório de margem bruta por filial', 'card-financeiro'),
     makeKpi('🧮 Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)', isViewer ? 'Índice mercantil + serviços / custo oculto' : `(Mercantil + serviços) / custo total ${R(markupCost||0)}`, 'card-financeiro', statusLaranjitoMarkup(markupTotal))
   ];
-  document.getElementById('kpis').innerHTML=cards.join('') + `<div class="glass" style="grid-column:1/-1;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;min-height:46px"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div>${nextUpdateClockHtml()}</div>`; updateNextUpdateClocks();
+  document.getElementById('kpis').innerHTML=cards.join('') + `<div class="glass" style="grid-column:1/-1;padding:10px 14px;display:flex;align-items:center;justify-content:flex-start;min-height:46px"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div></div>`;
 }
 
 async function fetchJsonNoCache(url){
@@ -6227,7 +6297,7 @@ function latestUpdatedLabel(){
 }
 
 function renderUpdateStrip(){
-  return `<div class="glass" style="margin:10px 0 14px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;min-height:42px;border-color:rgba(148,163,184,.20)"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div>${nextUpdateClockHtml()}</div>`;
+  return `<div class="glass" style="margin:10px 0 14px;padding:10px 14px;display:flex;align-items:center;justify-content:flex-start;min-height:42px;border-color:rgba(148,163,184,.20)"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div></div>`;
 }
 
 
@@ -7782,58 +7852,7 @@ function targetOptionsMsg(){
 
   return o;
 }
-function senhaAtualUsuario(u, isDirector=false){
-  if(isDirector){return String(u?.password || AUTH_STATE?.director?.password || '');}
-  return String(u?.password || u?.senha || '');
-}
-function senhaInputId(login){return 'senha_atual_'+String(login||'').replace(/[^a-zA-Z0-9_-]/g,'_')}
-function toggleSenhaAtual(login){
-  const el=document.getElementById(senhaInputId(login));
-  if(!el) return;
-  el.type = el.type === 'password' ? 'text' : 'password';
-}
-async function copiarSenhaAtual(login){
-  const el=document.getElementById(senhaInputId(login));
-  const val=el ? el.value : '';
-  if(!val){toast('Senha não localizada para copiar.'); return;}
-  try{await navigator.clipboard.writeText(val); toast('Senha copiada.','success');}
-  catch(e){
-    try{el.select(); document.execCommand('copy'); toast('Senha copiada.','success');}
-    catch(err){toast('Não consegui copiar automaticamente.');}
-  }
-}
-function renderSenhaCard(u, isDirector=false){
-  const key=isDirector?'diretorcomercial':String(u?.login||'');
-  const nome=isDirector?'Diretor Comercial':String(u?.nome||key||'Usuário');
-  const filial=!isDirector?String(u?.filial||''):'';
-  const senhaAtual=senhaAtualUsuario(u,isDirector);
-  const pend=(AUTH_STATE?.password_reset_requests||[]).filter(r=>String(r.login||'').toLowerCase()===String(key).toLowerCase() && String(r.status||'pendente')==='pendente').length;
-  const statusTxt=u?.must_change_password?'Precisa trocar senha':'Senha ativa';
-  const statusColor=u?.must_change_password?'#f59e0b':'#22c55e';
-  const safeKey=String(key).replace(/'/g,"\\'");
-  return `<div class="glass card senha-card" style="cursor:default;overflow:hidden;min-height:260px;display:flex;flex-direction:column;gap:12px">
-    <div>
-      <div class="title" style="min-height:auto;line-height:1.25">${esc(nome)} ${filial?`(${esc(filial)})`:''}</div>
-      <div class="legend-inline" style="margin-top:8px;gap:10px;flex-wrap:wrap"><span><i class="dot" style="background:${statusColor}"></i>${statusTxt}</span>${pend?`<span><i class="dot" style="background:#ef4444"></i>${pend} solicitação(ões)</span>`:''}</div>
-    </div>
-    <div class="senha-info" style="display:grid;grid-template-columns:1fr;gap:10px;background:rgba(2,6,23,.45);border:1px solid rgba(148,163,184,.16);border-radius:16px;padding:12px">
-      <div><div class="small muted" style="font-weight:900;text-transform:uppercase;letter-spacing:.08em">Login</div><div style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:900;word-break:break-all">${esc(key)}</div></div>
-      <div><div class="small muted" style="font-weight:900;text-transform:uppercase;letter-spacing:.08em">Senha ativa atual</div>
-        <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;margin-top:6px">
-          <input id="${senhaInputId(key)}" class="senha-value" type="password" value="${esc(senhaAtual)}" readonly style="width:100%;min-width:0;background:#05070c;border:1px solid rgba(148,163,184,.18);border-radius:10px;padding:10px;color:#e5e7eb;font-weight:900">
-          <button class="btn soft" type="button" style="padding:10px 12px;white-space:nowrap" onclick="toggleSenhaAtual('${safeKey}')">👁️</button>
-          <button class="btn soft" type="button" style="padding:10px 12px;white-space:nowrap" onclick="copiarSenhaAtual('${safeKey}')">📋</button>
-        </div>
-      </div>
-    </div>
-    <div class="senha-actions" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:stretch;margin-top:auto">
-      <div class="input-card" style="min-width:0"><label>Nova senha</label><input id="pwd_${esc(key)}" placeholder="Digite a nova senha" style="width:100%;min-width:0"></div>
-      <div class="input-card" style="min-width:0"><label>Ações</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="adminSalvarSenha('${safeKey}')">💾 Salvar senha</button><button class="btn soft" type="button" onclick="adminMarcarTroca('${safeKey}')">🔁 Exigir troca</button></div></div>
-    </div>
-    ${pend?`<div class="note" style="margin-top:2px">Solicitação pendente de recuperação. <button class="btn soft" style="margin-left:8px" onclick="adminResolverReset('${safeKey}')">Resolver solicitação</button></div>`:''}
-    <div id="pwd_msg_${esc(key)}" class="note" style="margin-top:2px"></div>
-  </div>`
-}
+function renderSenhaCard(u, isDirector=false){const key=isDirector?'diretorcomercial':u.login; const pend=(AUTH_STATE?.password_reset_requests||[]).filter(r=>String(r.login||'').toLowerCase()===String(key).toLowerCase() && String(r.status||'pendente')==='pendente').length; return `<div class="glass card" style="cursor:default"><div class="title" style="min-height:auto">${esc(isDirector?'Diretor Comercial':u.nome)} ${!isDirector?`(${u.filial||''})`:''}</div><div class="legend-inline"><span><i class="dot" style="background:${u.must_change_password?'#f59e0b':'#22c55e'}"></i>${u.must_change_password?'Precisa trocar senha':'Senha ativa'}</span>${pend?`<span><i class="dot" style="background:#ef4444"></i>${pend} solicitação(ões)</span>`:''}</div><div class="form-grid bonus" style="grid-template-columns:1.1fr .9fr;margin-top:12px"><div class="input-card"><label>Nova senha para ${esc(key)}</label><input id="pwd_${key}" placeholder="Digite a nova senha"></div><div class="input-card"><label>Ações</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="adminSalvarSenha('${key}')">💾 Salvar senha</button><button class="btn soft" type="button" onclick="adminMarcarTroca('${key}')">🔁 Exigir troca</button></div></div></div>${pend?`<div class="note" style="margin-top:10px">Solicitação pendente de recuperação. <button class="btn soft" style="margin-left:8px" onclick="adminResolverReset('${key}')">Resolver solicitação</button></div>`:''}<div id="pwd_msg_${key}" class="note" style="margin-top:8px"></div></div>`}
 
 function _histDates(){return Object.keys(HIST_DASH?.dates||{}).sort().reverse()}
 function _histMonths(){return Object.keys(HIST_DASH?.months_closed||{}).sort().reverse()}
@@ -8292,6 +8311,18 @@ function renderSenhasTab(){
   const resets=reqs.filter(r=>String(r.status||'pendente')==='pendente');
   const resolved=reqs.filter(r=>String(r.status||'pendente')==='resolvido');
   senhasSection.innerHTML=`<div class="section-head"><div><h2>🔐 Gerenciar senhas</h2><div class="hint">Master e Diretor Comercial podem redefinir senhas online, exigir troca no primeiro acesso e visualizar solicitações.</div></div></div>
+  <div class="glass panel" style="margin-bottom:14px;border-color:${acessoGeralBloqueado()?'rgba(239,68,68,.65)':'rgba(34,197,94,.35)'}">
+    <div class="section-head" style="margin:0;gap:14px;align-items:center">
+      <div>
+        <h2 style="font-size:18px;margin:0">${acessoGeralBloqueado()?'🔒 Acessos bloqueados':'✅ Acessos liberados'}</h2>
+        <div class="hint">${acessoGeralBloqueado()?esc(textoBloqueioAcesso()):'Todos os usuários podem acessar normalmente.'}</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn ${acessoGeralBloqueado()?'soft':'primary'}" onclick="adminSetAccessBlock(true)">🔒 Bloquear acessos</button>
+        <button class="btn ${acessoGeralBloqueado()?'primary':'soft'}" onclick="adminSetAccessBlock(false)">🔓 Liberar acessos</button>
+      </div>
+    </div>
+  </div>
   <div class="glass panel" style="margin-bottom:14px">
     <div class="section-head" style="margin:0 0 8px">
       <div><h2 style="font-size:18px">📩 Solicitações de recuperação</h2><div class="hint">Pedidos enviados pelo botão de recuperar senha.</div></div>
@@ -8315,8 +8346,28 @@ function renderSenhasTab(){
   <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">👑 Contas administrativas</h2></div></div>${renderSenhaCard(AUTH_STATE?.director||{login:'diretorcomercial',nome:'Diretor Comercial',must_change_password:true}, true)}</div>
   <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">➕ Criar usuário de acesso</h2><div class="hint">Aqui você cria apenas o login/senha de acesso. Depois vá em Metas > Crediaristas configuráveis para vincular esse usuário à filial/base e ao percentual.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Login</label><input id="newUserLogin" placeholder="ex: crediaristaf07"></div><div class="input-card"><label>Nome</label><input id="newUserNome" placeholder="ex: CREDIARISTAF07"></div><div class="input-card"><label>Filial</label><input id="newUserFilial" placeholder="ex: F7"></div><div class="input-card"><label>Senha inicial</label><input id="newUserSenha" placeholder="mín. 4 caracteres"></div></div><div class="form-grid bonus" style="margin-top:10px"><div class="input-card"><label>Tipo</label><select id="newUserTipo"><option value="crediarista">Crediarista</option><option value="cobranca">Cobrança</option></select></div></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="adminCriarUsuarioCobranca()">💾 Criar usuário</button></div><div id="newUserMsg" class="note" style="margin-top:10px"></div></div>
   <div class="section-head"><div><h2>👥 Usuários do dashboard</h2><div class="hint">As senhas permanecem congeladas e só mudam se você alterar aqui ou se surgir um usuário novo.</div></div></div>
-  <div class="senhas-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:18px;align-items:stretch">${users.map(u=>renderSenhaCard(u,false)).join('')}</div>`;
+  <div class="grid-cards">${users.map(u=>renderSenhaCard(u,false)).join('')}</div>`;
 }
+async function adminSetAccessBlock(flag){
+  try{
+    const fd=new FormData();
+    fd.append('action','admin_set_access_block');
+    fd.append('blocked', flag ? '1' : '0');
+    fd.append('reason', flag ? 'Sistema em atualização. Aguarde liberação pelo Master.' : '');
+    const r=await fetch(API_CRED,{method:'POST',body:fd});
+    const j=await r.json();
+    if(j.ok){
+      await carregarCredenciaisOnline();
+      toast(flag?'Acessos bloqueados.':'Acessos liberados.','success');
+      renderSenhasTab();
+    }else{
+      toast('Não consegui alterar o bloqueio de acessos.');
+    }
+  }catch(e){
+    toast('Não consegui alterar o bloqueio de acessos.');
+  }
+}
+
 async function adminSalvarSenha(login){const box=document.getElementById(`pwd_msg_${login}`); const senha=(document.getElementById(`pwd_${login}`)?.value||'').trim(); if(!senha || senha.length<4){if(box) box.textContent='Digite uma senha com pelo menos 4 caracteres.'; return;} try{const fd=new FormData(); fd.append('action','admin_set_password'); fd.append('login',login); fd.append('new_password',senha); fd.append('must_change_password','0'); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(box) box.textContent=j.ok?'✅ Senha atualizada online.':'⚠️ Não consegui atualizar a senha.'; if(j.ok){await carregarCredenciaisOnline(); renderSenhasTab();}}catch(e){if(box) box.textContent='⚠️ Não consegui atualizar a senha.';}}
 async function adminMarcarTroca(login){const box=document.getElementById(`pwd_msg_${login}`); try{const fd=new FormData(); fd.append('action','admin_force_change'); fd.append('login',login); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(box) box.textContent=j.ok?'✅ Usuário marcado para trocar a senha no próximo acesso.':'⚠️ Não consegui marcar troca de senha.'; if(j.ok){await carregarCredenciaisOnline(); renderSenhasTab();}}catch(e){if(box) box.textContent='⚠️ Não consegui marcar troca de senha.';}}
 async function adminResolverReset(login){try{const fd=new FormData(); fd.append('action','resolve_reset'); fd.append('login',login); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){toast('Solicitação resolvida. Usuário terá que criar nova senha no próximo acesso.','success'); await carregarCredenciaisOnline(); renderSenhasTab();}else{toast('Não consegui resolver a solicitação.')}}catch(e){toast('Não consegui resolver a solicitação.')}}
@@ -8423,6 +8474,13 @@ async function fazerLogin(){
   // Demais usuários tentam atualizar credenciais, mas com timeout curto.
   try{await carregarCredenciaisOnline();}catch(e){console.log('Login seguindo com credenciais embutidas',e);}
 
+  // V23: bloqueio geral para manutenção/atualização.
+  // Master e Diretor Comercial continuam com acesso para poder desbloquear.
+  if(acessoGeralBloqueado() && u!==LOGIN_DIRETOR.toLowerCase()){
+    msg.innerHTML='🔒 Acesso temporariamente bloqueado pelo Master.<br><small>'+esc(textoBloqueioAcesso())+'</small>';
+    return;
+  }
+
   if(u===LOGIN_DIRETOR.toLowerCase()){
     const authDir=getAuthUser(u);
     const senhaDir=authDir?.password || SENHA_DIRETOR;
@@ -8474,7 +8532,6 @@ window.addEventListener('load',async ()=>{
     if(stampSales) window.__salesUpdatedAtLabel = stampSales;
   }catch(_e){}
   if(restoreSession()){abrirApp();}
-  setInterval(updateNextUpdateClocks,1000);
   setInterval(pollSalesLive,60000);
   setInterval(pollDashboardLiveReload,60000);
   setTimeout(pollSalesLive,3000);
@@ -8728,6 +8785,16 @@ function mark_reset_resolved(&$data, $login){ foreach(($data['password_reset_req
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') { echo json_encode(['ok'=>true,'data'=>$data], JSON_UNESCAPED_UNICODE); exit; }
 $action = $_POST['action'] ?? '';
+if ($action === 'admin_set_access_block') {
+  $blocked = (($_POST['blocked'] ?? '0') === '1');
+  $reason = trim((string)($_POST['reason'] ?? ''));
+  $data['access_blocked'] = $blocked;
+  $data['access_blocked_reason'] = $blocked ? ($reason ?: 'Sistema em atualização. Aguarde liberação pelo Master.') : '';
+  if ($blocked) { $data['access_blocked_at'] = date('c'); }
+  else { $data['access_unblocked_at'] = date('c'); }
+  save_all($file, $data);
+  echo json_encode(['ok'=>true,'data'=>$data], JSON_UNESCAPED_UNICODE); exit;
+}
 if ($action === 'change_password') {
   $login = strtolower(trim($_POST['login'] ?? '')); $current = strval($_POST['current_password'] ?? ''); $new = strval($_POST['new_password'] ?? '');
   if (!$login || !$current || !$new) { echo json_encode(['ok'=>false,'error'=>'parametros_obrigatorios']); exit; }
