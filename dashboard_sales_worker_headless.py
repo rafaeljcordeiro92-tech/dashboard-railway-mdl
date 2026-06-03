@@ -1,4 +1,4 @@
-# VERSAO: COBRANCA10_WORKER_V13_META_SGI_SEM_SOBRESCREVER_SERVICOS
+# VERSAO: COBRANCA10_WORKER_V14_SERVICOS_SO_META_SGI_VENDA_DIARIA_OFICIAL
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -533,24 +533,30 @@ def df_meta_para_registros(df, spec, origem):
 
 def _extrair_totais_do_xlsx(xlsx_path):
     """
-    V13: extrai totais das abas de metas procurando a linha REAL 'Total'.
-    Não usa mais linha fixa (10/11), porque quando muda a quantidade de filiais
-    o robô acabava lendo uma filial como se fosse o total.
-    Fonte oficial de serviços: aba servico_filial_ouro_fob do Controle de Metas SGI.
+    Extrai os totais das abas de metas a partir das células finais do XLSX.
+    Regra pedida pelo usuário:
+      - venda_filial_meta           -> linha 11
+      - servico_filial_ouro_fob     -> linha 10
+      - venda_filial_subgrupo_20k   -> linha 10
+
+    Mapeamento usado:
+      B = Meta Total
+      D = Atingido Total (%)
+      E = Meta Período
+      F = Realizado (valor exibido no card)
+      H = Projetado
+
+    Se a célula fixa não existir, faz fallback para localizar a última linha "Total"
+    ou somar as linhas de filial.
     """
     from openpyxl import load_workbook
 
     def _br_float(v):
         try:
-            if v is None:
-                return 0.0
-            if isinstance(v, (int, float)):
-                return float(v)
             s = str(v).strip()
-            if s in ("", "None", "nan", "NaN", "-"):
+            if s in ("", "None", "nan"):
                 return 0.0
             s = s.replace("R$", "").replace("%", "").strip()
-            # formato brasileiro: 1.234,56
             if "," in s:
                 s = s.replace(".", "").replace(",", ".")
             return float(s)
@@ -558,87 +564,52 @@ def _extrair_totais_do_xlsx(xlsx_path):
             return 0.0
 
     def _sheet_by_prefix(wb, nome_base):
-        alvo = str(nome_base).lower()[:20]
         for s in wb.sheetnames:
-            sl = str(s).lower()
-            if sl == str(nome_base).lower() or sl.startswith(alvo):
+            if s == nome_base or s.startswith(nome_base[:20]):
                 return wb[s]
         return None
 
-    def _row_text(ws, r, max_col=10):
-        return " ".join(str(ws.cell(r, c).value or "").strip() for c in range(1, min(ws.max_column, max_col) + 1)).upper()
-
-    def _find_total_row(ws):
-        # Prioridade: linha que começa com Total na primeira coluna.
-        for r in range(ws.max_row, 1, -1):
+    def _fallback_from_sheet(ws):
+        # 1) tenta achar a última linha "Total"
+        max_row = ws.max_row
+        for r in range(max_row, 1, -1):
             a = str(ws.cell(r, 1).value or "").strip().upper()
-            if a == "TOTAL" or re.fullmatch(r"TOTAL\s*GERAL", a or ""):
-                return r
-        # Fallback: qualquer linha com Total, de baixo para cima.
-        for r in range(ws.max_row, 1, -1):
-            if re.search(r"\bTOTAL\b", _row_text(ws, r)):
-                return r
-        return None
+            if a == "TOTAL":
+                return {
+                    "meta_total":  round(_br_float(ws.cell(r, 2).value), 2),
+                    "real_total":  round(_br_float(ws.cell(r, 6).value), 2),
+                    "ating_total": round(_br_float(ws.cell(r, 4).value), 2),
+                    "meta_per":    round(_br_float(ws.cell(r, 5).value), 2),
+                    "real_per":    round(_br_float(ws.cell(r, 6).value), 2),
+                    "proj":        round(_br_float(ws.cell(r, 8).value), 2),
+                }
 
-    def _extract_from_row(ws, r):
-        if not r:
-            return None
-        # Layout padrão: A entidade | B meta total | C realizado total | D atingido total | E meta período | F realizado período | G atingido período | H projetado
-        meta_total = _br_float(ws.cell(r, 2).value)
-        real_total = _br_float(ws.cell(r, 3).value)
-        ating_total = _br_float(ws.cell(r, 4).value)
-        meta_per = _br_float(ws.cell(r, 5).value)
-        real_per = _br_float(ws.cell(r, 6).value)
-        proj = _br_float(ws.cell(r, 8).value)
-
-        # Compatibilidade com versões antigas que haviam lido F como realizado total.
-        if real_total == 0 and real_per > 0:
-            real_total = real_per
-        if real_per == 0 and real_total > 0:
-            real_per = real_total
-        if ating_total == 0 and meta_total > 0 and real_total > 0:
-            ating_total = round(real_total / meta_total * 100.0, 2)
-        return {
-            "meta_total": round(meta_total, 2),
-            "real_total": round(real_total, 2),
-            "ating_total": round(ating_total, 2),
-            "meta_per": round(meta_per, 2),
-            "real_per": round(real_per, 2),
-            "proj": round(proj, 2),
-            "row_total": int(r),
-        }
-
-    def _fallback_sum_filiais(ws):
-        meta_total = real_total = meta_per = real_per = proj = 0.0
-        for r in range(2, ws.max_row + 1):
+        # 2) fallback final: soma linhas FILIAL
+        meta_total = real_total = meta_per = proj = 0.0
+        for r in range(2, max_row + 1):
             a = str(ws.cell(r, 1).value or "").strip().upper()
             if a.startswith("FILIAL"):
                 meta_total += _br_float(ws.cell(r, 2).value)
-                real_total += _br_float(ws.cell(r, 3).value)
-                meta_per += _br_float(ws.cell(r, 5).value)
-                real_per += _br_float(ws.cell(r, 6).value)
-                proj += _br_float(ws.cell(r, 8).value)
-        if real_total == 0 and real_per > 0:
-            real_total = real_per
-        if real_per == 0 and real_total > 0:
-            real_per = real_total
+                real_total += _br_float(ws.cell(r, 6).value)
+                meta_per   += _br_float(ws.cell(r, 5).value)
+                proj       += _br_float(ws.cell(r, 8).value)
         ating = round((real_total / meta_total * 100.0), 2) if meta_total > 0 else 0.0
         return {
             "meta_total": round(meta_total, 2),
             "real_total": round(real_total, 2),
             "ating_total": ating,
             "meta_per": round(meta_per, 2),
-            "real_per": round(real_per, 2),
+            "real_per": round(real_total, 2),
             "proj": round(proj, 2),
-            "row_total": 0,
         }
 
     _MAP = {
-        "venda_filial_meta": {"sheet": "venda_filial_meta"},
-        "servico_filial_ouro_fob": {"sheet": "servico_filial_ouro_fob"},
-        "venda_filial_subgrupo_20k": {"sheet": "venda_filial_subgrupo_20k"},
+        "venda_filial_meta":       {"sheet": "venda_filial_meta", "row": 11},
+        "servico_filial_ouro_fob": {"sheet": "servico_filial_ouro_fob", "row": 10},
+        "venda_filial_subgrupo_20k": {"sheet": "venda_filial_subgrupo_20k", "row": 10},
     }
     out = {}
+
     try:
         wb = load_workbook(xlsx_path, data_only=True)
     except Exception as e:
@@ -649,15 +620,35 @@ def _extrair_totais_do_xlsx(xlsx_path):
         ws = _sheet_by_prefix(wb, cfg["sheet"])
         if ws is None:
             print(f"⚠️ Sheet não encontrada no xlsx: {cfg['sheet']}")
-            out[chave] = {"meta_total": 0.0, "real_total": 0.0, "ating_total": 0.0, "meta_per": 0.0, "real_per": 0.0, "proj": 0.0, "row_total": 0}
+            out[chave] = {"meta_total": 0.0, "real_total": 0.0, "ating_total": 0.0, "meta_per": 0.0, "real_per": 0.0, "proj": 0.0}
             continue
-        r_total = _find_total_row(ws)
-        item = _extract_from_row(ws, r_total) if r_total else None
-        if item is None or (item["meta_total"] == 0 and item["real_total"] == 0 and item["meta_per"] == 0):
-            item = _fallback_sum_filiais(ws)
+
+        r = int(cfg["row"])
+        a = str(ws.cell(r, 1).value or "").strip().upper()
+        # Usa a linha fixa se houver conteúdo e parecer ser a linha final/total
+        if a in ("TOTAL",) or ws.cell(r, 2).value not in (None, ""):
+            meta_total = round(_br_float(ws.cell(r, 2).value), 2)
+            real_total = round(_br_float(ws.cell(r, 6).value), 2)
+            ating_total = round(_br_float(ws.cell(r, 4).value), 2)
+            meta_per = round(_br_float(ws.cell(r, 5).value), 2)
+            real_per = round(_br_float(ws.cell(r, 6).value), 2)
+            proj = round(_br_float(ws.cell(r, 8).value), 2)
+            item = {
+                "meta_total": meta_total,
+                "real_total": real_total,
+                "ating_total": ating_total,
+                "meta_per": meta_per,
+                "real_per": real_per,
+                "proj": proj,
+            }
+        else:
+            item = _fallback_from_sheet(ws)
+
         out[chave] = item
-        print(f"✅ Total xlsx [{chave}] linha={item.get('row_total')}: meta={item['meta_total']:.2f}  real={item['real_total']:.2f}  ating={item['ating_total']:.2f}%  proj={item['proj']:.2f}")
+        print(f"✅ Total xlsx [{chave}]: meta={item['meta_total']:.2f}  real={item['real_total']:.2f}  ating={item['ating_total']:.2f}%  proj={item['proj']:.2f}")
+
     return out
+
 
 
 def coletar_metas_vendas_mes_atual():
@@ -1643,149 +1634,181 @@ def aplicar_relatorio_servicos_em_metas(metas_info, servicos_info):
         print(f'⚠️ Erro ao aplicar relatório de serviços sobre metas: {e}')
     return metas_info
 
-def nome_arquivo_analise_total_venda_valido(fname):
-    s = str(fname or "").lower().strip()
-    if s.startswith("~$"):
+
+
+def _nome_arquivo_venda_diaria_valido(fname):
+    s = str(fname or '').lower()
+    if s.startswith('~$'):
         return False
-    if not (s.endswith(".xls") or s.endswith(".xlsx")):
+    if not (s.endswith('.xls') or s.endswith('.xlsx')):
         return False
-    return "analise_total_venda" in s or "analises_totais_vendas" in s or "relatorio_analise_total_venda" in s
+    return ('analise_total_venda' in s) or ('analises_totais_vendas' in s) or ('total_venda' in s)
 
 
-def _parse_analise_total_venda_xls(caminho):
-    """Lê o XLS de /relatorio_analises_totais_vendas.
-    Total oficial do dia = Total Vendido + Valor Serviço + Valor Acréscimo Serviço.
-    Exemplo informado: 16.066,79 + 964,03 + 238,01 = 17.268,83.
-    """
-    def _br(v):
-        try:
-            if v is None:
-                return 0.0
-            if isinstance(v, (int, float)):
-                return float(v)
-            s = str(v).strip()
-            if s in ("", "nan", "None", "-"):
-                return 0.0
-            if "," in s:
-                s = s.replace(".", "").replace(",", ".")
-            return float(s)
-        except Exception:
-            return 0.0
+def _parse_venda_diaria_xls(caminho):
+    try:
+        df = pd.read_excel(caminho, header=None, engine='openpyxl').fillna('')
+    except Exception:
+        df = pd.read_excel(caminho, header=None).fillna('')
 
-    dfv = pd.read_excel(caminho, header=None, engine="openpyxl").fillna("")
-    total_row = None
-    for i in range(len(dfv)):
-        c0 = str(dfv.iloc[i, 0]).strip().upper()
-        if c0 == "TOTAL" or c0.startswith("TOTAL "):
-            total_row = dfv.iloc[i]
+    # Primeira linha costuma ser cabeçalho:
+    # Filial | Total Vendido (R$) | ... | Valor Serviço (R$) | Valor Acréscimo Serviço (R$)
+    header_idx = None
+    for i in range(min(len(df), 15)):
+        vals = [normalizar_texto_match(x) for x in df.iloc[i].tolist()]
+        if any('TOTAL VENDIDO' in v for v in vals) and any('VALOR SERVICO' in v for v in vals):
+            header_idx = i
             break
-    if total_row is None and len(dfv) > 1:
-        total_row = dfv.iloc[-1]
+    if header_idx is None:
+        header_idx = 0
 
-    total_vendido = _br(total_row.iloc[1] if len(total_row) > 1 else 0)
-    valor_servico = _br(total_row.iloc[6] if len(total_row) > 6 else 0)
-    acresc_servico = _br(total_row.iloc[7] if len(total_row) > 7 else 0)
-    total_dia = round(total_vendido + valor_servico + acresc_servico, 2)
+    headers = [normalizar_texto_match(x) or f'COL_{j}' for j, x in enumerate(df.iloc[header_idx].tolist())]
+    data = df.iloc[header_idx+1:].copy()
+    data.columns = headers
+
+    def _col_contains(txt):
+        alvo = normalizar_texto_match(txt)
+        for c in data.columns:
+            if alvo in normalizar_texto_match(c):
+                return c
+        return None
+
+    col_filial = _col_contains('FILIAL') or data.columns[0]
+    col_total = _col_contains('TOTAL VENDIDO')
+    col_serv = _col_contains('VALOR SERVICO')
+    col_acresc = _col_contains('VALOR ACRESCIMO SERVICO')
 
     filiais = {}
-    for i in range(1, len(dfv)):
-        row = dfv.iloc[i]
-        label = str(row.iloc[0]).strip()
-        if not label or label.upper().startswith("TOTAL"):
-            continue
-        fk = _filial_key_from_text(label)
-        if not fk:
-            continue
-        venda = _br(row.iloc[1] if len(row) > 1 else 0)
-        serv = _br(row.iloc[6] if len(row) > 6 else 0)
-        acr = _br(row.iloc[7] if len(row) > 7 else 0)
-        filiais[fk] = {
-            "filial": fk,
-            "label": label,
-            "total_vendido": round(venda, 2),
-            "valor_servico": round(serv, 2),
-            "valor_acrescimo_servico": round(acr, 2),
-            "total_dia": round(venda + serv + acr, 2),
-        }
-
-    return {
-        "ok": True,
-        "arquivo": os.path.basename(caminho),
-        "total_vendido": round(total_vendido, 2),
-        "valor_servico": round(valor_servico, 2),
-        "valor_acrescimo_servico": round(acresc_servico, 2),
-        "total_dia": total_dia,
-        "filiais": filiais,
-        "fonte": "relatorio_analises_totais_vendas",
+    empresa = {
+        'total_vendido': 0.0,
+        'valor_servico': 0.0,
+        'valor_acrescimo_servico': 0.0,
+        'total_geral': 0.0,
+        'fonte': 'relatorio_analises_totais_vendas',
     }
 
+    for _, row in data.iterrows():
+        filial_txt = str(row.get(col_filial, '')).strip()
+        if not filial_txt:
+            continue
+        total_vendido = _br_money(row.get(col_total, 0)) if col_total else 0.0
+        valor_serv = _br_money(row.get(col_serv, 0)) if col_serv else 0.0
+        valor_acresc = _br_money(row.get(col_acresc, 0)) if col_acresc else 0.0
+        total_geral = round(total_vendido + valor_serv + valor_acresc, 2)
 
-def coletar_venda_diaria_analise_totais():
-    data_hoje_br = now_brasilia().strftime("%d/%m/%Y")
-    print(f"\n📅 Iniciando coleta da VENDA DIÁRIA oficial em /relatorio_analises_totais_vendas: {data_hoje_br}")
+        if normalizar_texto_match(filial_txt) == 'TOTAL':
+            empresa.update({
+                'total_vendido': round(total_vendido, 2),
+                'valor_servico': round(valor_serv, 2),
+                'valor_acrescimo_servico': round(valor_acresc, 2),
+                'total_geral': total_geral,
+            })
+            continue
+
+        fk = _filial_key_from_text(filial_txt)
+        if fk:
+            filiais[fk] = {
+                'filial': fk,
+                'label': filial_txt,
+                'total_vendido': round(total_vendido, 2),
+                'valor_servico': round(valor_serv, 2),
+                'valor_acrescimo_servico': round(valor_acresc, 2),
+                'total_geral': total_geral,
+            }
+
+    if empresa['total_geral'] <= 0 and filiais:
+        empresa['total_vendido'] = round(sum(x['total_vendido'] for x in filiais.values()), 2)
+        empresa['valor_servico'] = round(sum(x['valor_servico'] for x in filiais.values()), 2)
+        empresa['valor_acrescimo_servico'] = round(sum(x['valor_acrescimo_servico'] for x in filiais.values()), 2)
+        empresa['total_geral'] = round(sum(x['total_geral'] for x in filiais.values()), 2)
+
+    return {'empresa': empresa, 'filiais': filiais}
+
+
+def coletar_venda_diaria_oficial():
+    hoje_br = now_brasilia().strftime('%d/%m/%Y')
+    print(f"\n🕒 Iniciando coleta de VENDA DIÁRIA oficial em relatorio_analises_totais_vendas: {hoje_br}")
+
+    driver.get(URL + '/relatorio_analises_totais_vendas')
+    time.sleep(2)
+    esperar_sumir_overlays(10)
+
+    # Preenche todos os campos visíveis de data com o dia atual.
     try:
-        driver.get(URL + "/relatorio_analises_totais_vendas")
-        time.sleep(2)
-        esperar_sumir_overlays(10)
-
-        # Preenche todos os campos visíveis de data com a data atual.
+        inputs = driver.find_elements(By.XPATH, "//input[not(@type='hidden') and (contains(@id,'data') or contains(@name,'data') or contains(@class,'data') or @type='text')]")
         preenchidos = 0
-        campos = driver.find_elements(By.XPATH, "//input[not(@type='hidden') and (contains(translate(@id,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'data') or contains(translate(@name,'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'data') or contains(@class,'data'))]")
-        for el in campos:
+        for el in inputs[:8]:
             try:
                 if not el.is_displayed():
                     continue
-                driver.execute_script("arguments[0].removeAttribute('readonly'); arguments[0].removeAttribute('disabled');", el)
-                driver.execute_script("arguments[0].value = '';", el)
-                el.click(); el.send_keys(Keys.CONTROL, "a"); el.send_keys(Keys.DELETE); el.send_keys(data_hoje_br)
-                driver.execute_script("arguments[0].dispatchEvent(new Event('input',{bubbles:true}));", el)
-                driver.execute_script("arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", el)
-                preenchidos += 1
+                val = (el.get_attribute('value') or '').strip()
+                ph = (el.get_attribute('placeholder') or '').lower()
+                ident = ((el.get_attribute('id') or '') + ' ' + (el.get_attribute('name') or '') + ' ' + ph).lower()
+                if 'data' in ident or re.search(r'\d{2}/\d{2}/\d{4}', val) or not val:
+                    driver.execute_script("arguments[0].removeAttribute('readonly'); arguments[0].removeAttribute('disabled');", el)
+                    el.click()
+                    el.send_keys(Keys.CONTROL, 'a')
+                    el.send_keys(Keys.DELETE)
+                    el.send_keys(hoje_br)
+                    driver.execute_script("arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", el)
+                    preenchidos += 1
             except Exception:
                 pass
-        print(f"✅ Campos de data preenchidos no relatório de venda diária: {preenchidos}")
-
-        try:
-            Select(wait.until(EC.presence_of_element_located((By.ID, "_formato")))).select_by_value("xls")
-            print("✅ Formato XLS para análise total de venda")
-        except Exception as e:
-            print(f"⚠️ Não consegui selecionar formato XLS da venda diária: {e}")
-
-        arquivos_antes = set(f for f in os.listdir(download_dir) if nome_arquivo_analise_total_venda_valido(f))
-        try:
-            clicar_seguro_xpath("//button[@id='gerar'] | //input[@id='gerar'] | //button[contains(.,'Gerar')] | //input[@value='Gerar']", timeout=20)
-        except Exception:
-            driver.find_element(By.ID, "gerar").click()
-        print("📥 Gerando XLS venda diária... aguardando download...")
-
-        caminho_vd = None
-        for _tent in range(75):
-            time.sleep(2)
-            baixando = any(f.endswith(".crdownload") or f.endswith(".tmp") for f in os.listdir(download_dir))
-            if baixando:
-                continue
-            novos = set(f for f in os.listdir(download_dir) if nome_arquivo_analise_total_venda_valido(f)) - arquivos_antes
-            if novos:
-                caminho_vd = max([os.path.join(download_dir, f) for f in novos], key=os.path.getctime)
-                break
-        if not caminho_vd:
-            todos = [os.path.join(download_dir, f) for f in os.listdir(download_dir) if nome_arquivo_analise_total_venda_valido(f)]
-            if todos:
-                caminho_vd = max(todos, key=os.path.getctime)
-        if not caminho_vd:
-            raise Exception("XLS de venda diária não foi baixado")
-
-        dados = _parse_analise_total_venda_xls(caminho_vd)
-        dados["coletado_em"] = now_brasilia().strftime("%Y-%m-%d %H:%M:%S")
-        dados["data"] = data_hoje_br
-        json_path = os.path.join(pasta, "venda_diaria_analise_totais.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(dados, f, ensure_ascii=False, indent=2)
-        print(f"✅ Venda diária oficial: total={dados['total_dia']:.2f} | vendido={dados['total_vendido']:.2f} | serviços={dados['valor_servico']:.2f} | acrésc={dados['valor_acrescimo_servico']:.2f}")
-        return {"json_path": json_path, "xlsx_path": caminho_vd, "dados": dados}
+        print(f"✅ Datas preenchidas no relatório de venda diária: {preenchidos}")
     except Exception as e:
-        print(f"⚠️ Erro ao coletar venda diária oficial: {e}")
-        return {"json_path": None, "xlsx_path": None, "dados": {"ok": False, "erro": str(e)}}
+        print(f"⚠️ Não consegui preencher datas da venda diária automaticamente: {e}")
+
+    try:
+        Select(wait.until(EC.presence_of_element_located((By.ID, '_formato')))).select_by_value('xls')
+        print("✅ Formato XLS venda diária")
+    except Exception as e:
+        print(f"⚠️ Não consegui selecionar formato XLS venda diária: {e}")
+
+    arquivos_antes = set(f for f in os.listdir(download_dir) if _nome_arquivo_venda_diaria_valido(f))
+    try:
+        clicar_seguro_xpath("//button[@id='gerar'] | //input[@id='gerar'] | //button[contains(.,'Gerar')] | //input[@value='Gerar']", timeout=20)
+    except Exception:
+        driver.find_element(By.ID, 'gerar').click()
+
+    caminho = None
+    print("📥 Gerando XLS venda diária... aguardando download...")
+    for _ in range(60):
+        time.sleep(2)
+        baixando = any(f.endswith('.crdownload') or f.endswith('.tmp') for f in os.listdir(download_dir))
+        if baixando:
+            continue
+        novos = set(f for f in os.listdir(download_dir) if _nome_arquivo_venda_diaria_valido(f)) - arquivos_antes
+        if novos:
+            caminho = max([os.path.join(download_dir, f) for f in novos], key=os.path.getctime)
+            break
+
+    if not caminho:
+        todos = [os.path.join(download_dir, f) for f in os.listdir(download_dir) if _nome_arquivo_venda_diaria_valido(f)]
+        if todos:
+            caminho = max(todos, key=os.path.getctime)
+            print(f"⚠️ Usando último XLS de venda diária encontrado: {caminho}")
+        else:
+            raise Exception("Nenhum XLS de venda diária baixado")
+
+    parsed = _parse_venda_diaria_xls(caminho)
+    parsed['coletado_em'] = now_brasilia().strftime('%Y-%m-%d %H:%M:%S')
+    parsed['data'] = hoje_br
+    parsed['arquivo_origem'] = os.path.basename(caminho)
+
+    json_path = os.path.join(pasta, 'venda_diaria_mes_atual.json')
+    xlsx_path = os.path.join(pasta, 'venda_diaria_mes_atual.xlsx')
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(parsed, f, ensure_ascii=False, indent=2)
+    try:
+        with pd.ExcelWriter(xlsx_path, engine='openpyxl') as writer:
+            pd.DataFrame([parsed['empresa']]).to_excel(writer, sheet_name='empresa', index=False)
+            pd.DataFrame(list(parsed['filiais'].values())).to_excel(writer, sheet_name='filiais', index=False)
+    except Exception:
+        xlsx_path = None
+
+    emp = parsed.get('empresa', {})
+    print(f"✅ Venda diária oficial: vendido={emp.get('total_vendido',0):.2f} serv={emp.get('valor_servico',0):.2f} acresc={emp.get('valor_acrescimo_servico',0):.2f} total={emp.get('total_geral',0):.2f}")
+    return {'json_path': json_path, 'xlsx_path': xlsx_path, 'dados': parsed}
 
 
 # ===== LOGIN ROBUSTO — UMA ÚNICA VEZ
@@ -1886,29 +1909,16 @@ try:
 except Exception as e:
     print(f"⚠️ Erro ao coletar Margem Bruta/Rentabilidade do SGI: {e}")
 
+# V14: serviços vêm SOMENTE do Controle de Metas SGI.
+# Não coletar /relatorio_servicos e não aplicar relatório individual sobre as metas.
+relatorio_servicos_info = {"json_path": None, "xlsx_path": None, "dados": {}}
+print("✅ V14_SERVICOS_SO_CONTROLE_META: relatório individual de serviços desativado.")
+
 venda_diaria_info = {"json_path": None, "xlsx_path": None, "dados": {}}
 try:
-    venda_diaria_info = coletar_venda_diaria_analise_totais()
-    if isinstance(metas_vendas_info, dict):
-        metas_vendas_info.setdefault("dados", {})["venda_diaria_analise_totais"] = venda_diaria_info.get("dados", {})
-        if metas_vendas_info.get("json_path"):
-            with open(metas_vendas_info["json_path"], "w", encoding="utf-8") as _fvdj:
-                json.dump(metas_vendas_info.get("dados", {}), _fvdj, ensure_ascii=False, indent=2)
+    venda_diaria_info = coletar_venda_diaria_oficial()
 except Exception as e:
     print(f"⚠️ Erro ao coletar venda diária oficial do SGI: {e}")
-
-relatorio_servicos_info = {"json_path": None, "xlsx_path": None, "dados": {}}
-try:
-    # V13: coleta apenas para cards detalhados por tipo. NÃO sobrescreve mais a meta de serviço.
-    relatorio_servicos_info = coletar_relatorio_servicos_mes_atual()
-    if isinstance(metas_vendas_info, dict):
-        metas_vendas_info.setdefault("dados", {})["servicos_relatorio"] = relatorio_servicos_info.get("dados", {})
-        if metas_vendas_info.get("json_path"):
-            with open(metas_vendas_info["json_path"], "w", encoding="utf-8") as _fsrvmeta:
-                json.dump(metas_vendas_info.get("dados", {}), _fsrvmeta, ensure_ascii=False, indent=2)
-    print("✅ Relatório de serviços mantido apenas como detalhe por tipo; total oficial continua vindo do Controle de Metas SGI")
-except Exception as e:
-    print(f"⚠️ Erro ao coletar relatório de serviços do SGI: {e}")
 
 FTP_HOST  = "moveisdolar.com.br"
 FTP_USER  = "moveisdolar3"
@@ -1938,17 +1948,17 @@ try:
         with open(margens_brutas_info['xlsx_path'], 'rb') as f_mxlsx:
             ftp.storbinary('STOR margens_brutas_mes_atual.xlsx', f_mxlsx)
 
-    if relatorio_servicos_info.get('json_path') and os.path.exists(relatorio_servicos_info['json_path']):
-        with open(relatorio_servicos_info['json_path'], 'rb') as f_sjson:
-            ftp.storbinary('STOR relatorio_servicos_mes_atual.json', f_sjson)
-    if relatorio_servicos_info.get('xlsx_path') and os.path.exists(relatorio_servicos_info['xlsx_path']):
-        with open(relatorio_servicos_info['xlsx_path'], 'rb') as f_sxlsx:
-            ftp.storbinary('STOR relatorio_servicos_mes_atual.xlsx', f_sxlsx)
+    if venda_diaria_info.get('json_path') and os.path.exists(venda_diaria_info['json_path']):
+        with open(venda_diaria_info['json_path'], 'rb') as f_vdjson:
+            ftp.storbinary('STOR venda_diaria_mes_atual.json', f_vdjson)
+    if venda_diaria_info.get('xlsx_path') and os.path.exists(venda_diaria_info['xlsx_path']):
+        with open(venda_diaria_info['xlsx_path'], 'rb') as f_vdxlsx:
+            ftp.storbinary('STOR venda_diaria_mes_atual.xlsx', f_vdxlsx)
 
     ver = json.dumps({'updated_at': now_brasilia().isoformat(), 'updated_at_label': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'), 'timezone': 'America/Sao_Paulo', 'scope': 'sales_only'}, ensure_ascii=False).encode('utf-8')
     ftp.storbinary('STOR sales_version.json', BytesIO(ver))
     ftp.quit()
-    print('✅ Upload vendas/margens/serviços concluído')
+    print('✅ Upload vendas/margens/venda_diaria concluído')
 except Exception as e:
     print(f'⚠️ Erro no upload FTP vendas/margens: {e}')
 

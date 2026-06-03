@@ -1,4 +1,4 @@
-# VERSAO: COBRANCA10_V4_RELATORIOS_XLS_HISTORICO
+# VERSAO: COBRANCA10_V14_MAIN_COBRANCA_RECEBIMENTOS_FIX_SEM_VENDAS
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -1765,17 +1765,11 @@ if not nome_arquivo_contas_valido(os.path.basename(caminho)):
 df_raw = pd.read_excel(caminho, header=None, engine="openpyxl")
 print(f"📋 {df_raw.shape[0]} linhas lidas")
 
-metas_vendas_info = {"json_path": None, "xlsx_path": None, "dados": {}}
-try:
-    metas_vendas_info = coletar_metas_vendas_mes_atual()
-except Exception as e:
-    print(f"⚠️ Erro ao coletar metas/vendas do SGI: {e}")
-
-margens_brutas_info = {"json_path": None, "xlsx_path": None, "dados": {}}
-try:
-    margens_brutas_info = coletar_margens_brutas_mes_atual()
-except Exception as e:
-    print(f"⚠️ Erro ao coletar Margem Bruta/Rentabilidade do SGI: {e}")
+# V14: MAIN fica somente para cobrança/recebimentos.
+# Vendas, margem, markup, venda diária e serviços oficiais rodam apenas no worker de vendas.
+metas_vendas_info = {"json_path": None, "xlsx_path": None, "dados": {"metas": {}}}
+margens_brutas_info = {"json_path": None, "xlsx_path": None, "dados": {"filiais": {}, "vendedores": {}, "empresa": {}}}
+print("✅ V14_MAIN_SEM_VENDAS: coleta de metas/vendas/margens removida do MAIN; worker atualiza pacote completo.")
 
 # ===== MAPA DE COLUNAS DO XLS NOVO
 COL = {
@@ -1988,7 +1982,7 @@ for _, _rr in df_inativos_raw.iterrows():
 
 # ===== PARSE CLIENTES E RECEBIMENTOS POR FAIXA
 # Lógica:
-#   recebido_faixa  = pago nos títulos com pagto > data_corte (delta do período)
+#   recebido_faixa  = pago nos títulos com pagto >= data_corte (delta do período)
 #                     inclui ativos + inativos + FDEP (para rateio na meta)
 #   clientes_cobrar = títulos PENDENTES por faixa (para cobrança)
 from datetime import datetime as _dt
@@ -2051,6 +2045,11 @@ else:
     if _data_corte_parse is None:
         _data_corte_parse = _dt(_dt.now().year, _dt.now().month, 1)
     print(f"📅 Data de corte (snapshot disponível): {_data_corte_parse.strftime('%d/%m/%Y')}")
+
+# ✅ V7: para os recebimentos por faixa, o período deve ser o mês inteiro.
+# Inclui pagamentos feitos no próprio dia 01 do mês.
+_data_corte_parse = _dt(_dt.now().year, _dt.now().month, 1)
+print(f"✅ V14_RECEBIMENTO_MES_COMPLETO: recebimentos por faixa desde {_data_corte_parse.strftime('%d/%m/%Y')} inclusive")
 
 for _i in range(len(df_raw)):
     _row = df_raw.iloc[_i]
@@ -2141,7 +2140,7 @@ for _i in range(len(df_raw)):
     # =========================================
     # RECEBIMENTOS
     # =========================================
-    if _faixa and _pagto and _pago_val > 0 and _pagto > _data_corte_parse:
+    if _faixa and _pagto and _pago_val > 0 and _pagto >= _data_corte_parse:
         if _key_vend not in recebido_faixa:
             recebido_faixa[_key_vend] = {
                 "grave": 0.0,
@@ -3368,7 +3367,7 @@ def calc_perc_geral(grave_perc, alerta_perc, atencao_perc, cfg=None):
 # =========================================================================
 # RECEBIMENTOS E META — FONTE ÚNICA
 # Regra:
-#   1. Lê todos os títulos pagos no período (pagto > data_corte, conta caixa ≠ 100)
+#   1. Lê todos os títulos pagos no período (pagto >= data_corte, conta caixa ≠ 100)
 #   2. Classifica por faixa de vencimento (grave/alerta/atenção)
 #   3. Distribui inativos e FDEP para ativos da filial (60% gerente / 40% vendedores)
 #   4. recebimentos_det_js = relatório visual (com detalhes dos títulos)
@@ -3403,7 +3402,7 @@ for _i2 in range(len(df_raw)):
 
     if not _venc2 or not _pagto2 or _pago2 <= 0:
         continue
-    if _pagto2 <= _data_corte_parse:
+    if _pagto2 < _data_corte_parse:
         continue
 
     if str(_row2[COL["conta_caixa"]]).strip() == "Caixa Filial 100":
@@ -3438,9 +3437,13 @@ for _i2 in range(len(df_raw)):
             _is_at2 = False
             _is_fp2 = False
         else:
-            _fv2k = "OUTROS"
+            # V14: se não achou a filial do inativo pelo lookup, usa a filial da própria linha do XLS.
+            # Antes caía em OUTROS e o relatório de recebimentos desaparecia ao filtrar chaves válidas.
+            _filial_txt2 = str(_row2[COL["filial"]]).upper()
+            _mfil2 = re.search(r"FILIAL\s*(\d+)", _filial_txt2)
+            _fv2k = f"F{int(_mfil2.group(1))}" if _mfil2 else "OUTROS"
             _is_at2 = False
-            _is_fp2 = False
+            _is_fp2 = (_fv2k == "FDEP")
 
     _kv2 = f"{_nome2}_{_fv2k}"
 
@@ -3499,7 +3502,7 @@ for _q in _quitados_extra:
             continue
         _pagtoq = _parse_data(_q.get("pagamento"))
         _pagoq = float(_q.get("pago", 0) or 0)
-        if not _pagtoq or _pagoq <= 0 or _pagtoq <= _data_corte_parse:
+        if not _pagtoq or _pagoq <= 0 or _pagtoq < _data_corte_parse:
             continue
 
         _clienteq = str(_q.get("cliente", "")).strip()
@@ -3688,6 +3691,15 @@ for _kd, _vd_det in recebimentos_det_js.items():
     if _kd.startswith("Filial "):
         recebido_faixa[_kd]['is_ativo'] = False
 
+
+# ✅ V7: diagnóstico para confirmar nos logs se os valores entraram no HTML
+try:
+    _dbg_g = sum(float(v.get('grave', 0) or 0) for v in recebido_faixa.values())
+    _dbg_a = sum(float(v.get('alerta', 0) or 0) for v in recebido_faixa.values())
+    _dbg_t = sum(float(v.get('atencao', 0) or 0) for v in recebido_faixa.values())
+    print(f"🧾 DEBUG V7 recebimentos por faixa desde {_data_corte_parse.strftime('%d/%m/%Y')}: grave=R$ {_dbg_g:.2f} | alerta=R$ {_dbg_a:.2f} | atencao=R$ {_dbg_t:.2f} | total=R$ {(_dbg_g+_dbg_a+_dbg_t):.2f}")
+except Exception as _e_dbg_rec:
+    print(f"⚠️ DEBUG V7 recebimentos falhou: {_e_dbg_rec}")
 
 _pre_inat_rec = {f: {'grave':0.0,'alerta':0.0,'atencao':0.0} for f in ORDEM_FILIAIS}
 _pre_fdep_rec = {f: {'grave':0.0,'alerta':0.0,'atencao':0.0} for f in ORDEM_FILIAIS}
@@ -5840,10 +5852,11 @@ function getCrediaristasConfig(){return Array.isArray(CONFIG_META?.crediaristas_
 const CREDIARISTAS_MAP=new Proxy({}, {get(t,k){const row=getCrediaristasConfig().find(r=>String(r.filial||'').toUpperCase()===String(k||'').toUpperCase());return row?String(row.login||'').toLowerCase():undefined}, ownKeys(){return getCrediaristasConfig().map(r=>r.filial)}, getOwnPropertyDescriptor(){return {enumerable:true,configurable:true}}});
 const COBRANCA10_LOGIN='cobranca10';
 const COBRANCA10_NOME='Cobrança10';
-const METAS_VENDAS=__JS_METAS_VENDAS__||{metas:{}};
-const MARGENS_BRUTAS=__JS_MARGENS_BRUTAS__||{filiais:{},vendedores:{}};
+let METAS_VENDAS=__JS_METAS_VENDAS__||{metas:{}};
+let MARGENS_BRUTAS=__JS_MARGENS_BRUTAS__||{filiais:{},vendedores:{}};
 let SALES_EMPRESA=__JS_SALES_EMPRESA__||{};
 let RENT_EMPRESA=__JS_RENT_EMPRESA__||{};
+let VENDA_DIARIA_OFICIAL={};
 
 function getRentEmpresa(){
   let e = (RENT_EMPRESA && Object.keys(RENT_EMPRESA).length) ? {...RENT_EMPRESA} : {};
@@ -6206,7 +6219,8 @@ function renderKPIs(){
     : Number(sales.servico_atingido_total||0);
 
   const prevServicoReal = Number(prevEmpresa.servico_realizado_total || 0);
-  const vendaDiaria=Math.max(0, Number(sales.venda_realizado_total||0)-Number(prevEmpresa.venda_realizado_total||0)) + Math.max(0, servicoRealizadoOficial-prevServicoReal);
+  const vendaDiariaFallback=Math.max(0, Number(sales.venda_realizado_total||0)-Number(prevEmpresa.venda_realizado_total||0)) + Math.max(0, servicoRealizadoOficial-prevServicoReal);
+  const vendaDiaria = Number(VENDA_DIARIA_OFICIAL?.empresa?.total_geral || VENDA_DIARIA_OFICIAL?.empresa?.total || 0) || vendaDiariaFallback;
   try{
     console.log('[MDL serviços]', {
       total_controle_meta_sgi: Number(sales.servico_realizado_total||0),
@@ -6252,11 +6266,9 @@ function renderKPIs(){
     if(n.includes('COPA') || n.includes('CUPOM')) return '⚽';
     return '🛠️';
   }
-  const topServiceCards = Object.values((SERVICOS_RELATORIO && SERVICOS_RELATORIO.servicos) || {})
-    .slice()
-    .sort((a,b)=>Number(_srvTotal(b)||0)-Number(_srvTotal(a)||0))
-    .slice(0,4)
-    .map(s=>makeKpi(`${servicoIcone(s.servico)} ${String(s.servico||'Serviço').slice(0,30)}`, R(_srvTotal(s)||0), 'var(--blue-400)', `${Number(s.quantidade||0).toLocaleString('pt-BR')} item(ns)`));
+  // V14: serviços por tipo do relatório individual foram removidos do painel principal.
+  // O total oficial de serviços vem somente do Controle de Metas SGI.
+  const topServiceCards = [];
 
   const cards=[
     makeKpi('💰 Total pendente',R(TOTAL_P),'var(--red)','', 'card-cobranca'),
@@ -6370,14 +6382,20 @@ async function pollSalesLive(){
       return;
     }
 
-    let metasWrap=null, margensWrap=null, servWrap=null;
+    let metasWrap=null, margensWrap=null, vendaDiaWrap=null;
     try{ metasWrap=await fetchJsonNoCache('metas_vendas_mes_atual.json'); }catch(_e){}
     try{ margensWrap=await fetchJsonNoCache('margens_brutas_mes_atual.json'); }catch(_e){}
-    try{ servWrap=await fetchJsonNoCache('relatorio_servicos_mes_atual.json'); }catch(_e){}
+    try{ vendaDiaWrap=await fetchJsonNoCache('venda_diaria_mes_atual.json'); }catch(_e){}
 
-    if(metasWrap) SALES_EMPRESA=calcSalesEmpresaFromMetas(metasWrap||{});
-    if(margensWrap) RENT_EMPRESA=((margensWrap||{}).empresa)||{};
-    if(servWrap) SERVICOS_RELATORIO=(servWrap||{});
+    if(metasWrap){
+      METAS_VENDAS=metasWrap||{metas:{}};
+      SALES_EMPRESA=calcSalesEmpresaFromMetas(metasWrap||{});
+    }
+    if(margensWrap){
+      MARGENS_BRUTAS=margensWrap||{filiais:{},vendedores:{},empresa:{}};
+      RENT_EMPRESA=((margensWrap||{}).empresa)||{};
+    }
+    if(vendaDiaWrap) VENDA_DIARIA_OFICIAL=(vendaDiaWrap||{});
 
     if(stamp) window.__lastSalesVersion=stamp;
     window.__salesBundleLoaded=true;
@@ -6693,14 +6711,14 @@ function openEntity(ref){if(ref && (ref.type==='crediarista' || ref.is_crediaris
 function canVerComissionamento(){return usuarioAtual?.tipo==='master'}
 function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';
   const c=calcCommissionSummary(ent);
-  const totalLiberado = c.elegivelMercantil && c.elegivelServicos;
-  const totalExibido = totalLiberado ? c.totalPrevisto : 0;
+  const totalLiberado = Number(c.totalPrevisto||0)>0;
+  const totalExibido = c.totalPrevisto || 0;
   const moneyCell=(title,val,locked=false,extra='')=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''} ${extra}"><div class="k">${title}</div><div class="v">${R(val||0)}</div></div>`;
   const pctCell=(title,val,locked=false)=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''}"><div class="k">${title}</div><div class="v">${String(Number(val||0).toFixed(2)).replace('.',',')}%</div></div>`;
   const rentNote = c.rentUnlocked
     ? `Rentabilidade atual ${String(Number(c.rentAtual||0).toFixed(2)).replace('.',',')}% · faixa aplicada ${c.rentFaixaTxt}.`
     : `Rentabilidade atual ${String(Number(c.rentAtual||0).toFixed(2)).replace('.',',')}% · bloqueada até bater 50% da meta de cobrança.`;
-  return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,!(c.rentUnlocked && c.rentAtual>=48))}${moneyCell('Rentab 52,15%',c.rent52,!(c.rentUnlocked && c.rentAtual>=52.15))}${moneyCell('Rentab 55,50%',c.rent55,!(c.rentUnlocked && c.rentAtual>=55.50))}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo vendas ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)} · rentabilidades liberam ao bater 50% da meta de cobrança. ${rentNote}</div></div>`
+  return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,!(c.rentUnlocked && c.rentAtual>=48))}${moneyCell('Rentab 52,15%',c.rent52,!(c.rentUnlocked && c.rentAtual>=52.15))}${moneyCell('Rentab 55,50%',c.rent55,!(c.rentUnlocked && c.rentAtual>=55.50))}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo comissão mercantil ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)}. Bônus meta mercantil: vendedor 90/100/120%; gerente/classificação loja a partir de 90%. Rentabilidades liberam ao bater 50% da meta de cobrança. ${rentNote}</div></div>`
 }
 
 function backToMain(){currentDetailRef=null; try{renderLaranjitoNotify()}catch(e){}; detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden')}
@@ -6738,32 +6756,18 @@ function servicosEntidade(ent){
   return out.sort((a,b)=>Number(_srvTotal(b)||0)-Number(_srvTotal(a)||0));
 }
 function renderServicosEntidade(ent){
-  const rows=servicosEntidade(ent).filter(x=>Number(x.real_total||0)>0);
-  if(!rows.length){
-    return `<div class="glass panel"><h3>🛠️ Serviços por tipo</h3><div class="empty">Nenhum serviço localizado para ${ent?.type==='filial'?'esta filial':'este vendedor'} no relatório mensal.</div></div>`;
-  }
-  const total=rows.reduce((a,b)=>a+Number(b.real_total||0),0);
-  return `<div class="glass panel"><div class="section-head" style="margin:0 0 10px"><div><h3 style="margin:0">🛠️ Serviços por tipo</h3><div class="hint">Relatório real de serviços do mês atual · total oficial ${R(total)}</div></div></div><div class="metrics-grid">${rows.slice(0,8).map(r=>`<div class="metric"><div class="k">${esc(String(r.servico||'Serviço').slice(0,34))}</div><div class="v" style="color:var(--blue-400);font-size:18px">${R(r.real_total||0)}</div></div>`).join('')}</div></div>`;
+  // V14: card "Serviços por tipo" removido. Serviços aparecem apenas pelo Controle de Metas SGI.
+  return '';
 }
 
 function servicosEntidadeTotal(ent){
-  return servicosEntidade(ent).reduce((acc,r)=>acc+Number(r.real_total||0),0);
+  // V14: relatório individual de serviços desativado.
+  return 0;
 }
+
 function serviceOfficialOverride(ent,key,row){
-  if(!String(key||'').includes('servico')) return null;
-  const total=servicosEntidadeTotal(ent);
-  if(!(total>0)) return null;
-  const metaTotalStr=salesCell(row,['Meta (R$) Total','Meta(R$) Total']);
-  const metaPeriodoStr=salesCell(row,['Meta (R$) Período','Meta(R$) Período']);
-  const metaTotal=salesNum(metaTotalStr);
-  const metaPeriodo=salesNum(metaPeriodoStr);
-  return {
-    total: total,
-    realizado: R(total),
-    atingidoTotal: metaTotal>0 ? pct(total/metaTotal*100) : '0%',
-    atingidoPeriodo: metaPeriodo>0 ? pct(total/metaPeriodo*100) : '0%',
-    nota: 'relatório serviços'
-  };
+  // V14: não sobrescreve serviços com relatório individual. Usa somente a linha oficial da meta SGI.
+  return null;
 }
 
 function rowMatchesFilial(ent,row){const joined=normSalesText([salesCell(row,['Filial','Filial_2','Vendedor','Vendedor_2','Nome','Nome_2']),salesCell(row,['Subgrupo'])].join(' ')); return filialAliases(ent.filial).some(a=>joined.includes(normSalesText(a)))}
@@ -6780,13 +6784,7 @@ function renderSalesRows(ent, key, label){
   let rows=getSalesRows(ent,key);
   if(!rows.length) return `<div class="sales-card"><h4>${label}</h4><div class="sales-empty">Sem dados desta meta para ${ent.type==='filial'?'esta filial':'este vendedor'}.</div></div>`;
 
-  // Para SERVIÇOS, o realizado oficial vem do relatório real de serviços por tipo.
-  // A meta do SGI permanece como alvo, mas os campos "Realizado" e "% atingido" passam a bater
-  // exatamente com o painel "Serviços por tipo" da mesma filial/vendedor.
-  if(String(key||'').includes('servico') && servicosEntidadeTotal(ent)>0){
-    rows=[rows[0]];
-  }
-
+  // V14: serviços usam somente as linhas oficiais do Controle de Metas SGI.
   return `<div class="sales-card"><h4>${label}</h4><div class="sales-list">${rows.map(r=>{
     const srv=serviceOfficialOverride(ent,key,r);
     const ating=srv ? srv.atingidoTotal : salesCell(r,['Atingido Total']);
@@ -6916,31 +6914,35 @@ function calcCommissionSummary(ent){
   const vendaRealBruto=moneyNum(salesCell(vendaRow,['Realizado (R$) Total','Realizado(R$) Total']));
   const vendaPerc=salesNum(salesCell(vendaRow,['Atingido Total']));
   const servReal=moneyNum(salesCell(servRow,['Realizado (R$) Total','Realizado(R$) Total']));
+  const servAtingido=salesNum(salesCell(servRow,['Atingido Total']));
   const camReal=moneyNum(salesCell(camRow,['Realizado (R$) Total','Realizado(R$) Total']));
+  const camAtingido=salesNum(salesCell(camRow,['Atingido Total']));
   const vendaReal=Math.max(0,vendaRealBruto-camReal);
   const policy=ent.type==='filial'?cc.gerente_policy:cc.vendedor_policy;
   const faixa=faixaMatchRealizado(policy,vendaReal) || {};
   const comPerc=Number(faixa.comissao||0);
   const servPct=Number(faixa.servico_pct||0);
   const camPct=Number(faixa.caminhao_pct||0);
-  const vendasComissao=(vendaReal*comPerc/100);
   let bonusMeta=0;
   let bonusLiberado=false;
-  const minVenda = ent.type==='filial' ? Number(cfg.gerente_vendas_min_pct||90) : Number(cfg.vendas_min_pct||80);
-  const minServico = ent.type==='filial' ? Number(cfg.gerente_servicos_min_pct||90) : Number(cfg.servicos_min_pct||80);
+  const minVenda = ent.type==='filial' ? Number(cfg.gerente_vendas_min_pct||80) : Number(cfg.vendas_min_pct||80);
+  const minServico = ent.type==='filial' ? Number(cfg.gerente_servicos_min_pct||80) : Number(cfg.servicos_min_pct||80);
+  const bonusMercantilMin = 90; // bônus vendedor e classificação loja/gerente só a partir de 90% da meta mercantil
   const rentMin50 = 50;
   const geralMeta = calcMeta(ent).geral||0;
+  const elegivelMercantil=vendaPerc>=minVenda;
+  const elegivelServicos=servAtingido>=minServico;
+  const elegivelCaminhao=camRow ? (camAtingido>=minServico) : elegivelServicos;
+  const vendasComissao=elegivelMercantil?(vendaReal*comPerc/100):0;
+  const servicosComissao=elegivelServicos?(servReal*servPct/100):0;
+  const caminhaoComissao=elegivelCaminhao?(camReal*camPct/100):0;
   if(ent.type==='filial'){
-    if(vendaPerc>=minVenda){ bonusMeta=Number(faixa.bonusLoja||0); bonusLiberado=bonusMeta>0; }
+    if(vendaPerc>=bonusMercantilMin){ bonusMeta=Number(faixa.bonusLoja||0); bonusLiberado=bonusMeta>0; }
   } else {
     if(vendaPerc>=120){ bonusMeta=Number(faixa.bonus120||0); bonusLiberado=bonusMeta>0; }
     else if(vendaPerc>=100){ bonusMeta=Number(faixa.bonus100||0); bonusLiberado=bonusMeta>0; }
     else if(vendaPerc>=90){ bonusMeta=Number(faixa.bonus90||0); bonusLiberado=bonusMeta>0; }
   }
-  const elegivelMercantil=vendaPerc>=minVenda;
-  const elegivelServicos=vendaPerc>=minServico;
-  const servicosComissao=elegivelServicos?(servReal*servPct/100):0;
-  const caminhaoComissao=elegivelServicos?(camReal*camPct/100):0;
 
   const rentAtual = Number(ent?.rentabilidade_pct||0);
   const rentUnlocked = geralMeta>=rentMin50;
@@ -6965,9 +6967,9 @@ function calcCommissionSummary(ent){
   const metaAtingida=vendaPerc>=minVenda || geralMeta>=rentMin50;
 
   return {
-    vendaRealBruto,vendaReal,vendaPerc,servReal,camReal,comPerc,servPct,camPct,
+    vendaRealBruto,vendaReal,vendaPerc,servReal,servAtingido,camReal,camAtingido,comPerc,servPct,camPct,
     vendasComissao,servicosComissao,caminhaoComissao,bonusMeta,bonusLiberado,
-    elegivelMercantil,elegivelServicos,rentUnlocked,rent48,rent52,rent55,
+    elegivelMercantil,elegivelServicos,elegivelCaminhao,rentUnlocked,rent48,rent52,rent55,
     rentAtual,rentPremio,rentFaixaTxt,rentAppliedKey,
     totalPrevisto:(vendasComissao+servicosComissao+caminhaoComissao+bonusMeta+rentPremio),
     faixaTxt:`${faixa.faixa1||'-'} até ${faixa.faixa2||'-'}`,
@@ -7160,7 +7162,7 @@ function renderCampaignSummary(ent){
   </div>`;
 }
 
-function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';const c=calcCommissionSummary(ent); const totalLiberado = c.elegivelMercantil && c.elegivelServicos; const totalExibido = totalLiberado ? c.totalPrevisto : 0; const moneyCell=(title,val,locked=false,extra='')=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''} ${extra}"><div class="k">${title}</div><div class="v">${R(val||0)}</div></div>`; const pctCell=(title,val,locked=false)=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''}"><div class="k">${title}</div><div class="v">${String(Number(val||0).toFixed(2)).replace('.',',')}%</div></div>`; return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,!c.rentUnlocked)}${moneyCell('Rentab 52,15%',c.rent52,!c.rentUnlocked)}${moneyCell('Rentab 55,50%',c.rent55,!c.rentUnlocked)}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo vendas ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)} · rentabilidades liberam ao bater 50% da meta de cobrança.</div></div>`}
+function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';const c=calcCommissionSummary(ent); const totalLiberado = Number(c.totalPrevisto||0)>0; const totalExibido = c.totalPrevisto || 0; const moneyCell=(title,val,locked=false,extra='')=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''} ${extra}"><div class="k">${title}</div><div class="v">${R(val||0)}</div></div>`; const pctCell=(title,val,locked=false)=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''}"><div class="k">${title}</div><div class="v">${String(Number(val||0).toFixed(2)).replace('.',',')}%</div></div>`; return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,!c.rentUnlocked)}${moneyCell('Rentab 52,15%',c.rent52,!c.rentUnlocked)}${moneyCell('Rentab 55,50%',c.rent55,!c.rentUnlocked)}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo comissão mercantil ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)}. Bônus meta mercantil: vendedor 90/100/120%; gerente/classificação loja a partir de 90%. Rentabilidades liberam ao bater 50% da meta de cobrança.</div></div>`}
 function backToMain(){currentDetailRef=null; try{renderLaranjitoNotify()}catch(e){}; detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden')}
 function renderMetaBox(title,color,obj){return `<div class="meta-card"><div class="meta-title">${title}</div><div class="meta-main" style="color:${color}">${pct(obj.perc||0)}</div><div class="meta-sub">Alvo: ${R(obj.alvo||0)}</div><div class="meta-sub">Recebido: ${R(obj.rec||0)}</div></div>`}
 function renderBonusBox(cfg,geral){const achieved=(geral>=100&&cfg.bonus_100)?100:(geral>=85&&cfg.bonus_85)?85:(geral>=75&&cfg.bonus_75)?75:(geral>=50&&cfg.bonus_50)?50:0; const items=[[50,cfg.bonus_50||'-'],[75,cfg.bonus_75||'-'],[85,cfg.bonus_85||'-'],[100,cfg.bonus_100||'-']];return `<div class="bonus-box"><h4>Faixas configuradas</h4><div class="bonus-list">${items.map(([p,t])=>`<div class="bonus-item ${achieved===p?'active':''}" style="${achieved===p?'box-shadow:0 0 0 2px rgba(59,130,246,.18),0 0 26px rgba(59,130,246,.2);animation:liquid 1.6s ease-in-out infinite alternate':''}"><div class="left"><span>🎯</span><span>${p}%</span></div><div style="display:flex;align-items:center;gap:10px">${achieved===p?`<img src="${LARANJITO}" alt="laranjito" style="width:34px;height:34px;border-radius:10px;object-fit:cover">`:''}<span>${esc(t)}</span></div></div>`).join('')}</div></div>`}
@@ -7933,7 +7935,6 @@ function snapMiniBox(title, perc, alvo, rec, color){
 }
 function snapSalesRows(ent, key, label){
   let rows=getSalesRows(ent,key);
-  if(String(key||'').includes('servico') && servicosEntidadeTotal(ent)>0 && rows.length) rows=[rows[0]];
   if(!rows.length) return '';
   return `<div class="snap-box"><h3>${label}</h3>${rows.slice(0,1).map(r=>{
     const srv=serviceOfficialOverride(ent,key,r);
@@ -7963,8 +7964,8 @@ function snapServices(ent){
 function snapCommission(ent){
   if(!(ent.type==='vendedor'||ent.type==='filial')) return '';
   let c={}; try{c=calcCommissionSummary(ent)||{}}catch(e){return ''}
-  const totalLiberado = c.elegivelMercantil && c.elegivelServicos;
-  const totalExibido = totalLiberado ? c.totalPrevisto : 0;
+  const totalLiberado = Number(c.totalPrevisto||0)>0;
+  const totalExibido = c.totalPrevisto || 0;
   const cell=(t,v,color='')=>snapKV(t, v, color);
   return `<div class="snap-box"><h3>💵 Comissionamento previsto</h3><div class="snap-grid3">
     ${cell('Faixa aplicada',esc(c.faixaTxt||'-'))}
@@ -8089,8 +8090,22 @@ function baixarComissionamentoXLS(monthOverride){
       ['faixa','Faixa'],['comissao_vendas','Comissão vendas'],['comissao_servicos','Comissão serviços'],['comissao_caminhao','Comissão caminhão'],
       ['bonus_meta','Bônus meta'],['rent48','Rent. 48'],['rent52','Rent. 52'],['rent55','Rent. 55'],['total_previsto','Total previsto'],['observacao','Observação']
     ];
-    const td=(v)=>`<td style="border:1px solid #999;padding:4px">${esc(v==null?'':String(v))}</td>`;
-    const html=`<html><head><meta charset="utf-8"></head><body><table><thead><tr>${cols.map(c=>`<th style="border:1px solid #999;padding:4px;background:#eee">${esc(c[1])}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>td(r[c[0]])).join('')}</tr>`).join('')}</tbody></table></body></html>`;
+    const moneyKeys=new Set([
+      'pendente','recebido','recebido_conciliado','grave_rec','alerta_rec','atencao_rec',
+      'grave_alvo','alerta_alvo','atencao_alvo','venda_real','servico_real','caminhao_real',
+      'comissao_vendas','comissao_servicos','comissao_caminhao','bonus_meta','rent48','rent52','rent55','total_previsto'
+    ]);
+    const percentKeys=new Set(['meta_geral']);
+    const fmtMoney=(v)=>'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const fmtPct=(v)=>Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%';
+    const fmtVal=(key,v)=>{
+      if(moneyKeys.has(key)) return fmtMoney(v);
+      if(percentKeys.has(key)) return fmtPct(v);
+      if(key==='qtd_recebidos') return String(Number(v||0));
+      return v==null?'':String(v);
+    };
+    const td=(v)=>`<td style="border:1px solid #999;padding:4px;mso-number-format:'\@'">${esc(v==null?'':String(v))}</td>`;
+    const html=`<html><head><meta charset="utf-8"></head><body><table><thead><tr>${cols.map(c=>`<th style="border:1px solid #999;padding:4px;background:#eee">${esc(c[1])}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>td(fmtVal(c[0],r[c[0]]))).join('')}</tr>`).join('')}</tbody></table></body></html>`;
     const blob=new Blob([html],{type:'application/vnd.ms-excel;charset=utf-8'});
     const a=document.createElement('a');
     a.href=URL.createObjectURL(blob);
@@ -8237,20 +8252,20 @@ function renderHistoricoComissaoResults(){
   const box=document.getElementById('histComResults'); if(!box) return;
   const snap=HIST_COMISSAO?.months?.[current];
   const saveInput=document.getElementById('histComMonthSave'); if(saveInput && !saveInput.value) saveInput.value=mesAtualComissao();
-  if(!snap){box.innerHTML=renderLinksRelatoriosCobranca()+`<div class="empty">Nenhum histórico salvo para ${esc(current)}. Clique em “Salvar fechamento do mês atual” para gravar o resultado visível agora.</div>`; return;}
+  if(!snap){box.innerHTML=`<div class="empty">Nenhum histórico salvo para ${esc(current)}. Clique em “Salvar fechamento do mês atual” para gravar o resultado visível agora.</div>`; return;}
   const rows=[...(snap.entidades||[])].sort((a,b)=>String(a.tipo).localeCompare(String(b.tipo),'pt-BR')||String(a.nome).localeCompare(String(b.nome),'pt-BR'));
-  box.innerHTML=renderLinksRelatoriosCobranca()+`<div class="kpis">${makeKpi('Mês',esc(snap.month||current),'var(--blue)')}${makeKpi('Total previsto',R(snap.total_previsto||0),'var(--green)')}${makeKpi('Entidades',String(rows.length),'var(--orange)')}${makeKpi('Salvo em',esc((snap.atualizado_em_br||snap.gerado_em||'').replace('T',' ').slice(0,19)),'var(--blue)')}</div>`+`<div class="glass panel"><div class="form-grid"><div class="input-card"><label>Ver tela congelada individual</label><div class="hint">Selecione 2026-05 no mês e escolha o colaborador/filial para abrir a tela congelada salva naquele fechamento.</div><select id="histComEntityView">${rows.map(r=>`<option value="${esc(r.key||'')}">${esc(r.nome||'')} · ${esc(r.filial||'')}</option>`).join('')}</select></div><div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap"><button class="btn primary" onclick="abrirTelaComissionamentoCongeladaPorSelect()">Abrir tela congelada</button><button class="btn soft" onclick="baixarComissionamentoXLS()">📊 Baixar XLS do mês</button></div></div></div>`+renderComissionamentoHistoricoTable(rows);
+  box.innerHTML=`<div class="kpis">${makeKpi('Mês',esc(snap.month||current),'var(--blue)')}${makeKpi('Total previsto',R(snap.total_previsto||0),'var(--green)')}${makeKpi('Entidades',String(rows.length),'var(--orange)')}${makeKpi('Salvo em',esc((snap.atualizado_em_br||snap.gerado_em||'').replace('T',' ').slice(0,19)),'var(--blue)')}</div>`+`<div class="glass panel"><div class="form-grid"><div class="input-card"><label>Ver tela congelada individual</label><div class="hint">Selecione 2026-05 no mês e escolha o colaborador/filial para abrir a tela congelada salva naquele fechamento.</div><select id="histComEntityView">${rows.map(r=>`<option value="${esc(r.key||'')}">${esc(r.nome||'')} · ${esc(r.filial||'')}</option>`).join('')}</select></div><div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap"><button class="btn primary" onclick="abrirTelaComissionamentoCongeladaPorSelect()">Abrir tela congelada</button><button class="btn soft" onclick="baixarComissionamentoXLS()">📊 Baixar XLS do mês em R$</button></div></div></div>`+renderComissionamentoHistoricoTable(rows);
 }
 
 function setHistMode(mode){window._histMode=mode; document.getElementById('histDailyPane')?.classList.toggle('hidden',mode!=='daily'); document.getElementById('histMonthPane')?.classList.toggle('hidden',mode!=='monthly'); document.getElementById('histSalesPane')?.classList.toggle('hidden',mode!=='sales'); document.getElementById('histThirdPane')?.classList.toggle('hidden',mode!=='third'); document.getElementById('histComPane')?.classList.toggle('hidden',mode!=='comissao'); document.getElementById('histTabDaily')?.classList.toggle('active',mode==='daily'); document.getElementById('histTabMonthly')?.classList.toggle('active',mode==='monthly'); document.getElementById('histTabSales')?.classList.toggle('active',mode==='sales'); document.getElementById('histTabThird')?.classList.toggle('active',mode==='third'); document.getElementById('histTabCom')?.classList.toggle('active',mode==='comissao'); if(mode==='daily'){updateHistEntityFilter(); renderHistoricoResults();} else if(mode==='monthly'){updateHistMonthEntityFilter(); renderHistoricoMonthResults();} else if(mode==='third'){renderHistoricoTerceiro();} else if(mode==='comissao'){renderHistoricoComissaoResults();} else {updateHistSalesEntityFilter(); updateHistSalesMonthEntityFilter(); renderHistoricoSalesResults(); renderHistoricoSalesMonthResults();}}
 function updateHistEntityFilter(){const dateVal=_histCurrentDate(); const scope=document.getElementById('histScope')?.value||'empresa'; const wrap=document.getElementById('histEntityWrap'); const sel=document.getElementById('histEntity'); if(!wrap||!sel) return; wrap.classList.toggle('hidden',!(scope==='vendedores'||scope==='filiais')); sel.innerHTML=_histEntityOptions(dateVal, scope);}
 function updateHistMonthEntityFilter(){const monthVal=_histCurrentMonth(); const scope=document.getElementById('histMonthScope')?.value||'empresa'; const wrap=document.getElementById('histMonthEntityWrap'); const sel=document.getElementById('histMonthEntity'); if(!wrap||!sel) return; wrap.classList.toggle('hidden',!(scope==='vendedores'||scope==='filiais')); sel.innerHTML=_histMonthEntityOptions(monthVal, scope);}
 function renderHistoricoTable(rows, scope, title='📋 Histórico'){if(!rows.length) return `<div class="empty">Nenhum registro encontrado para o filtro escolhido.</div>`; return `<div class="glass panel"><div class="section-head" style="margin:0 0 10px"><div><h2 style="font-size:18px">${title}</h2></div></div>${rows.map(r=>`<div class="log-row" style="margin-bottom:10px"><div><strong>${esc(r.nome||r.filial||'Empresa')}</strong><div class="small muted">${esc(r.filial||'Resumo')}</div></div><div><strong>${R(r.pendente||0)}</strong><div class="small muted">Pendente</div></div><div><strong>${R(r.recebido||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${pct(r.perc_meta||0)}</strong><div class="small muted">Meta</div></div><div><strong>${R(r.grave_alvo||0)} / ${R(r.alerta_alvo||0)} / ${R(r.atencao_alvo||0)}</strong><div class="small muted">Alvos G/A/At</div></div></div>`).join('')}</div>`}
-function renderHistoricoResults(){const dateVal=_histCurrentDate(); const scope=document.getElementById('histScope')?.value||'empresa'; const entity=document.getElementById('histEntity')?.value||''; const box=document.getElementById('histResults'); const d=HIST_DASH?.dates?.[dateVal]; if(!box){return} if(!d){box.innerHTML='<div class="empty">Nenhum histórico salvo para esta data.</div>'; return} let top=`<div class="kpis">${makeKpi('Pendente do dia',R(d.empresa?.pendente||0),'var(--red)')}${makeKpi('Recebido do dia',R(d.empresa?.recebido||0),'var(--green)')}${makeKpi('Grave do dia',R(d.empresa?.grave||0),'var(--red)')}${makeKpi('Alerta do dia',R(d.empresa?.alerta||0),'var(--orange)')}</div><div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0"><div><h2 style="font-size:18px">⚙️ Meta usada no dia</h2><div class="hint">Global: G ${Number(d.empresa?.config_global?.grave_pct||0)}% · A ${Number(d.empresa?.config_global?.alerta_pct||0)}% · At ${Number(d.empresa?.config_global?.atencao_pct||0)}% · Pesos ${Number(d.empresa?.config_global?.peso_grave||0)}/${Number(d.empresa?.config_global?.peso_alerta||0)}/${Number(d.empresa?.config_global?.peso_atencao||0)}</div></div><div class="small muted">${esc(dateVal)}</div></div></div>`; if(scope==='empresa'){box.innerHTML=top + renderHistoricoTable([{nome:'Empresa',filial:'Resumo geral',pendente:d.empresa?.pendente||0,recebido:d.empresa?.recebido||0,perc_meta:0,grave_alvo:0,alerta_alvo:0,atencao_alvo:0}], 'empresa','📋 Histórico diário da empresa'); return} const source = scope==='filiais' ? Object.entries(d.filiais||{}).map(([k,v])=>({...v,key:k})) : Object.entries(d.vendedores||{}).map(([k,v])=>({...v,key:k})); const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=top + renderHistoricoTable(rows, scope, `📋 Histórico diário ${scope==='filiais'?'de filiais':'de vendedores'}`);}
-function renderHistoricoMonthResults(){const monthVal=_histCurrentMonth(); const scope=document.getElementById('histMonthScope')?.value||'empresa'; const entity=document.getElementById('histMonthEntity')?.value||''; const box=document.getElementById('histMonthResults'); const d=HIST_DASH?.months_closed?.[monthVal]; if(!box){return} if(!d){box.innerHTML='<div class="empty">Nenhum fechamento mensal salvo para este mês.</div>'; return} const cfg=d.config_global_fechamento||{}; let top=`<div class="kpis">${makeKpi('Mês fechado',esc(monthVal),'var(--blue)')}${makeKpi('Último dia',esc(d.ultimo_dia_historico||'-'),'var(--blue)')}${makeKpi('Snapshot final',esc(d.snapshot_final_data||'-'),'var(--blue)')}${makeKpi('Meta mês',esc(d.meta_file||'-'),'var(--blue)')}</div><div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0"><div><h2 style="font-size:18px">📦 Fechamento mensal travado</h2><div class="hint">Global no fechamento: G ${Number(cfg.grave_pct||0)}% · A ${Number(cfg.alerta_pct||0)}% · At ${Number(cfg.atencao_pct||0)}% · Pesos ${Number(cfg.peso_grave||0)}/${Number(cfg.peso_alerta||0)}/${Number(cfg.peso_atencao||0)}</div></div><div class="small muted">Fechado em ${esc((d.fechado_em||'').replace('T',' ').slice(0,16))}</div></div></div>`;
- if(scope==='empresa'){const e=d.empresa_final||{}; box.innerHTML=top+renderHistoricoTable([{nome:'Empresa',filial:'Resultado final do mês',pendente:e.pendente||0,recebido:e.recebido||0,perc_meta:e.perc_meta||0,grave_alvo:e.grave_alvo||0,alerta_alvo:e.alerta_alvo||0,atencao_alvo:e.atencao_alvo||0}], 'empresa','📋 Resultado final mensal da empresa'); return}
+function renderHistoricoResults(){const dateVal=_histCurrentDate(); const scope=document.getElementById('histScope')?.value||'empresa'; const entity=document.getElementById('histEntity')?.value||''; const box=document.getElementById('histResults'); const d=HIST_DASH?.dates?.[dateVal]; if(!box){return} if(!d){box.innerHTML='<div class="empty">Nenhum histórico salvo para esta data.</div>'; return} let top=`<div class="kpis">${makeKpi('Pendente do dia',R(d.empresa?.pendente||0),'var(--red)')}${makeKpi('Recebido do dia',R(d.empresa?.recebido||0),'var(--green)')}${makeKpi('Grave do dia',R(d.empresa?.grave||0),'var(--red)')}${makeKpi('Alerta do dia',R(d.empresa?.alerta||0),'var(--orange)')}</div><div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0"><div><h2 style="font-size:18px">⚙️ Meta usada no dia</h2><div class="hint">Global: G ${Number(d.empresa?.config_global?.grave_pct||0)}% · A ${Number(d.empresa?.config_global?.alerta_pct||0)}% · At ${Number(d.empresa?.config_global?.atencao_pct||0)}% · Pesos ${Number(d.empresa?.config_global?.peso_grave||0)}/${Number(d.empresa?.config_global?.peso_alerta||0)}/${Number(d.empresa?.config_global?.peso_atencao||0)}</div></div><div class="small muted">${esc(dateVal)}</div></div></div>`; if(scope==='empresa'){box.innerHTML=top + renderHistoricoTable([{nome:'Empresa',filial:'Resumo geral',pendente:d.empresa?.pendente||0,recebido:d.empresa?.recebido||0,perc_meta:0,grave_alvo:0,alerta_alvo:0,atencao_alvo:0}], 'empresa','📋 Histórico diário da empresa'); return} const source = scope==='filiais' ? Object.entries(d.filiais||{}).map(([k,v])=>({...v,key:k})) : Object.entries(d.vendedores||{}).map(([k,v])=>({...v,key:k})); const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=renderLinksRelatoriosCobranca()+top + renderHistoricoTable(rows, scope, `📋 Histórico diário ${scope==='filiais'?'de filiais':'de vendedores'}`);}
+function renderHistoricoMonthResults(){const monthVal=_histCurrentMonth(); const scope=document.getElementById('histMonthScope')?.value||'empresa'; const entity=document.getElementById('histMonthEntity')?.value||''; const box=document.getElementById('histMonthResults'); const d=HIST_DASH?.months_closed?.[monthVal]; if(!box){return} if(!d){box.innerHTML=renderLinksRelatoriosCobranca()+'<div class="empty">Nenhum fechamento mensal salvo para este mês.</div>'; return} const cfg=d.config_global_fechamento||{}; let top=`<div class="kpis">${makeKpi('Mês fechado',esc(monthVal),'var(--blue)')}${makeKpi('Último dia',esc(d.ultimo_dia_historico||'-'),'var(--blue)')}${makeKpi('Snapshot final',esc(d.snapshot_final_data||'-'),'var(--blue)')}${makeKpi('Meta mês',esc(d.meta_file||'-'),'var(--blue)')}</div><div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0"><div><h2 style="font-size:18px">📦 Fechamento mensal travado</h2><div class="hint">Global no fechamento: G ${Number(cfg.grave_pct||0)}% · A ${Number(cfg.alerta_pct||0)}% · At ${Number(cfg.atencao_pct||0)}% · Pesos ${Number(cfg.peso_grave||0)}/${Number(cfg.peso_alerta||0)}/${Number(cfg.peso_atencao||0)}</div></div><div class="small muted">Fechado em ${esc((d.fechado_em||'').replace('T',' ').slice(0,16))}</div></div></div>`;
+ if(scope==='empresa'){const e=d.empresa_final||{}; box.innerHTML=renderLinksRelatoriosCobranca()+top+renderHistoricoTable([{nome:'Empresa',filial:'Resultado final do mês',pendente:e.pendente||0,recebido:e.recebido||0,perc_meta:e.perc_meta||0,grave_alvo:e.grave_alvo||0,alerta_alvo:e.alerta_alvo||0,atencao_alvo:e.atencao_alvo||0}], 'empresa','📋 Resultado final mensal da empresa'); return}
  const source=scope==='filiais'?Object.entries(d.filiais_finais||{}).map(([k,v])=>({...v,key:k})) : Object.entries(d.vendedores_finais||{}).map(([k,v])=>({...v,key:k}));
- const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=top + renderHistoricoTable(rows, scope, `📋 Resultado final mensal ${scope==='filiais'?'de filiais':'de vendedores'}`);}
+ const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=renderLinksRelatoriosCobranca()+top + renderHistoricoTable(rows, scope, `📋 Resultado final mensal ${scope==='filiais'?'de filiais':'de vendedores'}`);}
 function renderHistoricoTerceiro(){const box=document.getElementById('histThirdResults'); if(!box) return; const logs=(COB_LOGS||[]).filter(x=>String(x.usuario||'').toLowerCase()===COBRANCA10_LOGIN || String(x.usuario||'').toLowerCase()===COBRANCA10_NOME.toLowerCase()).slice().reverse(); const ent=thirdChargeEntity(); const top=`<div class="kpis">${makeKpi('Títulos na carteira',String((CLIENTES_TERCEIRO?.grave?.length||0)+(CLIENTES_TERCEIRO?.alerta?.length||0)+(CLIENTES_TERCEIRO?.atencao?.length||0)),'var(--blue)')}${makeKpi('Pendente',R(ent.pendente||0),'var(--red)')}${makeKpi('Recebido',R(ent.pago||0),'var(--green)')}${makeKpi('Cobranças lançadas',String(logs.length),'var(--orange)')}</div>`; const comm=renderTerceiroCommission(ent); const rows=logs.length?logs.map(x=>`<div class="log-row"><div><strong>${esc(x.cliente||'')}</strong><div class="small muted">${esc(x.titulo||'')} · Parcela ${esc(x.parcela||'')}</div></div><div><strong>${R(x.pendente||0)}</strong><div class="small muted">${esc(x.filial||'')}</div></div><div><strong>${esc((x.server_time||'').replace('T',' ').slice(0,16))}</strong><div class="small muted">Data</div></div><div><strong>${esc(x.telefone||'')}</strong><div class="small muted">Telefone</div></div></div>`).join(''):'<div class="empty">Nenhuma cobrança do Cobrança10 encontrada.</div>'; box.innerHTML=top+comm+`<div class="glass panel"><div class="section-head"><div><h2 style="font-size:18px">🤝 Cobranças Terceiro</h2><div class="hint">Histórico apenas do usuário Cobrança10.</div></div></div><div class="logs-list">${rows}</div></div>`}
 function setHistMode(mode){window._histMode=mode; document.getElementById('histDailyPane')?.classList.toggle('hidden',mode!=='daily'); document.getElementById('histMonthPane')?.classList.toggle('hidden',mode!=='monthly'); document.getElementById('histSalesPane')?.classList.toggle('hidden',mode!=='sales'); document.getElementById('histThirdPane')?.classList.toggle('hidden',mode!=='third'); document.getElementById('histTabDaily')?.classList.toggle('active',mode==='daily'); document.getElementById('histTabMonthly')?.classList.toggle('active',mode==='monthly'); document.getElementById('histTabSales')?.classList.toggle('active',mode==='sales'); document.getElementById('histTabThird')?.classList.toggle('active',mode==='third'); if(mode==='daily'){updateHistEntityFilter(); renderHistoricoResults();} else if(mode==='monthly'){updateHistMonthEntityFilter(); renderHistoricoMonthResults();} else if(mode==='sales'){updateHistSalesEntityFilter(); updateHistSalesMonthEntityFilter(); renderHistoricoSalesResults(); renderHistoricoSalesMonthResults();} else {renderHistoricoTerceiro();}}
 function renderHistoricoTab(){const dates=_histDates(); const months=_histMonths(); const salesDates=_histSalesDates(); const salesMonths=_histSalesMonths(); histSection.innerHTML=`<div class="section-head"><div><h2>🗂️ Histórico</h2><div class="hint">Consulte o histórico diário, vendas e os fechamentos mensais travados do Master/Diretor.</div></div></div><div class="tabs" style="justify-content:flex-start;margin:0 0 14px"><button id="histTabDaily" class="tab active" onclick="setHistMode('daily')">📅 Diário</button><button id="histTabMonthly" class="tab" onclick="setHistMode('monthly')">📦 Fechamento mensal</button><button id="histTabSales" class="tab" onclick="setHistMode('sales')">🧡 Vendas</button><button id="histTabThird" class="tab" onclick="setHistMode('third')">🤝 Cobranças Terceiro</button></div><div id="histDailyPane"><div class="glass panel" style="margin-bottom:14px"><div class="search-row"><div class="input-card"><label>Data</label><select id="histDate" onchange="updateHistEntityFilter();renderHistoricoResults()">${dates.map(d=>`<option value="${d}">${d}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histScope" onchange="updateHistEntityFilter();renderHistoricoResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histEntity" onchange="renderHistoricoResults()"><option value="">Todos</option></select></div></div></div><div id="histResults"></div></div><div id="histMonthPane" class="hidden"><div class="glass panel" style="margin-bottom:14px"><div class="search-row"><div class="input-card"><label>Mês fechado</label><select id="histMonth" onchange="updateHistMonthEntityFilter();renderHistoricoMonthResults()">${months.map(m=>`<option value="${m}">${m}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histMonthScope" onchange="updateHistMonthEntityFilter();renderHistoricoMonthResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histMonthEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histMonthEntity" onchange="renderHistoricoMonthResults()"><option value="">Todos</option></select></div></div></div><div id="histMonthResults"></div></div><div id="histSalesPane" class="hidden"><div class="glass panel" style="margin-bottom:14px"><div class="search-row"><div class="input-card"><label>Data de vendas</label><select id="histSalesDate" onchange="updateHistSalesEntityFilter();renderHistoricoSalesResults()">${salesDates.map(d=>`<option value="${d}">${d}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histSalesScope" onchange="updateHistSalesEntityFilter();renderHistoricoSalesResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histSalesEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histSalesEntity" onchange="renderHistoricoSalesResults()"><option value="">Todos</option></select></div></div></div><div id="histSalesResults"></div><div class="glass panel" style="margin:14px 0"><div class="search-row"><div class="input-card"><label>Mês de vendas</label><select id="histSalesMonth" onchange="updateHistSalesMonthEntityFilter();renderHistoricoSalesMonthResults()">${salesMonths.map(m=>`<option value="${m}">${m}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histSalesMonthScope" onchange="updateHistSalesMonthEntityFilter();renderHistoricoSalesMonthResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histSalesMonthEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histSalesMonthEntity" onchange="renderHistoricoSalesMonthResults()"><option value="">Todos</option></select></div></div></div><div id="histSalesMonthResults"></div></div><div id="histThirdPane" class="hidden"><div id="histThirdResults"></div></div>`; if(dates.length){document.getElementById('histDate').value=dates[0]} if(months.length){document.getElementById('histMonth').value=months[0]} if(salesDates.length){document.getElementById('histSalesDate').value=salesDates[0]} if(salesMonths.length){document.getElementById('histSalesMonth').value=salesMonths[0]} setHistMode(window._histMode||'daily');}
