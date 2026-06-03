@@ -1,4 +1,4 @@
-# VERSAO: COBRANCA10_WORKER_V14_SERVICOS_SO_META_SGI_VENDA_DIARIA_OFICIAL
+# VERSAO: COBRANCA10_WORKER_V15_SERVICOS_SOMENTE_META_SGI_MARGEM_OK
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -1634,183 +1634,6 @@ def aplicar_relatorio_servicos_em_metas(metas_info, servicos_info):
         print(f'⚠️ Erro ao aplicar relatório de serviços sobre metas: {e}')
     return metas_info
 
-
-
-def _nome_arquivo_venda_diaria_valido(fname):
-    s = str(fname or '').lower()
-    if s.startswith('~$'):
-        return False
-    if not (s.endswith('.xls') or s.endswith('.xlsx')):
-        return False
-    return ('analise_total_venda' in s) or ('analises_totais_vendas' in s) or ('total_venda' in s)
-
-
-def _parse_venda_diaria_xls(caminho):
-    try:
-        df = pd.read_excel(caminho, header=None, engine='openpyxl').fillna('')
-    except Exception:
-        df = pd.read_excel(caminho, header=None).fillna('')
-
-    # Primeira linha costuma ser cabeçalho:
-    # Filial | Total Vendido (R$) | ... | Valor Serviço (R$) | Valor Acréscimo Serviço (R$)
-    header_idx = None
-    for i in range(min(len(df), 15)):
-        vals = [normalizar_texto_match(x) for x in df.iloc[i].tolist()]
-        if any('TOTAL VENDIDO' in v for v in vals) and any('VALOR SERVICO' in v for v in vals):
-            header_idx = i
-            break
-    if header_idx is None:
-        header_idx = 0
-
-    headers = [normalizar_texto_match(x) or f'COL_{j}' for j, x in enumerate(df.iloc[header_idx].tolist())]
-    data = df.iloc[header_idx+1:].copy()
-    data.columns = headers
-
-    def _col_contains(txt):
-        alvo = normalizar_texto_match(txt)
-        for c in data.columns:
-            if alvo in normalizar_texto_match(c):
-                return c
-        return None
-
-    col_filial = _col_contains('FILIAL') or data.columns[0]
-    col_total = _col_contains('TOTAL VENDIDO')
-    col_serv = _col_contains('VALOR SERVICO')
-    col_acresc = _col_contains('VALOR ACRESCIMO SERVICO')
-
-    filiais = {}
-    empresa = {
-        'total_vendido': 0.0,
-        'valor_servico': 0.0,
-        'valor_acrescimo_servico': 0.0,
-        'total_geral': 0.0,
-        'fonte': 'relatorio_analises_totais_vendas',
-    }
-
-    for _, row in data.iterrows():
-        filial_txt = str(row.get(col_filial, '')).strip()
-        if not filial_txt:
-            continue
-        total_vendido = _br_money(row.get(col_total, 0)) if col_total else 0.0
-        valor_serv = _br_money(row.get(col_serv, 0)) if col_serv else 0.0
-        valor_acresc = _br_money(row.get(col_acresc, 0)) if col_acresc else 0.0
-        total_geral = round(total_vendido + valor_serv + valor_acresc, 2)
-
-        if normalizar_texto_match(filial_txt) == 'TOTAL':
-            empresa.update({
-                'total_vendido': round(total_vendido, 2),
-                'valor_servico': round(valor_serv, 2),
-                'valor_acrescimo_servico': round(valor_acresc, 2),
-                'total_geral': total_geral,
-            })
-            continue
-
-        fk = _filial_key_from_text(filial_txt)
-        if fk:
-            filiais[fk] = {
-                'filial': fk,
-                'label': filial_txt,
-                'total_vendido': round(total_vendido, 2),
-                'valor_servico': round(valor_serv, 2),
-                'valor_acrescimo_servico': round(valor_acresc, 2),
-                'total_geral': total_geral,
-            }
-
-    if empresa['total_geral'] <= 0 and filiais:
-        empresa['total_vendido'] = round(sum(x['total_vendido'] for x in filiais.values()), 2)
-        empresa['valor_servico'] = round(sum(x['valor_servico'] for x in filiais.values()), 2)
-        empresa['valor_acrescimo_servico'] = round(sum(x['valor_acrescimo_servico'] for x in filiais.values()), 2)
-        empresa['total_geral'] = round(sum(x['total_geral'] for x in filiais.values()), 2)
-
-    return {'empresa': empresa, 'filiais': filiais}
-
-
-def coletar_venda_diaria_oficial():
-    hoje_br = now_brasilia().strftime('%d/%m/%Y')
-    print(f"\n🕒 Iniciando coleta de VENDA DIÁRIA oficial em relatorio_analises_totais_vendas: {hoje_br}")
-
-    driver.get(URL + '/relatorio_analises_totais_vendas')
-    time.sleep(2)
-    esperar_sumir_overlays(10)
-
-    # Preenche todos os campos visíveis de data com o dia atual.
-    try:
-        inputs = driver.find_elements(By.XPATH, "//input[not(@type='hidden') and (contains(@id,'data') or contains(@name,'data') or contains(@class,'data') or @type='text')]")
-        preenchidos = 0
-        for el in inputs[:8]:
-            try:
-                if not el.is_displayed():
-                    continue
-                val = (el.get_attribute('value') or '').strip()
-                ph = (el.get_attribute('placeholder') or '').lower()
-                ident = ((el.get_attribute('id') or '') + ' ' + (el.get_attribute('name') or '') + ' ' + ph).lower()
-                if 'data' in ident or re.search(r'\d{2}/\d{2}/\d{4}', val) or not val:
-                    driver.execute_script("arguments[0].removeAttribute('readonly'); arguments[0].removeAttribute('disabled');", el)
-                    el.click()
-                    el.send_keys(Keys.CONTROL, 'a')
-                    el.send_keys(Keys.DELETE)
-                    el.send_keys(hoje_br)
-                    driver.execute_script("arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", el)
-                    preenchidos += 1
-            except Exception:
-                pass
-        print(f"✅ Datas preenchidas no relatório de venda diária: {preenchidos}")
-    except Exception as e:
-        print(f"⚠️ Não consegui preencher datas da venda diária automaticamente: {e}")
-
-    try:
-        Select(wait.until(EC.presence_of_element_located((By.ID, '_formato')))).select_by_value('xls')
-        print("✅ Formato XLS venda diária")
-    except Exception as e:
-        print(f"⚠️ Não consegui selecionar formato XLS venda diária: {e}")
-
-    arquivos_antes = set(f for f in os.listdir(download_dir) if _nome_arquivo_venda_diaria_valido(f))
-    try:
-        clicar_seguro_xpath("//button[@id='gerar'] | //input[@id='gerar'] | //button[contains(.,'Gerar')] | //input[@value='Gerar']", timeout=20)
-    except Exception:
-        driver.find_element(By.ID, 'gerar').click()
-
-    caminho = None
-    print("📥 Gerando XLS venda diária... aguardando download...")
-    for _ in range(60):
-        time.sleep(2)
-        baixando = any(f.endswith('.crdownload') or f.endswith('.tmp') for f in os.listdir(download_dir))
-        if baixando:
-            continue
-        novos = set(f for f in os.listdir(download_dir) if _nome_arquivo_venda_diaria_valido(f)) - arquivos_antes
-        if novos:
-            caminho = max([os.path.join(download_dir, f) for f in novos], key=os.path.getctime)
-            break
-
-    if not caminho:
-        todos = [os.path.join(download_dir, f) for f in os.listdir(download_dir) if _nome_arquivo_venda_diaria_valido(f)]
-        if todos:
-            caminho = max(todos, key=os.path.getctime)
-            print(f"⚠️ Usando último XLS de venda diária encontrado: {caminho}")
-        else:
-            raise Exception("Nenhum XLS de venda diária baixado")
-
-    parsed = _parse_venda_diaria_xls(caminho)
-    parsed['coletado_em'] = now_brasilia().strftime('%Y-%m-%d %H:%M:%S')
-    parsed['data'] = hoje_br
-    parsed['arquivo_origem'] = os.path.basename(caminho)
-
-    json_path = os.path.join(pasta, 'venda_diaria_mes_atual.json')
-    xlsx_path = os.path.join(pasta, 'venda_diaria_mes_atual.xlsx')
-    with open(json_path, 'w', encoding='utf-8') as f:
-        json.dump(parsed, f, ensure_ascii=False, indent=2)
-    try:
-        with pd.ExcelWriter(xlsx_path, engine='openpyxl') as writer:
-            pd.DataFrame([parsed['empresa']]).to_excel(writer, sheet_name='empresa', index=False)
-            pd.DataFrame(list(parsed['filiais'].values())).to_excel(writer, sheet_name='filiais', index=False)
-    except Exception:
-        xlsx_path = None
-
-    emp = parsed.get('empresa', {})
-    print(f"✅ Venda diária oficial: vendido={emp.get('total_vendido',0):.2f} serv={emp.get('valor_servico',0):.2f} acresc={emp.get('valor_acrescimo_servico',0):.2f} total={emp.get('total_geral',0):.2f}")
-    return {'json_path': json_path, 'xlsx_path': xlsx_path, 'dados': parsed}
-
-
 # ===== LOGIN ROBUSTO — UMA ÚNICA VEZ
 def fazer_login_sgi():
     driver.get(URL)
@@ -1895,6 +1718,7 @@ def fazer_login_sgi():
 
     time.sleep(5)
 
+print("✅ WORKER V15 ativo: metas+vendas+margem+diária; serviços somente Controle de Metas SGI")
 fazer_login_sgi()
 
 metas_vendas_info = {"json_path": None, "xlsx_path": None, "dados": {}}
@@ -1909,16 +1733,10 @@ try:
 except Exception as e:
     print(f"⚠️ Erro ao coletar Margem Bruta/Rentabilidade do SGI: {e}")
 
-# V14: serviços vêm SOMENTE do Controle de Metas SGI.
-# Não coletar /relatorio_servicos e não aplicar relatório individual sobre as metas.
+# V15: serviços SOMENTE pelo Controle de Metas SGI.
+# Não coletar /relatorio_servicos e não sobrescrever os blocos servico_filial_ouro_fob.
 relatorio_servicos_info = {"json_path": None, "xlsx_path": None, "dados": {}}
-print("✅ V14_SERVICOS_SO_CONTROLE_META: relatório individual de serviços desativado.")
-
-venda_diaria_info = {"json_path": None, "xlsx_path": None, "dados": {}}
-try:
-    venda_diaria_info = coletar_venda_diaria_oficial()
-except Exception as e:
-    print(f"⚠️ Erro ao coletar venda diária oficial do SGI: {e}")
+print("✅ V15_SERVICOS_SOMENTE_CONTROLE_META: relatório individual de serviços desativado; total vem apenas de /metas/consulta")
 
 FTP_HOST  = "moveisdolar.com.br"
 FTP_USER  = "moveisdolar3"
@@ -1948,17 +1766,17 @@ try:
         with open(margens_brutas_info['xlsx_path'], 'rb') as f_mxlsx:
             ftp.storbinary('STOR margens_brutas_mes_atual.xlsx', f_mxlsx)
 
-    if venda_diaria_info.get('json_path') and os.path.exists(venda_diaria_info['json_path']):
-        with open(venda_diaria_info['json_path'], 'rb') as f_vdjson:
-            ftp.storbinary('STOR venda_diaria_mes_atual.json', f_vdjson)
-    if venda_diaria_info.get('xlsx_path') and os.path.exists(venda_diaria_info['xlsx_path']):
-        with open(venda_diaria_info['xlsx_path'], 'rb') as f_vdxlsx:
-            ftp.storbinary('STOR venda_diaria_mes_atual.xlsx', f_vdxlsx)
+    # V15: não publica relatorio_servicos_mes_atual.* para não contaminar serviços oficiais.
+    try:
+        from io import BytesIO as _BytesIO
+        ftp.storbinary('STOR relatorio_servicos_mes_atual.json', _BytesIO(b'{"empresa":{},"servicos":{},"filiais":{},"vendedores":{},"detalhes":[],"disabled":"V15_SERVICOS_SOMENTE_CONTROLE_META"}'))
+    except Exception as _e_srv_clear:
+        print(f"⚠️ Não consegui limpar relatorio_servicos_mes_atual.json remoto: {_e_srv_clear}")
 
     ver = json.dumps({'updated_at': now_brasilia().isoformat(), 'updated_at_label': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'), 'timezone': 'America/Sao_Paulo', 'scope': 'sales_only'}, ensure_ascii=False).encode('utf-8')
     ftp.storbinary('STOR sales_version.json', BytesIO(ver))
     ftp.quit()
-    print('✅ Upload vendas/margens/venda_diaria concluído')
+    print('✅ Upload vendas/margens/serviços concluído')
 except Exception as e:
     print(f'⚠️ Erro no upload FTP vendas/margens: {e}')
 
