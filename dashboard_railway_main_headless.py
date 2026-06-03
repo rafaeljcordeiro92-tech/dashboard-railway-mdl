@@ -1,4 +1,4 @@
-# VERSAO: COBRANCA10_V3_FIX_NAMEERROR
+# VERSAO: COBRANCA10_V21_SENHAS_VISIVEIS_RECEBIMENTOS_CORTE_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -2147,6 +2147,7 @@ _nt = sum(1 for c in clientes_cobrar if c['faixa']=='atencao')
 _nr = sum(1 for v in recebido_faixa.values() if v.get('is_ativo'))
 print(f"👥 Clientes a cobrar: {len(clientes_cobrar)} ({_ng}g/{_na}a/{_nt}t)")
 print(f"💰 Vendedores com recebimento no período: {_nr}")
+print("✅ V21_RECEBIMENTO_MES_COMPLETO: pagamentos no dia de corte entram também no relatório visual por faixa")
 
 print(f"\U0001f465 Clientes a cobrar: {len(clientes_cobrar)} títulos ({_ng} grave / {_na} alerta / {_nt} atenção)")
 
@@ -3345,7 +3346,7 @@ for _i2 in range(len(df_raw)):
 
     if not _venc2 or not _pagto2 or _pago2 <= 0:
         continue
-    if _pagto2 <= _data_corte_parse:
+    if _pagto2 < _data_corte_parse:
         continue
 
     if str(_row2[COL["conta_caixa"]]).strip() == "Caixa Filial 100":
@@ -4820,7 +4821,7 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 .section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px;flex-wrap:wrap}
 .section-head h2{font-size:20px;font-weight:800;letter-spacing:-.025em;color:var(--text-primary)}
 .section-head .hint{font-size:12px;color:var(--text-secondary);margin-top:4px}
-.grid-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.senhas-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;align-items:stretch}.senha-card .input-card{min-width:0}.senha-card input{width:100%;box-sizing:border-box}.senha-value{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.grid-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}.senhas-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:18px;align-items:stretch}.senha-card .input-card{min-width:0}.senha-card input{width:100%;box-sizing:border-box}.senha-value{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.senha-card{max-width:100%}@media(max-width:680px){.senha-actions{grid-template-columns:1fr!important}.senhas-grid{grid-template-columns:1fr!important}}
 .card{padding:20px;border-radius:var(--radius-lg);cursor:pointer;position:relative;overflow:hidden;transition:var(--transition-slow);border:1px solid var(--glass-border);background:var(--glass)}
 .card:hover{transform:translateY(-4px) scale(1.01);border-color:rgba(255,255,255,.18);box-shadow:0 20px 60px rgba(0,0,0,.5),0 0 0 1px rgba(249,168,50,.12)}
 .card::before{content:'';position:absolute;inset:0;background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,.04) 50%,transparent 60%);background-size:200% 100%;background-position:200% 0;transition:background-position .6s ease;pointer-events:none}
@@ -7731,7 +7732,58 @@ function targetOptionsMsg(){
 
   return o;
 }
-function renderSenhaCard(u, isDirector=false){const key=isDirector?'diretorcomercial':u.login; const pend=(AUTH_STATE?.password_reset_requests||[]).filter(r=>String(r.login||'').toLowerCase()===String(key).toLowerCase() && String(r.status||'pendente')==='pendente').length; return `<div class="glass card" style="cursor:default"><div class="title" style="min-height:auto">${esc(isDirector?'Diretor Comercial':u.nome)} ${!isDirector?`(${u.filial||''})`:''}</div><div class="legend-inline"><span><i class="dot" style="background:${u.must_change_password?'#f59e0b':'#22c55e'}"></i>${u.must_change_password?'Precisa trocar senha':'Senha ativa'}</span>${pend?`<span><i class="dot" style="background:#ef4444"></i>${pend} solicitação(ões)</span>`:''}</div><div class="form-grid bonus" style="grid-template-columns:1.1fr .9fr;margin-top:12px"><div class="input-card"><label>Nova senha para ${esc(key)}</label><input id="pwd_${key}" placeholder="Digite a nova senha"></div><div class="input-card"><label>Ações</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="adminSalvarSenha('${key}')">💾 Salvar senha</button><button class="btn soft" type="button" onclick="adminMarcarTroca('${key}')">🔁 Exigir troca</button></div></div></div>${pend?`<div class="note" style="margin-top:10px">Solicitação pendente de recuperação. <button class="btn soft" style="margin-left:8px" onclick="adminResolverReset('${key}')">Resolver solicitação</button></div>`:''}<div id="pwd_msg_${key}" class="note" style="margin-top:8px"></div></div>`}
+function senhaAtualUsuario(u, isDirector=false){
+  if(isDirector){return String(u?.password || AUTH_STATE?.director?.password || '');}
+  return String(u?.password || u?.senha || '');
+}
+function senhaInputId(login){return 'senha_atual_'+String(login||'').replace(/[^a-zA-Z0-9_-]/g,'_')}
+function toggleSenhaAtual(login){
+  const el=document.getElementById(senhaInputId(login));
+  if(!el) return;
+  el.type = el.type === 'password' ? 'text' : 'password';
+}
+async function copiarSenhaAtual(login){
+  const el=document.getElementById(senhaInputId(login));
+  const val=el ? el.value : '';
+  if(!val){toast('Senha não localizada para copiar.'); return;}
+  try{await navigator.clipboard.writeText(val); toast('Senha copiada.','success');}
+  catch(e){
+    try{el.select(); document.execCommand('copy'); toast('Senha copiada.','success');}
+    catch(err){toast('Não consegui copiar automaticamente.');}
+  }
+}
+function renderSenhaCard(u, isDirector=false){
+  const key=isDirector?'diretorcomercial':String(u?.login||'');
+  const nome=isDirector?'Diretor Comercial':String(u?.nome||key||'Usuário');
+  const filial=!isDirector?String(u?.filial||''):'';
+  const senhaAtual=senhaAtualUsuario(u,isDirector);
+  const pend=(AUTH_STATE?.password_reset_requests||[]).filter(r=>String(r.login||'').toLowerCase()===String(key).toLowerCase() && String(r.status||'pendente')==='pendente').length;
+  const statusTxt=u?.must_change_password?'Precisa trocar senha':'Senha ativa';
+  const statusColor=u?.must_change_password?'#f59e0b':'#22c55e';
+  const safeKey=String(key).replace(/'/g,"\\'");
+  return `<div class="glass card senha-card" style="cursor:default;overflow:hidden;min-height:260px;display:flex;flex-direction:column;gap:12px">
+    <div>
+      <div class="title" style="min-height:auto;line-height:1.25">${esc(nome)} ${filial?`(${esc(filial)})`:''}</div>
+      <div class="legend-inline" style="margin-top:8px;gap:10px;flex-wrap:wrap"><span><i class="dot" style="background:${statusColor}"></i>${statusTxt}</span>${pend?`<span><i class="dot" style="background:#ef4444"></i>${pend} solicitação(ões)</span>`:''}</div>
+    </div>
+    <div class="senha-info" style="display:grid;grid-template-columns:1fr;gap:10px;background:rgba(2,6,23,.45);border:1px solid rgba(148,163,184,.16);border-radius:16px;padding:12px">
+      <div><div class="small muted" style="font-weight:900;text-transform:uppercase;letter-spacing:.08em">Login</div><div style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:900;word-break:break-all">${esc(key)}</div></div>
+      <div><div class="small muted" style="font-weight:900;text-transform:uppercase;letter-spacing:.08em">Senha ativa atual</div>
+        <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;margin-top:6px">
+          <input id="${senhaInputId(key)}" class="senha-value" type="password" value="${esc(senhaAtual)}" readonly style="width:100%;min-width:0;background:#05070c;border:1px solid rgba(148,163,184,.18);border-radius:10px;padding:10px;color:#e5e7eb;font-weight:900">
+          <button class="btn soft" type="button" style="padding:10px 12px;white-space:nowrap" onclick="toggleSenhaAtual('${safeKey}')">👁️</button>
+          <button class="btn soft" type="button" style="padding:10px 12px;white-space:nowrap" onclick="copiarSenhaAtual('${safeKey}')">📋</button>
+        </div>
+      </div>
+    </div>
+    <div class="senha-actions" style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:stretch;margin-top:auto">
+      <div class="input-card" style="min-width:0"><label>Nova senha</label><input id="pwd_${esc(key)}" placeholder="Digite a nova senha" style="width:100%;min-width:0"></div>
+      <div class="input-card" style="min-width:0"><label>Ações</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="adminSalvarSenha('${safeKey}')">💾 Salvar senha</button><button class="btn soft" type="button" onclick="adminMarcarTroca('${safeKey}')">🔁 Exigir troca</button></div></div>
+    </div>
+    ${pend?`<div class="note" style="margin-top:2px">Solicitação pendente de recuperação. <button class="btn soft" style="margin-left:8px" onclick="adminResolverReset('${safeKey}')">Resolver solicitação</button></div>`:''}
+    <div id="pwd_msg_${esc(key)}" class="note" style="margin-top:2px"></div>
+  </div>`
+}
 
 function _histDates(){return Object.keys(HIST_DASH?.dates||{}).sort().reverse()}
 function _histMonths(){return Object.keys(HIST_DASH?.months_closed||{}).sort().reverse()}
@@ -8213,7 +8265,7 @@ function renderSenhasTab(){
   <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">👑 Contas administrativas</h2></div></div>${renderSenhaCard(AUTH_STATE?.director||{login:'diretorcomercial',nome:'Diretor Comercial',must_change_password:true}, true)}</div>
   <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">➕ Criar usuário de acesso</h2><div class="hint">Aqui você cria apenas o login/senha de acesso. Depois vá em Metas > Crediaristas configuráveis para vincular esse usuário à filial/base e ao percentual.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Login</label><input id="newUserLogin" placeholder="ex: crediaristaf07"></div><div class="input-card"><label>Nome</label><input id="newUserNome" placeholder="ex: CREDIARISTAF07"></div><div class="input-card"><label>Filial</label><input id="newUserFilial" placeholder="ex: F7"></div><div class="input-card"><label>Senha inicial</label><input id="newUserSenha" placeholder="mín. 4 caracteres"></div></div><div class="form-grid bonus" style="margin-top:10px"><div class="input-card"><label>Tipo</label><select id="newUserTipo"><option value="crediarista">Crediarista</option><option value="cobranca">Cobrança</option></select></div></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="adminCriarUsuarioCobranca()">💾 Criar usuário</button></div><div id="newUserMsg" class="note" style="margin-top:10px"></div></div>
   <div class="section-head"><div><h2>👥 Usuários do dashboard</h2><div class="hint">As senhas permanecem congeladas e só mudam se você alterar aqui ou se surgir um usuário novo.</div></div></div>
-  <div class="senhas-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;align-items:stretch">${users.map(u=>renderSenhaCard(u,false)).join('')}</div>`;
+  <div class="senhas-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:18px;align-items:stretch">${users.map(u=>renderSenhaCard(u,false)).join('')}</div>`;
 }
 async function adminSalvarSenha(login){const box=document.getElementById(`pwd_msg_${login}`); const senha=(document.getElementById(`pwd_${login}`)?.value||'').trim(); if(!senha || senha.length<4){if(box) box.textContent='Digite uma senha com pelo menos 4 caracteres.'; return;} try{const fd=new FormData(); fd.append('action','admin_set_password'); fd.append('login',login); fd.append('new_password',senha); fd.append('must_change_password','0'); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(box) box.textContent=j.ok?'✅ Senha atualizada online.':'⚠️ Não consegui atualizar a senha.'; if(j.ok){await carregarCredenciaisOnline(); renderSenhasTab();}}catch(e){if(box) box.textContent='⚠️ Não consegui atualizar a senha.';}}
 async function adminMarcarTroca(login){const box=document.getElementById(`pwd_msg_${login}`); try{const fd=new FormData(); fd.append('action','admin_force_change'); fd.append('login',login); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(box) box.textContent=j.ok?'✅ Usuário marcado para trocar a senha no próximo acesso.':'⚠️ Não consegui marcar troca de senha.'; if(j.ok){await carregarCredenciaisOnline(); renderSenhasTab();}}catch(e){if(box) box.textContent='⚠️ Não consegui marcar troca de senha.';}}
