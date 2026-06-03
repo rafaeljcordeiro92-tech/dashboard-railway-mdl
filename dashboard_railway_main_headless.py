@@ -1,4 +1,4 @@
-# VERSAO: COBRANCA10_V21_SENHAS_VISIVEIS_RECEBIMENTOS_CORTE_FIX
+# VERSAO: COBRANCA10_V22_GERENTE_LOGIN_TIMER_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -2506,16 +2506,29 @@ auth_users  = {}
 
 for _, row in df_vend.iterrows():
     nome_exib = str(row["nome_exibicao"]).strip()
-    filial    = str(row["filial_vendedor"]).strip()
+    filial    = str(row["filial_vendedor"]).strip().upper()
     is_ger    = bool(row["is_gerente"])
-    login     = normalizar_login(nome_exib)
-    chave     = f"{login}_{filial}"
-    senha_inicial = creds_salvas.get(chave) or (login.upper() + str(random.randint(100,999)))
+
+    # V22: gerentes usam login fixo por filial.
+    # Ex.: F1 => gerentef1, F2 => gerentef2.
+    # Vendedores continuam usando o login pelo nome, como antes.
+    login_original = normalizar_login(nome_exib)
+    login = f"gerente{filial.lower()}" if (is_ger and filial) else login_original
+
+    chave = f"{login}_{filial}"
+    chave_antiga = f"{login_original}_{filial}"
+    senha_inicial = (
+        creds_salvas.get(chave)
+        or creds_salvas.get(chave_antiga)
+        or (login.upper() + str(random.randint(100,999)))
+    )
     login_fin = login
     if login in credenciais and credenciais[login]["filial"] != filial:
         login_fin = f"{login}_{filial.lower()}"
 
-    estado_ant = cred_state.get("users", {}).get(login_fin, {})
+    users_ant = cred_state.get("users", {}) if isinstance(cred_state.get("users", {}), dict) else {}
+    # Se o gerente já tinha senha no login antigo pelo nome, reaproveita para não bloquear acesso.
+    estado_ant = users_ant.get(login_fin, {}) or users_ant.get(login, {}) or users_ant.get(login_original, {})
     senha_atual = estado_ant.get("password") or senha_inicial
     precisa_trocar = bool(estado_ant.get("must_change_password", senha_atual == senha_inicial))
 
@@ -2679,6 +2692,7 @@ with open(cred_path, "w", encoding="utf-8") as f:
     f.write("\n" + "=" * 70 + "\n")
 
 print(f"🔐 Credenciais: {cred_path} ({len(credenciais)} vendedores)")
+print("✅ V22_GERENTE_LOGIN: gerentes padronizados como gerentef1/gerentef2/gerentef3...")
 js_auth_state = json.dumps(cred_state, ensure_ascii=False)
 
 
@@ -6044,6 +6058,42 @@ function laranjitoSrc(status){
 }
 
 
+
+function _nextDateAt(hour, minute=0){
+  const n=new Date();
+  const d=new Date(n);
+  d.setHours(hour, minute, 0, 0);
+  if(d <= n) d.setDate(d.getDate()+1);
+  return d;
+}
+function nextUpdateInfo(){
+  const now=new Date();
+  const salesInterval=20;
+  const nSales=new Date(now);
+  const nextMin=(Math.floor(now.getMinutes()/salesInterval)+1)*salesInterval;
+  if(nextMin>=60){nSales.setHours(now.getHours()+1,0,0,0);} else {nSales.setMinutes(nextMin,0,0);}
+  const horasCob=[7,9,11,13,15,17,19,21];
+  let nCob=null;
+  for(const h of horasCob){
+    const c=new Date(now); c.setHours(h,0,0,0);
+    if(c>now){nCob=c; break;}
+  }
+  if(!nCob){nCob=new Date(now); nCob.setDate(nCob.getDate()+1); nCob.setHours(horasCob[0],0,0,0);}
+  const target=(nSales<=nCob)?nSales:nCob;
+  const tipo=(nSales<=nCob)?'vendas':'cobrança';
+  const sec=Math.max(0,Math.floor((target-now)/1000));
+  const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), ss=sec%60;
+  const tempo=h>0?`${h}h ${String(m).padStart(2,'0')}m ${String(ss).padStart(2,'0')}s`:`${String(m).padStart(2,'0')}m ${String(ss).padStart(2,'0')}s`;
+  return {tipo,tempo,label:`${tipo} em ${tempo}`};
+}
+function nextUpdateClockHtml(){
+  return `<div style="font-size:12px;color:#fbbf24;font-weight:900;white-space:nowrap">⏳ Próxima atualização: <span data-next-update-clock>${esc(nextUpdateInfo().label)}</span></div>`;
+}
+function updateNextUpdateClocks(){
+  const info=nextUpdateInfo();
+  document.querySelectorAll('[data-next-update-clock]').forEach(el=>{el.textContent=info.label;});
+}
+
 function renderKPIs(){
   const grave=flattenFiliais().reduce((a,b)=>a+Number(b.grave_pend||0),0);
   const alerta=flattenFiliais().reduce((a,b)=>a+Number(b.alerta_pend||0),0);
@@ -6133,7 +6183,7 @@ function renderKPIs(){
     makeKpi('📊 Rentabilidade total', rentPct?`${rentPct.toFixed(2).replace('.',',')}%`:'Sem dado','var(--green-400)','Última linha do relatório de margem bruta por filial', 'card-financeiro'),
     makeKpi('🧮 Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)', isViewer ? 'Índice mercantil + serviços / custo oculto' : `(Mercantil + serviços) / custo total ${R(markupCost||0)}`, 'card-financeiro', statusLaranjitoMarkup(markupTotal))
   ];
-  document.getElementById('kpis').innerHTML=cards.join('') + `<div class="glass" style="grid-column:1/-1;padding:10px 14px;display:flex;align-items:center;justify-content:flex-start;min-height:46px"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div></div>`;
+  document.getElementById('kpis').innerHTML=cards.join('') + `<div class="glass" style="grid-column:1/-1;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;min-height:46px"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div>${nextUpdateClockHtml()}</div>`; updateNextUpdateClocks();
 }
 
 async function fetchJsonNoCache(url){
@@ -6177,7 +6227,7 @@ function latestUpdatedLabel(){
 }
 
 function renderUpdateStrip(){
-  return `<div class="glass" style="margin:10px 0 14px;padding:10px 14px;display:flex;align-items:center;justify-content:flex-start;min-height:42px;border-color:rgba(148,163,184,.20)"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div></div>`;
+  return `<div class="glass" style="margin:10px 0 14px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;min-height:42px;border-color:rgba(148,163,184,.20)"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div>${nextUpdateClockHtml()}</div>`;
 }
 
 
@@ -8424,6 +8474,7 @@ window.addEventListener('load',async ()=>{
     if(stampSales) window.__salesUpdatedAtLabel = stampSales;
   }catch(_e){}
   if(restoreSession()){abrirApp();}
+  setInterval(updateNextUpdateClocks,1000);
   setInterval(pollSalesLive,60000);
   setInterval(pollDashboardLiveReload,60000);
   setTimeout(pollSalesLive,3000);
