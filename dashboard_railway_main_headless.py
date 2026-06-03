@@ -1,4 +1,4 @@
-# VERSAO: COBRANCA10_V17_DASH_SEM_COLETA_VENDAS_RELOGIO_FLUXO
+# VERSAO: COBRANCA10_V18_RECEBIMENTOS_RELATORIOS_FECHAMENTO_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -37,6 +37,51 @@ data_fim    = (hoje - timedelta(days=15)).strftime("%d/%m/%Y")
 IS_RAILWAY = bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RUN_ON_RAILWAY") == "1")
 pasta = os.path.dirname(os.path.abspath(__file__))
 download_dir = pasta if not IS_RAILWAY else tempfile.gettempdir()
+
+
+# ===== RELATÓRIOS AUDITÁVEIS DA ÚLTIMA EXECUÇÃO - V18
+# Os downloads em /tmp somem quando o container reinicia. Copiamos para /app/relatorios_publicos
+# e publicamos em /public_html/colaborador/relatorios para auditoria pelo dashboard.
+RELATORIOS_DIR = os.path.join(pasta, "relatorios_publicos")
+os.makedirs(RELATORIOS_DIR, exist_ok=True)
+RELATORIOS_PUBLIC_BASE = "https://moveisdolar.com.br/colaborador/relatorios"
+relatorios_publicos = {
+    "principal_xls": None,
+    "quitados_original_xls": None,
+    "quitados_processado_xlsx": None,
+    "quitados_json": None,
+    "zip": None,
+}
+
+def _copiar_relatorio_publico(src, nome_destino):
+    try:
+        if not src or not os.path.exists(src):
+            print(f"⚠️ Relatório não encontrado para publicar: {src}")
+            return None
+        dst = os.path.join(RELATORIOS_DIR, nome_destino)
+        shutil.copy2(src, dst)
+        print(f"💾 Relatório público salvo: {dst}")
+        return dst
+    except Exception as e:
+        print(f"⚠️ Falha ao copiar relatório público {src} -> {nome_destino}: {e}")
+        return None
+
+def _gerar_zip_relatorios_publicos():
+    try:
+        import zipfile
+        zip_path = os.path.join(RELATORIOS_DIR, "ultimos_relatorios_cobranca.zip")
+        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for label, path in relatorios_publicos.items():
+                if label == "zip":
+                    continue
+                if path and os.path.exists(path):
+                    zf.write(path, arcname=os.path.basename(path))
+        relatorios_publicos["zip"] = zip_path
+        print(f"📦 ZIP de relatórios salvo: {zip_path}")
+        return zip_path
+    except Exception as e:
+        print(f"⚠️ Falha ao gerar ZIP de relatórios: {e}")
+        return None
 
 from selenium.webdriver.chrome.service import Service
 from selenium.common.exceptions import WebDriverException, SessionNotCreatedException
@@ -851,6 +896,7 @@ def coletar_quitados_180d_contas_receber():
         if novos:
             caminho_q = max([os.path.join(download_dir, f) for f in novos], key=os.path.getctime)
             print(f"✅ Download quitados OK: {caminho_q}")
+            relatorios_publicos["quitados_original_xls"] = _copiar_relatorio_publico(caminho_q, "ultimo_contas_receber_quitados_original.xls")
             break
 
     if not caminho_q:
@@ -875,6 +921,9 @@ def coletar_quitados_180d_contas_receber():
     print(f"💾 Quitados JSON: {out_json}")
     if out_xlsx:
         print(f"💾 Quitados XLSX: {out_xlsx}")
+    relatorios_publicos["quitados_json"] = _copiar_relatorio_publico(out_json, "quitados_180d_contas_receber.json")
+    if out_xlsx:
+        relatorios_publicos["quitados_processado_xlsx"] = _copiar_relatorio_publico(out_xlsx, "quitados_180d_contas_receber.xlsx")
 
     return {"xlsx_path": out_xlsx, "json_path": out_json, "dados": {"quitados": quitados}}
 
@@ -1691,7 +1740,9 @@ for _ in range(60):
     ) - arquivos_antes
     if novos:
         caminho = max([os.path.join(download_dir, f) for f in novos], key=os.path.getctime)
-        print(f"✅ Download OK: {caminho}"); break
+        print(f"✅ Download OK: {caminho}")
+        relatorios_publicos["principal_xls"] = _copiar_relatorio_publico(caminho, "ultimo_contas_receber_principal.xls")
+        break
 
 if not caminho:
     print(f"📂 download_dir: {download_dir}")
@@ -1711,7 +1762,7 @@ print(f"📋 {df_raw.shape[0]} linhas lidas")
 
 metas_vendas_info = {"json_path": None, "xlsx_path": None, "dados": {}}
 margens_brutas_info = {"json_path": None, "xlsx_path": None, "dados": {}}
-print("✅ V17_MAIN_SEM_COLETA_VENDAS: MAIN roda somente cobrança/recebimentos; vendas+margem+diária ficam 100% no worker")
+print("✅ V18_MAIN_SEM_COLETA_VENDAS: MAIN roda somente cobrança/recebimentos; vendas+margem+diária ficam 100% no worker")
 
 # ===== MAPA DE COLUNAS DO XLS NOVO
 COL = {
@@ -2077,7 +2128,7 @@ for _i in range(len(df_raw)):
     # =========================================
     # RECEBIMENTOS
     # =========================================
-    if _faixa and _pagto and _pago_val > 0 and _pagto > _data_corte_parse:
+    if _faixa and _pagto and _pago_val > 0 and _pagto >= _data_corte_parse:
         if _key_vend not in recebido_faixa:
             recebido_faixa[_key_vend] = {
                 "grave": 0.0,
@@ -2139,6 +2190,7 @@ _nt = sum(1 for c in clientes_cobrar if c['faixa']=='atencao')
 _nr = sum(1 for v in recebido_faixa.values() if v.get('is_ativo'))
 print(f"👥 Clientes a cobrar: {len(clientes_cobrar)} ({_ng}g/{_na}a/{_nt}t)")
 print(f"💰 Vendedores com recebimento no período: {_nr}")
+print("✅ V18_RECEBIMENTO_MES_COMPLETO: pagamentos do dia de corte entram nos recebimentos por faixa")
 
 print(f"\U0001f465 Clientes a cobrar: {len(clientes_cobrar)} títulos ({_ng} grave / {_na} alerta / {_nt} atenção)")
 
@@ -3337,7 +3389,7 @@ for _i2 in range(len(df_raw)):
 
     if not _venc2 or not _pagto2 or _pago2 <= 0:
         continue
-    if _pagto2 <= _data_corte_parse:
+    if _pagto2 < _data_corte_parse:
         continue
 
     if str(_row2[COL["conta_caixa"]]).strip() == "Caixa Filial 100":
@@ -5746,6 +5798,7 @@ const API_MSG='mensagens_api.php';
 const API_CRED='credenciais_api.php';
 const API_HIST='historico_api.php';
 const API_COMIS='historico_comissionamento_api.php';
+const RELATORIOS_PUBLICOS=__JS_RELATORIOS_PUBLICOS__;
 
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
 async function fetchComTimeout(url, opts={}, ms=3500){
@@ -8072,11 +8125,26 @@ function setHistMode(mode){window._histMode=mode; document.getElementById('histD
 function updateHistEntityFilter(){const dateVal=_histCurrentDate(); const scope=document.getElementById('histScope')?.value||'empresa'; const wrap=document.getElementById('histEntityWrap'); const sel=document.getElementById('histEntity'); if(!wrap||!sel) return; wrap.classList.toggle('hidden',!(scope==='vendedores'||scope==='filiais')); sel.innerHTML=_histEntityOptions(dateVal, scope);}
 function updateHistMonthEntityFilter(){const monthVal=_histCurrentMonth(); const scope=document.getElementById('histMonthScope')?.value||'empresa'; const wrap=document.getElementById('histMonthEntityWrap'); const sel=document.getElementById('histMonthEntity'); if(!wrap||!sel) return; wrap.classList.toggle('hidden',!(scope==='vendedores'||scope==='filiais')); sel.innerHTML=_histMonthEntityOptions(monthVal, scope);}
 function renderHistoricoTable(rows, scope, title='📋 Histórico'){if(!rows.length) return `<div class="empty">Nenhum registro encontrado para o filtro escolhido.</div>`; return `<div class="glass panel"><div class="section-head" style="margin:0 0 10px"><div><h2 style="font-size:18px">${title}</h2></div></div>${rows.map(r=>`<div class="log-row" style="margin-bottom:10px"><div><strong>${esc(r.nome||r.filial||'Empresa')}</strong><div class="small muted">${esc(r.filial||'Resumo')}</div></div><div><strong>${R(r.pendente||0)}</strong><div class="small muted">Pendente</div></div><div><strong>${R(r.recebido||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${pct(r.perc_meta||0)}</strong><div class="small muted">Meta</div></div><div><strong>${R(r.grave_alvo||0)} / ${R(r.alerta_alvo||0)} / ${R(r.atencao_alvo||0)}</strong><div class="small muted">Alvos G/A/At</div></div></div>`).join('')}</div>`}
-function renderHistoricoResults(){const dateVal=_histCurrentDate(); const scope=document.getElementById('histScope')?.value||'empresa'; const entity=document.getElementById('histEntity')?.value||''; const box=document.getElementById('histResults'); const d=HIST_DASH?.dates?.[dateVal]; if(!box){return} if(!d){box.innerHTML='<div class="empty">Nenhum histórico salvo para esta data.</div>'; return} let top=`<div class="kpis">${makeKpi('Pendente do dia',R(d.empresa?.pendente||0),'var(--red)')}${makeKpi('Recebido do dia',R(d.empresa?.recebido||0),'var(--green)')}${makeKpi('Grave do dia',R(d.empresa?.grave||0),'var(--red)')}${makeKpi('Alerta do dia',R(d.empresa?.alerta||0),'var(--orange)')}</div><div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0"><div><h2 style="font-size:18px">⚙️ Meta usada no dia</h2><div class="hint">Global: G ${Number(d.empresa?.config_global?.grave_pct||0)}% · A ${Number(d.empresa?.config_global?.alerta_pct||0)}% · At ${Number(d.empresa?.config_global?.atencao_pct||0)}% · Pesos ${Number(d.empresa?.config_global?.peso_grave||0)}/${Number(d.empresa?.config_global?.peso_alerta||0)}/${Number(d.empresa?.config_global?.peso_atencao||0)}</div></div><div class="small muted">${esc(dateVal)}</div></div></div>`; if(scope==='empresa'){box.innerHTML=top + renderHistoricoTable([{nome:'Empresa',filial:'Resumo geral',pendente:d.empresa?.pendente||0,recebido:d.empresa?.recebido||0,perc_meta:0,grave_alvo:0,alerta_alvo:0,atencao_alvo:0}], 'empresa','📋 Histórico diário da empresa'); return} const source = scope==='filiais' ? Object.entries(d.filiais||{}).map(([k,v])=>({...v,key:k})) : Object.entries(d.vendedores||{}).map(([k,v])=>({...v,key:k})); const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=top + renderHistoricoTable(rows, scope, `📋 Histórico diário ${scope==='filiais'?'de filiais':'de vendedores'}`);}
-function renderHistoricoMonthResults(){const monthVal=_histCurrentMonth(); const scope=document.getElementById('histMonthScope')?.value||'empresa'; const entity=document.getElementById('histMonthEntity')?.value||''; const box=document.getElementById('histMonthResults'); const d=HIST_DASH?.months_closed?.[monthVal]; if(!box){return} if(!d){box.innerHTML='<div class="empty">Nenhum fechamento mensal salvo para este mês.</div>'; return} const cfg=d.config_global_fechamento||{}; let top=`<div class="kpis">${makeKpi('Mês fechado',esc(monthVal),'var(--blue)')}${makeKpi('Último dia',esc(d.ultimo_dia_historico||'-'),'var(--blue)')}${makeKpi('Snapshot final',esc(d.snapshot_final_data||'-'),'var(--blue)')}${makeKpi('Meta mês',esc(d.meta_file||'-'),'var(--blue)')}</div><div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0"><div><h2 style="font-size:18px">📦 Fechamento mensal travado</h2><div class="hint">Global no fechamento: G ${Number(cfg.grave_pct||0)}% · A ${Number(cfg.alerta_pct||0)}% · At ${Number(cfg.atencao_pct||0)}% · Pesos ${Number(cfg.peso_grave||0)}/${Number(cfg.peso_alerta||0)}/${Number(cfg.peso_atencao||0)}</div></div><div class="small muted">Fechado em ${esc((d.fechado_em||'').replace('T',' ').slice(0,16))}</div></div></div>`;
- if(scope==='empresa'){const e=d.empresa_final||{}; box.innerHTML=top+renderHistoricoTable([{nome:'Empresa',filial:'Resultado final do mês',pendente:e.pendente||0,recebido:e.recebido||0,perc_meta:e.perc_meta||0,grave_alvo:e.grave_alvo||0,alerta_alvo:e.alerta_alvo||0,atencao_alvo:e.atencao_alvo||0}], 'empresa','📋 Resultado final mensal da empresa'); return}
+function renderHistoricoResults(){const dateVal=_histCurrentDate(); const scope=document.getElementById('histScope')?.value||'empresa'; const entity=document.getElementById('histEntity')?.value||''; const box=document.getElementById('histResults'); const d=HIST_DASH?.dates?.[dateVal]; if(!box){return} if(!d){box.innerHTML='<div class="empty">Nenhum histórico salvo para esta data.</div>'; return} let top=`<div class="kpis">${makeKpi('Pendente do dia',R(d.empresa?.pendente||0),'var(--red)')}${makeKpi('Recebido do dia',R(d.empresa?.recebido||0),'var(--green)')}${makeKpi('Grave do dia',R(d.empresa?.grave||0),'var(--red)')}${makeKpi('Alerta do dia',R(d.empresa?.alerta||0),'var(--orange)')}</div><div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0"><div><h2 style="font-size:18px">⚙️ Meta usada no dia</h2><div class="hint">Global: G ${Number(d.empresa?.config_global?.grave_pct||0)}% · A ${Number(d.empresa?.config_global?.alerta_pct||0)}% · At ${Number(d.empresa?.config_global?.atencao_pct||0)}% · Pesos ${Number(d.empresa?.config_global?.peso_grave||0)}/${Number(d.empresa?.config_global?.peso_alerta||0)}/${Number(d.empresa?.config_global?.peso_atencao||0)}</div></div><div class="small muted">${esc(dateVal)}</div></div></div>`; if(scope==='empresa'){box.innerHTML=top + renderHistoricoTable([{nome:'Empresa',filial:'Resumo geral',pendente:d.empresa?.pendente||0,recebido:d.empresa?.recebido||0,perc_meta:0,grave_alvo:0,alerta_alvo:0,atencao_alvo:0}], 'empresa','📋 Histórico diário da empresa'); return} const source = scope==='filiais' ? Object.entries(d.filiais||{}).map(([k,v])=>({...v,key:k})) : Object.entries(d.vendedores||{}).map(([k,v])=>({...v,key:k})); const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=renderLinksRelatoriosCobranca()+top + renderHistoricoTable(rows, scope, `📋 Histórico diário ${scope==='filiais'?'de filiais':'de vendedores'}`);}
+
+function renderLinksRelatoriosCobranca(){
+  const r=RELATORIOS_PUBLICOS||{};
+  return `<div class="glass panel" style="margin-bottom:14px;border-color:rgba(96,165,250,.35)">
+    <div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">📥 Relatórios XLS da última execução</h2><div class="hint">Use estes arquivos para auditar recebimentos por faixa, pendentes e quitados. Atualiza a cada execução de cobrança.</div></div></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <a class="btn primary" href="${esc(r.zip||'#')}?_=${Date.now()}" target="_blank" download>📦 Baixar pacote ZIP</a>
+      <a class="btn soft" href="${esc(r.principal_xls||'#')}?_=${Date.now()}" target="_blank" download>Contas a receber principal</a>
+      <a class="btn soft" href="${esc(r.quitados_original_xls||'#')}?_=${Date.now()}" target="_blank" download>Quitados original SGI</a>
+      <a class="btn soft" href="${esc(r.quitados_processado_xlsx||'#')}?_=${Date.now()}" target="_blank" download>Quitados processado</a>
+      <a class="btn soft" href="${esc(r.quitados_json||'#')}?_=${Date.now()}" target="_blank">JSON quitados</a>
+    </div>
+  </div>`;
+}
+
+function renderHistoricoMonthResults(){const monthVal=_histCurrentMonth(); const scope=document.getElementById('histMonthScope')?.value||'empresa'; const entity=document.getElementById('histMonthEntity')?.value||''; const box=document.getElementById('histMonthResults'); const d=HIST_DASH?.months_closed?.[monthVal]; if(!box){return} if(!d){box.innerHTML=renderLinksRelatoriosCobranca()+'<div class="empty">Nenhum fechamento mensal salvo para este mês.</div>'; return} const cfg=d.config_global_fechamento||{}; let top=`<div class="kpis">${makeKpi('Mês fechado',esc(monthVal),'var(--blue)')}${makeKpi('Último dia',esc(d.ultimo_dia_historico||'-'),'var(--blue)')}${makeKpi('Snapshot final',esc(d.snapshot_final_data||'-'),'var(--blue)')}${makeKpi('Meta mês',esc(d.meta_file||'-'),'var(--blue)')}</div><div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0"><div><h2 style="font-size:18px">📦 Fechamento mensal travado</h2><div class="hint">Global no fechamento: G ${Number(cfg.grave_pct||0)}% · A ${Number(cfg.alerta_pct||0)}% · At ${Number(cfg.atencao_pct||0)}% · Pesos ${Number(cfg.peso_grave||0)}/${Number(cfg.peso_alerta||0)}/${Number(cfg.peso_atencao||0)}</div></div><div class="small muted">Fechado em ${esc((d.fechado_em||'').replace('T',' ').slice(0,16))}</div></div></div>`;
+ if(scope==='empresa'){const e=d.empresa_final||{}; box.innerHTML=renderLinksRelatoriosCobranca()+top+renderHistoricoTable([{nome:'Empresa',filial:'Resultado final do mês',pendente:e.pendente||0,recebido:e.recebido||0,perc_meta:e.perc_meta||0,grave_alvo:e.grave_alvo||0,alerta_alvo:e.alerta_alvo||0,atencao_alvo:e.atencao_alvo||0}], 'empresa','📋 Resultado final mensal da empresa'); return}
  const source=scope==='filiais'?Object.entries(d.filiais_finais||{}).map(([k,v])=>({...v,key:k})) : Object.entries(d.vendedores_finais||{}).map(([k,v])=>({...v,key:k}));
- const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=top + renderHistoricoTable(rows, scope, `📋 Resultado final mensal ${scope==='filiais'?'de filiais':'de vendedores'}`);}
+ const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=renderLinksRelatoriosCobranca()+top + renderHistoricoTable(rows, scope, `📋 Resultado final mensal ${scope==='filiais'?'de filiais':'de vendedores'}`);}
 function renderHistoricoTerceiro(){const box=document.getElementById('histThirdResults'); if(!box) return; const logs=(COB_LOGS||[]).filter(x=>String(x.usuario||'').toLowerCase()===COBRANCA10_LOGIN || String(x.usuario||'').toLowerCase()===COBRANCA10_NOME.toLowerCase()).slice().reverse(); const ent=thirdChargeEntity(); const top=`<div class="kpis">${makeKpi('Títulos na carteira',String((CLIENTES_TERCEIRO?.grave?.length||0)+(CLIENTES_TERCEIRO?.alerta?.length||0)+(CLIENTES_TERCEIRO?.atencao?.length||0)),'var(--blue)')}${makeKpi('Pendente',R(ent.pendente||0),'var(--red)')}${makeKpi('Recebido',R(ent.pago||0),'var(--green)')}${makeKpi('Cobranças lançadas',String(logs.length),'var(--orange)')}</div>`; const comm=renderTerceiroCommission(ent); const rows=logs.length?logs.map(x=>`<div class="log-row"><div><strong>${esc(x.cliente||'')}</strong><div class="small muted">${esc(x.titulo||'')} · Parcela ${esc(x.parcela||'')}</div></div><div><strong>${R(x.pendente||0)}</strong><div class="small muted">${esc(x.filial||'')}</div></div><div><strong>${esc((x.server_time||'').replace('T',' ').slice(0,16))}</strong><div class="small muted">Data</div></div><div><strong>${esc(x.telefone||'')}</strong><div class="small muted">Telefone</div></div></div>`).join(''):'<div class="empty">Nenhuma cobrança do Cobrança10 encontrada.</div>'; box.innerHTML=top+comm+`<div class="glass panel"><div class="section-head"><div><h2 style="font-size:18px">🤝 Cobranças Terceiro</h2><div class="hint">Histórico apenas do usuário Cobrança10.</div></div></div><div class="logs-list">${rows}</div></div>`}
 function setHistMode(mode){window._histMode=mode; document.getElementById('histDailyPane')?.classList.toggle('hidden',mode!=='daily'); document.getElementById('histMonthPane')?.classList.toggle('hidden',mode!=='monthly'); document.getElementById('histSalesPane')?.classList.toggle('hidden',mode!=='sales'); document.getElementById('histThirdPane')?.classList.toggle('hidden',mode!=='third'); document.getElementById('histTabDaily')?.classList.toggle('active',mode==='daily'); document.getElementById('histTabMonthly')?.classList.toggle('active',mode==='monthly'); document.getElementById('histTabSales')?.classList.toggle('active',mode==='sales'); document.getElementById('histTabThird')?.classList.toggle('active',mode==='third'); if(mode==='daily'){updateHistEntityFilter(); renderHistoricoResults();} else if(mode==='monthly'){updateHistMonthEntityFilter(); renderHistoricoMonthResults();} else if(mode==='sales'){updateHistSalesEntityFilter(); updateHistSalesMonthEntityFilter(); renderHistoricoSalesResults(); renderHistoricoSalesMonthResults();} else {renderHistoricoTerceiro();}}
 function renderHistoricoTab(){const dates=_histDates(); const months=_histMonths(); const salesDates=_histSalesDates(); const salesMonths=_histSalesMonths(); histSection.innerHTML=`<div class="section-head"><div><h2>🗂️ Histórico</h2><div class="hint">Consulte o histórico diário, vendas e os fechamentos mensais travados do Master/Diretor.</div></div></div><div class="tabs" style="justify-content:flex-start;margin:0 0 14px"><button id="histTabDaily" class="tab active" onclick="setHistMode('daily')">📅 Diário</button><button id="histTabMonthly" class="tab" onclick="setHistMode('monthly')">📦 Fechamento mensal</button><button id="histTabSales" class="tab" onclick="setHistMode('sales')">🧡 Vendas</button><button id="histTabThird" class="tab" onclick="setHistMode('third')">🤝 Cobranças Terceiro</button></div><div id="histDailyPane"><div class="glass panel" style="margin-bottom:14px"><div class="search-row"><div class="input-card"><label>Data</label><select id="histDate" onchange="updateHistEntityFilter();renderHistoricoResults()">${dates.map(d=>`<option value="${d}">${d}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histScope" onchange="updateHistEntityFilter();renderHistoricoResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histEntity" onchange="renderHistoricoResults()"><option value="">Todos</option></select></div></div></div><div id="histResults"></div></div><div id="histMonthPane" class="hidden"><div class="glass panel" style="margin-bottom:14px"><div class="search-row"><div class="input-card"><label>Mês fechado</label><select id="histMonth" onchange="updateHistMonthEntityFilter();renderHistoricoMonthResults()">${months.map(m=>`<option value="${m}">${m}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histMonthScope" onchange="updateHistMonthEntityFilter();renderHistoricoMonthResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histMonthEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histMonthEntity" onchange="renderHistoricoMonthResults()"><option value="">Todos</option></select></div></div></div><div id="histMonthResults"></div></div><div id="histSalesPane" class="hidden"><div class="glass panel" style="margin-bottom:14px"><div class="search-row"><div class="input-card"><label>Data de vendas</label><select id="histSalesDate" onchange="updateHistSalesEntityFilter();renderHistoricoSalesResults()">${salesDates.map(d=>`<option value="${d}">${d}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histSalesScope" onchange="updateHistSalesEntityFilter();renderHistoricoSalesResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histSalesEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histSalesEntity" onchange="renderHistoricoSalesResults()"><option value="">Todos</option></select></div></div></div><div id="histSalesResults"></div><div class="glass panel" style="margin:14px 0"><div class="search-row"><div class="input-card"><label>Mês de vendas</label><select id="histSalesMonth" onchange="updateHistSalesMonthEntityFilter();renderHistoricoSalesMonthResults()">${salesMonths.map(m=>`<option value="${m}">${m}</option>`).join('')}</select></div><div class="input-card"><label>Escopo</label><select id="histSalesMonthScope" onchange="updateHistSalesMonthEntityFilter();renderHistoricoSalesMonthResults()"><option value="empresa">Empresa</option><option value="filiais">Filiais</option><option value="vendedores">Vendedores</option></select></div><div id="histSalesMonthEntityWrap" class="input-card hidden"><label>Filtro</label><select id="histSalesMonthEntity" onchange="renderHistoricoSalesMonthResults()"><option value="">Todos</option></select></div></div></div><div id="histSalesMonthResults"></div></div><div id="histThirdPane" class="hidden"><div id="histThirdResults"></div></div>`; if(dates.length){document.getElementById('histDate').value=dates[0]} if(months.length){document.getElementById('histMonth').value=months[0]} if(salesDates.length){document.getElementById('histSalesDate').value=salesDates[0]} if(salesMonths.length){document.getElementById('histSalesMonth').value=salesMonths[0]} setHistMode(window._histMode||'daily');}
@@ -8412,10 +8480,20 @@ window.addEventListener('load',async ()=>{
 </html>
 """
 
+_gerar_zip_relatorios_publicos()
+js_relatorios_publicos = json.dumps({
+    "principal_xls": f"{RELATORIOS_PUBLIC_BASE}/ultimo_contas_receber_principal.xls",
+    "quitados_original_xls": f"{RELATORIOS_PUBLIC_BASE}/ultimo_contas_receber_quitados_original.xls",
+    "quitados_processado_xlsx": f"{RELATORIOS_PUBLIC_BASE}/quitados_180d_contas_receber.xlsx",
+    "quitados_json": f"{RELATORIOS_PUBLIC_BASE}/quitados_180d_contas_receber.json",
+    "zip": f"{RELATORIOS_PUBLIC_BASE}/ultimos_relatorios_cobranca.zip",
+}, ensure_ascii=False)
+
 html = template
 repls = {
     '__JS_CREDS__': js_creds,
     '__JS_AUTH_STATE__': js_auth_state,
+    '__JS_RELATORIOS_PUBLICOS__': js_relatorios_publicos,
     '__JS_TODOS__': js_todos,
     '__JS_FILIAIS__': js_filiais,
     '__JS_CLIENTES__': js_clientes,
@@ -8795,6 +8873,30 @@ if FTP_USER and FTP_PASS:
                     ftp.storbinary('STOR quitados_180d_contas_receber.xlsx', f_q_xlsx)
         except Exception as e_q_ftp:
             print(f'⚠️ Erro ao enviar quitados 180d ao FTP: {e_q_ftp}')
+
+
+        try:
+            # Publica relatórios auditáveis em /public_html/colaborador/relatorios
+            try:
+                ftp.mkd('relatorios')
+            except Exception:
+                pass
+            ftp.cwd('relatorios')
+            for _fname in [
+                'ultimo_contas_receber_principal.xls',
+                'ultimo_contas_receber_quitados_original.xls',
+                'quitados_180d_contas_receber.xlsx',
+                'quitados_180d_contas_receber.json',
+                'ultimos_relatorios_cobranca.zip',
+            ]:
+                _p_rel = os.path.join(RELATORIOS_DIR, _fname)
+                if os.path.exists(_p_rel):
+                    with open(_p_rel, 'rb') as _f_rel:
+                        ftp.storbinary(f'STOR {_fname}', _f_rel)
+                    print(f'📤 Relatório publicado no FTP: /colaborador/relatorios/{_fname}')
+            ftp.cwd('..')
+        except Exception as e_rel_ftp:
+            print(f'⚠️ Erro ao publicar relatórios XLS no FTP: {e_rel_ftp}')
 
         # Pacote de vendas/margem/rentabilidade/serviços/diária fica exclusivo do dashboard_sales_worker_headless.py.
         # Isso evita o navegador misturar arquivos de horários diferentes.
