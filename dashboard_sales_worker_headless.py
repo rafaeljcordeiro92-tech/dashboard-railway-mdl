@@ -1,4 +1,4 @@
-# VERSAO: COBRANCA10_WORKER_V16_MARGEM_DIARIA_SERVICOS_SO_META
+# VERSAO: COBRANCA10_WORKER_V17_META_REAL_TOTAL_DIARIA_MARGEM_FLUXO
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -539,11 +539,12 @@ def _extrair_totais_do_xlsx(xlsx_path):
       - servico_filial_ouro_fob     -> linha 10
       - venda_filial_subgrupo_20k   -> linha 10
 
-    Mapeamento usado:
+    Mapeamento usado (ordem real do SGI):
       B = Meta Total
+      C = Realizado Total  ← valor oficial do card
       D = Atingido Total (%)
       E = Meta Período
-      F = Realizado (valor exibido no card)
+      F = Realizado Período
       H = Projetado
 
     Se a célula fixa não existir, faz fallback para localizar a última linha "Total"
@@ -577,7 +578,7 @@ def _extrair_totais_do_xlsx(xlsx_path):
             if a == "TOTAL":
                 return {
                     "meta_total":  round(_br_float(ws.cell(r, 2).value), 2),
-                    "real_total":  round(_br_float(ws.cell(r, 6).value), 2),
+                    "real_total":  round(_br_float(ws.cell(r, 3).value), 2),
                     "ating_total": round(_br_float(ws.cell(r, 4).value), 2),
                     "meta_per":    round(_br_float(ws.cell(r, 5).value), 2),
                     "real_per":    round(_br_float(ws.cell(r, 6).value), 2),
@@ -590,7 +591,7 @@ def _extrair_totais_do_xlsx(xlsx_path):
             a = str(ws.cell(r, 1).value or "").strip().upper()
             if a.startswith("FILIAL"):
                 meta_total += _br_float(ws.cell(r, 2).value)
-                real_total += _br_float(ws.cell(r, 6).value)
+                real_total += _br_float(ws.cell(r, 3).value)
                 meta_per   += _br_float(ws.cell(r, 5).value)
                 proj       += _br_float(ws.cell(r, 8).value)
         ating = round((real_total / meta_total * 100.0), 2) if meta_total > 0 else 0.0
@@ -599,7 +600,7 @@ def _extrair_totais_do_xlsx(xlsx_path):
             "real_total": round(real_total, 2),
             "ating_total": ating,
             "meta_per": round(meta_per, 2),
-            "real_per": round(real_total, 2),
+            "real_per": 0.0,
             "proj": round(proj, 2),
         }
 
@@ -628,7 +629,7 @@ def _extrair_totais_do_xlsx(xlsx_path):
         # Usa a linha fixa se houver conteúdo e parecer ser a linha final/total
         if a in ("TOTAL",) or ws.cell(r, 2).value not in (None, ""):
             meta_total = round(_br_float(ws.cell(r, 2).value), 2)
-            real_total = round(_br_float(ws.cell(r, 6).value), 2)
+            real_total = round(_br_float(ws.cell(r, 3).value), 2)
             ating_total = round(_br_float(ws.cell(r, 4).value), 2)
             meta_per = round(_br_float(ws.cell(r, 5).value), 2)
             real_per = round(_br_float(ws.cell(r, 6).value), 2)
@@ -645,7 +646,7 @@ def _extrair_totais_do_xlsx(xlsx_path):
             item = _fallback_from_sheet(ws)
 
         out[chave] = item
-        print(f"✅ Total xlsx [{chave}]: meta={item['meta_total']:.2f}  real={item['real_total']:.2f}  ating={item['ating_total']:.2f}%  proj={item['proj']:.2f}")
+        print(f"✅ V17 Total xlsx [{chave}]: meta={item['meta_total']:.2f}  real_total_col_C={item['real_total']:.2f}  real_periodo_col_F={item['real_per']:.2f}  ating={item['ating_total']:.2f}%  proj={item['proj']:.2f}")
 
     return out
 
@@ -1654,26 +1655,43 @@ def _nome_arquivo_venda_diaria_valido(fname):
     return ('analise_total_venda' in s) or ('analises_totais_vendas' in s) or ('total_venda' in s)
 
 def _set_all_visible_date_inputs(valor):
-    inputs = driver.find_elements(By.XPATH, "//input[not(@type='hidden') and (contains(@id,'data') or contains(@name,'data') or contains(@class,'date'))]")
+    """Preenche datas no relatório de análise total de vendas.
+    O SGI muda IDs/nomes, então usamos seletores amplos e também forçamos via JS.
+    """
+    selectors = [
+        "//input[not(@type='hidden') and (contains(translate(@id,'DATA','data'),'data') or contains(translate(@name,'DATA','data'),'data') or contains(translate(@class,'DATE','date'),'date'))]",
+        "//input[not(@type='hidden') and (@type='text' or @type='date')]",
+    ]
+    seen = set(); inputs = []
+    for xp in selectors:
+        try:
+            for el in driver.find_elements(By.XPATH, xp):
+                try:
+                    key = el.id
+                    if key not in seen:
+                        seen.add(key); inputs.append(el)
+                except Exception:
+                    pass
+        except Exception:
+            pass
     count = 0
     for el in inputs:
         try:
             if not el.is_displayed():
                 continue
+            driver.execute_script("arguments[0].removeAttribute('readonly'); arguments[0].removeAttribute('disabled');", el)
             driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
             try:
-                el.click()
-                el.send_keys(Keys.CONTROL, "a")
-                el.send_keys(Keys.DELETE)
-                el.send_keys(valor)
+                el.click(); el.send_keys(Keys.CONTROL, "a"); el.send_keys(Keys.DELETE); el.send_keys(valor)
             except Exception:
                 driver.execute_script("arguments[0].value = arguments[1];", el, valor)
             driver.execute_script("arguments[0].dispatchEvent(new Event('input',{bubbles:true}));", el)
             driver.execute_script("arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", el)
+            driver.execute_script("arguments[0].dispatchEvent(new Event('blur',{bubbles:true}));", el)
             count += 1
         except Exception:
             pass
-    print(f"✅ Campos de data preenchidos na venda diária: {count} campo(s) = {valor}")
+    print(f"✅ V17 Venda diária: campos de data preenchidos: {count} campo(s) = {valor}")
     return count
 
 def _parse_venda_diaria_xls(caminho):
@@ -1899,7 +1917,7 @@ def fazer_login_sgi():
     time.sleep(5)
 
 fazer_login_sgi()
-print('✅ COBRANCA10_WORKER_V16_MARGEM_DIARIA_SERVICOS_SO_META')
+print('✅ COBRANCA10_WORKER_V17_META_REAL_TOTAL_DIARIA_MARGEM_FLUXO')
 
 metas_vendas_info = {"json_path": None, "xlsx_path": None, "dados": {}}
 try:
@@ -1916,7 +1934,7 @@ except Exception as e:
 # V16: Serviços são SOMENTE do Controle de Metas SGI.
 # Não coletar /relatorio_servicos e não aplicar relatório individual nos blocos de meta.
 relatorio_servicos_info = {"json_path": None, "xlsx_path": None, "dados": {"empresa": {}, "servicos": {}, "filiais": {}, "vendedores": {}, "detalhes": []}}
-print("✅ V16_SERVICOS_SOMENTE_CONTROLE_META: relatório individual de serviços desativado")
+print("✅ V17_SERVICOS_SOMENTE_CONTROLE_META: relatório individual de serviços desativado; valores de serviço vêm da coluna Realizado Total da meta SGI")
 
 venda_diaria_info = {"json_path": None, "xlsx_path": None, "dados": {}}
 try:
