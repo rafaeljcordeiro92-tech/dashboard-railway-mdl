@@ -1,4 +1,4 @@
-# VERSAO: COBRANCA10_V3_FIX_NAMEERROR
+# VERSAO: COBRANCA10_V26_LOG_COBRANCAS_BACKUP_RATEIO_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -2137,11 +2137,12 @@ for _i in range(len(df_raw)):
             "faixa": _faixa,
             "titulo_key": _titulo_key,
             "mensagem_whatsapp": _mensagem,
-            "cliente_key": cliente_grupo_key_py({"cliente": _c1, "contato": _contato}),
-            "cpf_key": _cpf_key_cobranca_py(_c1, _contato, _avalista),
-            "cobranca_key": cobranca_row_key_py({"cliente": _c1, "titulo": _titulo, "parcela": _parcela, "vencimento": str(_row[COL["vencimento"]]).strip()}),
         })
 
+
+# V26: garante chaves estáveis para cada título e cada cliente antes de qualquer rateio/log.
+for _c_keyfix in clientes_cobrar:
+    enriquecer_chaves_cobranca_py(_c_keyfix)
 
 # Contagem
 _ng = sum(1 for c in clientes_cobrar if c['faixa']=='grave')
@@ -2221,38 +2222,39 @@ def nome_crediarista_filial(filial, login=None):
         return CREDIARISTAS_NOMES[str(login).lower()]
     return f"CREDIARISTA{str(filial).upper()}"
 
-def _norm_cliente_cobranca_py(txt):
-    s = str(txt or "").strip().upper()
-    s = unicodedata.normalize("NFKD", s)
-    s = "".join(c for c in s if not unicodedata.combining(c))
-    s = re.sub(r"[^A-Z0-9 ]", " ", s)
-    s = re.sub(r"\s+", " ", s).strip()
-    return s[:80]
-
-def _cpf_key_cobranca_py(*vals):
-    s = " ".join(str(v or "") for v in vals)
-    nums = re.findall(r"\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b", s)
-    if not nums:
-        return ""
-    return re.sub(r"\D", "", nums[0])
-
-def cliente_grupo_key_py(r):
-    """
-    Chave de cliente/CPF para rateio operacional.
-    Se em algum relatório futuro vier CPF, usa CPF. Hoje o Contas a Receber não traz CPF,
-    então usamos nome normalizado do cliente para manter todos os títulos do mesmo cliente
-    com o mesmo usuário.
-    """
-    cpf = _cpf_key_cobranca_py(r.get("cpf"), r.get("cliente"), r.get("nome"), r.get("contato"), r.get("historico"))
-    return cpf or _norm_cliente_cobranca_py(r.get("cliente", r.get("nome", "")))
-
 def cobranca_row_key_py(r):
     return "|".join([
-        cliente_grupo_key_py(r),
+        str(r.get("cliente", r.get("nome", "")) or "").strip().upper(),
         str(r.get("titulo", "") or "").strip(),
         str(r.get("parcela", "") or "").strip(),
         str(r.get("vencimento", "") or "").strip(),
     ])
+
+# V26: chave do cliente/cpf aproximada para não espalhar o mesmo cliente entre usuários.
+# O relatório atual não traz CPF em coluna própria; quando não houver CPF, usamos nome normalizado + telefone.
+def cliente_grupo_key_py(r):
+    doc = str(r.get("cpf", r.get("documento", "")) or "")
+    doc = re.sub(r"\D+", "", doc)
+    if len(doc) >= 11:
+        return "CPF:" + doc[-11:]
+    nome = str(r.get("cliente", r.get("nome", "")) or "").strip().upper()
+    nome = unicodedata.normalize("NFKD", nome)
+    nome = "".join(c for c in nome if not unicodedata.combining(c))
+    nome = re.sub(r"[^A-Z0-9 ]", " ", nome)
+    nome = re.sub(r"\s+", " ", nome).strip()
+    tels = r.get("telefones") or []
+    tel = ""
+    if isinstance(tels, list) and tels:
+        tel = re.sub(r"\D+", "", str(tels[0]))[-10:]
+    return "CLI:" + nome[:60] + ("|TEL:" + tel if tel else "")
+
+def enriquecer_chaves_cobranca_py(item):
+    try:
+        item["cliente_key"] = cliente_grupo_key_py(item)
+        item["cobranca_key"] = cobranca_row_key_py(item)
+    except Exception:
+        pass
+    return item
 
 # =========================================
 # COBRANÇA10 — 20% global dos títulos de cobrança
@@ -4544,6 +4546,8 @@ for _ct in _clientes_terceiro_lista:
         "mensagem_whatsapp": _ct.get("mensagem_whatsapp", ""),
         "vendedor": COBRANCA10_NOME,
         "novo": _ct.get("novo", False),
+        "cliente_key": _ct.get("cliente_key") or cliente_grupo_key_py(_ct),
+        "cobranca_key": _ct.get("cobranca_key") or cobranca_row_key_py(_ct),
     })
 
 for f in ORDEM_FILIAIS:
@@ -4577,7 +4581,9 @@ for c in _cli_ativos:
         "mensagem_whatsapp": c.get("mensagem_whatsapp", ""),
         "vendedor": _nd[:25],
         "novo": c.get("novo", False),
-    })
+            "cliente_key": c.get("cliente_key") or cliente_grupo_key_py(c),
+            "cobranca_key": c.get("cobranca_key") or cobranca_row_key_py(c),
+        })
 
     _ff = c["filial"]
     if _ff in clientes_js:
@@ -4628,58 +4634,50 @@ for c in _cli_inat_fdep:
             _inat_por_filial[_dest_filial] = []
         _inat_por_filial[_dest_filial].append(c)
 
-# Para cada filial, distribui 60% gerente / 40% vendedores (sem perder títulos)
-# V25: antes o código deduplicava por nome do cliente e mantinha só o maior título.
-# Isso fazia sumir cobranças quando o mesmo cliente tinha 2+ títulos. Agora o rateio é por
-# GRUPO de cliente/CPF: todos os títulos do mesmo cliente ficam com o mesmo destino,
-# mas nenhum título é descartado.
-def _cob_row_payload(c, vendedor_label):
-    return {
-        "nome": c.get("cliente", c.get("nome", "")),
-        "cliente": c.get("cliente", ""),
-        "restricao": c.get("restricao", ""),
-        "vencimento": c.get("vencimento", ""),
-        "pagamento": c.get("pagamento", ""),
-        "dias": c.get("dias", 0),
-        "pendente": c.get("pendente", 0),
-        "pago": c.get("pago", 0.0),
-        "parcela": c.get("parcela", ""),
-        "titulo": c.get("titulo", ""),
-        "avalista": c.get("avalista", ""),
-        "contato": c.get("contato", ""),
-        "telefones": c.get("telefones", []),
-        "mensagem_whatsapp": c.get("mensagem_whatsapp", ""),
-        "vendedor": vendedor_label,
-        "novo": c.get("novo", False),
-        "cliente_key": c.get("cliente_key") or cliente_grupo_key_py(c),
-        "cpf_key": c.get("cpf_key", ""),
-        "cobranca_key": c.get("cobranca_key") or cobranca_row_key_py(c),
-    }
-
+# Para cada filial, distribui 60% gerente / 40% vendedores por GRUPO DE CLIENTE.
+# V26: não descartamos títulos do mesmo cliente. Mantemos todos, mas o grupo inteiro
+# fica com um único destino operacional, evitando o mesmo cliente/CPF em vários usuários.
 for _filial_dest, _clientes_inat in _inat_por_filial.items():
-    # Agrupa todos os títulos do mesmo cliente/CPF, sem descartar nenhum.
     _grupos_cliente = {}
     for c in _clientes_inat:
-        k = c.get("cliente_key") or cliente_grupo_key_py(c)
+        enriquecer_chaves_cobranca_py(c)
+        k = c.get('cliente_key') or cliente_grupo_key_py(c)
         _grupos_cliente.setdefault(k, []).append(c)
 
     _grupos = list(_grupos_cliente.values())
-    _grupos.sort(key=lambda grupo: sum(float(x.get("pendente", 0) or 0) for x in grupo), reverse=True)
+    _grupos.sort(key=lambda arr: sum(float(x.get('pendente', 0) or 0) for x in arr), reverse=True)
+    _total = len(_grupos)
+    _n_ger = round(_total * 0.60)   # 60% dos clientes para gerente/filial
+    _grupos_ger = _grupos[:_n_ger]
+    _grupos_vend = _grupos[_n_ger:]
+    _para_gerente = [c for grp in _grupos_ger for c in grp]
+    _para_vends   = [c for grp in _grupos_vend for c in grp]
+    _lista = [c for grp in _grupos for c in grp]
 
-    _total_grupos = len(_grupos)
-    _n_ger = round(_total_grupos * 0.60)   # 60% dos clientes/grupos para gerente
-    _grupos_gerente = _grupos[:_n_ger]
-    _grupos_vends   = _grupos[_n_ger:]
+    # Adiciona ao painel da filial (gerente vê tudo da filial)
+    for c in _lista:
+        _tag = " [FDEP]" if c.get("is_fdep") else " [Inativo]"
 
-    # Painel da filial/gerente visualiza todos os títulos da filial.
-    for _grupo in _grupos:
-        for c in _grupo:
-            _tag = " [FDEP]" if c.get("is_fdep") else " [Inativo]"
-            clientes_js[_filial_dest][c["faixa"]].append(
-                _cob_row_payload(c, limpar_nome_display(c["vendedor"])[:20] + _tag)
-            )
+        clientes_js[_filial_dest][c["faixa"]].append({
+            "nome": c.get("cliente", c.get("nome", "")),
+            "cliente": c.get("cliente", ""),
+            "restricao": c.get("restricao", ""),
+            "vencimento": c.get("vencimento", ""),
+            "pagamento": c.get("pagamento", ""),
+            "dias": c.get("dias", 0),
+            "pendente": c.get("pendente", 0),
+            "pago": c.get("pago", 0.0),
+            "parcela": c.get("parcela", ""),
+            "titulo": c.get("titulo", ""),
+            "avalista": c.get("avalista", ""),
+            "contato": c.get("contato", ""),
+            "telefones": c.get("telefones", []),
+            "mensagem_whatsapp": c.get("mensagem_whatsapp", ""),
+            "vendedor": limpar_nome_display(c["vendedor"])[:20] + _tag,
+            "novo": c.get("novo", False),
+        })
 
-    # Distribui 40% dos clientes/grupos entre vendedores ativos da filial.
+    # Distribui os 40% entre vendedores ativos da filial
     _vends_ativos = [
         r["nome_exibicao"]
         for _, r in df_vend[
@@ -4687,19 +4685,39 @@ for _filial_dest, _clientes_inat in _inat_por_filial.items():
         ].iterrows()
     ]
 
-    if _vends_ativos and _grupos_vends:
+    if _vends_ativos and _grupos_vend:
         _n_vends_ativos = len(_vends_ativos)
 
-        for _idx_g, _grupo in enumerate(_grupos_vends):
+        for _idx_g, _grp_cli in enumerate(_grupos_vend):
+            # Distribui round-robin por GRUPO DE CLIENTE, mantendo todos os títulos no mesmo vendedor
             _vend_dest = _vends_ativos[_idx_g % _n_vends_ativos]
             if _vend_dest not in clientes_por_vend_js:
-                clientes_por_vend_js[_vend_dest] = {"grave": [], "alerta": [], "atencao": []}
-
-            for c in _grupo:
+                clientes_por_vend_js[_vend_dest] = {
+                    "grave": [],
+                    "alerta": [],
+                    "atencao": []
+                }
+            for c in _grp_cli:
                 _tag = " [FDEP]" if c.get("is_fdep") else " [Inativo]"
-                clientes_por_vend_js[_vend_dest][c["faixa"]].append(
-                    _cob_row_payload(c, limpar_nome_display(c["vendedor"])[:20] + _tag)
-                )
+
+                clientes_por_vend_js[_vend_dest][c["faixa"]].append({
+                "nome": c.get("cliente", c.get("nome", "")),
+                "cliente": c.get("cliente", ""),
+                "restricao": c.get("restricao", ""),
+                "vencimento": c.get("vencimento", ""),
+                "pagamento": c.get("pagamento", ""),
+                "dias": c.get("dias", 0),
+                "pendente": c.get("pendente", 0),
+                "pago": c.get("pago", 0.0),
+                "parcela": c.get("parcela", ""),
+                "titulo": c.get("titulo", ""),
+                "avalista": c.get("avalista", ""),
+                "contato": c.get("contato", ""),
+                "telefones": c.get("telefones", []),
+                "mensagem_whatsapp": c.get("mensagem_whatsapp", ""),
+                "vendedor": limpar_nome_display(c["vendedor"])[:20] + _tag,
+                "novo": c.get("novo", False),
+            })
 
 print(f"📋 Clientes por filial (gerente):")
 for f in ORDEM_FILIAIS:
@@ -4730,6 +4748,24 @@ for _cred_cfg in CREDIARISTAS_CONFIG:
     recebimentos_crediarista_js[_login_cred] = {'grave': [], 'alerta': [], 'atencao': []}
 
 _historico_comissao_cobranca10()
+
+# V26: garante chaves em todas as listas publicadas no HTML.
+def _v26_enrich_bucket_dict(_bucket):
+    if not isinstance(_bucket, dict):
+        return _bucket
+    for _fx in ['grave', 'alerta', 'atencao']:
+        for _it in (_bucket.get(_fx) or []):
+            if isinstance(_it, dict):
+                enriquecer_chaves_cobranca_py(_it)
+    return _bucket
+
+for _f_v26 in list(clientes_js.keys()):
+    clientes_js[_f_v26] = _v26_enrich_bucket_dict(clientes_js[_f_v26])
+for _v_v26 in list(clientes_por_vend_js.keys()):
+    clientes_por_vend_js[_v_v26] = _v26_enrich_bucket_dict(clientes_por_vend_js[_v_v26])
+clientes_terceiro_js = _v26_enrich_bucket_dict(clientes_terceiro_js)
+for _c_v26 in list(clientes_crediarista_js.keys()):
+    clientes_crediarista_js[_c_v26] = _v26_enrich_bucket_dict(clientes_crediarista_js[_c_v26])
 
 js_todos    = json.dumps(todos_js,            ensure_ascii=False)
 js_filiais  = json.dumps(filiais_js_ordered,  ensure_ascii=False)
@@ -7156,12 +7192,12 @@ function getRecebimentos(ent){
   return base;
 }
 function renderRecebimentos(ent){const src=getRecebimentos(ent); let out=''; ['grave','alerta','atencao'].forEach(fx=>{const arr=src[fx]||[]; const label=fx==='grave'?'Grave':fx==='alerta'?'Alerta':'Atenção'; if(!arr.length){out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>Sem recebimentos</span></div></div>`; return} out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${arr.length} títulos · ${R(arr.reduce((a,b)=>a+Number(b.pago||0),0))}</span></div><div class="tableish">${arr.slice(0,80).map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · Parcela ${esc(r.parcela||'')}</div></div><div><strong>${esc(r.pagamento||'')}</strong><div class="small muted">Pagamento</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${R(r.pago||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${esc(r.vendedor||'')}</strong><div class="small muted">Origem</div></div></div></div>`).join('')}</div></div>`}); return out}
-function cobrancaRowKey(r){return (typeof cobrancaKeyJs==='function') ? cobrancaKeyJs(r) : [String(r.cliente||r.nome||'').trim().toUpperCase(),String(r.titulo||'').trim(),String(r.parcela||'').trim(),String(r.vencimento||'').trim()].join('|')}
+function cobrancaRowKey(r){return [String(r.cliente||r.nome||'').trim().toUpperCase(),String(r.titulo||'').trim(),String(r.parcela||'').trim(),String(r.vencimento||'').trim()].join('|')}
 function dedupeCobrancaBuckets(src){const out={grave:[],alerta:[],atencao:[]}; const seen=new Set(); ['grave','alerta','atencao'].forEach(fx=>{(src?.[fx]||[]).forEach(r=>{const k=cobrancaRowKey(r); if(!seen.has(k)){seen.add(k); out[fx].push(r);}})}); return out}
 function vendorAssignedKeysByFilial(filial){const keys=new Set(); const arr=(TODOS?.[filial]||[]); arr.forEach(v=>{const buckets=CLIENTES_VEND?.[v.nome]||{grave:[],alerta:[],atencao:[]}; ['grave','alerta','atencao'].forEach(fx=>(buckets[fx]||[]).forEach(r=>keys.add(cobrancaRowKey(r))))}); return keys}
 function getClientesEnt(ent){
   if(ent.type==='terceiro' || ent.is_terceiro) return dedupeCobrancaBuckets(CLIENTES_TERCEIRO||{grave:[],alerta:[],atencao:[]});
-  if(ent.type==='crediarista' || ent.is_crediarista){ const filialKey=String(ent.filial||'').toUpperCase(); const loginKey=String(ent.login||crediaristaLoginByFilial(filialKey)||'').toLowerCase(); return dedupeCobrancaBuckets(CLIENTES_CREDIARISTA?.[loginKey]||CLIENTES_FIL?.[filialKey]||{grave:[],alerta:[],atencao:[]}); }
+  if(ent.type==='crediarista' || ent.is_crediarista){ const filialKey=String(ent.filial||'').toUpperCase(); const loginKey=String(ent.login||crediaristaLoginByFilial(filialKey)||'').toLowerCase(); return dedupeCobrancaBuckets(CLIENTES_FIL?.[filialKey]||CLIENTES_CREDIARISTA?.[loginKey]||{grave:[],alerta:[],atencao:[]}); }
   if(ent.type==='vendedor') return dedupeCobrancaBuckets(CLIENTES_VEND[ent.nome]||{grave:[],alerta:[],atencao:[]});
   const src=CLIENTES_FIL[ent.filial]||{grave:[],alerta:[],atencao:[]};
   const taken=vendorAssignedKeysByFilial(ent.filial);
@@ -7169,54 +7205,21 @@ function getClientesEnt(ent){
   ['grave','alerta','atencao'].forEach(fx=>{(src[fx]||[]).forEach(r=>{const k=cobrancaRowKey(r); if(!taken.has(k)) filtered[fx].push(r);})});
   return dedupeCobrancaBuckets(filtered);
 }
-function localDateKeyFromCob(x){
-  const raw = x?.client_date || x?.data_local || x?.server_date || x?.server_time || x?.data || x || '';
-  const s=String(raw||'').trim();
-  if(!s) return '';
-  if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
-  const m=s.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-  if(m) return `${m[3]}-${m[2]}-${m[1]}`;
-  const d=new Date(s.replace(' ', 'T'));
-  if(!isNaN(d)) return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  return '';
-}
-function todayKeyLocal(){
-  const d=new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-}
-function isTodayStr(s){return localDateKeyFromCob(s)===todayKeyLocal()}
-function normCobUser(s){
-  return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
-}
-function cobLogBelongsToEntity(x,ent){
-  if(!ent) return true;
-  const tipo=String(ent.type||'').toLowerCase();
-  const u=normCobUser(x.usuario||x.user||x.login||'');
-  const du=normCobUser(x.destino_login||'');
-  const dn=normCobUser(x.destino_nome||'');
-  const en=normCobUser(ent.nome||'');
-  const el=normCobUser(ent.login||'');
-  const filial=String(x.filial||'').toUpperCase();
-  const efilial=String(ent.filial||'').toUpperCase();
-  const dtipo=String(x.destino_tipo||'').toLowerCase();
-
-  if(tipo==='terceiro'||ent.is_terceiro)
-    return dtipo==='terceiro' || u===normCobUser(COBRANCA10_LOGIN) || u===normCobUser(COBRANCA10_NOME) || dn===normCobUser(COBRANCA10_NOME);
-
-  if(tipo==='crediarista'||ent.is_crediarista)
-    return u===el || du===el || dn===en || (dtipo==='crediarista' && filial===efilial);
-
-  if(tipo==='filial')
-    return filial===efilial && (dtipo==='filial' || dn===en || !dtipo);
-
-  return (el && (u===el || du===el)) || (en && (dn===en || u===en)) || (filial===efilial && dn===en);
-}
+function isTodayStr(s){const d=new Date(s||''); const t=new Date(); return !isNaN(d) && d.getFullYear()===t.getFullYear() && d.getMonth()===t.getMonth() && d.getDate()===t.getDate()}
 function getCobradosHoje(ent){
-  return (COB_LOGS||[]).filter(x=>{
-    const dkey=localDateKeyFromCob(x);
-    if(dkey!==todayKeyLocal()) return false;
-    return cobLogBelongsToEntity(x,ent);
-  });
+  if(ent.type==='terceiro' || ent.is_terceiro)
+    return (COB_LOGS||[]).filter(x=>isTodayStr(x.server_time||x.data||'') && (String(x.usuario||'').toLowerCase()===COBRANCA10_LOGIN || String(x.usuario||'').toLowerCase()===COBRANCA10_NOME.toLowerCase()));
+  if(ent.type==='crediarista' || ent.is_crediarista){
+    const credLogin=String(ent.login||'').toLowerCase();
+    const credNome=String(ent.nome||'').toLowerCase();
+    const credFilial=String(ent.filial||'').toUpperCase();
+    return (COB_LOGS||[]).filter(x=>isTodayStr(x.server_time||x.data||'') && (
+      String(x.usuario||'').toLowerCase()===credLogin ||
+      String(x.usuario||'').toLowerCase()===credNome ||
+      (String(x.filial||'').toUpperCase()===credFilial && String(x.destino_tipo||'').toLowerCase()==='crediarista')
+    ));
+  }
+  return (COB_LOGS||[]).filter(x=>isTodayStr(x.server_time||x.data||'') && String(x.filial||'')===String(ent.filial||'') && (ent.type==='filial' || String(x.destino_nome||'')===String(ent.nome||'')));
 }
 
 const DEFAULT_COBRANCA_TEMPLATE = `Olá, {primeiro_nome} tudo bem?
@@ -7258,42 +7261,39 @@ function daysSinceCob(raw){
   if(!d) return 9999;
   return Math.floor((Date.now()-d.getTime())/(1000*60*60*24));
 }
-function normClienteCobJs(s){
-  return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9 ]+/g,' ').replace(/\s+/g,' ').trim().slice(0,80);
-}
-function cpfKeyCobJs(...vals){
-  const s=vals.map(v=>String(v||'')).join(' ');
-  const m=s.match(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/);
-  return m ? m[0].replace(/\D/g,'') : '';
-}
 function clienteGrupoKeyJs(r){
-  return String(r?.cpf_key||r?.cpf||'').replace(/\D/g,'') || cpfKeyCobJs(r?.cliente,r?.nome,r?.contato,r?.historico) || normClienteCobJs(r?.cliente||r?.nome||'');
+  const doc=String(r?.cpf||r?.documento||'').replace(/\D+/g,'');
+  if(doc.length>=11) return 'CPF:'+doc.slice(-11);
+  const nome=normName(r?.cliente||r?.nome||'').slice(0,60);
+  const tel=Array.isArray(r?.telefones)&&r.telefones.length?String(r.telefones[0]).replace(/\D+/g,'').slice(-10):String(r?.telefone||'').replace(/\D+/g,'').slice(-10);
+  return 'CLI:'+nome+(tel?'|TEL:'+tel:'');
 }
-function cobrancaKeyJs(r){
-  return String(r?.cobranca_key||'') || [
-    clienteGrupoKeyJs(r),
-    String(r?.titulo||'').trim(),
-    String(r?.parcela||'').trim(),
-    String(r?.vencimento||'').trim()
-  ].join('|');
-}
+function cobrancaKeyJs(r){return [String(r?.cliente||r?.nome||'').trim().toUpperCase(),String(r?.titulo||'').trim(),String(r?.parcela||'').trim(),String(r?.vencimento||'').trim()].join('|')}
 function sameCobTitle(a,b){
-  const ka=cobrancaKeyJs(a), kb=cobrancaKeyJs(b);
-  if(ka && kb && ka===kb) return true;
+  const ak=String(a?.cobranca_key||''); const bk=String(b?.cobranca_key||'');
+  if(ak && bk && ak===bk) return true;
   return String(a?.titulo||'').trim()===String(b?.titulo||'').trim()
       && String(a?.parcela||'').trim()===String(b?.parcela||'').trim()
-      && clienteGrupoKeyJs(a)===clienteGrupoKeyJs(b);
+      && (typeof similarCliente==='function' ? similarCliente(a?.cliente||a?.nome||'', b?.cliente||b?.nome||'') : normName(a?.cliente||a?.nome||'')===normName(b?.cliente||b?.nome||''));
 }
-// Mantido como compatibilidade, mas agora usa comparação robusta por login/nome/filial.
-function entMatchesCobLog(log,ent){ return cobLogBelongsToEntity(log,ent); }
-
-// Status do título é GLOBAL: se qualquer usuário já cobrou o mesmo cliente/título/parcela,
-// os demais também enxergam como cobrado/aguardando. Isso evita duplicar cobrança para outro usuário.
+function entMatchesCobLog(log,ent){
+  if(!ent) return true;
+  const usuario=String(log.usuario||'').toLowerCase();
+  const destinoNome=String(log.destino_nome||'');
+  const destinoTipo=String(log.destino_tipo||'').toLowerCase();
+  const filial=String(log.filial||'').toUpperCase();
+  if(ent.type==='terceiro'||ent.is_terceiro) return destinoTipo==='terceiro' || usuario.includes('terceiro') || String(ent.nome||'')===destinoNome;
+  if(ent.type==='crediarista'||ent.is_crediarista){
+    const login=String(ent.login||ent.nome||'').toLowerCase();
+    return usuario===login || destinoNome===String(ent.nome||'') || (destinoTipo==='crediarista' && filial===String(ent.filial||'').toUpperCase());
+  }
+  if(ent.type==='filial') return filial===String(ent.filial||'').toUpperCase() && (destinoTipo==='filial' || destinoNome===String(ent.nome||'') || !destinoTipo);
+  return destinoNome===String(ent.nome||'') || usuario===String(ent.nome||'').toLowerCase();
+}
 function cobLogsTitulo(reg,ent=null){
-  return (COB_LOGS||[]).filter(x=>String(x.acao||'')==='whatsapp' && sameCobTitle(x,reg))
-    .sort((a,b)=>(parseCobDate(a.server_time||a.data||a.client_time)||0)-(parseCobDate(b.server_time||b.data||b.client_time)||0));
+  return (COB_LOGS||[]).filter(x=>String(x.acao||'')==='whatsapp' && sameCobTitle(x,reg) && entMatchesCobLog(x,ent))
+    .sort((a,b)=>(parseCobDate(a.server_time||a.data)||0)-(parseCobDate(b.server_time||b.data)||0));
 }
-
 function pagamentoAposCobranca(reg,log){
   const dtLog=parseCobDate(log?.server_time||log?.data);
   if(!dtLog) return false;
@@ -7527,36 +7527,24 @@ function abrirWhats(reg,entRef){const nums=normalizarListaTelefones((reg.telefon
 function closePhoneModal(){document.getElementById('phoneModal').classList.remove('show'); phoneContext=null}
 function enviarWhats(numero){if(!phoneContext) return; const {reg,entRef}=phoneContext; const msg=montarMensagemCobranca(reg); window.open(`https://wa.me/${numero}?text=${encodeURIComponent(msg)}`,'_blank'); registrarCobrancaOnline(reg,entRef,numero); closePhoneModal()}
 async function registrarCobrancaOnline(r,entRef,numero){
-  // Usa login quando possível, para que "Cobrados hoje" bata mesmo se o nome mudar/acento/truncar.
+  // Para crediarista usa o login como usuario para que getCobradosHoje() funcione corretamente
   const usuarioLog = (entRef.type==='crediarista'||entRef.is_crediarista)
     ? (String(entRef.login||entRef.nome||usuarioAtual?.login||'').toLowerCase() || usuarioAtual?.login || 'master')
     : (usuarioAtual?.nome||usuarioAtual?.login||'master');
-  const agoraLocal = new Date();
   const payload={
     cliente:r.cliente||r.nome||'',titulo:r.titulo||'',parcela:r.parcela||'',
     vencimento:r.vencimento||'',pendente:Number(r.pendente||0),telefone:numero,
-    usuario:usuarioLog,
-    user_login:usuarioAtual?.login||'',
-    filial:entRef.filial||'',
-    destino_tipo:entRef.type||'',
-    destino_nome:entRef.nome||'',
-    destino_login:entRef.login||'',
-    acao:'whatsapp',
-    tentativa:Number(r._cob_status?.proxima_tentativa||1),
-    qtd_cobrancas_antes:Number(r._cob_status?.qtd||0),
-    ultima_cobranca_anterior:String(r._cob_status?.ultima_fmt||''),
-    cliente_key:clienteGrupoKeyJs(r),
-    cpf_key:String(r.cpf_key||r.cpf||'').replace(/\D/g,''),
-    cobranca_key:cobrancaKeyJs(r),
-    client_time:agoraLocal.toISOString(),
-    client_date:todayKeyLocal()
+    usuario:usuarioLog,filial:entRef.filial||'',
+    destino_tipo:entRef.type||'',destino_nome:entRef.nome||'',destino_login:String(entRef.login||usuarioAtual?.login||'').toLowerCase(),
+    cliente_key:r.cliente_key||clienteGrupoKeyJs(r),cobranca_key:r.cobranca_key||cobrancaKeyJs(r),
+    acao:'whatsapp',tentativa:Number(r._cob_status?.proxima_tentativa||1),qtd_cobrancas_antes:Number(r._cob_status?.qtd||0),ultima_cobranca_anterior:String(r._cob_status?.ultima_fmt||'')
   };
   try{
     const resp=await fetch(API_COB,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const j=await resp.json();
     if(j.ok){
       await carregarCobrancasOnline();
-      toast(j.duplicated?'Cobrança já estava registrada recentemente.':'Cobrança registrada online com sucesso.','success');
+      toast('Cobrança registrada online com sucesso.','success');
       if(!detailScreen.classList.contains('hidden')){
         if(entRef.type==='crediarista'||entRef.is_crediarista){
           openCrediaristaPanel(entRef.login||'',entRef.filial||'',entRef.nome||'');
@@ -7564,13 +7552,10 @@ async function registrarCobrancaOnline(r,entRef,numero){
           openEntity(entRef);
         }
       }
-    } else {
-      console.log('Falha ao gravar cobrança:', j);
-      toast('Não consegui gravar a cobrança online.');
-    }
-  }catch(e){console.log(e); toast('Falha ao salvar cobrança online.');}
+    } else toast('Não consegui gravar a cobrança online.');
+  }catch(e){toast('Falha ao salvar cobrança online.');}
 }
-async function carregarCobrancasOnline(){try{const r=await fetchComTimeout(API_COB+'?_='+Date.now(),{},6000); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} if(j.ok&&Array.isArray(j.data)){COB_LOGS=j.data;} else if(!j.ok && txt){console.log('cobrancas_api retorno:', txt)} RECEBIMENTOS_CONCILIADOS=getQuitadosConciliados(); console.log('🔗 Quitados conciliados:', RECEBIMENTOS_CONCILIADOS);}catch(e){console.log('Falha ao carregar cobranças; mantendo cache anterior',e);}}
+async function carregarCobrancasOnline(){try{const r=await fetchComTimeout(API_COB+'?_='+Date.now(),{},5000); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} if(j.ok&&Array.isArray(j.data)){COB_LOGS=j.data; try{localStorage.setItem('mdl_cobrancas_log_cache',JSON.stringify(COB_LOGS));}catch(_e){}} else {console.log('cobrancas_api retorno inválido, mantendo cache atual:', txt); if(!COB_LOGS.length){try{const cache=JSON.parse(localStorage.getItem('mdl_cobrancas_log_cache')||'[]'); if(Array.isArray(cache)) COB_LOGS=cache;}catch(_e){}}} RECEBIMENTOS_CONCILIADOS=getQuitadosConciliados(); console.log('🔗 Quitados conciliados:', RECEBIMENTOS_CONCILIADOS);}catch(e){console.log(e); if(!COB_LOGS.length){try{const cache=JSON.parse(localStorage.getItem('mdl_cobrancas_log_cache')||'[]'); if(Array.isArray(cache)) COB_LOGS=cache;}catch(_e){}}}}
 
 async function removerCobranca(id,cliente='',titulo='',parcela=''){if(!confirm('Remover esta cobrança do histórico?')) return; try{const r=await fetch(API_COB,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete',id,cliente,titulo,parcela})}); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} if(j.ok){toast('Cobrança removida.','success'); await carregarCobrancasOnline(); renderLogsTab(); renderList(); if(currentDetailRef) openEntity(currentDetailRef);}else{console.log('Falha remover cobrança:', txt); toast('Não consegui remover.')}}catch(e){console.log(e); toast('Falha ao remover cobrança.')}}
 function toggleAcc(el){el.parentElement.classList.toggle('open')}
@@ -7674,7 +7659,7 @@ async function removerMetaIndividual(){
 function renderLogsTab(){const cfgPanel=renderCobrancaConfigPanel(); const filOpts=['<option value="">Todas as filiais</option>',...ORDEM.map(f=>`<option value="${f}">${f}</option>`)].join(''); const vendOpts=['<option value="">Todos os usuários</option>',...Array.from(new Set(COB_LOGS.map(x=>x.usuario).filter(Boolean))).sort().map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)].join(''); logSection.innerHTML=cfgPanel+`<div class="section-head"><div><h2>🧾 Histórico de cobranças</h2><div class="hint">Filtre por data, usuário ou filial. Também é possível remover lançamentos indevidos.</div></div></div><div class="glass panel"><div class="search-row"><div class="input-card"><label>Buscar cliente/título</label><input id="logQ" placeholder="Nome, título, parcela"></div><div class="input-card"><label>Data inicial</label><input id="logDe" type="date"></div><div class="input-card"><label>Data final</label><input id="logAte" type="date"></div><div class="input-card"><label>Filial</label><select id="logFil">${filOpts}</select></div></div><div class="search-row" style="margin-top:10px"><div class="input-card"><label>Usuário</label><select id="logVend">${vendOpts}</select></div><div style="display:flex;align-items:end;gap:10px"><button class="btn primary" onclick="applyLogFilter()">Filtrar</button><button class="btn soft" onclick="clearLogFilter()">Limpar</button></div></div><div id="logsList" class="logs-list"></div></div>`; applyLogFilter()}
 function parseDateBR(s){if(!s) return null; const v=String(s).trim(); let m=v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); if(m){const d=new Date(Number(m[3]), Number(m[2])-1, Number(m[1])); return isNaN(d)?null:d} const d=new Date(v); return isNaN(d)?null:d}
 function parseDate(s){if(!s) return null; const d=new Date(s); return isNaN(d)?null:d}
-function applyLogFilter(){const q=(document.getElementById('logQ')?.value||'').toLowerCase(); const deStr=document.getElementById('logDe')?.value||''; const ateStr=document.getElementById('logAte')?.value||''; const fil=document.getElementById('logFil')?.value||''; const vend=document.getElementById('logVend')?.value||''; let arr=[...COB_LOGS].reverse(); arr=arr.filter(x=>{const txt=`${x.cliente||''} ${x.titulo||''} ${x.parcela||''} ${x.usuario||''} ${x.destino_nome||''}`.toLowerCase(); const dkey=localDateKeyFromCob(x); if(q && !txt.includes(q)) return false; if(fil && String(x.filial||'')!==fil) return false; if(vend && String(x.usuario||'')!==vend) return false; if(deStr && (!dkey || dkey<deStr)) return false; if(ateStr && (!dkey || dkey>ateStr)) return false; return true}); _logFiltered=arr; const host=document.getElementById('logsList'); if(!host) return; host.innerHTML=arr.length?arr.map((x,i)=>`<div class="log-row"><div><div style="font-weight:900">${esc(x.cliente||'')}</div><div class="small muted">${esc(x.titulo||'')} · Parcela ${esc(x.parcela||'')}</div></div><div><strong>${R(x.pendente||0)}</strong><div class="small muted">${esc(x.filial||'')} · ${esc(x.usuario||'')} ${x.destino_nome?`→ ${esc(x.destino_nome)}`:''}</div></div><div><strong>${esc(x.telefone||'')}</strong><div class="small muted">Telefone</div></div><div><strong>${esc((x.server_time||x.client_time||'').replace('T',' ').slice(0,16))}</strong><div class="small muted">Data</div></div><div><button class="btn danger" onclick="removerCobrancaIdx(${i})">Remover</button></div></div>`).join(''):'<div class="empty">Nenhuma cobrança encontrada para esse filtro.</div>'}
+function applyLogFilter(){const q=(document.getElementById('logQ')?.value||'').toLowerCase(); const de=parseDate(document.getElementById('logDe')?.value); const ate=parseDate(document.getElementById('logAte')?.value); const fil=document.getElementById('logFil')?.value||''; const vend=document.getElementById('logVend')?.value||''; let arr=[...COB_LOGS].reverse(); arr=arr.filter(x=>{const txt=`${x.cliente||''} ${x.titulo||''} ${x.parcela||''}`.toLowerCase(); const dt=parseDate(x.server_time||x.data||''); if(q && !txt.includes(q)) return false; if(fil && String(x.filial||'')!==fil) return false; if(vend && String(x.usuario||'')!==vend) return false; if(de && (!dt || dt<de)) return false; if(ate){const end=new Date(ate); end.setHours(23,59,59,999); if(!dt || dt>end) return false;} return true}); _logFiltered=arr; const host=document.getElementById('logsList'); if(!host) return; host.innerHTML=arr.length?arr.map((x,i)=>`<div class="log-row"><div><div style="font-weight:900">${esc(x.cliente||'')}</div><div class="small muted">${esc(x.titulo||'')} · Parcela ${esc(x.parcela||'')}</div></div><div><strong>${R(x.pendente||0)}</strong><div class="small muted">${esc(x.filial||'')} · ${esc(x.usuario||'')}</div></div><div><strong>${esc(x.telefone||'')}</strong><div class="small muted">Telefone</div></div><div><strong>${esc((x.server_time||'').replace('T',' ').slice(0,16))}</strong><div class="small muted">Data</div></div><div><button class="btn danger" onclick="removerCobrancaIdx(${i})">Remover</button></div></div>`).join(''):'<div class="empty">Nenhuma cobrança encontrada para esse filtro.</div>'}
 function removerCobrancaIdx(i){const x=_logFiltered[i]; if(!x) return; removerCobranca(x.id||'', x.cliente||'', x.titulo||'', x.parcela||'');}
 function clearLogFilter(){['logQ','logDe','logAte'].forEach(id=>{const e=document.getElementById(id); if(e) e.value=''}); ['logFil','logVend'].forEach(id=>{const e=document.getElementById(id); if(e) e.value=''}); applyLogFilter()}
 
@@ -8534,65 +8519,73 @@ echo json_encode(['ok'=>true,'data'=>$data], JSON_UNESCAPED_UNICODE); exit;
 ?>"""
 
 COBRANCAS_API_PHP = r"""<?php
-date_default_timezone_set('America/Sao_Paulo');
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
+date_default_timezone_set('America/Sao_Paulo');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 
 $file = __DIR__ . '/cobrancas_log.json';
-if (!file_exists($file)) @file_put_contents($file, '[]');
+$backupDir = __DIR__ . '/backups_cobrancas';
+if (!is_dir($backupDir)) @mkdir($backupDir, 0755, true);
 
-function mdl_read_log($file) {
-  $raw = @file_get_contents($file);
+function cob_read_json($path) {
+  if (!file_exists($path)) return [];
+  $raw = @file_get_contents($path);
   $data = json_decode($raw, true);
   return is_array($data) ? $data : [];
 }
-function mdl_write_log_atomic($file, $data) {
-  $tmp = $file . '.tmp';
-  $json = json_encode($data, JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE);
-  if (@file_put_contents($tmp, $json, LOCK_EX) === false) return false;
-  return @rename($tmp, $file);
+function cob_write_atomic($path, $data) {
+  $tmp = $path . '.tmp.' . uniqid('', true);
+  $ok = file_put_contents($tmp, json_encode($data, JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE), LOCK_EX);
+  if ($ok === false) return false;
+  return @rename($tmp, $path);
 }
-function mdl_norm($s) {
-  $s = mb_strtoupper((string)$s, 'UTF-8');
-  $s = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s);
-  $s = preg_replace('/[^A-Z0-9 ]+/', ' ', $s);
-  return trim(preg_replace('/\s+/', ' ', $s));
+function cob_backup_current($file, $backupDir, $tag='write') {
+  if (!file_exists($file)) return;
+  $day = date('Y-m-d');
+  @copy($file, $backupDir . '/cobrancas_log_' . $day . '_latest.json');
+  @copy($file, $backupDir . '/cobrancas_log_' . $day . '_' . date('His') . '_' . $tag . '.json');
 }
-function mdl_cliente_key($r) {
-  foreach (['cpf_key','cpf'] as $k) {
-    if (!empty($r[$k])) {
-      $cpf = preg_replace('/\D+/', '', (string)$r[$k]);
-      if (strlen($cpf) == 11) return $cpf;
-    }
-  }
-  $txt = (($r['cliente'] ?? '') . ' ' . ($r['nome'] ?? '') . ' ' . ($r['contato'] ?? ''));
-  if (preg_match('/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/', $txt, $m)) {
-    return preg_replace('/\D+/', '', $m[0]);
-  }
-  return substr(mdl_norm($r['cliente'] ?? ($r['nome'] ?? '')), 0, 80);
+function cob_latest_backup($backupDir) {
+  $files = glob($backupDir . '/cobrancas_log_*.json');
+  if (!$files) return '';
+  usort($files, function($a,$b){ return filemtime($b) <=> filemtime($a); });
+  return $files[0];
 }
-function mdl_cobranca_key($r) {
-  if (!empty($r['cobranca_key'])) return (string)$r['cobranca_key'];
-  return implode('|', [
-    mdl_cliente_key($r),
-    trim((string)($r['titulo'] ?? '')),
-    trim((string)($r['parcela'] ?? '')),
-    trim((string)($r['vencimento'] ?? '')),
-  ]);
+function cob_norm_key($item) {
+  $ck = trim((string)($item['cobranca_key'] ?? ''));
+  if ($ck !== '') return $ck;
+  return strtoupper(trim((string)($item['cliente'] ?? $item['nome'] ?? ''))) . '|' . trim((string)($item['titulo'] ?? '')) . '|' . trim((string)($item['parcela'] ?? '')) . '|' . trim((string)($item['vencimento'] ?? ''));
+}
+function cob_cliente_key($item) {
+  $ck = trim((string)($item['cliente_key'] ?? ''));
+  if ($ck !== '') return $ck;
+  $doc = preg_replace('/\D+/', '', (string)($item['cpf'] ?? $item['documento'] ?? ''));
+  if (strlen($doc) >= 11) return 'CPF:' . substr($doc, -11);
+  $nome = strtoupper(trim((string)($item['cliente'] ?? $item['nome'] ?? '')));
+  $nome = preg_replace('/\s+/', ' ', $nome);
+  $tel = preg_replace('/\D+/', '', (string)($item['telefone'] ?? ''));
+  return 'CLI:' . substr($nome, 0, 60) . ($tel ? '|TEL:' . substr($tel, -10) : '');
 }
 
-$data = mdl_read_log($file);
-if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-  echo json_encode(['ok'=>true,'data'=>$data], JSON_UNESCAPED_UNICODE); exit;
+if (!file_exists($file)) {
+  $last = cob_latest_backup($backupDir);
+  if ($last) @copy($last, $file); else file_put_contents($file, '[]', LOCK_EX);
 }
+$data = cob_read_json($file);
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+  echo json_encode(['ok'=>true,'data'=>$data,'count'=>count($data)], JSON_UNESCAPED_UNICODE); exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $payload = json_decode(file_get_contents('php://input'), true);
-  if (!is_array($payload)) { echo json_encode(['ok'=>false,'error'=>'payload_invalido']); exit; }
+  if (!is_array($payload)) { echo json_encode(['ok'=>false,'error'=>'payload_invalido'], JSON_UNESCAPED_UNICODE); exit; }
 
   if (($payload['action'] ?? '') === 'delete') {
+    cob_backup_current($file, $backupDir, 'before_delete');
     $id = $payload['id'] ?? '';
     $cliente = $payload['cliente'] ?? '';
     $titulo = $payload['titulo'] ?? '';
@@ -8603,36 +8596,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $sameComposite = ($cliente !== '' && (string)($item['cliente'] ?? '') === (string)$cliente && (string)($item['titulo'] ?? '') === (string)$titulo && (string)($item['parcela'] ?? '') === (string)$parcela);
       if(!$sameId && !$sameComposite) $novo[] = $item;
     }
-    mdl_write_log_atomic($file, $novo);
-    echo json_encode(['ok'=>true], JSON_UNESCAPED_UNICODE); exit;
+    cob_write_atomic($file, $novo);
+    echo json_encode(['ok'=>true,'count'=>count($novo)], JSON_UNESCAPED_UNICODE); exit;
   }
 
   if (empty($payload['id'])) $payload['id'] = uniqid('cob_', true);
   $payload['server_time'] = date('c');
   $payload['server_date'] = date('Y-m-d');
-  $payload['cobranca_key'] = mdl_cobranca_key($payload);
-  $payload['cliente_key'] = mdl_cliente_key($payload);
+  $payload['cliente_key'] = cob_cliente_key($payload);
+  $payload['cobranca_key'] = cob_norm_key($payload);
 
-  // Evita duplicidade acidental por duplo clique/reenvio no mesmo minuto.
-  $now = time();
+  $nowTs = time();
   foreach(array_reverse($data) as $item){
-    if (($item['acao'] ?? '') !== 'whatsapp') continue;
-    if ((string)($item['cobranca_key'] ?? mdl_cobranca_key($item)) !== (string)$payload['cobranca_key']) continue;
-    $sameUser = (string)($item['usuario'] ?? '') === (string)($payload['usuario'] ?? '')
-             || (string)($item['destino_login'] ?? '') === (string)($payload['destino_login'] ?? '');
-    if (!$sameUser) continue;
-    $ts = strtotime((string)($item['server_time'] ?? '')) ?: 0;
-    if ($ts && abs($now - $ts) <= 120) {
-      echo json_encode(['ok'=>true,'duplicated'=>true,'id'=>($item['id'] ?? '')], JSON_UNESCAPED_UNICODE); exit;
+    $sameKey = cob_norm_key($item) === $payload['cobranca_key'];
+    $sameUser = strtolower((string)($item['usuario'] ?? '')) === strtolower((string)($payload['usuario'] ?? ''));
+    $samePhone = preg_replace('/\D+/', '', (string)($item['telefone'] ?? '')) === preg_replace('/\D+/', '', (string)($payload['telefone'] ?? ''));
+    $t = strtotime((string)($item['server_time'] ?? $item['data'] ?? ''));
+    if ($sameKey && $sameUser && $samePhone && $t && abs($nowTs - $t) <= 120) {
+      echo json_encode(['ok'=>true,'duplicado'=>true,'id'=>($item['id'] ?? '')], JSON_UNESCAPED_UNICODE); exit;
     }
   }
 
+  cob_backup_current($file, $backupDir, 'before_write');
   $data[] = $payload;
-  if (!mdl_write_log_atomic($file, $data)) {
-    echo json_encode(['ok'=>false,'error'=>'falha_gravar_log'], JSON_UNESCAPED_UNICODE); exit;
-  }
-  echo json_encode(['ok'=>true,'id'=>$payload['id']], JSON_UNESCAPED_UNICODE); exit;
+  $ok = cob_write_atomic($file, $data);
+  @file_put_contents($backupDir . '/cobrancas_log_append_' . date('Y-m-d') . '.ndjson', json_encode($payload, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND|LOCK_EX);
+  echo json_encode(['ok'=>$ok ? true : false,'id'=>$payload['id'],'count'=>count($data)], JSON_UNESCAPED_UNICODE); exit;
 }
+
 echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado'], JSON_UNESCAPED_UNICODE);
 ?>"""
 
@@ -8913,8 +8904,13 @@ if FTP_USER and FTP_PASS:
         # Isso evita o navegador misturar arquivos de horários diferentes.
         print('ℹ️ MAIN: não publica metas_vendas/margens/sales_version; pacote de vendas é exclusivo do sales worker.')
         try:
+            ftp.mkd('backups_cobrancas')
+        except Exception:
+            pass
+        try:
             ftp.size('cobrancas_log.json')
         except Exception:
+            # V26: cria o arquivo apenas se não existir. A API PHP tenta recuperar do último backup antes de criar vazio.
             ftp.storbinary('STOR cobrancas_log.json', BytesIO(b'[]'))
         try:
             ftp.size('mensagens_log.json')
