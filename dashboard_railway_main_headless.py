@@ -1,4 +1,4 @@
-# VERSAO: COBRANCA10_V24_SENHAS_LINHA_TIMER_RECEBIMENTOS_FIX
+# VERSAO: COBRANCA10_V3_FIX_NAMEERROR
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -2085,7 +2085,7 @@ for _i in range(len(df_raw)):
     # =========================================
     # RECEBIMENTOS
     # =========================================
-    if _faixa and _pagto and _pago_val > 0 and _pagto >= _data_corte_parse:
+    if _faixa and _pagto and _pago_val > 0 and _pagto > _data_corte_parse:
         if _key_vend not in recebido_faixa:
             recebido_faixa[_key_vend] = {
                 "grave": 0.0,
@@ -2137,6 +2137,9 @@ for _i in range(len(df_raw)):
             "faixa": _faixa,
             "titulo_key": _titulo_key,
             "mensagem_whatsapp": _mensagem,
+            "cliente_key": cliente_grupo_key_py({"cliente": _c1, "contato": _contato}),
+            "cpf_key": _cpf_key_cobranca_py(_c1, _contato, _avalista),
+            "cobranca_key": cobranca_row_key_py({"cliente": _c1, "titulo": _titulo, "parcela": _parcela, "vencimento": str(_row[COL["vencimento"]]).strip()}),
         })
 
 
@@ -2218,9 +2221,34 @@ def nome_crediarista_filial(filial, login=None):
         return CREDIARISTAS_NOMES[str(login).lower()]
     return f"CREDIARISTA{str(filial).upper()}"
 
+def _norm_cliente_cobranca_py(txt):
+    s = str(txt or "").strip().upper()
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = re.sub(r"[^A-Z0-9 ]", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s[:80]
+
+def _cpf_key_cobranca_py(*vals):
+    s = " ".join(str(v or "") for v in vals)
+    nums = re.findall(r"\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b", s)
+    if not nums:
+        return ""
+    return re.sub(r"\D", "", nums[0])
+
+def cliente_grupo_key_py(r):
+    """
+    Chave de cliente/CPF para rateio operacional.
+    Se em algum relatório futuro vier CPF, usa CPF. Hoje o Contas a Receber não traz CPF,
+    então usamos nome normalizado do cliente para manter todos os títulos do mesmo cliente
+    com o mesmo usuário.
+    """
+    cpf = _cpf_key_cobranca_py(r.get("cpf"), r.get("cliente"), r.get("nome"), r.get("contato"), r.get("historico"))
+    return cpf or _norm_cliente_cobranca_py(r.get("cliente", r.get("nome", "")))
+
 def cobranca_row_key_py(r):
     return "|".join([
-        str(r.get("cliente", r.get("nome", "")) or "").strip().upper(),
+        cliente_grupo_key_py(r),
         str(r.get("titulo", "") or "").strip(),
         str(r.get("parcela", "") or "").strip(),
         str(r.get("vencimento", "") or "").strip(),
@@ -2442,119 +2470,6 @@ diff_pg = total_final_pg - total_bruto_pg
 print(f"  DIFERENÇA      : pend={diff_p:>+12,.2f}  pago={diff_pg:>+12,.2f}  {'✅ OK' if abs(diff_p)<0.02 and abs(diff_pg)<0.02 else '⚠️ VERIFICAR'}")
 print(f"{'='*55}")
 
-
-# =========================================
-# V23 — USUÁRIOS COMERCIAIS AUTOMÁTICOS
-# Gera usuários também a partir das metas de vendas/serviços.
-# Assim, vendedor/gerente novo que já aparece no SGI em metas/vendas
-# ganha login no dashboard mesmo antes de aparecer na carteira de cobrança.
-# A cobrança/rateio continua usando a regra vigente do relatório de cobrança.
-# =========================================
-def _v23_norm_name_key(nome):
-    s = limpar_nome_display(limpar_nome_erp(str(nome or ""))).strip()
-    s = unicodedata.normalize("NFKD", s.upper())
-    s = "".join(c for c in s if not unicodedata.combining(c))
-    s = re.sub(r"[^A-Z0-9 ]", " ", s)
-    return re.sub(r"\s+", " ", s).strip()
-
-def _v23_filial_from_any_text(*vals):
-    joined = " ".join(str(v or "") for v in vals)
-    filial, is_ger = extrair_filial_nome(joined)
-    if filial:
-        return filial.upper(), bool(is_ger)
-    m = re.search(r"FILIAL\s*0*(\d{1,3})", joined.upper())
-    if m:
-        n = int(m.group(1))
-        return (f"F{n}" if n not in (90, 99) else "FDEP"), False
-    m = re.search(r"\bF\s*0*(\d{1,2})\b", joined.upper())
-    if m:
-        return f"F{int(m.group(1))}", False
-    return "", False
-
-def _v23_nome_from_meta_row(row):
-    vals = []
-    for k, v in (row or {}).items():
-        if str(k).startswith("_"):
-            continue
-        sv = str(v or "").strip()
-        if not sv or sv.lower() in ("nan", "none", "total"):
-            continue
-        if re.search(r"^\s*(R\$)?\s*-?\d+([.,]\d+)?\s*%?\s*$", sv):
-            continue
-        vals.append(sv)
-
-    for sv in vals:
-        if re.search(r"\((GER\s*)?F\d+\)", sv, flags=re.I):
-            return limpar_nome_display(limpar_nome_erp(sv)).strip(), sv
-
-    for sv in vals:
-        if "FILIAL" not in sv.upper() and len(sv) >= 3:
-            return limpar_nome_display(limpar_nome_erp(sv)).strip(), sv
-
-    return "", ""
-
-def _v23_extrair_usuarios_das_metas_vendas(metas_info):
-    out = {}
-    dados = (metas_info or {}).get("dados", {}) if isinstance(metas_info, dict) else {}
-    metas = dados.get("metas", {}) if isinstance(dados, dict) else {}
-
-    for chave in ("venda_filial_vendedor_meta", "servico_filial_vendedor_ouro_fob", "venda_vendedor_subgrupo_20k"):
-        obj = metas.get(chave, {}) if isinstance(metas, dict) else {}
-        linhas = obj.get("linhas", []) if isinstance(obj, dict) else []
-        if not isinstance(linhas, list):
-            continue
-        for row in linhas:
-            if not isinstance(row, dict) or row.get("_is_total"):
-                continue
-            nome, raw_nome = _v23_nome_from_meta_row(row)
-            if not nome or nome.upper() == "TOTAL":
-                continue
-            filial, is_ger = _v23_filial_from_any_text(raw_nome, *[row.get(k) for k in row.keys() if not str(k).startswith("_")])
-            if not filial or filial == "FDEP":
-                continue
-            if re.search(r"\(GER\s*F\d+\)", str(raw_nome), flags=re.I) or re.search(r"\bGERENTE\b", str(raw_nome), flags=re.I):
-                is_ger = True
-            key = f"{_v23_norm_name_key(nome)}_{filial}_{1 if is_ger else 0}"
-            out[key] = {"nome": nome, "filial": filial, "is_gerente": bool(is_ger), "origem": chave}
-    return list(out.values())
-
-_usuarios_vendas_auto = _v23_extrair_usuarios_das_metas_vendas(metas_vendas_info)
-_existentes_v23 = set()
-for _, _r_exist in df_vend.iterrows():
-    _existentes_v23.add(f"{_v23_norm_name_key(_r_exist.get('nome_exibicao', _r_exist.get('vendedor','')))}_{str(_r_exist.get('filial_vendedor','')).upper()}_{1 if bool(_r_exist.get('is_gerente')) else 0}")
-
-_novos_v23 = []
-for _u_auto in _usuarios_vendas_auto:
-    _key_auto = f"{_v23_norm_name_key(_u_auto['nome'])}_{_u_auto['filial']}_{1 if _u_auto.get('is_gerente') else 0}"
-    if _key_auto in _existentes_v23:
-        continue
-    _novos_v23.append({
-        "vendedor": f"{_u_auto['nome']} ({_u_auto['filial']})",
-        "filial_vendedor": _u_auto["filial"],
-        "is_gerente": bool(_u_auto.get("is_gerente")),
-        "pendente": 0.0,
-        "pago": 0.0,
-        "filial": _u_auto["filial"],
-        "_synthetic_sales_user": True,
-        "nome_exibicao": _u_auto["nome"],
-        "total": 0.0,
-        "total_filial": 0.0,
-        "perc_filial": 0.0,
-        "filial_ordem": _u_auto["filial"],
-    })
-
-if _novos_v23:
-    df_vend = pd.concat([df_vend, pd.DataFrame(_novos_v23)], ignore_index=True)
-    try:
-        df_vend["filial_ordem"] = pd.Categorical(df_vend["filial_vendedor"], categories=ORDEM_FILIAIS, ordered=True)
-        df_vend = df_vend.sort_values(["filial_ordem","is_gerente","pendente"], ascending=[True,False,False]).reset_index(drop=True)
-    except Exception:
-        pass
-    print("✅ V23_USUARIOS_VENDAS_AUTO: criados usuários vindos das metas de vendas/serviços:", ", ".join([f"{u['nome_exibicao']} ({u['filial_vendedor']})" for u in _novos_v23]))
-else:
-    print("ℹ️ V23_USUARIOS_VENDAS_AUTO: nenhum usuário novo vindo das metas de vendas/serviços.")
-
-
 # ===== SALVAR CSV
 csv_path = os.path.join(pasta, "dashboard_vendedores.csv")
 df_vend.to_csv(csv_path, index=False)
@@ -2770,12 +2685,6 @@ cred_state["director"] = {
     "email_recuperacao": EMAIL_RECUPERACAO,
 }
 cred_state.setdefault("password_reset_requests", [])
-# V23: bloqueio geral de acesso controlado pelo Master.
-# Mantém o estado remoto entre execuções; Master/Diretor continuam podendo entrar para desbloquear.
-cred_state["access_blocked"] = bool(cred_state.get("access_blocked", False))
-cred_state.setdefault("access_blocked_reason", "Sistema em atualização. Aguarde liberação pelo Master.")
-cred_state.setdefault("access_blocked_at", "")
-cred_state.setdefault("access_unblocked_at", "")
 
 with open(cred_state_path, "w", encoding="utf-8") as f:
     json.dump(cred_state, f, ensure_ascii=False, indent=2)
@@ -3464,7 +3373,7 @@ for _i2 in range(len(df_raw)):
 
     if not _venc2 or not _pagto2 or _pago2 <= 0:
         continue
-    if _pagto2 < _data_corte_parse:
+    if _pagto2 <= _data_corte_parse:
         continue
 
     if str(_row2[COL["conta_caixa"]]).strip() == "Caixa Filial 100":
@@ -4719,50 +4628,58 @@ for c in _cli_inat_fdep:
             _inat_por_filial[_dest_filial] = []
         _inat_por_filial[_dest_filial].append(c)
 
-# Para cada filial, distribui 60% gerente / 40% vendedores (sem duplicatas)
+# Para cada filial, distribui 60% gerente / 40% vendedores (sem perder títulos)
+# V25: antes o código deduplicava por nome do cliente e mantinha só o maior título.
+# Isso fazia sumir cobranças quando o mesmo cliente tinha 2+ títulos. Agora o rateio é por
+# GRUPO de cliente/CPF: todos os títulos do mesmo cliente ficam com o mesmo destino,
+# mas nenhum título é descartado.
+def _cob_row_payload(c, vendedor_label):
+    return {
+        "nome": c.get("cliente", c.get("nome", "")),
+        "cliente": c.get("cliente", ""),
+        "restricao": c.get("restricao", ""),
+        "vencimento": c.get("vencimento", ""),
+        "pagamento": c.get("pagamento", ""),
+        "dias": c.get("dias", 0),
+        "pendente": c.get("pendente", 0),
+        "pago": c.get("pago", 0.0),
+        "parcela": c.get("parcela", ""),
+        "titulo": c.get("titulo", ""),
+        "avalista": c.get("avalista", ""),
+        "contato": c.get("contato", ""),
+        "telefones": c.get("telefones", []),
+        "mensagem_whatsapp": c.get("mensagem_whatsapp", ""),
+        "vendedor": vendedor_label,
+        "novo": c.get("novo", False),
+        "cliente_key": c.get("cliente_key") or cliente_grupo_key_py(c),
+        "cpf_key": c.get("cpf_key", ""),
+        "cobranca_key": c.get("cobranca_key") or cobranca_row_key_py(c),
+    }
+
 for _filial_dest, _clientes_inat in _inat_por_filial.items():
-    # Evita duplicatas: cada CLIENTE vai para apenas 1 destinatário
-    _clientes_unicos = {}  # {nome_cliente: c} — pega o de maior pendente
+    # Agrupa todos os títulos do mesmo cliente/CPF, sem descartar nenhum.
+    _grupos_cliente = {}
     for c in _clientes_inat:
-        k = c['cliente'][:30]
-        if k not in _clientes_unicos or c['pendente'] > _clientes_unicos[k]['pendente']:
-            _clientes_unicos[k] = c
-    _lista = list(_clientes_unicos.values())
+        k = c.get("cliente_key") or cliente_grupo_key_py(c)
+        _grupos_cliente.setdefault(k, []).append(c)
 
-    # Ordena por pendente desc (mais importante primeiro)
-    _lista.sort(key=lambda x: x['pendente'], reverse=True)
-    _total = len(_lista)
-    _n_ger = round(_total * 0.60)   # 60% para gerente
-    _n_vend = _total - _n_ger       # 40% para vendedores
+    _grupos = list(_grupos_cliente.values())
+    _grupos.sort(key=lambda grupo: sum(float(x.get("pendente", 0) or 0) for x in grupo), reverse=True)
 
-    # Gerente recebe os primeiros 60%
-    _para_gerente = _lista[:_n_ger]
-    _para_vends   = _lista[_n_ger:]
+    _total_grupos = len(_grupos)
+    _n_ger = round(_total_grupos * 0.60)   # 60% dos clientes/grupos para gerente
+    _grupos_gerente = _grupos[:_n_ger]
+    _grupos_vends   = _grupos[_n_ger:]
 
-    # Adiciona ao painel da filial (gerente vê tudo da filial)
-    for c in _lista:
-        _tag = " [FDEP]" if c.get("is_fdep") else " [Inativo]"
+    # Painel da filial/gerente visualiza todos os títulos da filial.
+    for _grupo in _grupos:
+        for c in _grupo:
+            _tag = " [FDEP]" if c.get("is_fdep") else " [Inativo]"
+            clientes_js[_filial_dest][c["faixa"]].append(
+                _cob_row_payload(c, limpar_nome_display(c["vendedor"])[:20] + _tag)
+            )
 
-        clientes_js[_filial_dest][c["faixa"]].append({
-            "nome": c.get("cliente", c.get("nome", "")),
-            "cliente": c.get("cliente", ""),
-            "restricao": c.get("restricao", ""),
-            "vencimento": c.get("vencimento", ""),
-            "pagamento": c.get("pagamento", ""),
-            "dias": c.get("dias", 0),
-            "pendente": c.get("pendente", 0),
-            "pago": c.get("pago", 0.0),
-            "parcela": c.get("parcela", ""),
-            "titulo": c.get("titulo", ""),
-            "avalista": c.get("avalista", ""),
-            "contato": c.get("contato", ""),
-            "telefones": c.get("telefones", []),
-            "mensagem_whatsapp": c.get("mensagem_whatsapp", ""),
-            "vendedor": limpar_nome_display(c["vendedor"])[:20] + _tag,
-            "novo": c.get("novo", False),
-        })
-
-    # Distribui os 40% entre vendedores ativos da filial
+    # Distribui 40% dos clientes/grupos entre vendedores ativos da filial.
     _vends_ativos = [
         r["nome_exibicao"]
         for _, r in df_vend[
@@ -4770,39 +4687,19 @@ for _filial_dest, _clientes_inat in _inat_por_filial.items():
         ].iterrows()
     ]
 
-    if _vends_ativos and _para_vends:
+    if _vends_ativos and _grupos_vends:
         _n_vends_ativos = len(_vends_ativos)
 
-        for _idx_c, c in enumerate(_para_vends):
-            # Distribui round-robin pelos vendedores ativos
-            _vend_dest = _vends_ativos[_idx_c % _n_vends_ativos]
-            _tag = " [FDEP]" if c.get("is_fdep") else " [Inativo]"
-
+        for _idx_g, _grupo in enumerate(_grupos_vends):
+            _vend_dest = _vends_ativos[_idx_g % _n_vends_ativos]
             if _vend_dest not in clientes_por_vend_js:
-                clientes_por_vend_js[_vend_dest] = {
-                    "grave": [],
-                    "alerta": [],
-                    "atencao": []
-                }
+                clientes_por_vend_js[_vend_dest] = {"grave": [], "alerta": [], "atencao": []}
 
-            clientes_por_vend_js[_vend_dest][c["faixa"]].append({
-                "nome": c.get("cliente", c.get("nome", "")),
-                "cliente": c.get("cliente", ""),
-                "restricao": c.get("restricao", ""),
-                "vencimento": c.get("vencimento", ""),
-                "pagamento": c.get("pagamento", ""),
-                "dias": c.get("dias", 0),
-                "pendente": c.get("pendente", 0),
-                "pago": c.get("pago", 0.0),
-                "parcela": c.get("parcela", ""),
-                "titulo": c.get("titulo", ""),
-                "avalista": c.get("avalista", ""),
-                "contato": c.get("contato", ""),
-                "telefones": c.get("telefones", []),
-                "mensagem_whatsapp": c.get("mensagem_whatsapp", ""),
-                "vendedor": limpar_nome_display(c["vendedor"])[:20] + _tag,
-                "novo": c.get("novo", False),
-            })
+            for c in _grupo:
+                _tag = " [FDEP]" if c.get("is_fdep") else " [Inativo]"
+                clientes_por_vend_js[_vend_dest][c["faixa"]].append(
+                    _cob_row_payload(c, limpar_nome_display(c["vendedor"])[:20] + _tag)
+                )
 
 print(f"📋 Clientes por filial (gerente):")
 for f in ORDEM_FILIAIS:
@@ -4940,18 +4837,6 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 .section-head h2{font-size:20px;font-weight:800;letter-spacing:-.025em;color:var(--text-primary)}
 .section-head .hint{font-size:12px;color:var(--text-secondary);margin-top:4px}
 .grid-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
-.senhas-table-wrap{overflow:auto;border:1px solid rgba(148,163,184,.20);border-radius:18px;background:rgba(15,23,42,.35)}
-.senhas-table{width:100%;border-collapse:separate;border-spacing:0;min-width:980px}
-.senhas-table th{position:sticky;top:0;background:#111827;color:#aeb7ca;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.08em;padding:12px;border-bottom:1px solid rgba(148,163,184,.22);z-index:1}
-.senhas-table td{padding:10px 12px;border-bottom:1px solid rgba(148,163,184,.12);vertical-align:middle}
-.senhas-table tr:hover td{background:rgba(255,255,255,.035)}
-.senha-view-row{display:flex;align-items:center;gap:6px;min-width:260px}
-.senha-view-row input{min-width:160px;max-width:220px;background:#060a12;border:1px solid rgba(148,163,184,.22);border-radius:10px;color:#e5e7eb;padding:9px 10px;font-family:DM Mono,monospace}
-.senha-nova-row{display:flex;align-items:center;gap:8px;min-width:290px}
-.senha-nova-row input{width:180px;background:#060a12;border:1px solid rgba(148,163,184,.22);border-radius:10px;color:#e5e7eb;padding:9px 10px}
-.btn-xs{padding:8px 10px!important;border-radius:10px!important;font-size:12px!important}
-.status-dot{display:inline-flex;gap:6px;align-items:center;white-space:nowrap}.status-dot i{width:8px;height:8px;border-radius:999px;display:inline-block}
-
 .card{padding:20px;border-radius:var(--radius-lg);cursor:pointer;position:relative;overflow:hidden;transition:var(--transition-slow);border:1px solid var(--glass-border);background:var(--glass)}
 .card:hover{transform:translateY(-4px) scale(1.01);border-color:rgba(255,255,255,.18);box-shadow:0 20px 60px rgba(0,0,0,.5),0 0 0 1px rgba(249,168,50,.12)}
 .card::before{content:'';position:absolute;inset:0;background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,.04) 50%,transparent 60%);background-size:200% 100%;background-position:200% 0;transition:background-position .6s ease;pointer-events:none}
@@ -5933,8 +5818,6 @@ let HIST_COMISSAO={months:{}};
 const SESSION_KEY='mdl_dashboard_session_v1';
 function getAuthUser(login){const k=String(login||'').trim().toLowerCase(); if(k===LOGIN_DIRETOR.toLowerCase()) return AUTH_STATE?.director||null; return (AUTH_STATE?.users||{})[k]||null}
 async function carregarCredenciaisOnline(){try{const r=await fetchComTimeout(API_CRED+'?_='+Date.now(),{},2500); const j=await r.json(); if(j.ok && j.data){AUTH_STATE=j.data;}}catch(e){console.log('Falha ao carregar credenciais online',e);}}
-function acessoGeralBloqueado(){return !!(AUTH_STATE && AUTH_STATE.access_blocked);}
-function textoBloqueioAcesso(){return String(AUTH_STATE?.access_blocked_reason || 'Sistema em atualização. Aguarde liberação pelo Master.');}
 
 async function carregarHistoricoOnline(){try{const r=await fetchComTimeout(API_HIST+'?_='+Date.now(),{},2500); const j=await r.json(); if(j.ok && j.data){HIST_DASH=j.data;}}catch(e){console.log('Falha ao carregar histórico online',e);}}
 async function carregarHistoricoComissaoOnline(){try{const r=await fetchComTimeout(API_COMIS+'?_='+Date.now(),{},3000); const j=await r.json(); if(j.ok && j.data){HIST_COMISSAO=j.data;}}catch(e){console.log('Falha ao carregar histórico de comissionamento',e);}}
@@ -6176,49 +6059,6 @@ function laranjitoSrc(status){
 }
 
 
-
-function nextUpdateDateSales(now=new Date()){
-  const d=new Date(now.getTime());
-  d.setSeconds(0,0);
-  const m=d.getMinutes();
-  const next=Math.floor(m/20)*20+20;
-  if(next>=60){d.setHours(d.getHours()+1); d.setMinutes(0);} else {d.setMinutes(next);}
-  return d;
-}
-function nextUpdateDateCobranca(now=new Date()){
-  const horas=[7,9,11,13,15,17,19,21];
-  const d=new Date(now.getTime());
-  d.setSeconds(0,0);
-  for(let add=0; add<3; add++){
-    const base=new Date(d.getFullYear(), d.getMonth(), d.getDate()+add, 0,0,0,0);
-    for(const h of horas){
-      const cand=new Date(base.getFullYear(),base.getMonth(),base.getDate(),h,0,0,0);
-      if(cand>now) return cand;
-    }
-  }
-  return new Date(now.getTime()+2*60*60*1000);
-}
-function _fmtClockDelta(target){
-  let sec=Math.max(0, Math.floor((target-new Date())/1000));
-  const h=Math.floor(sec/3600); sec%=3600;
-  const m=Math.floor(sec/60); const s=sec%60;
-  return h>0?`${h}h ${String(m).padStart(2,'0')}m ${String(s).padStart(2,'0')}s`:`${String(m).padStart(2,'0')}m ${String(s).padStart(2,'0')}s`;
-}
-function nextUpdateClockHtml(){
-  return `<div class="next-update-clock" style="font-size:12px;color:#fbbf24;font-weight:900">⏳ Próxima atualização: calculando...</div>`;
-}
-function updateNextUpdateClocks(){
-  try{
-    const now=new Date();
-    const sv=nextUpdateDateSales(now);
-    const cb=nextUpdateDateCobranca(now);
-    const target=sv<=cb?sv:cb;
-    const label=sv<=cb?'vendas':'cobrança';
-    document.querySelectorAll('.next-update-clock').forEach(el=>{el.textContent=`⏳ Próxima atualização: ${label} em ${_fmtClockDelta(target)}`;});
-  }catch(e){}
-}
-setInterval(updateNextUpdateClocks,1000);
-
 function renderKPIs(){
   const grave=flattenFiliais().reduce((a,b)=>a+Number(b.grave_pend||0),0);
   const alerta=flattenFiliais().reduce((a,b)=>a+Number(b.alerta_pend||0),0);
@@ -6308,7 +6148,7 @@ function renderKPIs(){
     makeKpi('📊 Rentabilidade total', rentPct?`${rentPct.toFixed(2).replace('.',',')}%`:'Sem dado','var(--green-400)','Última linha do relatório de margem bruta por filial', 'card-financeiro'),
     makeKpi('🧮 Markup total', markupTotal?String(markupTotal.toFixed(2)).replace('.',','):'0,00','var(--amber-400)', isViewer ? 'Índice mercantil + serviços / custo oculto' : `(Mercantil + serviços) / custo total ${R(markupCost||0)}`, 'card-financeiro', statusLaranjitoMarkup(markupTotal))
   ];
-  document.getElementById('kpis').innerHTML=cards.join('') + `<div class="glass" style="grid-column:1/-1;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;min-height:46px"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div>${nextUpdateClockHtml()}</div>`; updateNextUpdateClocks();
+  document.getElementById('kpis').innerHTML=cards.join('') + `<div class="glass" style="grid-column:1/-1;padding:10px 14px;display:flex;align-items:center;justify-content:flex-start;min-height:46px"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div></div>`;
 }
 
 async function fetchJsonNoCache(url){
@@ -6352,7 +6192,7 @@ function latestUpdatedLabel(){
 }
 
 function renderUpdateStrip(){
-  return `<div class="glass" style="margin:10px 0 14px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;min-height:42px;border-color:rgba(148,163,184,.20)"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div>${nextUpdateClockHtml()}</div>`;
+  return `<div class="glass" style="margin:10px 0 14px;padding:10px 14px;display:flex;align-items:center;justify-content:flex-start;min-height:42px;border-color:rgba(148,163,184,.20)"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div></div>`;
 }
 
 
@@ -7316,12 +7156,12 @@ function getRecebimentos(ent){
   return base;
 }
 function renderRecebimentos(ent){const src=getRecebimentos(ent); let out=''; ['grave','alerta','atencao'].forEach(fx=>{const arr=src[fx]||[]; const label=fx==='grave'?'Grave':fx==='alerta'?'Alerta':'Atenção'; if(!arr.length){out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>Sem recebimentos</span></div></div>`; return} out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${arr.length} títulos · ${R(arr.reduce((a,b)=>a+Number(b.pago||0),0))}</span></div><div class="tableish">${arr.slice(0,80).map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · Parcela ${esc(r.parcela||'')}</div></div><div><strong>${esc(r.pagamento||'')}</strong><div class="small muted">Pagamento</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${R(r.pago||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${esc(r.vendedor||'')}</strong><div class="small muted">Origem</div></div></div></div>`).join('')}</div></div>`}); return out}
-function cobrancaRowKey(r){return [String(r.cliente||r.nome||'').trim().toUpperCase(),String(r.titulo||'').trim(),String(r.parcela||'').trim(),String(r.vencimento||'').trim()].join('|')}
+function cobrancaRowKey(r){return (typeof cobrancaKeyJs==='function') ? cobrancaKeyJs(r) : [String(r.cliente||r.nome||'').trim().toUpperCase(),String(r.titulo||'').trim(),String(r.parcela||'').trim(),String(r.vencimento||'').trim()].join('|')}
 function dedupeCobrancaBuckets(src){const out={grave:[],alerta:[],atencao:[]}; const seen=new Set(); ['grave','alerta','atencao'].forEach(fx=>{(src?.[fx]||[]).forEach(r=>{const k=cobrancaRowKey(r); if(!seen.has(k)){seen.add(k); out[fx].push(r);}})}); return out}
 function vendorAssignedKeysByFilial(filial){const keys=new Set(); const arr=(TODOS?.[filial]||[]); arr.forEach(v=>{const buckets=CLIENTES_VEND?.[v.nome]||{grave:[],alerta:[],atencao:[]}; ['grave','alerta','atencao'].forEach(fx=>(buckets[fx]||[]).forEach(r=>keys.add(cobrancaRowKey(r))))}); return keys}
 function getClientesEnt(ent){
   if(ent.type==='terceiro' || ent.is_terceiro) return dedupeCobrancaBuckets(CLIENTES_TERCEIRO||{grave:[],alerta:[],atencao:[]});
-  if(ent.type==='crediarista' || ent.is_crediarista){ const filialKey=String(ent.filial||'').toUpperCase(); const loginKey=String(ent.login||crediaristaLoginByFilial(filialKey)||'').toLowerCase(); return dedupeCobrancaBuckets(CLIENTES_FIL?.[filialKey]||CLIENTES_CREDIARISTA?.[loginKey]||{grave:[],alerta:[],atencao:[]}); }
+  if(ent.type==='crediarista' || ent.is_crediarista){ const filialKey=String(ent.filial||'').toUpperCase(); const loginKey=String(ent.login||crediaristaLoginByFilial(filialKey)||'').toLowerCase(); return dedupeCobrancaBuckets(CLIENTES_CREDIARISTA?.[loginKey]||CLIENTES_FIL?.[filialKey]||{grave:[],alerta:[],atencao:[]}); }
   if(ent.type==='vendedor') return dedupeCobrancaBuckets(CLIENTES_VEND[ent.nome]||{grave:[],alerta:[],atencao:[]});
   const src=CLIENTES_FIL[ent.filial]||{grave:[],alerta:[],atencao:[]};
   const taken=vendorAssignedKeysByFilial(ent.filial);
@@ -7329,21 +7169,54 @@ function getClientesEnt(ent){
   ['grave','alerta','atencao'].forEach(fx=>{(src[fx]||[]).forEach(r=>{const k=cobrancaRowKey(r); if(!taken.has(k)) filtered[fx].push(r);})});
   return dedupeCobrancaBuckets(filtered);
 }
-function isTodayStr(s){const d=new Date(s||''); const t=new Date(); return !isNaN(d) && d.getFullYear()===t.getFullYear() && d.getMonth()===t.getMonth() && d.getDate()===t.getDate()}
+function localDateKeyFromCob(x){
+  const raw = x?.client_date || x?.data_local || x?.server_date || x?.server_time || x?.data || x || '';
+  const s=String(raw||'').trim();
+  if(!s) return '';
+  if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+  const m=s.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if(m) return `${m[3]}-${m[2]}-${m[1]}`;
+  const d=new Date(s.replace(' ', 'T'));
+  if(!isNaN(d)) return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return '';
+}
+function todayKeyLocal(){
+  const d=new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function isTodayStr(s){return localDateKeyFromCob(s)===todayKeyLocal()}
+function normCobUser(s){
+  return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+}
+function cobLogBelongsToEntity(x,ent){
+  if(!ent) return true;
+  const tipo=String(ent.type||'').toLowerCase();
+  const u=normCobUser(x.usuario||x.user||x.login||'');
+  const du=normCobUser(x.destino_login||'');
+  const dn=normCobUser(x.destino_nome||'');
+  const en=normCobUser(ent.nome||'');
+  const el=normCobUser(ent.login||'');
+  const filial=String(x.filial||'').toUpperCase();
+  const efilial=String(ent.filial||'').toUpperCase();
+  const dtipo=String(x.destino_tipo||'').toLowerCase();
+
+  if(tipo==='terceiro'||ent.is_terceiro)
+    return dtipo==='terceiro' || u===normCobUser(COBRANCA10_LOGIN) || u===normCobUser(COBRANCA10_NOME) || dn===normCobUser(COBRANCA10_NOME);
+
+  if(tipo==='crediarista'||ent.is_crediarista)
+    return u===el || du===el || dn===en || (dtipo==='crediarista' && filial===efilial);
+
+  if(tipo==='filial')
+    return filial===efilial && (dtipo==='filial' || dn===en || !dtipo);
+
+  return (el && (u===el || du===el)) || (en && (dn===en || u===en)) || (filial===efilial && dn===en);
+}
 function getCobradosHoje(ent){
-  if(ent.type==='terceiro' || ent.is_terceiro)
-    return (COB_LOGS||[]).filter(x=>isTodayStr(x.server_time||x.data||'') && (String(x.usuario||'').toLowerCase()===COBRANCA10_LOGIN || String(x.usuario||'').toLowerCase()===COBRANCA10_NOME.toLowerCase()));
-  if(ent.type==='crediarista' || ent.is_crediarista){
-    const credLogin=String(ent.login||'').toLowerCase();
-    const credNome=String(ent.nome||'').toLowerCase();
-    const credFilial=String(ent.filial||'').toUpperCase();
-    return (COB_LOGS||[]).filter(x=>isTodayStr(x.server_time||x.data||'') && (
-      String(x.usuario||'').toLowerCase()===credLogin ||
-      String(x.usuario||'').toLowerCase()===credNome ||
-      (String(x.filial||'').toUpperCase()===credFilial && String(x.destino_tipo||'').toLowerCase()==='crediarista')
-    ));
-  }
-  return (COB_LOGS||[]).filter(x=>isTodayStr(x.server_time||x.data||'') && String(x.filial||'')===String(ent.filial||'') && (ent.type==='filial' || String(x.destino_nome||'')===String(ent.nome||'')));
+  return (COB_LOGS||[]).filter(x=>{
+    const dkey=localDateKeyFromCob(x);
+    if(dkey!==todayKeyLocal()) return false;
+    return cobLogBelongsToEntity(x,ent);
+  });
 }
 
 const DEFAULT_COBRANCA_TEMPLATE = `Olá, {primeiro_nome} tudo bem?
@@ -7385,29 +7258,42 @@ function daysSinceCob(raw){
   if(!d) return 9999;
   return Math.floor((Date.now()-d.getTime())/(1000*60*60*24));
 }
+function normClienteCobJs(s){
+  return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9 ]+/g,' ').replace(/\s+/g,' ').trim().slice(0,80);
+}
+function cpfKeyCobJs(...vals){
+  const s=vals.map(v=>String(v||'')).join(' ');
+  const m=s.match(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/);
+  return m ? m[0].replace(/\D/g,'') : '';
+}
+function clienteGrupoKeyJs(r){
+  return String(r?.cpf_key||r?.cpf||'').replace(/\D/g,'') || cpfKeyCobJs(r?.cliente,r?.nome,r?.contato,r?.historico) || normClienteCobJs(r?.cliente||r?.nome||'');
+}
+function cobrancaKeyJs(r){
+  return String(r?.cobranca_key||'') || [
+    clienteGrupoKeyJs(r),
+    String(r?.titulo||'').trim(),
+    String(r?.parcela||'').trim(),
+    String(r?.vencimento||'').trim()
+  ].join('|');
+}
 function sameCobTitle(a,b){
+  const ka=cobrancaKeyJs(a), kb=cobrancaKeyJs(b);
+  if(ka && kb && ka===kb) return true;
   return String(a?.titulo||'').trim()===String(b?.titulo||'').trim()
       && String(a?.parcela||'').trim()===String(b?.parcela||'').trim()
-      && (typeof similarCliente==='function' ? similarCliente(a?.cliente||a?.nome||'', b?.cliente||b?.nome||'') : normName(a?.cliente||a?.nome||'')===normName(b?.cliente||b?.nome||''));
+      && clienteGrupoKeyJs(a)===clienteGrupoKeyJs(b);
 }
-function entMatchesCobLog(log,ent){
-  if(!ent) return true;
-  const usuario=String(log.usuario||'').toLowerCase();
-  const destinoNome=String(log.destino_nome||'');
-  const destinoTipo=String(log.destino_tipo||'').toLowerCase();
-  const filial=String(log.filial||'').toUpperCase();
-  if(ent.type==='terceiro'||ent.is_terceiro) return destinoTipo==='terceiro' || usuario.includes('terceiro') || String(ent.nome||'')===destinoNome;
-  if(ent.type==='crediarista'||ent.is_crediarista){
-    const login=String(ent.login||ent.nome||'').toLowerCase();
-    return usuario===login || destinoNome===String(ent.nome||'') || (destinoTipo==='crediarista' && filial===String(ent.filial||'').toUpperCase());
-  }
-  if(ent.type==='filial') return filial===String(ent.filial||'').toUpperCase() && (destinoTipo==='filial' || destinoNome===String(ent.nome||'') || !destinoTipo);
-  return destinoNome===String(ent.nome||'') || usuario===String(ent.nome||'').toLowerCase();
-}
+// Mantido como compatibilidade, mas agora usa comparação robusta por login/nome/filial.
+function entMatchesCobLog(log,ent){ return cobLogBelongsToEntity(log,ent); }
+
+// Status do título é GLOBAL: se qualquer usuário já cobrou o mesmo cliente/título/parcela,
+// os demais também enxergam como cobrado/aguardando. Isso evita duplicar cobrança para outro usuário.
 function cobLogsTitulo(reg,ent=null){
-  return (COB_LOGS||[]).filter(x=>String(x.acao||'')==='whatsapp' && sameCobTitle(x,reg) && entMatchesCobLog(x,ent))
-    .sort((a,b)=>(parseCobDate(a.server_time||a.data)||0)-(parseCobDate(b.server_time||b.data)||0));
+  return (COB_LOGS||[]).filter(x=>String(x.acao||'')==='whatsapp' && sameCobTitle(x,reg))
+    .sort((a,b)=>(parseCobDate(a.server_time||a.data||a.client_time)||0)-(parseCobDate(b.server_time||b.data||b.client_time)||0));
 }
+
 function pagamentoAposCobranca(reg,log){
   const dtLog=parseCobDate(log?.server_time||log?.data);
   if(!dtLog) return false;
@@ -7641,22 +7527,36 @@ function abrirWhats(reg,entRef){const nums=normalizarListaTelefones((reg.telefon
 function closePhoneModal(){document.getElementById('phoneModal').classList.remove('show'); phoneContext=null}
 function enviarWhats(numero){if(!phoneContext) return; const {reg,entRef}=phoneContext; const msg=montarMensagemCobranca(reg); window.open(`https://wa.me/${numero}?text=${encodeURIComponent(msg)}`,'_blank'); registrarCobrancaOnline(reg,entRef,numero); closePhoneModal()}
 async function registrarCobrancaOnline(r,entRef,numero){
-  // Para crediarista usa o login como usuario para que getCobradosHoje() funcione corretamente
+  // Usa login quando possível, para que "Cobrados hoje" bata mesmo se o nome mudar/acento/truncar.
   const usuarioLog = (entRef.type==='crediarista'||entRef.is_crediarista)
     ? (String(entRef.login||entRef.nome||usuarioAtual?.login||'').toLowerCase() || usuarioAtual?.login || 'master')
     : (usuarioAtual?.nome||usuarioAtual?.login||'master');
+  const agoraLocal = new Date();
   const payload={
     cliente:r.cliente||r.nome||'',titulo:r.titulo||'',parcela:r.parcela||'',
     vencimento:r.vencimento||'',pendente:Number(r.pendente||0),telefone:numero,
-    usuario:usuarioLog,filial:entRef.filial||'',
-    destino_tipo:entRef.type||'',destino_nome:entRef.nome||'',acao:'whatsapp',tentativa:Number(r._cob_status?.proxima_tentativa||1),qtd_cobrancas_antes:Number(r._cob_status?.qtd||0),ultima_cobranca_anterior:String(r._cob_status?.ultima_fmt||'')
+    usuario:usuarioLog,
+    user_login:usuarioAtual?.login||'',
+    filial:entRef.filial||'',
+    destino_tipo:entRef.type||'',
+    destino_nome:entRef.nome||'',
+    destino_login:entRef.login||'',
+    acao:'whatsapp',
+    tentativa:Number(r._cob_status?.proxima_tentativa||1),
+    qtd_cobrancas_antes:Number(r._cob_status?.qtd||0),
+    ultima_cobranca_anterior:String(r._cob_status?.ultima_fmt||''),
+    cliente_key:clienteGrupoKeyJs(r),
+    cpf_key:String(r.cpf_key||r.cpf||'').replace(/\D/g,''),
+    cobranca_key:cobrancaKeyJs(r),
+    client_time:agoraLocal.toISOString(),
+    client_date:todayKeyLocal()
   };
   try{
     const resp=await fetch(API_COB,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const j=await resp.json();
     if(j.ok){
       await carregarCobrancasOnline();
-      toast('Cobrança registrada online com sucesso.','success');
+      toast(j.duplicated?'Cobrança já estava registrada recentemente.':'Cobrança registrada online com sucesso.','success');
       if(!detailScreen.classList.contains('hidden')){
         if(entRef.type==='crediarista'||entRef.is_crediarista){
           openCrediaristaPanel(entRef.login||'',entRef.filial||'',entRef.nome||'');
@@ -7664,10 +7564,13 @@ async function registrarCobrancaOnline(r,entRef,numero){
           openEntity(entRef);
         }
       }
-    } else toast('Não consegui gravar a cobrança online.');
-  }catch(e){toast('Falha ao salvar cobrança online.');}
+    } else {
+      console.log('Falha ao gravar cobrança:', j);
+      toast('Não consegui gravar a cobrança online.');
+    }
+  }catch(e){console.log(e); toast('Falha ao salvar cobrança online.');}
 }
-async function carregarCobrancasOnline(){try{const r=await fetchComTimeout(API_COB+'?_='+Date.now(),{},3000); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} COB_LOGS=(j.ok&&Array.isArray(j.data))?j.data:[]; RECEBIMENTOS_CONCILIADOS=getQuitadosConciliados(); console.log('🔗 Quitados conciliados:', RECEBIMENTOS_CONCILIADOS); if(!j.ok && txt) console.log('cobrancas_api retorno:', txt);}catch(e){console.log(e); COB_LOGS=[]}}
+async function carregarCobrancasOnline(){try{const r=await fetchComTimeout(API_COB+'?_='+Date.now(),{},6000); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} if(j.ok&&Array.isArray(j.data)){COB_LOGS=j.data;} else if(!j.ok && txt){console.log('cobrancas_api retorno:', txt)} RECEBIMENTOS_CONCILIADOS=getQuitadosConciliados(); console.log('🔗 Quitados conciliados:', RECEBIMENTOS_CONCILIADOS);}catch(e){console.log('Falha ao carregar cobranças; mantendo cache anterior',e);}}
 
 async function removerCobranca(id,cliente='',titulo='',parcela=''){if(!confirm('Remover esta cobrança do histórico?')) return; try{const r=await fetch(API_COB,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete',id,cliente,titulo,parcela})}); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} if(j.ok){toast('Cobrança removida.','success'); await carregarCobrancasOnline(); renderLogsTab(); renderList(); if(currentDetailRef) openEntity(currentDetailRef);}else{console.log('Falha remover cobrança:', txt); toast('Não consegui remover.')}}catch(e){console.log(e); toast('Falha ao remover cobrança.')}}
 function toggleAcc(el){el.parentElement.classList.toggle('open')}
@@ -7771,7 +7674,7 @@ async function removerMetaIndividual(){
 function renderLogsTab(){const cfgPanel=renderCobrancaConfigPanel(); const filOpts=['<option value="">Todas as filiais</option>',...ORDEM.map(f=>`<option value="${f}">${f}</option>`)].join(''); const vendOpts=['<option value="">Todos os usuários</option>',...Array.from(new Set(COB_LOGS.map(x=>x.usuario).filter(Boolean))).sort().map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)].join(''); logSection.innerHTML=cfgPanel+`<div class="section-head"><div><h2>🧾 Histórico de cobranças</h2><div class="hint">Filtre por data, usuário ou filial. Também é possível remover lançamentos indevidos.</div></div></div><div class="glass panel"><div class="search-row"><div class="input-card"><label>Buscar cliente/título</label><input id="logQ" placeholder="Nome, título, parcela"></div><div class="input-card"><label>Data inicial</label><input id="logDe" type="date"></div><div class="input-card"><label>Data final</label><input id="logAte" type="date"></div><div class="input-card"><label>Filial</label><select id="logFil">${filOpts}</select></div></div><div class="search-row" style="margin-top:10px"><div class="input-card"><label>Usuário</label><select id="logVend">${vendOpts}</select></div><div style="display:flex;align-items:end;gap:10px"><button class="btn primary" onclick="applyLogFilter()">Filtrar</button><button class="btn soft" onclick="clearLogFilter()">Limpar</button></div></div><div id="logsList" class="logs-list"></div></div>`; applyLogFilter()}
 function parseDateBR(s){if(!s) return null; const v=String(s).trim(); let m=v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); if(m){const d=new Date(Number(m[3]), Number(m[2])-1, Number(m[1])); return isNaN(d)?null:d} const d=new Date(v); return isNaN(d)?null:d}
 function parseDate(s){if(!s) return null; const d=new Date(s); return isNaN(d)?null:d}
-function applyLogFilter(){const q=(document.getElementById('logQ')?.value||'').toLowerCase(); const de=parseDate(document.getElementById('logDe')?.value); const ate=parseDate(document.getElementById('logAte')?.value); const fil=document.getElementById('logFil')?.value||''; const vend=document.getElementById('logVend')?.value||''; let arr=[...COB_LOGS].reverse(); arr=arr.filter(x=>{const txt=`${x.cliente||''} ${x.titulo||''} ${x.parcela||''}`.toLowerCase(); const dt=parseDate(x.server_time||x.data||''); if(q && !txt.includes(q)) return false; if(fil && String(x.filial||'')!==fil) return false; if(vend && String(x.usuario||'')!==vend) return false; if(de && (!dt || dt<de)) return false; if(ate){const end=new Date(ate); end.setHours(23,59,59,999); if(!dt || dt>end) return false;} return true}); _logFiltered=arr; const host=document.getElementById('logsList'); if(!host) return; host.innerHTML=arr.length?arr.map((x,i)=>`<div class="log-row"><div><div style="font-weight:900">${esc(x.cliente||'')}</div><div class="small muted">${esc(x.titulo||'')} · Parcela ${esc(x.parcela||'')}</div></div><div><strong>${R(x.pendente||0)}</strong><div class="small muted">${esc(x.filial||'')} · ${esc(x.usuario||'')}</div></div><div><strong>${esc(x.telefone||'')}</strong><div class="small muted">Telefone</div></div><div><strong>${esc((x.server_time||'').replace('T',' ').slice(0,16))}</strong><div class="small muted">Data</div></div><div><button class="btn danger" onclick="removerCobrancaIdx(${i})">Remover</button></div></div>`).join(''):'<div class="empty">Nenhuma cobrança encontrada para esse filtro.</div>'}
+function applyLogFilter(){const q=(document.getElementById('logQ')?.value||'').toLowerCase(); const deStr=document.getElementById('logDe')?.value||''; const ateStr=document.getElementById('logAte')?.value||''; const fil=document.getElementById('logFil')?.value||''; const vend=document.getElementById('logVend')?.value||''; let arr=[...COB_LOGS].reverse(); arr=arr.filter(x=>{const txt=`${x.cliente||''} ${x.titulo||''} ${x.parcela||''} ${x.usuario||''} ${x.destino_nome||''}`.toLowerCase(); const dkey=localDateKeyFromCob(x); if(q && !txt.includes(q)) return false; if(fil && String(x.filial||'')!==fil) return false; if(vend && String(x.usuario||'')!==vend) return false; if(deStr && (!dkey || dkey<deStr)) return false; if(ateStr && (!dkey || dkey>ateStr)) return false; return true}); _logFiltered=arr; const host=document.getElementById('logsList'); if(!host) return; host.innerHTML=arr.length?arr.map((x,i)=>`<div class="log-row"><div><div style="font-weight:900">${esc(x.cliente||'')}</div><div class="small muted">${esc(x.titulo||'')} · Parcela ${esc(x.parcela||'')}</div></div><div><strong>${R(x.pendente||0)}</strong><div class="small muted">${esc(x.filial||'')} · ${esc(x.usuario||'')} ${x.destino_nome?`→ ${esc(x.destino_nome)}`:''}</div></div><div><strong>${esc(x.telefone||'')}</strong><div class="small muted">Telefone</div></div><div><strong>${esc((x.server_time||x.client_time||'').replace('T',' ').slice(0,16))}</strong><div class="small muted">Data</div></div><div><button class="btn danger" onclick="removerCobrancaIdx(${i})">Remover</button></div></div>`).join(''):'<div class="empty">Nenhuma cobrança encontrada para esse filtro.</div>'}
 function removerCobrancaIdx(i){const x=_logFiltered[i]; if(!x) return; removerCobranca(x.id||'', x.cliente||'', x.titulo||'', x.parcela||'');}
 function clearLogFilter(){['logQ','logDe','logAte'].forEach(id=>{const e=document.getElementById(id); if(e) e.value=''}); ['logFil','logVend'].forEach(id=>{const e=document.getElementById(id); if(e) e.value=''}); applyLogFilter()}
 
@@ -7907,50 +7810,7 @@ function targetOptionsMsg(){
 
   return o;
 }
-function _senhaDomKey(key){return String(key||'').replace(/[^a-zA-Z0-9_-]/g,'_')}
-function senhaAtualUsuario(u, isDirector=false){
-  if(isDirector){return String((AUTH_STATE?.director?.password)||u?.password||u?.initial_password||'');}
-  return String(u?.password || u?.senha || u?.initial_password || '');
-}
-function toggleSenhaAtual(id){
-  const el=document.getElementById(id);
-  if(!el) return;
-  el.type = el.type==='password' ? 'text' : 'password';
-}
-async function copiarSenhaAtual(id){
-  const el=document.getElementById(id);
-  if(!el) return;
-  try{await navigator.clipboard.writeText(el.value||''); toast('Senha copiada.','success');}
-  catch(e){el.focus(); el.select(); document.execCommand('copy'); toast('Senha copiada.','success');}
-}
-function renderSenhaCard(u, isDirector=false){
-  const key=isDirector?'diretorcomercial':u.login;
-  const dom=_senhaDomKey(key);
-  const senhaAtual=senhaAtualUsuario(u,isDirector);
-  const pend=(AUTH_STATE?.password_reset_requests||[]).filter(r=>String(r.login||'').toLowerCase()===String(key).toLowerCase() && String(r.status||'pendente')==='pendente').length;
-  const keyJs=JSON.stringify(String(key));
-  return `<div class="glass card" style="cursor:default;max-width:520px"><div class="title" style="min-height:auto">${esc(isDirector?'Diretor Comercial':u.nome)} ${!isDirector?`(${u.filial||''})`:''}</div><div class="legend-inline"><span><i class="dot" style="background:${u.must_change_password?'#f59e0b':'#22c55e'}"></i>${u.must_change_password?'Precisa trocar senha':'Senha ativa'}</span>${pend?`<span><i class="dot" style="background:#ef4444"></i>${pend} solicitação(ões)</span>`:''}</div><div class="input-card" style="margin-top:12px"><label>Login</label><strong style="font-family:DM Mono,monospace">${esc(key)}</strong><label style="margin-top:10px">Senha ativa atual</label><div class="senha-view-row"><input id="senha_atual_${dom}" type="password" readonly value="${esc(senhaAtual)}"><button class="btn soft btn-xs" type="button" onclick="toggleSenhaAtual('senha_atual_${dom}')">👁️</button><button class="btn soft btn-xs" type="button" onclick="copiarSenhaAtual('senha_atual_${dom}')">📋</button></div></div><div class="form-grid bonus" style="grid-template-columns:1.1fr .9fr;margin-top:12px"><div class="input-card"><label>Nova senha</label><input id="pwd_${key}" placeholder="Digite a nova senha"></div><div class="input-card"><label>Ações</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick='adminSalvarSenha(${keyJs})'>💾 Salvar</button><button class="btn soft" type="button" onclick='adminMarcarTroca(${keyJs})'>🔁 Exigir troca</button></div></div></div>${pend?`<div class="note" style="margin-top:10px">Solicitação pendente de recuperação. <button class="btn soft" style="margin-left:8px" onclick='adminResolverReset(${keyJs})'>Resolver solicitação</button></div>`:''}<div id="pwd_msg_${key}" class="note" style="margin-top:8px"></div></div>`;
-}
-function renderSenhaRow(u, isDirector=false){
-  const key=isDirector?'diretorcomercial':String(u.login||'');
-  const dom=_senhaDomKey(key);
-  const senhaAtual=senhaAtualUsuario(u,isDirector);
-  const pend=(AUTH_STATE?.password_reset_requests||[]).filter(r=>String(r.login||'').toLowerCase()===String(key).toLowerCase() && String(r.status||'pendente')==='pendente').length;
-  const keyJs=JSON.stringify(String(key));
-  const nome=isDirector?'Diretor Comercial':String(u.nome||key);
-  const tipo=isDirector?'Diretor':(u.is_crediarista?'Crediarista':(u.is_terceiro?'Cobrança terceiro':(u.is_gerente?'Gerente':'Vendedor')));
-  return `<tr>
-    <td><strong>${esc(nome)}</strong>${pend?`<div class="small" style="color:#ef4444">${pend} solicitação(ões)</div>`:''}</td>
-    <td><strong style="font-family:DM Mono,monospace">${esc(key)}</strong></td>
-    <td>${esc(u.filial||'')}</td>
-    <td>${esc(tipo)}</td>
-    <td><span class="status-dot"><i style="background:${u.must_change_password?'#f59e0b':'#22c55e'}"></i>${u.must_change_password?'Precisa trocar':'Ativa'}</span></td>
-    <td><div class="senha-view-row"><input id="senha_atual_${dom}" type="password" readonly value="${esc(senhaAtual)}"><button class="btn soft btn-xs" type="button" onclick="toggleSenhaAtual('senha_atual_${dom}')">👁️</button><button class="btn soft btn-xs" type="button" onclick="copiarSenhaAtual('senha_atual_${dom}')">📋</button></div></td>
-    <td><div class="senha-nova-row"><input id="pwd_${key}" placeholder="Nova senha"><button class="btn primary btn-xs" type="button" onclick='adminSalvarSenha(${keyJs})'>💾 Salvar</button></div><div id="pwd_msg_${key}" class="note" style="margin-top:4px"></div></td>
-    <td><button class="btn soft btn-xs" type="button" onclick='adminMarcarTroca(${keyJs})'>🔁 Exigir troca</button>${pend?`<button class="btn soft btn-xs" type="button" onclick='adminResolverReset(${keyJs})'>Resolver</button>`:''}</td>
-  </tr>`;
-}
-
+function renderSenhaCard(u, isDirector=false){const key=isDirector?'diretorcomercial':u.login; const pend=(AUTH_STATE?.password_reset_requests||[]).filter(r=>String(r.login||'').toLowerCase()===String(key).toLowerCase() && String(r.status||'pendente')==='pendente').length; return `<div class="glass card" style="cursor:default"><div class="title" style="min-height:auto">${esc(isDirector?'Diretor Comercial':u.nome)} ${!isDirector?`(${u.filial||''})`:''}</div><div class="legend-inline"><span><i class="dot" style="background:${u.must_change_password?'#f59e0b':'#22c55e'}"></i>${u.must_change_password?'Precisa trocar senha':'Senha ativa'}</span>${pend?`<span><i class="dot" style="background:#ef4444"></i>${pend} solicitação(ões)</span>`:''}</div><div class="form-grid bonus" style="grid-template-columns:1.1fr .9fr;margin-top:12px"><div class="input-card"><label>Nova senha para ${esc(key)}</label><input id="pwd_${key}" placeholder="Digite a nova senha"></div><div class="input-card"><label>Ações</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="adminSalvarSenha('${key}')">💾 Salvar senha</button><button class="btn soft" type="button" onclick="adminMarcarTroca('${key}')">🔁 Exigir troca</button></div></div></div>${pend?`<div class="note" style="margin-top:10px">Solicitação pendente de recuperação. <button class="btn soft" style="margin-left:8px" onclick="adminResolverReset('${key}')">Resolver solicitação</button></div>`:''}<div id="pwd_msg_${key}" class="note" style="margin-top:8px"></div></div>`}
 
 function _histDates(){return Object.keys(HIST_DASH?.dates||{}).sort().reverse()}
 function _histMonths(){return Object.keys(HIST_DASH?.months_closed||{}).sort().reverse()}
@@ -8409,18 +8269,6 @@ function renderSenhasTab(){
   const resets=reqs.filter(r=>String(r.status||'pendente')==='pendente');
   const resolved=reqs.filter(r=>String(r.status||'pendente')==='resolvido');
   senhasSection.innerHTML=`<div class="section-head"><div><h2>🔐 Gerenciar senhas</h2><div class="hint">Master e Diretor Comercial podem redefinir senhas online, exigir troca no primeiro acesso e visualizar solicitações.</div></div></div>
-  <div class="glass panel" style="margin-bottom:14px;border-color:${acessoGeralBloqueado()?'rgba(239,68,68,.65)':'rgba(34,197,94,.35)'}">
-    <div class="section-head" style="margin:0;gap:14px;align-items:center">
-      <div>
-        <h2 style="font-size:18px;margin:0">${acessoGeralBloqueado()?'🔒 Acessos bloqueados':'✅ Acessos liberados'}</h2>
-        <div class="hint">${acessoGeralBloqueado()?esc(textoBloqueioAcesso()):'Todos os usuários podem acessar normalmente.'}</div>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn ${acessoGeralBloqueado()?'soft':'primary'}" onclick="adminSetAccessBlock(true)">🔒 Bloquear acessos</button>
-        <button class="btn ${acessoGeralBloqueado()?'primary':'soft'}" onclick="adminSetAccessBlock(false)">🔓 Liberar acessos</button>
-      </div>
-    </div>
-  </div>
   <div class="glass panel" style="margin-bottom:14px">
     <div class="section-head" style="margin:0 0 8px">
       <div><h2 style="font-size:18px">📩 Solicitações de recuperação</h2><div class="hint">Pedidos enviados pelo botão de recuperar senha.</div></div>
@@ -8443,29 +8291,9 @@ function renderSenhasTab(){
   </div>
   <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">👑 Contas administrativas</h2></div></div>${renderSenhaCard(AUTH_STATE?.director||{login:'diretorcomercial',nome:'Diretor Comercial',must_change_password:true}, true)}</div>
   <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">➕ Criar usuário de acesso</h2><div class="hint">Aqui você cria apenas o login/senha de acesso. Depois vá em Metas > Crediaristas configuráveis para vincular esse usuário à filial/base e ao percentual.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Login</label><input id="newUserLogin" placeholder="ex: crediaristaf07"></div><div class="input-card"><label>Nome</label><input id="newUserNome" placeholder="ex: CREDIARISTAF07"></div><div class="input-card"><label>Filial</label><input id="newUserFilial" placeholder="ex: F7"></div><div class="input-card"><label>Senha inicial</label><input id="newUserSenha" placeholder="mín. 4 caracteres"></div></div><div class="form-grid bonus" style="margin-top:10px"><div class="input-card"><label>Tipo</label><select id="newUserTipo"><option value="crediarista">Crediarista</option><option value="cobranca">Cobrança</option></select></div></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="adminCriarUsuarioCobranca()">💾 Criar usuário</button></div><div id="newUserMsg" class="note" style="margin-top:10px"></div></div>
-  <div class="section-head"><div><h2>👥 Usuários do dashboard</h2><div class="hint">Visualização em linha para conferir login, senha ativa, status e alterar rapidamente.</div></div></div>
-  <div class="senhas-table-wrap"><table class="senhas-table"><thead><tr><th>Usuário</th><th>Login</th><th>Filial</th><th>Tipo</th><th>Status</th><th>Senha ativa atual</th><th>Nova senha</th><th>Ações</th></tr></thead><tbody>${users.map(u=>renderSenhaRow(u,false)).join('')}</tbody></table></div>`;
+  <div class="section-head"><div><h2>👥 Usuários do dashboard</h2><div class="hint">As senhas permanecem congeladas e só mudam se você alterar aqui ou se surgir um usuário novo.</div></div></div>
+  <div class="grid-cards">${users.map(u=>renderSenhaCard(u,false)).join('')}</div>`;
 }
-async function adminSetAccessBlock(flag){
-  try{
-    const fd=new FormData();
-    fd.append('action','admin_set_access_block');
-    fd.append('blocked', flag ? '1' : '0');
-    fd.append('reason', flag ? 'Sistema em atualização. Aguarde liberação pelo Master.' : '');
-    const r=await fetch(API_CRED,{method:'POST',body:fd});
-    const j=await r.json();
-    if(j.ok){
-      await carregarCredenciaisOnline();
-      toast(flag?'Acessos bloqueados.':'Acessos liberados.','success');
-      renderSenhasTab();
-    }else{
-      toast('Não consegui alterar o bloqueio de acessos.');
-    }
-  }catch(e){
-    toast('Não consegui alterar o bloqueio de acessos.');
-  }
-}
-
 async function adminSalvarSenha(login){const box=document.getElementById(`pwd_msg_${login}`); const senha=(document.getElementById(`pwd_${login}`)?.value||'').trim(); if(!senha || senha.length<4){if(box) box.textContent='Digite uma senha com pelo menos 4 caracteres.'; return;} try{const fd=new FormData(); fd.append('action','admin_set_password'); fd.append('login',login); fd.append('new_password',senha); fd.append('must_change_password','0'); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(box) box.textContent=j.ok?'✅ Senha atualizada online.':'⚠️ Não consegui atualizar a senha.'; if(j.ok){await carregarCredenciaisOnline(); renderSenhasTab();}}catch(e){if(box) box.textContent='⚠️ Não consegui atualizar a senha.';}}
 async function adminMarcarTroca(login){const box=document.getElementById(`pwd_msg_${login}`); try{const fd=new FormData(); fd.append('action','admin_force_change'); fd.append('login',login); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(box) box.textContent=j.ok?'✅ Usuário marcado para trocar a senha no próximo acesso.':'⚠️ Não consegui marcar troca de senha.'; if(j.ok){await carregarCredenciaisOnline(); renderSenhasTab();}}catch(e){if(box) box.textContent='⚠️ Não consegui marcar troca de senha.';}}
 async function adminResolverReset(login){try{const fd=new FormData(); fd.append('action','resolve_reset'); fd.append('login',login); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){toast('Solicitação resolvida. Usuário terá que criar nova senha no próximo acesso.','success'); await carregarCredenciaisOnline(); renderSenhasTab();}else{toast('Não consegui resolver a solicitação.')}}catch(e){toast('Não consegui resolver a solicitação.')}}
@@ -8571,13 +8399,6 @@ async function fazerLogin(){
 
   // Demais usuários tentam atualizar credenciais, mas com timeout curto.
   try{await carregarCredenciaisOnline();}catch(e){console.log('Login seguindo com credenciais embutidas',e);}
-
-  // V23: bloqueio geral para manutenção/atualização.
-  // Master e Diretor Comercial continuam com acesso para poder desbloquear.
-  if(acessoGeralBloqueado() && u!==LOGIN_DIRETOR.toLowerCase()){
-    msg.innerHTML='🔒 Acesso temporariamente bloqueado pelo Master.<br><small>'+esc(textoBloqueioAcesso())+'</small>';
-    return;
-  }
 
   if(u===LOGIN_DIRETOR.toLowerCase()){
     const authDir=getAuthUser(u);
@@ -8713,21 +8534,64 @@ echo json_encode(['ok'=>true,'data'=>$data], JSON_UNESCAPED_UNICODE); exit;
 ?>"""
 
 COBRANCAS_API_PHP = r"""<?php
+date_default_timezone_set('America/Sao_Paulo');
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
+
 $file = __DIR__ . '/cobrancas_log.json';
-if (!file_exists($file)) file_put_contents($file, '[]');
-$data = json_decode(@file_get_contents($file), true);
-if (!is_array($data)) $data = [];
+if (!file_exists($file)) @file_put_contents($file, '[]');
+
+function mdl_read_log($file) {
+  $raw = @file_get_contents($file);
+  $data = json_decode($raw, true);
+  return is_array($data) ? $data : [];
+}
+function mdl_write_log_atomic($file, $data) {
+  $tmp = $file . '.tmp';
+  $json = json_encode($data, JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE);
+  if (@file_put_contents($tmp, $json, LOCK_EX) === false) return false;
+  return @rename($tmp, $file);
+}
+function mdl_norm($s) {
+  $s = mb_strtoupper((string)$s, 'UTF-8');
+  $s = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s);
+  $s = preg_replace('/[^A-Z0-9 ]+/', ' ', $s);
+  return trim(preg_replace('/\s+/', ' ', $s));
+}
+function mdl_cliente_key($r) {
+  foreach (['cpf_key','cpf'] as $k) {
+    if (!empty($r[$k])) {
+      $cpf = preg_replace('/\D+/', '', (string)$r[$k]);
+      if (strlen($cpf) == 11) return $cpf;
+    }
+  }
+  $txt = (($r['cliente'] ?? '') . ' ' . ($r['nome'] ?? '') . ' ' . ($r['contato'] ?? ''));
+  if (preg_match('/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/', $txt, $m)) {
+    return preg_replace('/\D+/', '', $m[0]);
+  }
+  return substr(mdl_norm($r['cliente'] ?? ($r['nome'] ?? '')), 0, 80);
+}
+function mdl_cobranca_key($r) {
+  if (!empty($r['cobranca_key'])) return (string)$r['cobranca_key'];
+  return implode('|', [
+    mdl_cliente_key($r),
+    trim((string)($r['titulo'] ?? '')),
+    trim((string)($r['parcela'] ?? '')),
+    trim((string)($r['vencimento'] ?? '')),
+  ]);
+}
+
+$data = mdl_read_log($file);
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
   echo json_encode(['ok'=>true,'data'=>$data], JSON_UNESCAPED_UNICODE); exit;
 }
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $payload = json_decode(file_get_contents('php://input'), true);
   if (!is_array($payload)) { echo json_encode(['ok'=>false,'error'=>'payload_invalido']); exit; }
+
   if (($payload['action'] ?? '') === 'delete') {
     $id = $payload['id'] ?? '';
     $cliente = $payload['cliente'] ?? '';
@@ -8739,13 +8603,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       $sameComposite = ($cliente !== '' && (string)($item['cliente'] ?? '') === (string)$cliente && (string)($item['titulo'] ?? '') === (string)$titulo && (string)($item['parcela'] ?? '') === (string)$parcela);
       if(!$sameId && !$sameComposite) $novo[] = $item;
     }
-    file_put_contents($file, json_encode($novo, JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE));
+    mdl_write_log_atomic($file, $novo);
     echo json_encode(['ok'=>true], JSON_UNESCAPED_UNICODE); exit;
   }
+
   if (empty($payload['id'])) $payload['id'] = uniqid('cob_', true);
   $payload['server_time'] = date('c');
+  $payload['server_date'] = date('Y-m-d');
+  $payload['cobranca_key'] = mdl_cobranca_key($payload);
+  $payload['cliente_key'] = mdl_cliente_key($payload);
+
+  // Evita duplicidade acidental por duplo clique/reenvio no mesmo minuto.
+  $now = time();
+  foreach(array_reverse($data) as $item){
+    if (($item['acao'] ?? '') !== 'whatsapp') continue;
+    if ((string)($item['cobranca_key'] ?? mdl_cobranca_key($item)) !== (string)$payload['cobranca_key']) continue;
+    $sameUser = (string)($item['usuario'] ?? '') === (string)($payload['usuario'] ?? '')
+             || (string)($item['destino_login'] ?? '') === (string)($payload['destino_login'] ?? '');
+    if (!$sameUser) continue;
+    $ts = strtotime((string)($item['server_time'] ?? '')) ?: 0;
+    if ($ts && abs($now - $ts) <= 120) {
+      echo json_encode(['ok'=>true,'duplicated'=>true,'id'=>($item['id'] ?? '')], JSON_UNESCAPED_UNICODE); exit;
+    }
+  }
+
   $data[] = $payload;
-  file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE));
+  if (!mdl_write_log_atomic($file, $data)) {
+    echo json_encode(['ok'=>false,'error'=>'falha_gravar_log'], JSON_UNESCAPED_UNICODE); exit;
+  }
   echo json_encode(['ok'=>true,'id'=>$payload['id']], JSON_UNESCAPED_UNICODE); exit;
 }
 echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado'], JSON_UNESCAPED_UNICODE);
@@ -8883,16 +8768,6 @@ function mark_reset_resolved(&$data, $login){ foreach(($data['password_reset_req
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') { echo json_encode(['ok'=>true,'data'=>$data], JSON_UNESCAPED_UNICODE); exit; }
 $action = $_POST['action'] ?? '';
-if ($action === 'admin_set_access_block') {
-  $blocked = (($_POST['blocked'] ?? '0') === '1');
-  $reason = trim((string)($_POST['reason'] ?? ''));
-  $data['access_blocked'] = $blocked;
-  $data['access_blocked_reason'] = $blocked ? ($reason ?: 'Sistema em atualização. Aguarde liberação pelo Master.') : '';
-  if ($blocked) { $data['access_blocked_at'] = date('c'); }
-  else { $data['access_unblocked_at'] = date('c'); }
-  save_all($file, $data);
-  echo json_encode(['ok'=>true,'data'=>$data], JSON_UNESCAPED_UNICODE); exit;
-}
 if ($action === 'change_password') {
   $login = strtolower(trim($_POST['login'] ?? '')); $current = strval($_POST['current_password'] ?? ''); $new = strval($_POST['new_password'] ?? '');
   if (!$login || !$current || !$new) { echo json_encode(['ok'=>false,'error'=>'parametros_obrigatorios']); exit; }
