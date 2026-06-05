@@ -1,4 +1,4 @@
-# VERSAO: COBRANCA10_V26_LOG_COBRANCAS_BACKUP_RATEIO_FIX
+# VERSAO: COBRANCA10_V26B_FIX_NAMEERROR_CHAVES_COBRANCA
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -2140,9 +2140,6 @@ for _i in range(len(df_raw)):
         })
 
 
-# V26: garante chaves estáveis para cada título e cada cliente antes de qualquer rateio/log.
-for _c_keyfix in clientes_cobrar:
-    enriquecer_chaves_cobranca_py(_c_keyfix)
 
 # Contagem
 _ng = sum(1 for c in clientes_cobrar if c['faixa']=='grave')
@@ -2255,6 +2252,10 @@ def enriquecer_chaves_cobranca_py(item):
     except Exception:
         pass
     return item
+
+# V26B: garante chaves estáveis depois que os helpers já existem.
+for _c_keyfix in clientes_cobrar:
+    enriquecer_chaves_cobranca_py(_c_keyfix)
 
 # =========================================
 # COBRANÇA10 — 20% global dos títulos de cobrança
