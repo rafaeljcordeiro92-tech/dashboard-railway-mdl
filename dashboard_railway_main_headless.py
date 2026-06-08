@@ -1,4 +1,4 @@
-# VERSAO: COBRANCA10_V30_FIX_LOGS_COMISSAO_EXPORTS_SEM_REMOVER_V27
+# VERSAO: COBRANCA10_V27_COBRANCAS_BACKUP_SENHAS_LINHA_LOGIN_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -6652,37 +6652,275 @@ return `<div class="section-head" style="margin-bottom:8px"><div><h2>📌 Mural 
 function bindSpecialCards(){document.querySelectorAll('[data-action="cred-card"]').forEach(el=>{el.style.cursor='pointer';el.onclick=(ev)=>{ev.preventDefault();ev.stopPropagation();const node=ev.currentTarget.closest('[data-action="cred-card"]')||ev.currentTarget;const ds=node.dataset||{};openCrediaristaPanel(ds.login||'',ds.filial||'',ds.nome||'');return false};el.onkeydown=(ev)=>{if(ev.key==='Enter' || ev.key===' '){ev.preventDefault();const node=ev.currentTarget.closest('[data-action="cred-card"]')||ev.currentTarget;const ds=node.dataset||{};openCrediaristaPanel(ds.login||'',ds.filial||'',ds.nome||'')}}});document.querySelectorAll('[data-action="third-card"]').forEach(el=>{el.style.cursor='pointer';el.onclick=(ev)=>{ev.preventDefault();ev.stopPropagation();openThirdChargePanel();return false};el.onkeydown=(ev)=>{if(ev.key==='Enter' || ev.key===' '){ev.preventDefault();openThirdChargePanel()}}})}
 function renderList(){const entities=currentEntities();const title=mainTab==='filiais'?'🏬 Filiais':'👥 Colaboradores';const hint=`${entities.length} ${mainTab==='filiais'?'filiais':'colaboradores'} exibidos`; listSection.innerHTML=`${renderCampaignStrip()}${usuarioAtual?.tipo==='master'?renderHighlights():''}<div class="section-head"><div><h2>${title}</h2><div class="hint">Clique em qualquer card para abrir a tela individual completa.</div></div><div class="hint">${hint}</div></div><div class="grid-cards">${entities.map(renderEntityCard).join('')}</div>${renderGroupBars(entities)}`; bindSpecialCards()}
 function findEntity(ref){const n=String(ref?.nome||'').toLowerCase(); const f=String(ref?.filial||'').toUpperCase(); const t=String(ref?.type||'').toLowerCase(); if(t==='terceiro' || ref?.is_terceiro || n===String(COBRANCA10_NOME).toLowerCase() || n===String(COBRANCA10_LOGIN).toLowerCase() || f==='FTER'){return thirdChargeEntity()} if(t==='crediarista' || ref?.is_crediarista || n.startsWith('crediarista') || String(ref?.login||'').toLowerCase().startsWith('crediaristaf')){return crediaristaEntityByLogin(ref?.login||ref?.nome||ref?.filial)} if(ref.type==='filial'){return flattenFiliais().find(x=>x.filial===ref.filial)} return flattenVendedores().find(x=>x.filial===ref.filial && x.nome===ref.nome)}
-function _ymFromAnyDate(v){const d=parseDateBR(v); if(!d) return String(v||'').slice(0,7); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}
-function _userKeysForCommission(ent,isCred){return isCred?[String(ent.login||'').toLowerCase(),String(ent.nome||'').toLowerCase()]:[COBRANCA10_NOME.toLowerCase(),String(COBRANCA10_LOGIN||'').toLowerCase()]}
-function renderTerceiroCommission(ent){
-  const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista');
-  const baseCfg=isCred?entityConfig({type:'vendedor',nome:ent.nome,filial:ent.filial}):entityConfig({type:'vendedor',nome:COBRANCA10_NOME,filial:'FTER'});
-  const cfg=commissionCfg(baseCfg);
-  const policy=(isCred?(cfg.camp_cob_crediarista||[]):(cfg.camp_cobranca_terceiro||[]));
-  const policyOk=Array.isArray(policy)&&policy.length?policy:(isCred?defaultCampCrediarista():defaultCampTerceiro());
-  const byFaixa={atencao:{pct:0,cobrado:0,recebido:0,comissao:0},alerta:{pct:0,cobrado:0,recebido:0,comissao:0},grave:{pct:0,cobrado:0,recebido:0,comissao:0}};
-  policyOk.forEach(r=>{const fx=String(r.faixa||'').toLowerCase(); if(byFaixa[fx]) byFaixa[fx].pct=Number(String(r.pct||0).replace(',','.'))||0});
-  const mesAtual=new Date().toISOString().slice(0,7);
-  const userKeys=_userKeysForCommission(ent,isCred);
-  const cobrados=(COB_LOGS||[]).filter(x=>userKeys.includes(String(x.usuario||'').toLowerCase()) && String(_logDateValue(x)||'').slice(0,7)===mesAtual);
-  const keys=new Set(cobrados.map(x=>cobrancaRowKey(x)));
-  const srcCli=isCred?(CLIENTES_CREDIARISTA?.[String(ent.login||'').toLowerCase()]||{grave:[],alerta:[],atencao:[]}):(CLIENTES_TERCEIRO||{grave:[],alerta:[],atencao:[]});
-  const srcRec=isCred?recebimentosSomenteConciliados(ent):(RECEBIMENTOS_TERCEIRO||{grave:[],alerta:[],atencao:[]});
-  ['atencao','alerta','grave'].forEach(fx=>{
-    byFaixa[fx].cobrado=(srcCli?.[fx]||[]).filter(r=>keys.has(cobrancaRowKey(r))).length;
-    (srcRec?.[fx]||[]).forEach(r=>{
-      const pagMes=_ymFromAnyDate(r.pagamento||r.data_pagamento||r.server_time||r.data);
-      const originOk=!isCred || userKeys.includes(String(r.vendedor||r.origem||r.usuario||'').toLowerCase()) || keys.has(cobrancaRowKey(r));
-      const keyOk=isCred ? originOk : keys.has(cobrancaRowKey(r));
-      if(keyOk && pagMes===mesAtual){byFaixa[fx].recebido+=Number(r.pago||0)}
-    });
-    byFaixa[fx].comissao=byFaixa[fx].recebido*(byFaixa[fx].pct/100);
-  });
-  const total=Object.values(byFaixa).reduce((a,b)=>a+b.comissao,0);
-  const item=(t,v,s='')=>`<div class="commission-item unlocked ${s}"><div class="k">${t}</div><div class="v">${v}</div></div>`;
-  return `<div class="glass panel commission-card"><h3>💵 ${isCred?'Comissão crediarista':'Comissão cobrança terceiro'} <span class="note">· mês atual / pagamento dia 10 do próximo mês</span></h3><div class="commission-grid">${item('Atenção %',String(byFaixa.atencao.pct.toFixed(2)).replace('.',',')+'%')}${item('Alerta %',String(byFaixa.alerta.pct.toFixed(2)).replace('.',',')+'%')}${item('Grave %',String(byFaixa.grave.pct.toFixed(2)).replace('.',',')+'%')}${item('Recebido atenção',R(byFaixa.atencao.recebido||0))}${item('Recebido alerta',R(byFaixa.alerta.recebido||0))}${item('Recebido grave',R(byFaixa.grave.recebido||0))}${item('Comissão atenção',R(byFaixa.atencao.comissao||0))}${item('Comissão alerta',R(byFaixa.alerta.comissao||0))}${item('Comissão grave',R(byFaixa.grave.comissao||0))}${item('Total previsto',R(total||0),'total-final')}</div><div class="commission-note">Crediarista só recebe sobre título pago após cobrança própria registrada no histórico. A comissão reinicia a cada mês e o pagamento é previsto para o dia 10 do mês seguinte.</div></div>`
+function renderTerceiroCommission(ent){const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista'); const baseCfg=isCred?entityConfig({type:'vendedor',nome:ent.nome,filial:ent.filial}):entityConfig({type:'vendedor',nome:COBRANCA10_NOME,filial:'FTER'}); const cfg=commissionCfg(baseCfg); const policy=(isCred?(cfg.camp_cob_crediarista||[]):(cfg.camp_cobranca_terceiro||[])); const policyOk=Array.isArray(policy)&&policy.length?policy:(isCred?defaultCampCrediarista():defaultCampTerceiro()); const byFaixa={atencao:{pct:0,cobrado:0,recebido:0,comissao:0},alerta:{pct:0,cobrado:0,recebido:0,comissao:0},grave:{pct:0,cobrado:0,recebido:0,comissao:0}}; policyOk.forEach(r=>{const fx=String(r.faixa||'').toLowerCase(); if(byFaixa[fx]) byFaixa[fx].pct=Number(String(r.pct||0).replace(',','.'))||0}); const mesAtual=new Date().toISOString().slice(0,7); const userKeys=isCred?[String(ent.login||'').toLowerCase(),String(ent.nome||'').toLowerCase()]:[COBRANCA10_NOME.toLowerCase(),COBRANCA10_LOGIN]; const cobrados=(COB_LOGS||[]).filter(x=>userKeys.includes(String(x.usuario||'').toLowerCase()) && String(x.server_time||'').slice(0,7)===mesAtual); const keys=new Set(cobrados.map(x=>cobrancaRowKey(x))); const srcCli=isCred?(CLIENTES_CREDIARISTA?.[String(ent.login||'').toLowerCase()]||{grave:[],alerta:[],atencao:[]}):(CLIENTES_TERCEIRO||{grave:[],alerta:[],atencao:[]}); const srcRec=isCred?(RECEBIMENTOS_CREDIARISTA?.[String(ent.login||'').toLowerCase()]||{grave:[],alerta:[],atencao:[]}):(RECEBIMENTOS_TERCEIRO||{grave:[],alerta:[],atencao:[]}); ['atencao','alerta','grave'].forEach(fx=>{byFaixa[fx].cobrado=(srcCli?.[fx]||[]).filter(r=>keys.has(cobrancaRowKey(r))).length; (srcRec?.[fx]||[]).forEach(r=>{const pagMes=String(parseDateBR(r.pagamento)||new Date()).slice(0,7); if(keys.has(cobrancaRowKey(r)) && pagMes===mesAtual){byFaixa[fx].recebido+=Number(r.pago||0)}}); byFaixa[fx].comissao=byFaixa[fx].recebido*(byFaixa[fx].pct/100)}); const total=Object.values(byFaixa).reduce((a,b)=>a+b.comissao,0); const item=(t,v,s='')=>`<div class="commission-item unlocked ${s}"><div class="k">${t}</div><div class="v">${v}</div></div>`; return `<div class="glass panel commission-card"><h3>💵 ${isCred?'Comissão crediarista':'Comissão cobrança terceiro'} <span class="note">· mês atual / pagamento dia 10 do próximo mês</span></h3><div class="commission-grid">${item('Atenção %',String(byFaixa.atencao.pct.toFixed(2)).replace('.',',')+'%')}${item('Alerta %',String(byFaixa.alerta.pct.toFixed(2)).replace('.',',')+'%')}${item('Grave %',String(byFaixa.grave.pct.toFixed(2)).replace('.',',')+'%')}${item('Recebido atenção',R(byFaixa.atencao.recebido||0))}${item('Recebido alerta',R(byFaixa.alerta.recebido||0))}${item('Recebido grave',R(byFaixa.grave.recebido||0))}${item('Comissão atenção',R(byFaixa.atencao.comissao||0))}${item('Comissão alerta',R(byFaixa.alerta.comissao||0))}${item('Comissão grave',R(byFaixa.grave.comissao||0))}${item('Total previsto',R(total||0),'total-final')}</div><div class="commission-note">A comissão reinicia a cada mês e o pagamento é previsto para o dia 10 do mês seguinte.</div></div>`}
+function openCrediaristaPanel(login, filial, nome){
+  const filialNorm=String(filial||'').toUpperCase();
+  const loginNorm=String(login||crediaristaLoginByFilial(filialNorm)||'').toLowerCase();
+  const nomeNorm=String(nome||`CREDIARISTA${filialNorm}`);
+  // Carteira: usa CLIENTES_CREDIARISTA (Python já espelhou a base da filial)
+  const src=(CLIENTES_CREDIARISTA?.[loginNorm])||CLIENTES_FIL?.[filialNorm]||{grave:[],alerta:[],atencao:[]};
+  const rsrc=(RECEBIMENTOS_CREDIARISTA?.[loginNorm])||{grave:[],alerta:[],atencao:[]};
+  const pend=[...(src.grave||[]),...(src.alerta||[]),...(src.atencao||[])].reduce((a,b)=>a+Number(b.pendente||0),0);
+  const rec=[...(rsrc.grave||[]),...(rsrc.alerta||[]),...(rsrc.atencao||[])].reduce((a,b)=>a+Number(b.pago||0),0);
+  // Herda dados de meta da filial para que calcMeta() funcione corretamente
+  const filData=FILIAIS?.[filialNorm]||{};
+  const ent={
+    type:'crediarista',login:loginNorm,filial:filialNorm,nome:nomeNorm,
+    is_crediarista:true,only_cobranca:true,
+    pendente:pend,pago:rec,total:pend+rec,perc_filial:100,
+    // campos de meta herdados da filial espelhada
+    grave_pend:  Number(filData.grave_pend  ||0),
+    alerta_pend: Number(filData.alerta_pend ||0),
+    atencao_pend:Number(filData.atencao_pend||0),
+    grave_rec:   Number(filData.grave_rec   ||0),
+    alerta_rec:  Number(filData.alerta_rec  ||0),
+    atencao_rec: Number(filData.atencao_rec ||0),
+    grave_alvo:  Number(filData.grave_alvo  ||0),
+    alerta_alvo: Number(filData.alerta_alvo ||0),
+    atencao_alvo:Number(filData.atencao_alvo||0),
+    grave_perc:  Number(filData.grave_perc  ||0),
+    alerta_perc: Number(filData.alerta_perc ||0),
+    atencao_perc:Number(filData.atencao_perc||0),
+    perc_meta:   Number(filData.perc_meta   ||0),
+  };
+  currentDetailRef={type:'crediarista',filial:filialNorm,nome:nomeNorm,login:loginNorm};
+  mascotCongrats(ent);
+  document.getElementById('mainScreen').classList.add('hidden');
+  detailScreen.classList.remove('hidden');
+  return renderCrediaristaDetail(ent);
+}
+function openThirdChargePanel(){const ent=thirdChargeEntity(); currentDetailRef={type:'terceiro',filial:'FTER',nome:ent.nome}; mascotCongrats(ent); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); renderTerceiroDetail(ent)}
+
+// Clique blindado dos cards especiais: não depende de onclick inline.
+document.addEventListener('click', function(ev){
+  const cred = ev.target.closest('[data-action="cred-card"]');
+  if(cred){
+    ev.preventDefault();
+    ev.stopPropagation();
+    openCrediaristaPanel(cred.dataset.login||'', cred.dataset.filial||'', cred.dataset.nome||'');
+    return false;
+  }
+  const third = ev.target.closest('[data-action="third-card"]');
+  if(third){
+    ev.preventDefault();
+    ev.stopPropagation();
+    openThirdChargePanel();
+    return false;
+  }
+}, true);
+
+window.openCrediaristaPanel=openCrediaristaPanel;
+window.openThirdChargePanel=openThirdChargePanel;
+
+function renderTerceiroDetail(ent){const src=getClientesEnt(ent); const totalTit=(src.grave?.length||0)+(src.alerta?.length||0)+(src.atencao?.length||0); detailScreen.innerHTML=`${renderUpdateStrip()}<div class="back-row"><button class="btn soft" onclick="backToMain()">⬅️ Voltar</button><div><h2>${esc(ent.nome)}</h2><div class="sub">${ent.is_crediarista?`Painel de cobrança da filial ${ent.filial} · base configurada ${Number(ent.pct_base||100)}% · recebido só por cobrança própria paga`:`Painel de cobrança terceirizada · percentual global sem duplicidade`}</div></div><div class="badge">${ent.is_crediarista?'🧾 Crediarista':'🤝 Cobrança terceiro'}</div></div><div class="detail-top"><div class="glass panel"><h3>🧾 Resumo da carteira</h3><div class="metrics-grid"><div class="metric"><div class="k">Títulos</div><div class="v">${totalTit}</div></div><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">Cobrado hoje</div><div class="v">${getCobradosHoje(ent).length}</div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave ${src.grave?.length||0}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta ${src.alerta?.length||0}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção ${src.atencao?.length||0}</span></div></div><div>${renderTerceiroCommission(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span>clique para abrir</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span>clique para abrir</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
+
+// ── PAINEL CREDIARISTA ─────────────────────────────────────────────────────
+// Mostra: resumo da carteira espelhada + meta de cobrança + recebimentos + cobranças
+// NÃO mostra: painel de vendas, comissão mercantil, campanhas de venda
+function renderCrediaristaDetail(ent){
+  const src=getClientesEnt(ent);
+  const totalTit=(src.grave?.length||0)+(src.alerta?.length||0)+(src.atencao?.length||0);
+  const meta=calcMeta(ent);
+  detailScreen.innerHTML=`
+    ${renderInboxBanner()}
+    ${renderUpdateStrip()}
+    <div class="back-row">
+      <button class="btn soft" onclick="backToMain()">⬅️ Voltar</button>
+      <div>
+        <h2>${esc(ent.nome)}</h2>
+        <div class="sub">Painel de cobrança espelhado da filial ${esc(ent.filial)} · mesma base do gerente/filial em tempo real</div>
+      </div>
+      <div class="badge">🧾 Crediarista</div>
+    </div>
+    <div class="detail-top">
+      <div class="glass panel">
+        <h3>🎯 Meta de cobrança <span class="note">· espelhada da filial</span></h3>
+        <div class="mega-progress">
+          <div class="ring-wrap">${renderPiggyBank(meta.geral)}</div>
+          <div>
+            <div class="metrics-grid">
+              <div class="metric"><div class="k">Títulos na carteira</div><div class="v">${totalTit}</div></div>
+              <div class="metric"><div class="k">Pendente total</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div>
+              <div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div>
+              <div class="metric"><div class="k">Cobrado hoje</div><div class="v">${getCobradosHoje(ent).length}</div></div>
+            </div>
+            <div class="legend-inline" style="margin-top:12px">
+              <span><i class="dot" style="background:var(--red)"></i>Grave ${src.grave?.length||0} títulos</span>
+              <span><i class="dot" style="background:var(--orange)"></i>Alerta ${src.alerta?.length||0} títulos</span>
+              <span><i class="dot" style="background:var(--yellow)"></i>Atenção ${src.atencao?.length||0} títulos</span>
+            </div>
+          </div>
+        </div>
+        <div class="meta-grid">
+          ${renderMetaBox('Grave','var(--red)',meta.grave)}
+          ${renderMetaBox('Alerta','var(--orange)',meta.alerta)}
+          ${renderMetaBox('Atenção','var(--yellow)',meta.atencao)}
+          ${renderMetaBox('Meta geral','var(--blue)',{perc:meta.geral,alvo:meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,rec:meta.grave.rec+meta.alerta.rec+meta.atencao.rec})}
+        </div>
+        <div style="margin-top:14px">${renderMascotStatus(meta.geral,'Cobrança')}</div>
+      </div>
+      <div>${renderTerceiroCommission(ent)}</div>
+    </div>
+    <div class="accordion">
+      <div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span>clique para abrir</span></div>
+      <div class="acc-body">${renderRecebimentos(ent)}</div>
+    </div>
+    <div class="accordion">
+      <div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span>clique para abrir</span></div>
+      <div class="acc-body">${renderCobrancasEnt(ent)}</div>
+    </div>
+  `;
 }
 
+function openEntity(ref){if(ref && (ref.type==='crediarista' || ref.is_crediarista)){return openCrediaristaPanel(ref.login||'', ref.filial||'', ref.nome||'')} const ent=findEntity(ref); if(!ent) return; currentDetailRef={type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''}; mascotCongrats(ent); try{renderLaranjitoNotify(); showLaranjitoOncePerAccess()}catch(e){}; document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(ent.is_terceiro || ent.type==='terceiro'){return renderTerceiroDetail(ent)} if(ent.is_crediarista || ent.type==='crediarista'){return openCrediaristaPanel(ent.login||'', ent.filial||'', ent.nome||'')} const meta=calcMeta(ent); const bonus=getBonus(meta.cfg,meta.geral); const deltaVal=Number(ent.var_pago_delta||0); const prevBase=Math.max(Math.abs(Number(ent.pago||0)-deltaVal),1); const pctFallback=(Math.abs(deltaVal)/prevBase)*100; const compPerc=(ent.var_pago_perc==null || Math.abs(Number(ent.var_pago_perc||0))<0.01)?pctFallback:Math.abs(Number(ent.var_pago_perc||0)); detailScreen.innerHTML=`${usuarioAtual && usuarioAtual.tipo!=='master' ? renderInboxBanner() : ''}${renderUpdateStrip()}<div class="back-row"><button class="btn soft" onclick="backToMain()">⬅️ Voltar</button><div><h2>${ent.type==='filial'?filialLabel(ent.filial):esc(ent.nome)}</h2><div class="sub">${ent.type==='filial'?'Painel individual da filial':'Painel individual do vendedor'} · ${ent.filial}</div></div><div class="badge">${ent.type==='filial'?'🏬 Filial':'👤 Vendedor'}</div></div><div class="detail-top"><div class="glass panel"><h3>🎯 Meta do mês <span class="note">· Não acumulativo</span></h3><div class="mega-progress"><div class="ring-wrap">${renderPiggyBank(meta.geral)}</div><div><div class="metrics-grid"><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">% da filial</div><div class="v">${pct(ent.perc_filial||100)}</div></div><div class="metric"><div class="k">Configuração usada</div><div class="v">${Number(meta.cfg.grave_pct||0)}/${Number(meta.cfg.alerta_pct||0)}/${Number(meta.cfg.atencao_pct||0)}</div></div><div class="metric"><div class="k">Comparado a ontem</div><div class="v" style="font-size:16px">${renderDeltaPill(ent.var_pago_delta,compPerc)} <span>${R(Math.abs(Number(ent.var_pago_delta||0)))}</span></div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave alvo ${R(meta.grave.alvo)} · recebido ${R(meta.grave.rec)}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta alvo ${R(meta.alerta.alvo)} · recebido ${R(meta.alerta.rec)}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção alvo ${R(meta.atencao.alvo)} · recebido ${R(meta.atencao.rec)}</span></div></div></div><div class="meta-grid">${renderMetaBox('Grave','var(--red)',meta.grave)}${renderMetaBox('Alerta','var(--orange)',meta.alerta)}${renderMetaBox('Atenção','var(--yellow)',meta.atencao)}${renderMetaBox('Meta geral','var(--blue)',{perc:meta.geral,alvo:meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,rec:meta.grave.rec+meta.alerta.rec+meta.atencao.rec})}</div><div style="height:18px"></div><h3>🌊 Gráfico Geral Contas a Receber</h3>${renderSingleBars(ent,meta,true)}<div style="height:16px"></div><div class="glass panel"><h3>🏆 Bônus e premiações <span class="note">· Não acumulativo</span></h3>${renderBonusBox(meta.cfg,meta.geral)}</div></div><div>${renderSalesPanel(ent)}<div style="height:16px"></div>${renderCommissionSummary(ent)}<div style="height:16px"></div>${renderCampaignSummary(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span>clique para ${'abrir'}</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span>clique para ${'abrir'}</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
+function canVerComissionamento(){return usuarioAtual?.tipo==='master'}
+function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';
+  const c=calcCommissionSummary(ent);
+  const totalLiberado = c.elegivelMercantil && c.elegivelServicos;
+  const totalExibido = totalLiberado ? c.totalPrevisto : 0;
+  const moneyCell=(title,val,locked=false,extra='')=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''} ${extra}"><div class="k">${title}</div><div class="v">${R(val||0)}</div></div>`;
+  const pctCell=(title,val,locked=false)=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''}"><div class="k">${title}</div><div class="v">${String(Number(val||0).toFixed(2)).replace('.',',')}%</div></div>`;
+  const rentNote = c.rentUnlocked
+    ? `Rentabilidade atual ${String(Number(c.rentAtual||0).toFixed(2)).replace('.',',')}% · faixa aplicada ${c.rentFaixaTxt}.`
+    : `Rentabilidade atual ${String(Number(c.rentAtual||0).toFixed(2)).replace('.',',')}% · bloqueada até bater 50% da meta de cobrança.`;
+  return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,!(c.rentUnlocked && c.rentAtual>=48))}${moneyCell('Rentab 52,15%',c.rent52,!(c.rentUnlocked && c.rentAtual>=52.15))}${moneyCell('Rentab 55,50%',c.rent55,!(c.rentUnlocked && c.rentAtual>=55.50))}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo vendas ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)} · rentabilidades liberam ao bater 50% da meta de cobrança. ${rentNote}</div></div>`
+}
+
+function backToMain(){currentDetailRef=null; try{renderLaranjitoNotify()}catch(e){}; detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden')}
+function renderMetaBox(title,color,obj){return `<div class="meta-card"><div class="meta-title">${title}</div><div class="meta-main" style="color:${color}">${pct(obj.perc||0)}</div><div class="meta-sub">Alvo: ${R(obj.alvo||0)}</div><div class="meta-sub">Recebido: ${R(obj.rec||0)}</div></div>`}
+function normSalesText(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9 ]/gi,' ').replace(/\s+/g,' ').trim().toUpperCase()}
+function salesCell(row, keys){for(const k of keys){if(row && row[k]!=null && String(row[k]).trim()!=='') return String(row[k]).trim()} return ''}
+function filialAliases(f){const raw=String(f||'').toUpperCase(); if(raw.includes('90')) return ['FILIAL 90/99','FILIAL 90','90/99','DEPOSITO MOVEIS','DEPOSITO']; const n=parseInt((raw.match(/\d+/)||[''])[0]||'0',10); if(!n) return [raw]; const two=String(n).padStart(2,'0'); return [`FILIAL ${two}`,`FILIAL ${n}`,`(${two})`,`(${n})`,`F${n}`]}
+
+function servicosKeyNome(nome){
+  return normSalesText(nome).replace(/\s+/g,' ').trim();
+}
+function servicosEntidade(ent){
+  const out=[];
+  const data=SERVICOS_RELATORIO||{};
+  if(!ent) return out;
+  if(ent.type==='filial'){
+    const item=(data.filiais||{})[ent.filial]||{};
+    Object.entries(item.servicos||{}).forEach(([servico,valor])=>{
+      out.push({servico, real_total:Number(valor||0), quantidade:0});
+    });
+  }else{
+    const vend=(data.vendedores||{});
+    const key1=`${servicosKeyNome(ent.nome)}_${ent.filial}`;
+    let item=vend[key1];
+    if(!item){
+      item=Object.values(vend).find(v=>{
+        return String(v?.filial||'').toUpperCase()===String(ent.filial||'').toUpperCase()
+          && servicosKeyNome(v?.nome||'')===servicosKeyNome(ent.nome||'');
+      });
+    }
+    Object.entries((item&&item.servicos)||{}).forEach(([servico,valor])=>{
+      out.push({servico, real_total:Number(valor||0), quantidade:0});
+    });
+  }
+  return out.sort((a,b)=>Number(_srvTotal(b)||0)-Number(_srvTotal(a)||0));
+}
+function renderServicosEntidade(ent){
+  const rows=servicosEntidade(ent).filter(x=>Number(x.real_total||0)>0);
+  if(!rows.length){
+    return `<div class="glass panel"><h3>🛠️ Serviços por tipo</h3><div class="empty">Nenhum serviço localizado para ${ent?.type==='filial'?'esta filial':'este vendedor'} no relatório mensal.</div></div>`;
+  }
+  const total=rows.reduce((a,b)=>a+Number(b.real_total||0),0);
+  return `<div class="glass panel"><div class="section-head" style="margin:0 0 10px"><div><h3 style="margin:0">🛠️ Serviços por tipo</h3><div class="hint">Relatório real de serviços do mês atual · total oficial ${R(total)}</div></div></div><div class="metrics-grid">${rows.slice(0,8).map(r=>`<div class="metric"><div class="k">${esc(String(r.servico||'Serviço').slice(0,34))}</div><div class="v" style="color:var(--blue-400);font-size:18px">${R(r.real_total||0)}</div></div>`).join('')}</div></div>`;
+}
+
+function servicosEntidadeTotal(ent){
+  return servicosEntidade(ent).reduce((acc,r)=>acc+Number(r.real_total||0),0);
+}
+function serviceOfficialOverride(ent,key,row){
+  if(!String(key||'').includes('servico')) return null;
+  const total=servicosEntidadeTotal(ent);
+  if(!(total>0)) return null;
+  const metaTotalStr=salesCell(row,['Meta (R$) Total','Meta(R$) Total']);
+  const metaPeriodoStr=salesCell(row,['Meta (R$) Período','Meta(R$) Período']);
+  const metaTotal=salesNum(metaTotalStr);
+  const metaPeriodo=salesNum(metaPeriodoStr);
+  return {
+    total: total,
+    realizado: R(total),
+    atingidoTotal: metaTotal>0 ? pct(total/metaTotal*100) : '0%',
+    atingidoPeriodo: metaPeriodo>0 ? pct(total/metaPeriodo*100) : '0%',
+    nota: 'relatório serviços'
+  };
+}
+
+function rowMatchesFilial(ent,row){const joined=normSalesText([salesCell(row,['Filial','Filial_2','Vendedor','Vendedor_2','Nome','Nome_2']),salesCell(row,['Subgrupo'])].join(' ')); return filialAliases(ent.filial).some(a=>joined.includes(normSalesText(a)))}
+function vendedorNomeAlvo(row,key){if(key==='venda_filial_vendedor_meta' || key==='servico_filial_vendedor_ouro_fob') return salesCell(row,['Vendedor_2','Nome_2','Nome','Vendedor']); return salesCell(row,['Vendedor','Vendedor_2','Nome','Nome_2'])}
+function fuzzyContainsAllTokens(target, query){const t=normSalesText(target); const q=normSalesText(query); const toks=q.split(' ').filter(x=>x && x.length>1); return toks.length ? toks.every(tok=>t.includes(tok)) : false}
+function rowMatchesVendedor(ent,row,key=''){const vendedorCampo=vendedorNomeAlvo(row,key); const filialCampo=salesCell(row,['Filial','Filial_2','Vendedor']); const byNome = fuzzyContainsAllTokens(vendedorCampo, ent.nome) || fuzzyContainsAllTokens(ent.nome, vendedorCampo); const byFilial = !filialCampo || filialAliases(ent.filial).some(a=>normSalesText(filialCampo).includes(normSalesText(a))) || rowMatchesFilial(ent,row); return byNome && byFilial}
+function getSalesRows(ent, key){const base=METAS_VENDAS?.metas?.[key]; if(!base || !base.ok) return []; const rows=Array.isArray(base.linhas)?base.linhas:[]; return rows.filter(r=>ent.type==='filial'?rowMatchesFilial(ent,r):rowMatchesVendedor(ent,r,key))}
+function salesTitleForRow(ent,row,key=''){return salesCell(row, ent.type==='filial'?['Subgrupo','Filial','Vendedor_2','Vendedor']:['Subgrupo','Vendedor_2','Vendedor','Filial']) || (ent.type==='filial'?filialLabel(ent.filial):ent.nome)}
+function salesPercentClass(v){const n=parseFloat(String(v||'').replace('%','').replace(',','.'))||0; if(n>=100) return 'gold'; if(n>=80) return 'good'; if(n>=50) return 'warn'; return 'low'}
+function salesNum(v){return parseFloat(String(v||'').replace('%','').replace(/\./g,'').replace(',','.'))||0}
+function renderSalesProgress(v){const n=Math.max(0,Math.min(160,salesNum(v))); return `<div class="sales-progress"><span style="width:${Math.min(n,100)}%"></span></div><div class="sales-progress-label">${String(v||'0%')}</div>`}
+function renderSalesMini(k,v,kind='',showMascot=false,wrap=false){const cls=[kind, wrap?'wrap':'']; if(kind==='atingido'||kind==='projetado') cls.push(salesPercentClass(v)); return `<div class="sales-mini ${cls.join(' ')}">${showMascot?`<img src="${LARANJITO}" class="laranjito-mini" alt="">`:''}<div class="k">${k}</div><div class="v">${v||'-'}</div>${(kind==='atingido')?renderSalesProgress(v):''}</div>`}
+function renderSalesRows(ent, key, label){
+  let rows=getSalesRows(ent,key);
+  if(!rows.length) return `<div class="sales-card"><h4>${label}</h4><div class="sales-empty">Sem dados desta meta para ${ent.type==='filial'?'esta filial':'este vendedor'}.</div></div>`;
+
+  // Para SERVIÇOS, o realizado oficial vem do relatório real de serviços por tipo.
+  // A meta do SGI permanece como alvo, mas os campos "Realizado" e "% atingido" passam a bater
+  // exatamente com o painel "Serviços por tipo" da mesma filial/vendedor.
+  if(String(key||'').includes('servico') && servicosEntidadeTotal(ent)>0){
+    rows=[rows[0]];
+  }
+
+  return `<div class="sales-card"><h4>${label}</h4><div class="sales-list">${rows.map(r=>{
+    const srv=serviceOfficialOverride(ent,key,r);
+    const ating=srv ? srv.atingidoTotal : salesCell(r,['Atingido Total']);
+    const atingPeriodo=srv ? srv.atingidoPeriodo : salesCell(r,['Atingido Período']);
+    const realizadoTotal=srv ? srv.realizado : esc(salesCell(r,['Realizado (R$) Total','Realizado(R$) Total']));
+    const realizadoPeriodo=srv ? srv.realizado : esc(salesCell(r,['Realizado (R$) Período','Realizado(R$) Período']));
+    const proj=salesCell(r,['Projetado (R$)','Projetado(R$)']);
+    const showMascot=(parseFloat(String(ating).replace('%','').replace(',','.'))||0)>=100;
+    const title=srv ? `${salesTitleForRow(ent,r,key)} · relatório serviços` : salesTitleForRow(ent,r,key);
+    return `<div class="sales-row"><div class="sales-row-title">${esc(title)}</div><div class="sales-metrics">${renderSalesMini('Meta total',esc(salesCell(r,['Meta (R$) Total','Meta(R$) Total'])),'meta')}${renderSalesMini('Realizado total',realizadoTotal,'realizado')}${renderSalesMini('Atingido total',esc(ating),'atingido',showMascot)}${renderSalesMini('Meta período',esc(salesCell(r,['Meta (R$) Período','Meta(R$) Período'])),'meta')}${renderSalesMini('Realizado período',realizadoPeriodo,'realizado')}${renderSalesMini('Atingido período',esc(atingPeriodo),'atingido')}${renderSalesMini('Projetado',esc(proj),'projetado',showMascot)}${renderSalesMini(ent.type==='filial'?'Filial':'Vendedor',esc(salesCell(r, ent.type==='filial'?['Filial']:['Vendedor_2','Vendedor'])),'realizado',false,true)}</div></div>`;
+  }).join('')}</div></div>`;
+}
+function summarizeSalesCard(ent){const keys=ent.type==='filial'?['venda_filial_meta']:['venda_filial_vendedor_meta']; let best=null; keys.forEach(k=>{getSalesRows(ent,k).forEach(r=>{const ating=salesCell(r,['Atingido Total']); const n=parseFloat(String(ating).replace('%','').replace(',','.'))||0; if(!best || n>best.n){best={row:r,key:k,n};}})}); return best}
+function renderSalesCardSummary(ent){const s=summarizeSalesCard(ent); if(!s) return ''; const row=s.row; const showMascot=s.n>=100; return `<div class="card-sales"><div class="card-sales-title">💲 Vendas e metas</div><div class="card-sales-grid">${renderSalesMini('Realizado total',esc(salesCell(row,['Realizado (R$) Total','Realizado(R$) Total'])),'realizado')}${renderSalesMini('Atingido total',esc(salesCell(row,['Atingido Total'])),'atingido',showMascot)}${renderSalesMini('Projetado',esc(salesCell(row,['Projetado (R$)','Projetado(R$)'])),'projetado',showMascot)}</div></div>`}
+const MASCOTE_FELIZ='https://moveisdolar.com.br/colaborador/mascote%20feliz1.png';
+const MASCOTE_PREOC='https://moveisdolar.com.br/colaborador/mascote%20preocupado1.png';
+const MASCOTE_TRISTE='https://moveisdolar.com.br/colaborador/mascote%20triste1.png';
+function mascotByPerc(p){const n=Number(p||0); if(n>=80) return {src:MASCOTE_FELIZ,txt:'Laranjito feliz: meta em ótimo ritmo!'}; if(n>=60) return {src:MASCOTE_PREOC,txt:'Laranjito preocupado: atenção para a meta.'}; return {src:MASCOTE_TRISTE,txt:'Laranjito triste: precisa reagir já!'} }
+function renderMascotStatus(p,label=''){const m=mascotByPerc(p); return `<div class="mascot-status"><img src="${m.src}" alt=""><div><strong>${label?label+': ':''}${m.txt}</strong></div></div>`}
+function renderDualMascotStatus(ent){const metaCob=calcMeta(ent).geral||0; if(ent?.is_terceiro || ent?.type==='terceiro'){return `<div>${renderMascotStatus(metaCob,'Cobrança terceiro')}</div>`} const vendaRow=(getSalesRows(ent, ent.type==='filial'?'venda_filial_meta':'venda_filial_vendedor_meta')[0])||null; const vendaPerc=salesNum(salesCell(vendaRow,['Atingido Total'])); return `<div>${renderMascotStatus(metaCob,'Cobrança')}${renderMascotStatus(vendaPerc,'Vendas/serviços')}</div>`}
+function salesCfgHeader(ent){const c=calcMeta(ent).cfg||{}; return ent.type==='filial' ? `mín. vendas ${Number(c.gerente_vendas_min_pct||0)}% · mín. serviços ${Number(c.gerente_servicos_min_pct||0)}%` : `mín. vendas ${Number(c.vendas_min_pct||0)}% · mín. serviços ${Number(c.servicos_min_pct||0)}%`}
+function rentabilidadeAtualPct(ent){return Number(ent?.rentabilidade_pct||0)}
+function renderRentabilidadeBadge(ent){const r=rentabilidadeAtualPct(ent); const txt=r?`${r.toFixed(2).replace('.',',')}%`:'Sem dado'; return `<div class="rent-badge"><span>📊 Rentabilidade atual</span><strong>${txt}</strong></div>`}
+function renderSalesPanel(ent){const blocks = ent.type==='filial' ? [['venda_filial_meta','📈 Venda · Meta Filial'],['servico_filial_ouro_fob','🛠️ Serviço · Ouro / FOB'],['venda_filial_subgrupo_20k','🚚 Venda · Caminhão 20K / Subgrupo']] : [['venda_filial_vendedor_meta','📈 Venda · Meta Vendedor'],['servico_filial_vendedor_ouro_fob','🛠️ Serviço · Ouro / FOB Vendedor'],['venda_vendedor_subgrupo_20k','🚚 Venda · Caminhão 20K / Subgrupo']]; return `<div class="glass panel sales-panel"><div class="section-head" style="margin:0 0 10px;align-items:flex-start"><div><h3 style="margin:0">💲 Vendas e metas <span class="sales-note">· SGI / mês atual</span></h3><div style="margin-top:8px">${renderRentabilidadeBadge(ent)}</div></div><div class="sales-note" style="text-align:right;max-width:280px">${salesCfgHeader(ent)}</div></div>${renderDualMascotStatus(ent)}<div class="sales-stack">${blocks.map(([k,t])=>renderSalesRows(ent,k,t)).join('')}</div><div style="height:14px"></div>${renderServicosEntidade(ent)}</div>`}
+
+function salesMetricFromRow(row,key){if(!row) return 0; if(key==='venda_realizado') return salesNum(salesCell(row,['Realizado (R$) Total','Realizado(R$) Total'])); if(key==='servico_realizado') return salesNum(salesCell(row,['Realizado (R$) Total','Realizado(R$) Total'])); if(key==='venda_atingido') return salesNum(salesCell(row,['Atingido Total'])); if(key==='servico_atingido') return salesNum(salesCell(row,['Atingido Total'])); return 0}
+function bestLiveSalesEntity(entities,key){let best=null; entities.forEach(ent=>{const rows=getSalesRows(ent,key); rows.forEach(r=>{const val=salesMetricFromRow(r,key.includes('servico')?'servico_realizado':'venda_realizado'); if(!best || val>best.val) best={ent,row:r,val};})}); return best}
+function defaultVendPolicy(){return [
+{faixa1:'0',faixa2:'50999.99',comissao:'0.70',bonus90:'100',bonus100:'250',bonus120:'320',rent48:'200',rent52:'300',rent55:'400',servico_pct:'12',caminhao_pct:'20'},
+{faixa1:'51000',faixa2:'70999.99',comissao:'0.74',bonus90:'130',bonus100:'270',bonus120:'350',rent48:'200',rent52:'300',rent55:'400',servico_pct:'12',caminhao_pct:'20'},
+{faixa1:'71000',faixa2:'90999.99',comissao:'0.76',bonus90:'160',bonus100:'290',bonus120:'380',rent48:'200',rent52:'300',rent55:'400',servico_pct:'12',caminhao_pct:'20'},
+{faixa1:'91000',faixa2:'100999.99',comissao:'0.78',bonus90:'190',bonus100:'330',bonus120:'390',rent48:'200',rent52:'300',rent55:'400',servico_pct:'12',caminhao_pct:'20'},
+{faixa1:'101000',faixa2:'120999.99',comissao:'0.80',bonus90:'220',bonus100:'360',bonus120:'420',rent48:'200',rent52:'300',rent55:'400',servico_pct:'12',caminhao_pct:'20'},
+{faixa1:'121000',faixa2:'140999.99',comissao:'0.82',bonus90:'250',bonus100:'380',bonus120:'430',rent48:'200',rent52:'300',rent55:'400',servico_pct:'12',caminhao_pct:'20'},
+{faixa1:'141000',faixa2:'160999.99',comissao:'0.84',bonus90:'270',bonus100:'400',bonus120:'450',rent48:'200',rent52:'300',rent55:'400',servico_pct:'12',caminhao_pct:'20'},
+{faixa1:'161000',faixa2:'180999.99',comissao:'0.86',bonus90:'290',bonus100:'410',bonus120:'470',rent48:'200',rent52:'300',rent55:'400',servico_pct:'12',caminhao_pct:'20'},
+{faixa1:'181000',faixa2:'200999.99',comissao:'0.88',bonus90:'300',bonus100:'420',bonus120:'500',rent48:'200',rent52:'300',rent55:'400',servico_pct:'12',caminhao_pct:'20'},
+{faixa1:'201000',faixa2:'ACIMA',comissao:'0.90',bonus90:'320',bonus100:'430',bonus120:'550',rent48:'200',rent52:'300',rent55:'400',servico_pct:'12',caminhao_pct:'20'}
+]}
+function defaultGerPolicy(){return [
+{faixa1:'0',faixa2:'80999.99',bonusLoja:'300',comissao:'0.50',rent48:'100',rent52:'150',rent55:'300',servico_pct:'6',caminhao_pct:'10'},
+{faixa1:'81000',faixa2:'110999.99',bonusLoja:'400',comissao:'0.50',rent48:'100',rent52:'150',rent55:'300',servico_pct:'6',caminhao_pct:'10'},
+{faixa1:'111000',faixa2:'140999.99',bonusLoja:'500',comissao:'0.45',rent48:'100',rent52:'150',rent55:'300',servico_pct:'6',caminhao_pct:'10'},
+{faixa1:'141000',faixa2:'170999.99',bonusLoja:'600',comissao:'0.45',rent48:'100',rent52:'150',rent55:'300',servico_pct:'6',caminhao_pct:'10'},
+{faixa1:'171000',faixa2:'200999.99',bonusLoja:'700',comissao:'0.45',rent48:'100',rent52:'150',rent55:'300',servico_pct:'6',caminhao_pct:'10'},
+{faixa1:'201000',faixa2:'230999.99',bonusLoja:'750',comissao:'0.45',rent48:'100',rent52:'150',rent55:'300',servico_pct:'6',caminhao_pct:'10'},
+{faixa1:'231000',faixa2:'260999.99',bonusLoja:'800',comissao:'0.45',rent48:'100',rent52:'150',rent55:'300',servico_pct:'6',caminhao_pct:'10'},
+{faixa1:'261000',faixa2:'290999.99',bonusLoja:'900',comissao:'0.45',rent48:'100',rent52:'150',rent55:'300',servico_pct:'6',caminhao_pct:'10'},
+{faixa1:'291000',faixa2:'320999.99',bonusLoja:'950',comissao:'0.45',rent48:'100',rent52:'150',rent55:'300',servico_pct:'6',caminhao_pct:'10'},
+{faixa1:'321000',faixa2:'ACIMA',bonusLoja:'1000',comissao:'0.45',rent48:'100',rent52:'150',rent55:'300',servico_pct:'6',caminhao_pct:'10'}
+]}
 function commissionCfg(cfg){return {
 vendedor_policy:Array.isArray(cfg?.vendedor_policy)&&cfg.vendedor_policy.length?cfg.vendedor_policy:defaultVendPolicy(),
 gerente_policy:Array.isArray(cfg?.gerente_policy)&&cfg.gerente_policy.length?cfg.gerente_policy:defaultGerPolicy(),
@@ -7603,53 +7841,12 @@ async function removerMetaIndividual(){
     if(j.ok){await carregarConfigOnline(); renderMetasTab(); const restoreMsg=document.getElementById('metaSaveMsg'); if(restoreMsg) restoreMsg.textContent='✅ Configuração individual removida.';}
   }catch(e){console.log('Erro ao remover meta individual',e); if(msgEl) msgEl.textContent='⚠️ Não consegui remover online.';}
 }
-function renderLogsTab(){
-  const cfgPanel=renderCobrancaConfigPanel();
-  const filOpts=['<option value="">Todas as filiais</option>',...ORDEM.map(f=>`<option value="${f}">${f}</option>`)].join('');
-  const vendOpts=['<option value="">Todos os usuários</option>',...Array.from(new Set(COB_LOGS.map(x=>x.usuario).filter(Boolean))).sort().map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)].join('');
-  window._logPage=1; window._logPageSize=50;
-  logSection.innerHTML=cfgPanel+`<div class="section-head"><div><h2>🧾 Histórico de cobranças</h2><div class="hint">Filtre por data, usuário ou filial. Agora a lista é paginada para não sobrecarregar a tela.</div></div></div><div class="glass panel"><div class="search-row"><div class="input-card"><label>Buscar cliente/título</label><input id="logQ" placeholder="Nome, título, parcela"></div><div class="input-card"><label>Data inicial</label><input id="logDe" type="date"></div><div class="input-card"><label>Data final</label><input id="logAte" type="date"></div><div class="input-card"><label>Filial</label><select id="logFil">${filOpts}</select></div></div><div class="search-row" style="margin-top:10px"><div class="input-card"><label>Usuário</label><select id="logVend">${vendOpts}</select></div><div style="display:flex;align-items:end;gap:10px;flex-wrap:wrap"><button class="btn primary" onclick="applyLogFilter(1)">Filtrar</button><button class="btn soft" onclick="clearLogFilter()">Limpar</button></div></div><div id="logsListInfo" class="note" style="margin:12px 0 8px"></div><div id="logsList" class="logs-list"></div><div id="logsPager" style="display:flex;gap:8px;justify-content:flex-end;align-items:center;margin-top:12px;flex-wrap:wrap"></div></div>`;
-  applyLogFilter(1);
-}
-function parseDateBR(s){
-  if(!s) return null;
-  const v=String(s).trim();
-  let m=v.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2}))?)?/);
-  if(m){const d=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]),Number(m[4]||0),Number(m[5]||0),Number(m[6]||0)); return isNaN(d)?null:d;}
-  m=v.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2})(?::(\d{2}))?)?/);
-  if(m){const d=new Date(Number(m[3]),Number(m[2])-1,Number(m[1]),Number(m[4]||0),Number(m[5]||0),Number(m[6]||0)); return isNaN(d)?null:d;}
-  const d=new Date(v.replace(' ', 'T')); return isNaN(d)?null:d;
-}
-function parseDate(s){return parseDateBR(s)}
-function _logDateValue(x){return x.server_time||x.created_at||x.data_hora||x.data||x.server_date||''}
-function applyLogFilter(page){
-  if(page) window._logPage=page;
-  const q=(document.getElementById('logQ')?.value||'').toLowerCase().trim();
-  const de=parseDate(document.getElementById('logDe')?.value);
-  const ate=parseDate(document.getElementById('logAte')?.value);
-  const fil=document.getElementById('logFil')?.value||'';
-  const vend=document.getElementById('logVend')?.value||'';
-  let arr=[...(COB_LOGS||[])].reverse();
-  arr=arr.filter(x=>{
-    const txt=`${x.cliente||''} ${x.nome||''} ${x.titulo||''} ${x.parcela||''} ${x.telefone||''}`.toLowerCase();
-    const dt=parseDate(_logDateValue(x));
-    if(q && !txt.includes(q)) return false;
-    if(fil && String(x.filial||'').toUpperCase()!==String(fil).toUpperCase()) return false;
-    if(vend && String(x.usuario||'')!==vend) return false;
-    if(de && (!dt || dt<de)) return false;
-    if(ate){const end=new Date(ate.getFullYear(),ate.getMonth(),ate.getDate(),23,59,59,999); if(!dt || dt>end) return false;}
-    return true;
-  });
-  _logFiltered=arr;
-  const host=document.getElementById('logsList'); const info=document.getElementById('logsListInfo'); const pager=document.getElementById('logsPager'); if(!host) return;
-  const size=Number(window._logPageSize||50); const total=arr.length; const pages=Math.max(1,Math.ceil(total/size)); let pg=Math.max(1,Math.min(Number(window._logPage||1),pages)); window._logPage=pg;
-  const start=(pg-1)*size; const slice=arr.slice(start,start+size);
-  if(info) info.textContent= total ? `Encontradas ${total} cobrança(s). Mostrando ${start+1} a ${Math.min(start+size,total)}. Página ${pg}/${pages}.` : 'Nenhuma cobrança encontrada para esse filtro.';
-  host.innerHTML=slice.length?slice.map((x,i)=>{const realIdx=start+i; const dtTxt=String(_logDateValue(x)||'').replace('T',' ').slice(0,16); return `<div class="log-row"><div><div style="font-weight:900">${esc(x.cliente||x.nome||'')}</div><div class="small muted">${esc(x.titulo||'')} · Parcela ${esc(x.parcela||'')}</div></div><div><strong>${R(x.pendente||0)}</strong><div class="small muted">${esc(x.filial||'')} · ${esc(x.usuario||'')}</div></div><div><strong>${esc(x.telefone||'')}</strong><div class="small muted">Telefone</div></div><div><strong>${esc(dtTxt)}</strong><div class="small muted">Data</div></div><div><button class="btn danger" onclick="removerCobrancaIdx(${realIdx})">Remover</button></div></div>`}).join(''):'<div class="empty">Nenhuma cobrança encontrada para esse filtro.</div>';
-  if(pager){pager.innerHTML= total>size ? `<button class="btn soft" ${pg<=1?'disabled':''} onclick="applyLogFilter(${pg-1})">⬅️ Anterior</button><span class="mini-chip">Página ${pg} de ${pages}</span><button class="btn soft" ${pg>=pages?'disabled':''} onclick="applyLogFilter(${pg+1})">Próxima ➡️</button>` : '';}
-}
+function renderLogsTab(){const cfgPanel=renderCobrancaConfigPanel(); const filOpts=['<option value="">Todas as filiais</option>',...ORDEM.map(f=>`<option value="${f}">${f}</option>`)].join(''); const vendOpts=['<option value="">Todos os usuários</option>',...Array.from(new Set(COB_LOGS.map(x=>x.usuario).filter(Boolean))).sort().map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)].join(''); logSection.innerHTML=cfgPanel+`<div class="section-head"><div><h2>🧾 Histórico de cobranças</h2><div class="hint">Filtre por data, usuário ou filial. Também é possível remover lançamentos indevidos.</div></div></div><div class="glass panel"><div class="search-row"><div class="input-card"><label>Buscar cliente/título</label><input id="logQ" placeholder="Nome, título, parcela"></div><div class="input-card"><label>Data inicial</label><input id="logDe" type="date"></div><div class="input-card"><label>Data final</label><input id="logAte" type="date"></div><div class="input-card"><label>Filial</label><select id="logFil">${filOpts}</select></div></div><div class="search-row" style="margin-top:10px"><div class="input-card"><label>Usuário</label><select id="logVend">${vendOpts}</select></div><div style="display:flex;align-items:end;gap:10px"><button class="btn primary" onclick="applyLogFilter()">Filtrar</button><button class="btn soft" onclick="clearLogFilter()">Limpar</button></div></div><div id="logsList" class="logs-list"></div></div>`; applyLogFilter()}
+function parseDateBR(s){if(!s) return null; const v=String(s).trim(); let m=v.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); if(m){const d=new Date(Number(m[3]), Number(m[2])-1, Number(m[1])); return isNaN(d)?null:d} const d=new Date(v); return isNaN(d)?null:d}
+function parseDate(s){if(!s) return null; const d=new Date(s); return isNaN(d)?null:d}
+function applyLogFilter(){const q=(document.getElementById('logQ')?.value||'').toLowerCase(); const de=parseDate(document.getElementById('logDe')?.value); const ate=parseDate(document.getElementById('logAte')?.value); const fil=document.getElementById('logFil')?.value||''; const vend=document.getElementById('logVend')?.value||''; let arr=[...COB_LOGS].reverse(); arr=arr.filter(x=>{const txt=`${x.cliente||''} ${x.titulo||''} ${x.parcela||''}`.toLowerCase(); const dt=parseDate(x.server_time||x.data||''); if(q && !txt.includes(q)) return false; if(fil && String(x.filial||'')!==fil) return false; if(vend && String(x.usuario||'')!==vend) return false; if(de && (!dt || dt<de)) return false; if(ate){const end=new Date(ate); end.setHours(23,59,59,999); if(!dt || dt>end) return false;} return true}); _logFiltered=arr; const host=document.getElementById('logsList'); if(!host) return; host.innerHTML=arr.length?arr.map((x,i)=>`<div class="log-row"><div><div style="font-weight:900">${esc(x.cliente||'')}</div><div class="small muted">${esc(x.titulo||'')} · Parcela ${esc(x.parcela||'')}</div></div><div><strong>${R(x.pendente||0)}</strong><div class="small muted">${esc(x.filial||'')} · ${esc(x.usuario||'')}</div></div><div><strong>${esc(x.telefone||'')}</strong><div class="small muted">Telefone</div></div><div><strong>${esc((x.server_time||'').replace('T',' ').slice(0,16))}</strong><div class="small muted">Data</div></div><div><button class="btn danger" onclick="removerCobrancaIdx(${i})">Remover</button></div></div>`).join(''):'<div class="empty">Nenhuma cobrança encontrada para esse filtro.</div>'}
 function removerCobrancaIdx(i){const x=_logFiltered[i]; if(!x) return; removerCobranca(x.id||'', x.cliente||'', x.titulo||'', x.parcela||'');}
-function clearLogFilter(){['logQ','logDe','logAte'].forEach(id=>{const e=document.getElementById(id); if(e) e.value=''}); ['logFil','logVend'].forEach(id=>{const e=document.getElementById(id); if(e) e.value=''}); applyLogFilter(1)}
+function clearLogFilter(){['logQ','logDe','logAte'].forEach(id=>{const e=document.getElementById(id); if(e) e.value=''}); ['logFil','logVend'].forEach(id=>{const e=document.getElementById(id); if(e) e.value=''}); applyLogFilter()}
 
 function msgMatchesUser(m){
   if(!usuarioAtual) return false;
@@ -8124,23 +8321,6 @@ function abrirSnapshotNovaAba(){
   }catch(e){console.error(e);toast('Erro ao abrir nova aba.');}
 }
 
-
-function _downloadHtmlXls(filename, html){
-  const blob=new Blob(['\ufeff'+html],{type:'application/vnd.ms-excel;charset=utf-8'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},1000);
-}
-function baixarComissionamentoMesAtual(){
-  const month=(document.getElementById('histComMonth')?.value)||mesAtualComissao();
-  const snap=HIST_COMISSAO?.months?.[month]||buildSnapshotComissionamentoMensal(month);
-  const rows=snap.entidades||[];
-  const headers=['Nome','Tipo','Filial','Login','Pendente','Recebido','Meta Geral %','Venda','Serviço','Caminhão','Comissão vendas','Comissão serviços','Comissão caminhão','Bônus','Rentab 48','Rentab 52,15','Rentab 55,50','Total previsto'];
-  const trs=rows.map(r=>`<tr><td>${esc(r.nome)}</td><td>${esc(r.tipo)}</td><td>${esc(r.filial)}</td><td>${esc(r.login)}</td><td>${Number(r.pendente||0)}</td><td>${Number(r.recebido||0)}</td><td>${Number(r.meta_geral||0)}</td><td>${Number(r.venda_real||0)}</td><td>${Number(r.servico_real||0)}</td><td>${Number(r.caminhao_real||0)}</td><td>${Number(r.comissao_vendas||0)}</td><td>${Number(r.comissao_servicos||0)}</td><td>${Number(r.comissao_caminhao||0)}</td><td>${Number(r.bonus_meta||0)}</td><td>${Number(r.rent48||0)}</td><td>${Number(r.rent52||0)}</td><td>${Number(r.rent55||0)}</td><td>${Number(r.total_previsto||0)}</td></tr>`).join('');
-  const html=`<html><head><meta charset="UTF-8"></head><body><table border="1"><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${trs}</tbody></table></body></html>`;
-  _downloadHtmlXls(`comissionamento_${month}.xls`, html);
-}
-function relatoriosFechamentoLinksHtml(){
-  return `<div class="glass panel" style="margin-bottom:14px;border-color:rgba(96,165,250,.35)"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">📥 Relatórios XLS da última execução</h2><div class="hint">Arquivos para conferir cobranças/recebimentos e auditar pagamentos por faixa.</div></div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn primary" href="/colaborador/relatorios_cobranca_recebimentos.zip" target="_blank">📦 Baixar pacote ZIP</a><a class="btn soft" href="/colaborador/contas_receber_principal.xls" target="_blank">Contas a receber principal</a><a class="btn soft" href="/colaborador/quitados_180d_contas_receber.xlsx" target="_blank">Quitados processado</a><a class="btn soft" href="/colaborador/quitados_180d_contas_receber.json" target="_blank">JSON quitados</a></div></div>`;
-}
 function renderHistoricoComissaoResults(){
   const months=_histComMeses(); const current=document.getElementById('histComMonth')?.value || months[0] || mesAtualComissao();
   const box=document.getElementById('histComResults'); if(!box) return;
@@ -8148,7 +8328,7 @@ function renderHistoricoComissaoResults(){
   const saveInput=document.getElementById('histComMonthSave'); if(saveInput && !saveInput.value) saveInput.value=mesAtualComissao();
   if(!snap){box.innerHTML=`<div class="empty">Nenhum histórico salvo para ${esc(current)}. Clique em “Salvar fechamento do mês atual” para gravar o resultado visível agora.</div>`; return;}
   const rows=[...(snap.entidades||[])].sort((a,b)=>String(a.tipo).localeCompare(String(b.tipo),'pt-BR')||String(a.nome).localeCompare(String(b.nome),'pt-BR'));
-  box.innerHTML=`<div class="kpis">${makeKpi('Mês',esc(snap.month||current),'var(--blue)')}${makeKpi('Total previsto',R(snap.total_previsto||0),'var(--green)')}${makeKpi('Entidades',String(rows.length),'var(--orange)')}${makeKpi('Salvo em',esc((snap.atualizado_em_br||snap.gerado_em||'').replace('T',' ').slice(0,19)),'var(--blue)')}</div>`+`<div class="glass panel"><div class="form-grid"><div class="input-card"><label>Ver tela congelada individual</label><div class="hint">A tela congelada mostra os cards/resumo do colaborador salvos no fechamento.</div><select id="histComEntityView">${rows.map(r=>`<option value="${esc(r.key||'')}">${esc(r.nome||'')} · ${esc(r.filial||'')}</option>`).join('')}</select></div><div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap"><button class="btn primary" onclick="abrirTelaComissionamentoCongeladaPorSelect()">Abrir tela congelada</button><button class="btn soft" onclick="baixarComissionamentoMesAtual()">📊 Baixar XLS do mês</button></div></div></div>`+renderComissionamentoHistoricoTable(rows);
+  box.innerHTML=`<div class="kpis">${makeKpi('Mês',esc(snap.month||current),'var(--blue)')}${makeKpi('Total previsto',R(snap.total_previsto||0),'var(--green)')}${makeKpi('Entidades',String(rows.length),'var(--orange)')}${makeKpi('Salvo em',esc((snap.atualizado_em_br||snap.gerado_em||'').replace('T',' ').slice(0,19)),'var(--blue)')}</div>`+`<div class="glass panel"><div class="form-grid"><div class="input-card"><label>Ver tela congelada individual</label><div class="hint">Agora a tela congelada salva um resumo visual compacto, sem a lista enorme de recebimentos/cobranças. Para atualizar este mês com o novo modelo, clique em Salvar fechamento do mês atual novamente.</div><select id="histComEntityView">${rows.map(r=>`<option value="${esc(r.key||'')}">${esc(r.nome||'')} · ${esc(r.filial||'')}</option>`).join('')}</select></div><div style="display:flex;align-items:end"><button class="btn primary" onclick="abrirTelaComissionamentoCongeladaPorSelect()">Abrir tela congelada</button></div></div></div>`+renderComissionamentoHistoricoTable(rows);
 }
 
 function setHistMode(mode){window._histMode=mode; document.getElementById('histDailyPane')?.classList.toggle('hidden',mode!=='daily'); document.getElementById('histMonthPane')?.classList.toggle('hidden',mode!=='monthly'); document.getElementById('histSalesPane')?.classList.toggle('hidden',mode!=='sales'); document.getElementById('histThirdPane')?.classList.toggle('hidden',mode!=='third'); document.getElementById('histComPane')?.classList.toggle('hidden',mode!=='comissao'); document.getElementById('histTabDaily')?.classList.toggle('active',mode==='daily'); document.getElementById('histTabMonthly')?.classList.toggle('active',mode==='monthly'); document.getElementById('histTabSales')?.classList.toggle('active',mode==='sales'); document.getElementById('histTabThird')?.classList.toggle('active',mode==='third'); document.getElementById('histTabCom')?.classList.toggle('active',mode==='comissao'); if(mode==='daily'){updateHistEntityFilter(); renderHistoricoResults();} else if(mode==='monthly'){updateHistMonthEntityFilter(); renderHistoricoMonthResults();} else if(mode==='third'){renderHistoricoTerceiro();} else if(mode==='comissao'){renderHistoricoComissaoResults();} else {updateHistSalesEntityFilter(); updateHistSalesMonthEntityFilter(); renderHistoricoSalesResults(); renderHistoricoSalesMonthResults();}}
@@ -8156,7 +8336,7 @@ function updateHistEntityFilter(){const dateVal=_histCurrentDate(); const scope=
 function updateHistMonthEntityFilter(){const monthVal=_histCurrentMonth(); const scope=document.getElementById('histMonthScope')?.value||'empresa'; const wrap=document.getElementById('histMonthEntityWrap'); const sel=document.getElementById('histMonthEntity'); if(!wrap||!sel) return; wrap.classList.toggle('hidden',!(scope==='vendedores'||scope==='filiais')); sel.innerHTML=_histMonthEntityOptions(monthVal, scope);}
 function renderHistoricoTable(rows, scope, title='📋 Histórico'){if(!rows.length) return `<div class="empty">Nenhum registro encontrado para o filtro escolhido.</div>`; return `<div class="glass panel"><div class="section-head" style="margin:0 0 10px"><div><h2 style="font-size:18px">${title}</h2></div></div>${rows.map(r=>`<div class="log-row" style="margin-bottom:10px"><div><strong>${esc(r.nome||r.filial||'Empresa')}</strong><div class="small muted">${esc(r.filial||'Resumo')}</div></div><div><strong>${R(r.pendente||0)}</strong><div class="small muted">Pendente</div></div><div><strong>${R(r.recebido||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${pct(r.perc_meta||0)}</strong><div class="small muted">Meta</div></div><div><strong>${R(r.grave_alvo||0)} / ${R(r.alerta_alvo||0)} / ${R(r.atencao_alvo||0)}</strong><div class="small muted">Alvos G/A/At</div></div></div>`).join('')}</div>`}
 function renderHistoricoResults(){const dateVal=_histCurrentDate(); const scope=document.getElementById('histScope')?.value||'empresa'; const entity=document.getElementById('histEntity')?.value||''; const box=document.getElementById('histResults'); const d=HIST_DASH?.dates?.[dateVal]; if(!box){return} if(!d){box.innerHTML='<div class="empty">Nenhum histórico salvo para esta data.</div>'; return} let top=`<div class="kpis">${makeKpi('Pendente do dia',R(d.empresa?.pendente||0),'var(--red)')}${makeKpi('Recebido do dia',R(d.empresa?.recebido||0),'var(--green)')}${makeKpi('Grave do dia',R(d.empresa?.grave||0),'var(--red)')}${makeKpi('Alerta do dia',R(d.empresa?.alerta||0),'var(--orange)')}</div><div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0"><div><h2 style="font-size:18px">⚙️ Meta usada no dia</h2><div class="hint">Global: G ${Number(d.empresa?.config_global?.grave_pct||0)}% · A ${Number(d.empresa?.config_global?.alerta_pct||0)}% · At ${Number(d.empresa?.config_global?.atencao_pct||0)}% · Pesos ${Number(d.empresa?.config_global?.peso_grave||0)}/${Number(d.empresa?.config_global?.peso_alerta||0)}/${Number(d.empresa?.config_global?.peso_atencao||0)}</div></div><div class="small muted">${esc(dateVal)}</div></div></div>`; if(scope==='empresa'){box.innerHTML=top + renderHistoricoTable([{nome:'Empresa',filial:'Resumo geral',pendente:d.empresa?.pendente||0,recebido:d.empresa?.recebido||0,perc_meta:0,grave_alvo:0,alerta_alvo:0,atencao_alvo:0}], 'empresa','📋 Histórico diário da empresa'); return} const source = scope==='filiais' ? Object.entries(d.filiais||{}).map(([k,v])=>({...v,key:k})) : Object.entries(d.vendedores||{}).map(([k,v])=>({...v,key:k})); const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=top + renderHistoricoTable(rows, scope, `📋 Histórico diário ${scope==='filiais'?'de filiais':'de vendedores'}`);}
-function renderHistoricoMonthResults(){const monthVal=_histCurrentMonth(); const scope=document.getElementById('histMonthScope')?.value||'empresa'; const entity=document.getElementById('histMonthEntity')?.value||''; const box=document.getElementById('histMonthResults'); const d=HIST_DASH?.months_closed?.[monthVal]; if(!box){return} if(!d){box.innerHTML=relatoriosFechamentoLinksHtml()+'<div class="empty">Nenhum fechamento mensal salvo para este mês.</div>'; return} const cfg=d.config_global_fechamento||{}; let top=relatoriosFechamentoLinksHtml()+`<div class="kpis">${makeKpi('Mês fechado',esc(monthVal),'var(--blue)')}${makeKpi('Último dia',esc(d.ultimo_dia_historico||'-'),'var(--blue)')}${makeKpi('Snapshot final',esc(d.snapshot_final_data||'-'),'var(--blue)')}${makeKpi('Meta mês',esc(d.meta_file||'-'),'var(--blue)')}</div><div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0"><div><h2 style="font-size:18px">📦 Fechamento mensal travado</h2><div class="hint">Global no fechamento: G ${Number(cfg.grave_pct||0)}% · A ${Number(cfg.alerta_pct||0)}% · At ${Number(cfg.atencao_pct||0)}% · Pesos ${Number(cfg.peso_grave||0)}/${Number(cfg.peso_alerta||0)}/${Number(cfg.peso_atencao||0)}</div></div><div class="small muted">Fechado em ${esc((d.fechado_em||'').replace('T',' ').slice(0,16))}</div></div></div>`;
+function renderHistoricoMonthResults(){const monthVal=_histCurrentMonth(); const scope=document.getElementById('histMonthScope')?.value||'empresa'; const entity=document.getElementById('histMonthEntity')?.value||''; const box=document.getElementById('histMonthResults'); const d=HIST_DASH?.months_closed?.[monthVal]; if(!box){return} if(!d){box.innerHTML='<div class="empty">Nenhum fechamento mensal salvo para este mês.</div>'; return} const cfg=d.config_global_fechamento||{}; let top=`<div class="kpis">${makeKpi('Mês fechado',esc(monthVal),'var(--blue)')}${makeKpi('Último dia',esc(d.ultimo_dia_historico||'-'),'var(--blue)')}${makeKpi('Snapshot final',esc(d.snapshot_final_data||'-'),'var(--blue)')}${makeKpi('Meta mês',esc(d.meta_file||'-'),'var(--blue)')}</div><div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0"><div><h2 style="font-size:18px">📦 Fechamento mensal travado</h2><div class="hint">Global no fechamento: G ${Number(cfg.grave_pct||0)}% · A ${Number(cfg.alerta_pct||0)}% · At ${Number(cfg.atencao_pct||0)}% · Pesos ${Number(cfg.peso_grave||0)}/${Number(cfg.peso_alerta||0)}/${Number(cfg.peso_atencao||0)}</div></div><div class="small muted">Fechado em ${esc((d.fechado_em||'').replace('T',' ').slice(0,16))}</div></div></div>`;
  if(scope==='empresa'){const e=d.empresa_final||{}; box.innerHTML=top+renderHistoricoTable([{nome:'Empresa',filial:'Resultado final do mês',pendente:e.pendente||0,recebido:e.recebido||0,perc_meta:e.perc_meta||0,grave_alvo:e.grave_alvo||0,alerta_alvo:e.alerta_alvo||0,atencao_alvo:e.atencao_alvo||0}], 'empresa','📋 Resultado final mensal da empresa'); return}
  const source=scope==='filiais'?Object.entries(d.filiais_finais||{}).map(([k,v])=>({...v,key:k})) : Object.entries(d.vendedores_finais||{}).map(([k,v])=>({...v,key:k}));
  const rows=entity?source.filter(x=>x.key===entity):source; box.innerHTML=top + renderHistoricoTable(rows, scope, `📋 Resultado final mensal ${scope==='filiais'?'de filiais':'de vendedores'}`);}
@@ -8645,22 +8825,12 @@ function write_json_atomic($path, $data){
   if (@file_put_contents($tmp, $json, LOCK_EX) === false) return false;
   return @rename($tmp, $path);
 }
-function cleanup_old_backups($backupDir, $days=60){
-  $limit = time() - ($days * 86400);
-  foreach (glob($backupDir . '/cobrancas_log_*') ?: [] as $f) {
-    if (is_file($f) && @filemtime($f) < $limit) @unlink($f);
-  }
-}
 function make_backup($file, $backupDir, $tag='before_write'){
   if (!file_exists($file)) return;
   $day = date('Y-m-d');
+  $stamp = date('His');
   @copy($file, $backupDir . "/cobrancas_log_{$day}_latest.json");
-  // Backup com hora só em exclusão/erro. Em cobrança comum fica latest + append diário para não lotar o FTP.
-  if ($tag !== 'before_write') {
-    $stamp = date('His');
-    @copy($file, $backupDir . "/cobrancas_log_{$day}_{$stamp}_{$tag}.json");
-  }
-  cleanup_old_backups($backupDir, 60);
+  @copy($file, $backupDir . "/cobrancas_log_{$day}_{$stamp}_{$tag}.json");
 }
 function restore_latest_backup($file, $backupDir){
   if (file_exists($file) && filesize($file) > 2) return false;
@@ -8985,7 +9155,6 @@ echo json_encode(['ok'=>true,'data'=>$data], JSON_UNESCAPED_UNICODE); exit;
 # 📤 UPLOAD AUTOMÁTICO VIA FTP
 # =========================================
 import ftplib
-import zipfile
 from io import BytesIO
 
 FTP_HOST  = 'moveisdolar.com.br'
@@ -9042,29 +9211,14 @@ if FTP_USER and FTP_PASS:
         except Exception:
             ftp.storbinary('STOR fechamentos_mensais.json', BytesIO(b'{"months":{}}'))
         try:
-            arquivos_relatorios_zip = []
-            if 'caminho' in globals() and caminho and os.path.exists(caminho):
-                with open(caminho, 'rb') as f_principal:
-                    ftp.storbinary('STOR contas_receber_principal.xls', f_principal)
-                arquivos_relatorios_zip.append((caminho, 'contas_receber_principal.xls'))
             if quitados_180_info.get('json_path') and os.path.exists(quitados_180_info['json_path']):
                 with open(quitados_180_info['json_path'], 'rb') as f_q_json:
                     ftp.storbinary('STOR quitados_180d_contas_receber.json', f_q_json)
-                arquivos_relatorios_zip.append((quitados_180_info['json_path'], 'quitados_180d_contas_receber.json'))
             if quitados_180_info.get('xlsx_path') and os.path.exists(quitados_180_info['xlsx_path']):
                 with open(quitados_180_info['xlsx_path'], 'rb') as f_q_xlsx:
                     ftp.storbinary('STOR quitados_180d_contas_receber.xlsx', f_q_xlsx)
-                arquivos_relatorios_zip.append((quitados_180_info['xlsx_path'], 'quitados_180d_contas_receber.xlsx'))
-            if arquivos_relatorios_zip:
-                zip_path = os.path.join(pasta, 'relatorios_cobranca_recebimentos.zip')
-                with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-                    for _src, _arc in arquivos_relatorios_zip:
-                        try: zf.write(_src, _arc)
-                        except Exception: pass
-                with open(zip_path, 'rb') as f_zip:
-                    ftp.storbinary('STOR relatorios_cobranca_recebimentos.zip', f_zip)
         except Exception as e_q_ftp:
-            print(f'⚠️ Erro ao enviar relatórios de cobrança/quitados ao FTP: {e_q_ftp}')
+            print(f'⚠️ Erro ao enviar quitados 180d ao FTP: {e_q_ftp}')
 
         # Pacote de vendas/margem/rentabilidade/serviços/diária fica exclusivo do dashboard_sales_worker_headless.py.
         # Isso evita o navegador misturar arquivos de horários diferentes.
@@ -9094,4 +9248,3 @@ else:
 print('\n🔥 FINALIZADO!')
 print("🔎 Fechamento automático em ambiente Railway")
 driver.quit()
-print('✅ V30_FIX_LOGS_COMISSAO_EXPORTS_SEM_REMOVER_V27 carregado')
