@@ -1,4 +1,4 @@
-# VERSAO: COBRANCA10_V29B_BASE_V27_SEM_REMOVER_SENHAS_TIMER_EXPORTS_LOGS_FIX
+# VERSAO: COBRANCA10_V27_COBRANCAS_BACKUP_SENHAS_LINHA_LOGIN_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -8723,135 +8723,6 @@ window.addEventListener('load',async ()=>{
   setTimeout(pollSalesLive,3000);
   setTimeout(pollDashboardLiveReload,5000);
 })
-
-// ===== V29B BASE V27 — FIX FINAL SEM REMOVER SENHAS/BLOQUEIO/TIMER =====
-// Mantém: senhas em linha, login/senha visível, alteração de login, bloqueio geral e timer.
-// Corrige: histórico de cobranças com paginação/filtro data, exportações e comissão crediarista.
-let _logFiltered = Array.isArray(window._logFiltered) ? window._logFiltered : [];
-let _logPageItems = [];
-let _logPage = 1;
-const LOG_PAGE_SIZE = 50;
-
-function normalizeDateKeyMDL(v){
-  if(!v) return '';
-  let s=String(v).trim();
-  if(!s) return '';
-  let m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if(m) return `${m[1]}-${m[2]}-${m[3]}`;
-  m=s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-  if(m) return `${m[3]}-${m[2]}-${m[1]}`;
-  const d=new Date(s.replace(' ','T'));
-  if(!isNaN(d)) return d.toISOString().slice(0,10);
-  return '';
-}
-function logDateKeyMDL(x){
-  return normalizeDateKeyMDL(x?.server_date || x?.server_time || x?.data || x?.created_at || x?.horario || x?.timestamp || '');
-}
-function logTimeLabelMDL(x){
-  const raw=String(x?.server_time || x?.data || x?.created_at || '').trim();
-  if(!raw) return '';
-  const dk=normalizeDateKeyMDL(raw);
-  const hm=(raw.match(/(\d{2}:\d{2})/)||[])[1]||'';
-  return dk ? `${dk}${hm?' '+hm:''}` : raw.replace('T',' ').slice(0,16);
-}
-function renderLogsPageMDL(){
-  const host=document.getElementById('logsList'); if(!host) return;
-  const total=_logFiltered.length;
-  const pages=Math.max(1, Math.ceil(total/LOG_PAGE_SIZE));
-  _logPage=Math.min(Math.max(1,_logPage||1),pages);
-  const start=(_logPage-1)*LOG_PAGE_SIZE;
-  _logPageItems=_logFiltered.slice(start,start+LOG_PAGE_SIZE);
-  const controls=`<div class="glass" style="padding:10px 12px;margin:10px 0;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
-    <div class="small muted"><strong style="color:#e5e7eb">${total}</strong> cobrança(s) encontrada(s) · mostrando ${total?start+1:0} até ${Math.min(start+LOG_PAGE_SIZE,total)} · página ${_logPage}/${pages}</div>
-    <div style="display:flex;gap:8px;align-items:center"><button class="btn soft" ${_logPage<=1?'disabled':''} onclick="_logPage--;renderLogsPageMDL()">◀ Anterior</button><button class="btn soft" ${_logPage>=pages?'disabled':''} onclick="_logPage++;renderLogsPageMDL()">Próxima ▶</button></div>
-  </div>`;
-  if(!total){host.innerHTML='<div class="empty">Nenhuma cobrança encontrada para esse filtro.</div>'; return;}
-  host.innerHTML=controls+_logPageItems.map((x,i)=>`<div class="log-row"><div><div style="font-weight:900">${esc(x.cliente||'')}</div><div class="small muted">${esc(x.titulo||'')} · Parcela ${esc(x.parcela||'')}</div></div><div><strong>${R(x.pendente||x.valor||0)}</strong><div class="small muted">${esc(x.filial||'')} · ${esc(x.usuario||x.destino_nome||'')}</div></div><div><strong>${esc(x.telefone||'')}</strong><div class="small muted">Telefone</div></div><div><strong>${esc(logTimeLabelMDL(x))}</strong><div class="small muted">Data</div></div><div><button class="btn danger" onclick="removerCobrancaIdx(${i})">Remover</button></div></div>`).join('')+controls;
-}
-function applyLogFilter(){
-  const q=(document.getElementById('logQ')?.value||'').toLowerCase().trim();
-  const de=normalizeDateKeyMDL(document.getElementById('logDe')?.value||'');
-  const ate=normalizeDateKeyMDL(document.getElementById('logAte')?.value||'');
-  const fil=document.getElementById('logFil')?.value||'';
-  const vend=document.getElementById('logVend')?.value||'';
-  let arr=[...(COB_LOGS||[])].slice().reverse();
-  arr=arr.filter(x=>{
-    const txt=`${x.cliente||''} ${x.titulo||''} ${x.parcela||''} ${x.telefone||''}`.toLowerCase();
-    const dk=logDateKeyMDL(x);
-    if(q && !txt.includes(q)) return false;
-    if(fil && String(x.filial||'')!==fil) return false;
-    if(vend && String(x.usuario||'')!==vend) return false;
-    if(de && (!dk || dk<de)) return false;
-    if(ate && (!dk || dk>ate)) return false;
-    return true;
-  });
-  _logFiltered=arr; _logPage=1; renderLogsPageMDL();
-}
-function clearLogFilter(){['logQ','logDe','logAte'].forEach(id=>{const e=document.getElementById(id); if(e) e.value=''}); ['logFil','logVend'].forEach(id=>{const e=document.getElementById(id); if(e) e.value=''}); _logPage=1; applyLogFilter();}
-function removerCobrancaIdx(i){const x=_logPageItems[i] || _logFiltered[i]; if(!x) return; removerCobranca(x.id||'', x.cliente||'', x.titulo||'', x.parcela||'');}
-function renderLogsTab(){
-  const cfgPanel=renderCobrancaConfigPanel();
-  const filOpts=['<option value="">Todas as filiais</option>',...ORDEM.map(f=>`<option value="${f}">${f}</option>`)].join('');
-  const vendOpts=['<option value="">Todos os usuários</option>',...Array.from(new Set((COB_LOGS||[]).map(x=>x.usuario).filter(Boolean))).sort().map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)].join('');
-  logSection.innerHTML=cfgPanel+`<div class="section-head"><div><h2>🧾 Histórico de cobranças</h2><div class="hint">Filtre por data, usuário ou filial. Exibe 50 registros por página para não sobrecarregar a tela.</div></div></div><div class="glass panel"><div class="search-row"><div class="input-card"><label>Buscar cliente/título</label><input id="logQ" placeholder="Nome, título, parcela"></div><div class="input-card"><label>Data inicial</label><input id="logDe" type="date"></div><div class="input-card"><label>Data final</label><input id="logAte" type="date"></div><div class="input-card"><label>Filial</label><select id="logFil">${filOpts}</select></div></div><div class="search-row" style="margin-top:10px"><div class="input-card"><label>Usuário</label><select id="logVend">${vendOpts}</select></div><div style="display:flex;align-items:end;gap:10px"><button class="btn primary" onclick="applyLogFilter()">Filtrar</button><button class="btn soft" onclick="clearLogFilter()">Limpar</button></div></div><div id="logsList" class="logs-list"></div></div>`;
-  applyLogFilter();
-}
-
-function mesKeyBRMDL(v){return normalizeDateKeyMDL(v).slice(0,7)}
-function getLogKeysByUserMDL(ent){
-  const mesAtual=new Date().toISOString().slice(0,7);
-  const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista');
-  const userKeys=isCred?[String(ent.login||'').toLowerCase(),String(ent.nome||'').toLowerCase()]:[String(COBRANCA10_NOME||'').toLowerCase(),String(COBRANCA10_LOGIN||'').toLowerCase()];
-  const out=new Set();
-  (COB_LOGS||[]).forEach(x=>{const u=String(x.usuario||x.destino_login||x.destino_nome||'').toLowerCase(); if(userKeys.includes(u) && mesKeyBRMDL(x.server_time||x.data||x.created_at)===mesAtual) out.add(cobrancaRowKey(x));});
-  return out;
-}
-function renderTerceiroCommission(ent){
-  const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista');
-  const baseCfg=isCred?entityConfig({type:'vendedor',nome:ent.nome,filial:ent.filial}):entityConfig({type:'vendedor',nome:COBRANCA10_NOME,filial:'FTER'});
-  const cfg=commissionCfg(baseCfg);
-  const policy=(isCred?(cfg.camp_cob_crediarista||[]):(cfg.camp_cobranca_terceiro||[]));
-  const policyOk=Array.isArray(policy)&&policy.length?policy:(isCred?defaultCampCrediarista():defaultCampTerceiro());
-  const byFaixa={atencao:{pct:0,cobrado:0,recebido:0,comissao:0},alerta:{pct:0,cobrado:0,recebido:0,comissao:0},grave:{pct:0,cobrado:0,recebido:0,comissao:0}};
-  policyOk.forEach(r=>{const fx=String(r.faixa||'').toLowerCase(); if(byFaixa[fx]) byFaixa[fx].pct=Number(String(r.pct||0).replace(',','.'))||0});
-  const mesAtual=new Date().toISOString().slice(0,7);
-  const keys=getLogKeysByUserMDL(ent);
-  const srcCli=isCred?(CLIENTES_CREDIARISTA?.[String(ent.login||'').toLowerCase()]||{grave:[],alerta:[],atencao:[]}):(CLIENTES_TERCEIRO||{grave:[],alerta:[],atencao:[]});
-  const srcRec=isCred?(RECEBIMENTOS_CREDIARISTA?.[String(ent.login||'').toLowerCase()]||{grave:[],alerta:[],atencao:[]}):(RECEBIMENTOS_TERCEIRO||{grave:[],alerta:[],atencao:[]});
-  ['atencao','alerta','grave'].forEach(fx=>{byFaixa[fx].cobrado=(srcCli?.[fx]||[]).filter(r=>keys.has(cobrancaRowKey(r))).length; (srcRec?.[fx]||[]).forEach(r=>{if(keys.has(cobrancaRowKey(r)) && mesKeyBRMDL(r.pagamento||r.data_pagamento||r.server_time)===mesAtual){byFaixa[fx].recebido+=Number(r.pago||0)}}); byFaixa[fx].comissao=byFaixa[fx].recebido*(byFaixa[fx].pct/100)});
-  const total=Object.values(byFaixa).reduce((a,b)=>a+b.comissao,0);
-  const item=(t,v,s='')=>`<div class="commission-item unlocked ${s}"><div class="k">${t}</div><div class="v">${v}</div></div>`;
-  return `<div class="glass panel commission-card"><h3>💵 ${isCred?'Comissão crediarista':'Comissão cobrança terceiro'} <span class="note">· mês atual / pagamento dia 10 do próximo mês</span></h3><div class="commission-grid">${item('Atenção %',String(byFaixa.atencao.pct.toFixed(2)).replace('.',',')+'%')}${item('Alerta %',String(byFaixa.alerta.pct.toFixed(2)).replace('.',',')+'%')}${item('Grave %',String(byFaixa.grave.pct.toFixed(2)).replace('.',',')+'%')}${item('Recebido atenção',R(byFaixa.atencao.recebido||0))}${item('Recebido alerta',R(byFaixa.alerta.recebido||0))}${item('Recebido grave',R(byFaixa.grave.recebido||0))}${item('Comissão atenção',R(byFaixa.atencao.comissao||0))}${item('Comissão alerta',R(byFaixa.alerta.comissao||0))}${item('Comissão grave',R(byFaixa.grave.comissao||0))}${item('Total previsto',R(total||0),'total-final')}</div><div class="commission-note">Regra: somente títulos pagos conciliados depois de cobrança própria registrada pelo usuário.</div></div>`;
-}
-
-function downloadHtmlXlsMDL(filename, rows, headers){
-  const escX=(v)=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const html=`<html><head><meta charset="utf-8"></head><body><table border="1"><thead><tr>${headers.map(h=>`<th>${escX(h.label)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${headers.map(h=>`<td>${escX(typeof h.get==='function'?h.get(r):r[h.key])}</td>`).join('')}</tr>`).join('')}</tbody></table></body></html>`;
-  const blob=new Blob([html],{type:'application/vnd.ms-excel;charset=utf-8'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);
-}
-function baixarComissionamentoXlsMes(){
-  const month=document.getElementById('histComMonth')?.value || _histComMeses()[0] || mesAtualComissao();
-  const snap=HIST_COMISSAO?.months?.[month]; const rows=snap?.entidades||[]; if(!rows.length){toast('Nenhum comissionamento salvo para exportar.');return;}
-  const headers=[{label:'Tipo',key:'tipo'},{label:'Nome',key:'nome'},{label:'Filial',key:'filial'},{label:'Meta cobrança %',key:'meta_geral'},{label:'Recebido cobrança',key:'recebido'},{label:'Venda realizada',key:'venda_real'},{label:'Serviço realizado',key:'servico_real'},{label:'Caminhão realizado',key:'caminhao_real'},{label:'Faixa',key:'faixa'},{label:'Comissão vendas',key:'comissao_vendas'},{label:'Comissão serviços',key:'comissao_servicos'},{label:'Comissão caminhão',key:'comissao_caminhao'},{label:'Bônus meta',key:'bonus_meta'},{label:'Rentab 48%',key:'rent48'},{label:'Rentab 52,15%',key:'rent52'},{label:'Rentab 55,50%',key:'rent55'},{label:'Total previsto',key:'total_previsto'},{label:'Observação',key:'observacao'}];
-  downloadHtmlXlsMDL(`comissionamento_${month}.xls`, rows, headers);
-}
-function relatoriosXlsUltimaExecucaoHtmlMDL(){
-  return `<div class="glass panel" style="margin:14px 0;border-color:rgba(96,165,250,.45)"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">📥 Relatórios de cobrança/recebimentos</h2><div class="hint">Arquivos da última execução do robô para auditoria.</div></div></div><div style="display:flex;gap:10px;flex-wrap:wrap"><a class="btn primary" href="relatorios_cobranca_recebimentos.zip" target="_blank">📦 Baixar pacote ZIP</a><a class="btn soft" href="contas_receber_principal.xls" target="_blank">Contas a receber principal</a><a class="btn soft" href="quitados_180d_contas_receber.xlsx" target="_blank">Quitados processado</a><a class="btn soft" href="quitados_180d_contas_receber.json" target="_blank">JSON quitados</a></div></div>`;
-}
-const _renderHistoricoMonthResultsV27 = renderHistoricoMonthResults;
-renderHistoricoMonthResults=function(){_renderHistoricoMonthResultsV27(); const box=document.getElementById('histMonthResults'); if(box && !box.querySelector('[href="relatorios_cobranca_recebimentos.zip"]')) box.insertAdjacentHTML('afterbegin', relatoriosXlsUltimaExecucaoHtmlMDL());};
-const _renderHistoricoComissaoResultsV27 = renderHistoricoComissaoResults;
-renderHistoricoComissaoResults=function(){_renderHistoricoComissaoResultsV27(); const box=document.getElementById('histComResults'); if(!box) return; const controls=`<div class="glass panel" style="margin:14px 0"><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center"><button class="btn soft" onclick="baixarComissionamentoXlsMes()">📊 Baixar XLS do mês</button></div></div>`; if(!box.querySelector('button[onclick="baixarComissionamentoXlsMes()"]')) box.insertAdjacentHTML('afterbegin', controls);};
-
-function updateNextUpdateClocks(){
-  try{const now=new Date();const sv=nextUpdateDateSales(now);const cb=nextUpdateDateCobranca(now);const target=sv<=cb?sv:cb;const label=sv<=cb?'vendas':'cobrança';document.querySelectorAll('.next-update-clock').forEach(el=>{el.textContent=`⏳ Próxima atualização: ${label} em ${_fmtClockDelta(target)}`;});}catch(e){}
-}
-setInterval(updateNextUpdateClocks,1000);
-const _abrirAppV27 = abrirApp;
-abrirApp = async function(){const ret = await _abrirAppV27.apply(this, arguments); setTimeout(updateNextUpdateClocks,80); return ret;};
-setTimeout(updateNextUpdateClocks,500);
-// ===== FIM V29B BASE V27 =====
-
 </script>
 </body>
 </html>
@@ -8941,14 +8812,6 @@ $file = __DIR__ . '/cobrancas_log.json';
 $backupDir = __DIR__ . '/backups_cobrancas';
 if (!file_exists($backupDir)) @mkdir($backupDir, 0777, true);
 
-function cleanup_old_backups($backupDir, $days=60){
-  $limit = time() - ($days * 86400);
-  foreach (glob($backupDir . '/cobrancas_log_*') as $f) {
-    if (is_file($f) && @filemtime($f) < $limit) @unlink($f);
-  }
-}
-cleanup_old_backups($backupDir, 60);
-
 function read_json_safe($path, $default = []){
   if (!file_exists($path)) return $default;
   $raw = @file_get_contents($path);
@@ -8965,10 +8828,9 @@ function write_json_atomic($path, $data){
 function make_backup($file, $backupDir, $tag='before_write'){
   if (!file_exists($file)) return;
   $day = date('Y-m-d');
-  $stamp = date('H');
+  $stamp = date('His');
   @copy($file, $backupDir . "/cobrancas_log_{$day}_latest.json");
-  $hourFile = $backupDir . "/cobrancas_log_{$day}_{$stamp}h_{$tag}.json";
-  if (!file_exists($hourFile)) @copy($file, $hourFile);
+  @copy($file, $backupDir . "/cobrancas_log_{$day}_{$stamp}_{$tag}.json");
 }
 function restore_latest_backup($file, $backupDir){
   if (file_exists($file) && filesize($file) > 2) return false;
@@ -9349,31 +9211,14 @@ if FTP_USER and FTP_PASS:
         except Exception:
             ftp.storbinary('STOR fechamentos_mensais.json', BytesIO(b'{"months":{}}'))
         try:
-            # Publica relatórios de cobrança/recebimentos da última execução para auditoria no Histórico > Fechamento mensal.
-            _rel_files_zip = []
-            if caminho and os.path.exists(caminho):
-                with open(caminho, 'rb') as f_contas:
-                    ftp.storbinary('STOR contas_receber_principal.xls', f_contas)
-                _rel_files_zip.append((caminho, 'contas_receber_principal.xls'))
             if quitados_180_info.get('json_path') and os.path.exists(quitados_180_info['json_path']):
                 with open(quitados_180_info['json_path'], 'rb') as f_q_json:
                     ftp.storbinary('STOR quitados_180d_contas_receber.json', f_q_json)
-                _rel_files_zip.append((quitados_180_info['json_path'], 'quitados_180d_contas_receber.json'))
             if quitados_180_info.get('xlsx_path') and os.path.exists(quitados_180_info['xlsx_path']):
                 with open(quitados_180_info['xlsx_path'], 'rb') as f_q_xlsx:
                     ftp.storbinary('STOR quitados_180d_contas_receber.xlsx', f_q_xlsx)
-                _rel_files_zip.append((quitados_180_info['xlsx_path'], 'quitados_180d_contas_receber.xlsx'))
-            if _rel_files_zip:
-                import zipfile as _zipfile
-                _zip_path = os.path.join(tempfile.gettempdir(), 'relatorios_cobranca_recebimentos.zip')
-                with _zipfile.ZipFile(_zip_path, 'w', compression=_zipfile.ZIP_DEFLATED) as _zf:
-                    for _src, _arc in _rel_files_zip:
-                        try: _zf.write(_src, _arc)
-                        except Exception: pass
-                with open(_zip_path, 'rb') as f_zip:
-                    ftp.storbinary('STOR relatorios_cobranca_recebimentos.zip', f_zip)
         except Exception as e_q_ftp:
-            print(f'⚠️ Erro ao enviar relatórios/quitados ao FTP: {e_q_ftp}')
+            print(f'⚠️ Erro ao enviar quitados 180d ao FTP: {e_q_ftp}')
 
         # Pacote de vendas/margem/rentabilidade/serviços/diária fica exclusivo do dashboard_sales_worker_headless.py.
         # Isso evita o navegador misturar arquivos de horários diferentes.
