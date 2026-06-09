@@ -1,4 +1,4 @@
-# VERSAO: COBRANCA10_V27_COBRANCAS_BACKUP_SENHAS_LINHA_LOGIN_FIX
+# VERSAO: COBRANCA10_V27B_FIX_DUPLICIDADE_BASE_COBRANCA
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -4883,6 +4883,69 @@ for _cred_cfg in CREDIARISTAS_CONFIG:
     recebimentos_crediarista_js[_login_cred] = {'grave': [], 'alerta': [], 'atencao': []}
 
 _historico_comissao_cobranca10()
+
+# =========================================
+# V27B — TRAVA ANTI-DUPLICIDADE OPERACIONAL
+# Regra: o mesmo cliente/título/parcela/vencimento não pode aparecer para
+# mais de uma base de cobrança operacional.
+# Prioridade de distribuição:
+#   1) Cobrança10 / terceiro
+#   2) Crediaristas configurados por filial
+#   3) Vendedores
+#   4) Gerentes/filiais
+# Observação: Master/Diretor continuam podendo auditar tudo pelos relatórios/logs,
+# mas a lista operacional de cobrança fica exclusiva.
+# =========================================
+def _v27b_key_cobranca_operacional(item):
+    try:
+        return cobranca_row_key_py(item)
+    except Exception:
+        return "|".join([
+            str((item or {}).get("cliente") or (item or {}).get("nome") or "").strip().upper(),
+            str((item or {}).get("titulo") or "").strip(),
+            str((item or {}).get("parcela") or "").strip(),
+            str((item or {}).get("vencimento") or "").strip(),
+        ])
+
+def _v27b_dedup_bucket_operacional(bucket, usados, label):
+    if not isinstance(bucket, dict):
+        return bucket, 0
+    removidos = 0
+    locais = set()
+    for fx in ["grave", "alerta", "atencao"]:
+        nova = []
+        for item in list(bucket.get(fx, []) or []):
+            k = _v27b_key_cobranca_operacional(item)
+            if not k or k in locais or k in usados:
+                removidos += 1
+                continue
+            locais.add(k)
+            usados.add(k)
+            nova.append(item)
+        bucket[fx] = nova
+    if removidos:
+        print(f"🔒 V27B anti-duplicidade: {removidos} título(s) removidos de {label}")
+    return bucket, removidos
+
+_v27b_usados_operacionais = set()
+_v27b_total_removidos = 0
+
+clientes_terceiro_js, _rm = _v27b_dedup_bucket_operacional(clientes_terceiro_js, _v27b_usados_operacionais, "Cobrança10")
+_v27b_total_removidos += _rm
+
+for _login_cred in sorted(list(clientes_crediarista_js.keys())):
+    clientes_crediarista_js[_login_cred], _rm = _v27b_dedup_bucket_operacional(clientes_crediarista_js[_login_cred], _v27b_usados_operacionais, f"crediarista {_login_cred}")
+    _v27b_total_removidos += _rm
+
+for _vend_nome in sorted(list(clientes_por_vend_js.keys())):
+    clientes_por_vend_js[_vend_nome], _rm = _v27b_dedup_bucket_operacional(clientes_por_vend_js[_vend_nome], _v27b_usados_operacionais, f"vendedor {_vend_nome}")
+    _v27b_total_removidos += _rm
+
+for _fil_nome in sorted(list(clientes_js.keys())):
+    clientes_js[_fil_nome], _rm = _v27b_dedup_bucket_operacional(clientes_js[_fil_nome], _v27b_usados_operacionais, f"filial/gerente {_fil_nome}")
+    _v27b_total_removidos += _rm
+
+print(f"🔒 V27B anti-duplicidade operacional concluído: {_v27b_total_removidos} duplicidade(s) removida(s). Títulos únicos operacionais: {len(_v27b_usados_operacionais)}")
 
 js_todos    = json.dumps(todos_js,            ensure_ascii=False)
 js_filiais  = json.dumps(filiais_js_ordered,  ensure_ascii=False)
