@@ -33,7 +33,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V8.0"
+DASHBOARD_BUILD_VERSION = "V8.1"
 DASHBOARD_BUILD_TAG = "DASH2_0_V7_6_TELEGRAM_TEMPLATE_BONITO"
 
 def now_brasilia():
@@ -6299,19 +6299,48 @@ def relatorio_duplicidades_carteira_py():
             continue
         mp.setdefault(k, []).append({"tipo": tipo, "responsavel": nome, "filial": filial, "faixa": fx, "cliente": r.get("cliente") or r.get("nome"), "titulo": r.get("titulo"), "parcela": r.get("parcela"), "vencimento": r.get("vencimento"), "pendente": r.get("pendente")})
     conflitos = []
+
+    def _is_conflito_real_v81(arr):
+        """
+        V8.1: o dashboard preserva Vendedor x Crediarista para não zerar a lista dos vendedores.
+        Essa duplicidade é operacionalmente permitida e não deve aparecer como alerta vermelho.
+
+        Continua sendo conflito real:
+        - mesmo título em mais de um vendedor;
+        - mesmo título em mais de um crediarista;
+        - qualquer título que ainda duplicar com Cobrança10/terceiro;
+        - qualquer tipo desconhecido duplicado.
+        """
+        tipos = [str(a.get("tipo") or "").lower() for a in (arr or [])]
+        vend = {(a.get("responsavel"), a.get("filial")) for a in (arr or []) if str(a.get("tipo") or "").lower() == "vendedor"}
+        cred = {(a.get("responsavel"), a.get("filial")) for a in (arr or []) if str(a.get("tipo") or "").lower() == "crediarista"}
+        outros = {t for t in tipos if t not in {"vendedor", "crediarista"}}
+        if outros:
+            return True
+        if len(vend) > 1:
+            return True
+        if len(cred) > 1:
+            return True
+        # Um vendedor + um crediarista é permitido na V8.1.
+        return False
+
+    ignorados_vendedor_crediarista = 0
     for k, arr in mp.items():
         responsaveis = {(a.get("tipo"), a.get("responsavel"), a.get("filial")) for a in arr}
         if len(responsaveis) > 1:
-            conflitos.append({"key": k, "qtd": len(arr), "responsaveis": arr})
+            if _is_conflito_real_v81(arr):
+                conflitos.append({"key": k, "qtd": len(arr), "responsaveis": arr})
+            else:
+                ignorados_vendedor_crediarista += 1
     conflitos.sort(key=lambda x: x.get("qtd",0), reverse=True)
-    out = {"gerado_em": now_brasilia().isoformat(), "total_conflitos": len(conflitos), "conflitos": conflitos[:300]}
+    out = {"gerado_em": now_brasilia().isoformat(), "versao": "V8.1", "regra": "Vendedor x crediarista preservado e ignorado no alerta; conflitos reais continuam sendo exibidos", "total_conflitos": len(conflitos), "ignorados_vendedor_crediarista": ignorados_vendedor_crediarista, "conflitos": conflitos[:300]}
     try:
         with open(os.path.join(pasta, "relatorio_duplicidades_carteira.json"), "w", encoding="utf-8") as f:
             json.dump(out, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"⚠️ Não consegui salvar relatório de duplicidades: {e}")
     if conflitos:
-        print(f"🚨 Duplicidades de carteira encontradas: {len(conflitos)}. Veja relatorio_duplicidades_carteira.json")
+        print(f"🚨 Duplicidades reais de carteira encontradas: {len(conflitos)}. Veja relatorio_duplicidades_carteira.json")
     else:
         print("✅ Check anti-duplicidade da carteira: nenhum conflito entre responsáveis.")
     return out
@@ -9255,7 +9284,7 @@ function getClientesEnt(ent){
   return dedupeCobrancaBuckets(filtered);
 }
 function isTodayStr(s){return dateOnlyISO(s)===dateOnlyISO(new Date())}
-function isLogCobrancaReal(x){const t=String(x?.titulo||'').toUpperCase(); return t!=='REATIVACAO' && t!=='ANIVERSARIO'}
+function isLogCobrancaReal(x){const t=String(x?.titulo||'').toUpperCase(); const p=String(x?.parcela||'').toUpperCase(); const k=String(x?.cobranca_key||'').toUpperCase(); return !(/^REATIVACAO/.test(t) || /^ANIVERSARIO/.test(t) || /^REATIVACAO/.test(p) || /^ANIVERSARIO/.test(p) || /^REATIVACAO/.test(k) || /^ANIVERSARIO/.test(k));}
 function getCobradosHoje(ent){
   if(ent.type==='terceiro' || ent.is_terceiro)
     return (COB_LOGS||[]).filter(x=>isLogCobrancaReal(x) && isTodayStr(x.server_time||x.data||'') && (String(x.usuario||'').toLowerCase()===COBRANCA10_LOGIN || String(x.usuario||'').toLowerCase()===COBRANCA10_NOME.toLowerCase()));
@@ -9940,13 +9969,13 @@ function renderTelegramTab(){
   <div class="glass panel" style="margin-top:14px"><h3>Como pegar o Chat ID</h3><div class="hint">1) Crie/adicone o bot em um grupo. 2) Mande uma mensagem no grupo. 3) No navegador, abra: https://api.telegram.org/botSEU_TOKEN/getUpdates. 4) Procure o campo <b>chat</b> e copie o <b>id</b>. Grupo normalmente começa com -100.</div></div>`;
 }
 
-function renderLogsTab(){const cfgPanel=renderCobrancaConfigPanel(); const filOpts=['<option value="">Todas as filiais</option>',...ORDEM.map(f=>`<option value="${f}">${f}</option>`)].join(''); const vendOpts=['<option value="">Todos os usuários</option>',...Array.from(new Set(COB_LOGS.map(x=>x.usuario).filter(Boolean))).sort().map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)].join(''); logSection.innerHTML=cfgPanel+`<div class="section-head"><div><h2>🧾 Histórico de cobranças</h2><div class="hint">Filtre por data, usuário ou filial. Também é possível remover lançamentos indevidos.</div></div></div><div class="glass panel"><div class="search-row"><div class="input-card"><label>Buscar cliente/título</label><input id="logQ" placeholder="Nome, título, parcela"></div><div class="input-card"><label>Data inicial</label><input id="logDe" type="date"></div><div class="input-card"><label>Data final</label><input id="logAte" type="date"></div><div class="input-card"><label>Filial</label><select id="logFil">${filOpts}</select></div></div><div class="search-row" style="margin-top:10px"><div class="input-card"><label>Usuário</label><select id="logVend">${vendOpts}</select></div><div style="display:flex;align-items:end;gap:10px"><button class="btn primary" onclick="applyLogFilter()">Filtrar</button><button class="btn soft" onclick="clearLogFilter()">Limpar</button></div></div><div id="logsList" class="logs-list"></div></div>`; applyLogFilter()}
+function renderLogsTab(){const cfgPanel=renderCobrancaConfigPanel(); const LOGS_REAIS=(COB_LOGS||[]).filter(isLogCobrancaReal); const filOpts=['<option value="">Todas as filiais</option>',...ORDEM.map(f=>`<option value="${f}">${f}</option>`)].join(''); const vendOpts=['<option value="">Todos os usuários</option>',...Array.from(new Set(LOGS_REAIS.map(x=>x.usuario).filter(Boolean))).sort().map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)].join(''); logSection.innerHTML=cfgPanel+`<div class="section-head"><div><h2>🧾 Histórico de cobranças</h2><div class="hint">Filtre por data, usuário ou filial. Também é possível remover lançamentos indevidos.</div></div></div><div class="glass panel"><div class="search-row"><div class="input-card"><label>Buscar cliente/título</label><input id="logQ" placeholder="Nome, título, parcela"></div><div class="input-card"><label>Data inicial</label><input id="logDe" type="date"></div><div class="input-card"><label>Data final</label><input id="logAte" type="date"></div><div class="input-card"><label>Filial</label><select id="logFil">${filOpts}</select></div></div><div class="search-row" style="margin-top:10px"><div class="input-card"><label>Usuário</label><select id="logVend">${vendOpts}</select></div><div style="display:flex;align-items:end;gap:10px"><button class="btn primary" onclick="applyLogFilter()">Filtrar</button><button class="btn soft" onclick="clearLogFilter()">Limpar</button></div></div><div id="logsList" class="logs-list"></div></div>`; applyLogFilter()}
 function parseDateBR(s){if(!s) return null; const v=String(s).trim(); let m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/); if(m){let y=Number(m[3]); if(y<100)y+=2000; const d=new Date(y, Number(m[2])-1, Number(m[1])); return isNaN(d.getTime())?null:d} m=v.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/); if(m){const d=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]),Number(m[4]||0),Number(m[5]||0),Number(m[6]||0)); return isNaN(d.getTime())?null:d} const d=new Date(v); return isNaN(d.getTime())?null:d}
 function parseDate(s){return parseDateBR(s)}
 function dateOnlyISO(s){const d=parseDateBR(s); if(!d) return ''; const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,'0'); const da=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${da}`}
 function sameDateOnly(a,b){return !!a && !!b && dateOnlyISO(a)===dateOnlyISO(b)}
 function renderLogPage(){const host=document.getElementById('logsList'); if(!host) return; const total=_logFiltered.length; const maxPage=Math.max(1,Math.ceil(total/LOG_PAGE_SIZE)); if(_logPage>maxPage)_logPage=maxPage; if(_logPage<1)_logPage=1; const ini=(_logPage-1)*LOG_PAGE_SIZE; const page=_logFiltered.slice(ini,ini+LOG_PAGE_SIZE); const pager=total?`<div class="log-pager"><div><strong>${total}</strong> cobrança(s) encontradas · mostrando ${ini+1}-${Math.min(ini+LOG_PAGE_SIZE,total)} · página ${_logPage}/${maxPage}</div><div style="display:flex;gap:8px"><button class="btn soft" ${_logPage<=1?'disabled':''} onclick="_logPage--;renderLogPage()">⬅️ Anterior</button><button class="btn soft" ${_logPage>=maxPage?'disabled':''} onclick="_logPage++;renderLogPage()">Próxima ➡️</button></div></div>`:''; host.innerHTML=total?pager+page.map((x,idx)=>{const realIdx=ini+idx; return `<div class="log-row"><div><div style="font-weight:900">${esc(x.cliente||'')}</div><div class="small muted">${esc(x.titulo||'')} · Parcela ${esc(x.parcela||'')}</div></div><div><strong>${R(x.pendente||0)}</strong><div class="small muted">${esc(x.filial||'')} · ${esc(x.usuario||'')}</div></div><div><strong>${esc(x.telefone||'')}</strong><div class="small muted">Telefone</div></div><div><strong>${esc((x.server_time||x.data||'').replace('T',' ').slice(0,16))}</strong><div class="small muted">Data</div></div><div><button class="btn danger" onclick="removerCobrancaIdx(${realIdx})">Remover</button></div></div>`}).join('')+pager:'<div class="empty">Nenhuma cobrança encontrada para esse filtro.</div>'}
-function applyLogFilter(){const q=(document.getElementById('logQ')?.value||'').toLowerCase(); const deVal=document.getElementById('logDe')?.value||''; const ateVal=document.getElementById('logAte')?.value||''; const fil=document.getElementById('logFil')?.value||''; const vend=document.getElementById('logVend')?.value||''; let arr=[...COB_LOGS].reverse(); arr=arr.filter(x=>{const txt=`${x.cliente||''} ${x.titulo||''} ${x.parcela||''}`.toLowerCase(); const raw=x.server_time||x.criado_em||x.data||''; if(q && !txt.includes(q)) return false; if(fil && String(x.filial||'')!==fil) return false; if(vend && String(x.usuario||'')!==vend) return false; if(deVal && dateOnlyISO(raw)<deVal) return false; if(ateVal && dateOnlyISO(raw)>ateVal) return false; return true}); _logFiltered=arr; _logPage=1; renderLogPage()}
+function applyLogFilter(){const q=(document.getElementById('logQ')?.value||'').toLowerCase(); const deVal=document.getElementById('logDe')?.value||''; const ateVal=document.getElementById('logAte')?.value||''; const fil=document.getElementById('logFil')?.value||''; const vend=document.getElementById('logVend')?.value||''; let arr=[...(COB_LOGS||[]).filter(isLogCobrancaReal)].reverse(); arr=arr.filter(x=>{const txt=`${x.cliente||''} ${x.titulo||''} ${x.parcela||''}`.toLowerCase(); const raw=x.server_time||x.criado_em||x.data||''; if(q && !txt.includes(q)) return false; if(fil && String(x.filial||'')!==fil) return false; if(vend && String(x.usuario||'')!==vend) return false; if(deVal && dateOnlyISO(raw)<deVal) return false; if(ateVal && dateOnlyISO(raw)>ateVal) return false; return true}); _logFiltered=arr; _logPage=1; renderLogPage()}
 function clearLogFilter(){['logQ','logDe','logAte'].forEach(id=>{const e=document.getElementById(id); if(e) e.value=''}); ['logFil','logVend'].forEach(id=>{const e=document.getElementById(id); if(e) e.value=''}); applyLogFilter()}
 function removerCobrancaIdx(i){const x=_logFiltered?.[i]; if(!x){toast('Cobrança não encontrada.');return;} removerCobranca(x.id||'',x.cliente||'',x.titulo||'',x.parcela||'')}
 
