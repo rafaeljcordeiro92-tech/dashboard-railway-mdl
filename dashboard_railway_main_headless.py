@@ -1,4 +1,4 @@
-# VERSAO: COBRANCA10_V27D_LAYOUT_LOGS_COMISSAO_OBS_RATEIO_FIX
+# VERSAO: DASH2_0_V4_0
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -18,18 +18,29 @@ import urllib.request
 import urllib.error
 import tempfile
 import shutil
+import sys
 from zoneinfo import ZoneInfo
+
+# V6.8: evita erro UnicodeEncodeError no Windows/cp1252 quando o log imprime emojis.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 LOGIN = "administrativo01.moveisdolar"
 SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
+DASHBOARD_BUILD_VERSION = "V7.8"
+DASHBOARD_BUILD_TAG = "DASH2_0_V7_6_TELEGRAM_TEMPLATE_BONITO"
+
 def now_brasilia():
     return datetime.now(APP_TZ)
 
 # ===== DATAS
-hoje        = datetime.now()
+hoje        = now_brasilia()
 data_inicio = (hoje - timedelta(days=90)).strftime("%d/%m/%Y")
 data_fim    = (hoje - timedelta(days=15)).strftime("%d/%m/%Y")
 
@@ -430,7 +441,29 @@ def limpar_df_tabela(df):
 
 
 def encontrar_df_resultado_metas():
-    # Lê direto da tabela HTML visível via Selenium, sem depender de lxml/pandas.read_html
+    # V6.0: primeiro tenta ler o HTML inteiro da página. Isso evita erro
+    # stale element quando o Sólidus troca/recarrega a tabela no meio da leitura.
+    try:
+        from io import StringIO
+        html_src = driver.page_source or ""
+        dfs = pd.read_html(StringIO(html_src))
+        candidatos = []
+        for _df in dfs:
+            try:
+                cols_txt = " ".join(str(c) for c in list(_df.columns)).upper()
+                body_txt = " ".join(str(x) for x in _df.head(3).values.flatten()).upper()
+                all_txt = cols_txt + " " + body_txt
+                if "ATINGIDO" in all_txt and "PER" in all_txt and "META" in all_txt and ("REALIZADO" in all_txt or "PROJETADO" in all_txt):
+                    candidatos.append(_df)
+            except Exception:
+                pass
+        if candidatos:
+            candidatos.sort(key=lambda d: (len(d), len(d.columns)), reverse=True)
+            return limpar_df_tabela(candidatos[0])
+    except Exception as _e_read_html:
+        pass
+
+    # Fallback: lê direto da tabela HTML visível via Selenium.
     possiveis = [
         "//table[@id='tabela_metas']",
         "//table[contains(@class,'tabela-metas')]",
@@ -674,7 +707,7 @@ def _parse_quitados_xls_180d(caminho_quitados, colmap):
     dfq = pd.read_excel(caminho_quitados, header=None, engine="openpyxl")
     quitados = []
     vend_atual = None
-    agora = datetime.now()
+    agora = now_brasilia()
 
     def _limpa(v):
         s = str(v or "").strip()
@@ -776,8 +809,8 @@ def coletar_quitados_180d_contas_receber():
     - Data último pagamento final = hoje
     - Formas de pagamento iguais ao relatório atual
     """
-    data_hoje = datetime.now().strftime("%d/%m/%Y")
-    data_180 = (datetime.now() - timedelta(days=180)).strftime("%d/%m/%Y")
+    data_hoje = now_brasilia().strftime("%d/%m/%Y")
+    data_180 = (now_brasilia() - timedelta(days=180)).strftime("%d/%m/%Y")
 
     print("\n🔎 Iniciando relatório complementar de QUITADOS 180 dias...")
     driver.get(URL + "/relatorio_contas_receber")
@@ -864,7 +897,7 @@ def coletar_quitados_180d_contas_receber():
     out_xlsx = os.path.join(pasta, "quitados_180d_contas_receber.xlsx")
     with open(out_json, "w", encoding="utf-8") as f:
         json.dump({
-            "gerado_em": datetime.now().isoformat(),
+            "gerado_em": now_brasilia().isoformat(),
             "periodo_pagamento": {"inicio": data_180, "fim": data_hoje},
             "criterio": "quitados pagos em ate 180 dias apos cobranca, conciliados no dashboard pelo ultimo cobrador antes do pagamento",
             "quitados": quitados,
@@ -1075,7 +1108,7 @@ def coletar_metas_vendas_mes_atual():
     ]
 
     resultados = {
-        "coletado_em": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "coletado_em": now_brasilia().strftime("%Y-%m-%d %H:%M:%S"),
         "periodo_meta": {"data_inicial": primeiro_dia, "data_final": ultimo_dia},
         "lista_index": linhas,
         "metas": {}
@@ -1161,6 +1194,222 @@ def coletar_metas_vendas_mes_atual():
     print(f"💾 Metas XLSX: {xlsx_path}")
     return {"json_path": json_path, "xlsx_path": xlsx_path, "dados": resultados}
 
+
+
+
+# =========================================
+# 🎯 META DIÁRIA PELO CONTROLE DE META DO SÓLIDUS
+# Regra V5.3:
+#   - Não usa mais dias úteis do dashboard para bater meta diária.
+#   - Abre o mesmo Controle de Meta do SGI/Sólidus.
+#   - Em /metas/consulta/{id}, filtra Consulta de hoje até hoje.
+#   - Tipo Venda, escopo Filial e Filial/Vendedor.
+#   - Quem tiver Atingido Período >= 100% entra no mural Meta diária BATIDA.
+# =========================================
+
+def _clicar_consultar_resultado_metas():
+    xpaths = [
+        "//button[contains(normalize-space(.),'Consultar')]",
+        "//a[contains(normalize-space(.),'Consultar')]",
+        "//input[@type='submit' and contains(@value,'Consultar')]",
+        "//button[@type='submit']",
+    ]
+    ultimo = None
+    for xp in xpaths:
+        try:
+            btn = wait.until(EC.element_to_be_clickable((By.XPATH, xp)))
+            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", btn)
+            driver.execute_script("arguments[0].click();", btn)
+            time.sleep(1.8)
+            return True
+        except Exception as e:
+            ultimo = e
+    if ultimo:
+        print(f"⚠️ Não consegui clicar em Consultar no resultado da meta: {ultimo}")
+    return False
+
+
+def _set_periodo_consulta_meta_dia(data_br):
+    """Seta Data Inicial/Final da área Consulta no resultado da meta."""
+    # IDs enviados pelo usuário no print do Sólidus.
+    try:
+        set_input_value_safe(By.ID, "data_inicial_consulta", data_br)
+        set_input_value_safe(By.ID, "data_final_consulta", data_br)
+        _clicar_consultar_resultado_metas()
+        return True
+    except Exception as e:
+        print(f"⚠️ IDs data_inicial_consulta/data_final_consulta não funcionaram: {e}")
+
+    # Fallback por name/atributo, caso o Sólidus mude algo.
+    try:
+        ini = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@name='data_inicial_consulta' or @atributo='data_inicial_consulta']")))
+        fim = wait.until(EC.presence_of_element_located((By.XPATH, "//input[@name='data_final_consulta' or @atributo='data_final_consulta']")))
+        for el in (ini, fim):
+            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
+            try:
+                el.click(); el.send_keys(Keys.CONTROL, 'a'); el.send_keys(Keys.DELETE); el.send_keys(data_br)
+            except Exception:
+                driver.execute_script("arguments[0].value = arguments[1];", el, data_br)
+            driver.execute_script("arguments[0].dispatchEvent(new Event('input', {bubbles:true}));", el)
+            driver.execute_script("arguments[0].dispatchEvent(new Event('change', {bubbles:true}));", el)
+        _clicar_consultar_resultado_metas()
+        return True
+    except Exception as e:
+        print(f"⚠️ Fallback datas da meta diária falhou: {e}")
+        return False
+
+
+def coletar_metas_vendas_dia_atual(metas_index=None):
+    data_dia = hoje.strftime("%d/%m/%Y")
+    print(f"\n🎯 Iniciando coleta de META DIÁRIA pelo Sólidus ({data_dia})...")
+
+    # Reaproveita o índice já lido pela coleta mensal quando possível.
+    linhas = []
+    try:
+        linhas = list((metas_index or {}).get("lista_index") or [])
+    except Exception:
+        linhas = []
+
+    if not linhas:
+        try:
+            primeiro_dia = hoje.replace(day=1).strftime("%d/%m/%Y")
+            prox_mes = (hoje.replace(day=28) + timedelta(days=4)).replace(day=1)
+            ultimo_dia = (prox_mes - timedelta(days=1)).strftime("%d/%m/%Y")
+            driver.get(URL + "/metas")
+            wait.until(EC.presence_of_element_located((By.ID, "data_inicial_maior_igual")))
+            set_input_value_safe(By.ID, "data_inicial_maior_igual", primeiro_dia)
+            set_input_value_safe(By.ID, "data_final_menor_igual", ultimo_dia)
+            clicar_primeiro_filtro_metas()
+            time.sleep(2)
+            linhas = extrair_linhas_tabela_metas()
+        except Exception as e:
+            print(f"⚠️ Não consegui carregar índice de metas para meta diária: {e}")
+            linhas = []
+
+    specs = [
+        # VENDA DIÁRIA: usada no mural de meta diária e no card Venda Diária.
+        {"chave": "venda_filial_meta", "label": "Meta diária / Venda / Filial", "tipo": "Venda", "escopo": "Filial", "descricao_contem": ["META FILIAL"]},
+        {"chave": "venda_filial_vendedor_meta", "label": "Meta diária / Venda / Filial-Vendedor", "tipo": "Venda", "escopo": "Filial/Vendedor", "descricao_contem": ["META VENDEDOR"]},
+
+        # V6.5: SERVIÇO DIÁRIO também precisa ser coletado hoje-hoje.
+        # Antes o card Venda Diária somava venda do dia com diferença de snapshot de serviço,
+        # o que podia mostrar valores acumulados antigos como se fossem do dia.
+        {"chave": "servico_filial_ouro_fob", "label": "Meta diária / Serviço / Filial", "tipo": "Serviço", "escopo": "Filial", "descricao_contem": ["OURO", "FOB"]},
+        {"chave": "servico_filial_vendedor_ouro_fob", "label": "Meta diária / Serviço / Filial-Vendedor", "tipo": "Serviço", "escopo": "Filial/Vendedor", "descricao_contem": ["OURO", "FOB"]},
+    ]
+
+    resultados = {
+        "coletado_em": now_brasilia().strftime("%Y-%m-%d %H:%M:%S"),
+        "data_consulta": data_dia,
+        "fonte": "SGI/Solidus /metas/consulta filtrado por data atual",
+        "versao_coleta": "V6.5",
+        "regra": "Somente colunas do PERIODO após Consulta hoje-hoje; nunca usa Total para mural de meta diária.",
+        "lista_index": linhas,
+        "metas": {},
+    }
+
+    xlsx_path = os.path.join(pasta, "metas_vendas_dia_atual.xlsx")
+    json_path = os.path.join(pasta, "metas_vendas_dia_atual.json")
+
+    # V5.5: guarda uma cópia da coleta anterior para fallback caso o Sólidus recarregue a tabela
+    # no meio da leitura e gere stale element reference em apenas uma das metas.
+    _metas_dia_anterior = {}
+    try:
+        if os.path.exists(json_path):
+            with open(json_path, "r", encoding="utf-8") as _fmda:
+                _metas_dia_anterior = json.load(_fmda) or {}
+    except Exception:
+        _metas_dia_anterior = {}
+
+    try:
+        writer_ctx = pd.ExcelWriter(xlsx_path, engine="openpyxl")
+    except Exception:
+        writer_ctx = None
+
+    if writer_ctx:
+        writer = writer_ctx.__enter__()
+        try:
+            pd.DataFrame(linhas).to_excel(writer, sheet_name="index_metas", index=False)
+        except Exception:
+            pass
+    else:
+        writer = None
+
+    try:
+        for spec in specs:
+            origem = escolher_melhor_linha_meta(linhas, spec)
+            if not origem:
+                print(f"⚠️ Meta diária não encontrada: {spec['label']}")
+                resultados["metas"][spec["chave"]] = {"ok": False, "erro": "meta_nao_encontrada", "spec": spec}
+                continue
+            _ultimo_erro_meta_dia = None
+            _sucesso_meta_dia = False
+            for _tentativa_meta_dia in range(1, 4):
+                try:
+                    print(f"➡️ Meta diária: abrindo {spec['label']} -> {origem['href_resultado']} (tentativa {_tentativa_meta_dia}/3)")
+                    driver.get(origem["href_resultado"])
+                    time.sleep(1.8)
+                    _set_periodo_consulta_meta_dia(data_dia)
+                    time.sleep(2.2)
+                    df_result = encontrar_df_resultado_metas()
+                    df_result = limpar_df_tabela(df_result)
+                    linhas_resultado = df_meta_para_registros(df_result, spec, origem)
+                    resultados["metas"][spec["chave"]] = {
+                        "ok": True,
+                        "spec": spec,
+                        "origem": origem,
+                        "data_consulta": data_dia,
+                        "coleta_diaria_v59": True,
+                        "colunas": list(df_result.columns),
+                        "linhas": linhas_resultado,
+                    }
+                    if writer is not None:
+                        df_result.to_excel(writer, sheet_name=spec["chave"][:31], index=False)
+
+                    batidos = 0
+                    for r in linhas_resultado:
+                        if r.get("_is_total"):
+                            continue
+                        ating = 0.0
+                        for k, v in r.items():
+                            if "ATINGIDO" in str(k).upper() and "PER" in str(k).upper() and str(k).endswith("_float"):
+                                ating = max(ating, float(v or 0))
+                        if ating >= 100:
+                            batidos += 1
+                    print(f"✅ {spec['label']}: {len(df_result)} linha(s), {batidos} acima de 100% no período do dia")
+                    _sucesso_meta_dia = True
+                    break
+                except Exception as e:
+                    _ultimo_erro_meta_dia = e
+                    print(f"⚠️ Erro meta diária {spec['label']} tentativa {_tentativa_meta_dia}/3: {e}")
+                    time.sleep(1.2 * _tentativa_meta_dia)
+            if not _sucesso_meta_dia:
+                # Fallback: usa a última coleta válida do mesmo dia para não apagar vendedores/filiais do mural.
+                _prev_meta = (((_metas_dia_anterior or {}).get("metas") or {}).get(spec["chave"]) or {})
+                # V5.8: só usa fallback se a coleta anterior também foi V5.7.
+                # Isso evita reaproveitar JSON antigo onde o mural pegava Total/mês em vez do Período do dia.
+                if (
+                    _prev_meta.get("ok")
+                    and _prev_meta.get("coleta_diaria_v59")
+                    and str((_metas_dia_anterior or {}).get("data_consulta") or "") == str(data_dia)
+                    and str((_metas_dia_anterior or {}).get("versao_coleta") or "") in ("V5.9", "V6.0", "V6.2", "V6.3", "V6.4", "V6.5")
+                ):
+                    resultados["metas"][spec["chave"]] = _prev_meta
+                    try:
+                        print(f"♻️ Meta diária {spec['label']}: usando última coleta válida do dia por fallback ({len(_prev_meta.get('linhas') or [])} linha(s)).")
+                    except Exception:
+                        pass
+                else:
+                    resultados["metas"][spec["chave"]] = {"ok": False, "spec": spec, "origem": origem, "erro": str(_ultimo_erro_meta_dia)}
+    finally:
+        if writer_ctx:
+            writer_ctx.__exit__(None, None, None)
+
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(resultados, f, ensure_ascii=False, indent=2)
+    print(f"💾 Meta diária Sólidus JSON: {json_path}")
+    print(f"💾 Meta diária Sólidus XLSX: {xlsx_path}")
+    return {"json_path": json_path, "xlsx_path": xlsx_path, "dados": resultados}
 
 # =========================================
 # 📈 RELATÓRIO DE MARGEM BRUTA / RENTABILIDADE
@@ -1508,7 +1757,7 @@ def coletar_margens_brutas_mes_atual():
     json_path = os.path.join(pasta, "margens_brutas_mes_atual.json")
     xlsx_path = os.path.join(pasta, "margens_brutas_mes_atual.xlsx")
     resultados = {
-        "coletado_em": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "coletado_em": now_brasilia().strftime("%Y-%m-%d %H:%M:%S"),
         "periodo": {
             "data_inicial": hoje.replace(day=1).strftime("%d/%m/%Y"),
             "data_final": ((hoje.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)).strftime("%d/%m/%Y"),
@@ -1716,6 +1965,12 @@ try:
     metas_vendas_info = coletar_metas_vendas_mes_atual()
 except Exception as e:
     print(f"⚠️ Erro ao coletar metas/vendas do SGI: {e}")
+
+metas_vendas_dia_info = {"json_path": None, "xlsx_path": None, "dados": {}}
+try:
+    metas_vendas_dia_info = coletar_metas_vendas_dia_atual(metas_vendas_info.get("dados", {}))
+except Exception as e:
+    print(f"⚠️ Erro ao coletar meta diária SGI/Sólidus: {e}")
 
 margens_brutas_info = {"json_path": None, "xlsx_path": None, "dados": {}}
 try:
@@ -1928,6 +2183,101 @@ for i in range(len(df_raw)):
 
 df = pd.DataFrame(registros)
 
+# =========================================
+# 👥 CAMADA ADMINISTRATIVA DE STATUS DE COLABORADORES (V5.6)
+# Fonte: credenciais_dashboard.json -> colaborador_status.
+# Objetivo: quando alguém sair/entrar/trocar função, o Master controla se o usuário
+# participa de cobrança, clientes sem movimento, aniversariantes e murais, sem depender
+# apenas da tag (F2)/(GERF2) no nome do SGI.
+# Em MODO_TESTE_LOCAL=1 o script usa o JSON local e NÃO tenta publicar no FTP.
+# =========================================
+def _colab_norm_key_py(txt):
+    s = unicodedata.normalize("NFKD", str(txt or "").strip().upper())
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = re.sub(r"[^A-Z0-9]+", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+def _colab_status_key_py(nome, filial, is_gerente=False):
+    tipo = "GERENTE" if bool(is_gerente) else "VENDEDOR"
+    return f"{_colab_norm_key_py(limpar_nome_display(limpar_nome_erp(nome)))}|{str(filial or '').strip().upper()}|{tipo}"
+
+def _colab_default_status_py(login='', nome='', filial='', is_gerente=False):
+    return {
+        "login": str(login or '').strip().lower(),
+        "nome": limpar_nome_display(limpar_nome_erp(nome)),
+        "filial": str(filial or '').strip().upper(),
+        "tipo": "Gerente" if bool(is_gerente) else "Vendedor",
+        "status": "ativo",
+        "participa_cobrancas": True,
+        "participa_sem_movimento": True,
+        "participa_aniversariantes": True,
+        "participa_murais": True,
+        "data_entrada": "",
+        "data_saida": "",
+        "substituto": "",
+        "obs": "",
+    }
+
+def _load_colab_status_state_py():
+    path = os.path.join(pasta, "credenciais_dashboard.json")
+    data = {}
+    try:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f) or {}
+    except Exception:
+        data = {}
+    raw = data.get("colaborador_status") if isinstance(data, dict) else {}
+    return raw if isinstance(raw, dict) else {}
+
+COLAB_STATUS_MAP = _load_colab_status_state_py()
+
+# V5.8: localiza status por nome+filial para bloquear desligados mesmo quando
+# o usuário vem de metas/vendas e não da carteira de cobrança.
+def _colab_status_by_nome_filial_py(nome, filial):
+    try:
+        nn = _colab_norm_key_py(limpar_nome_display(limpar_nome_erp(nome)))
+        ff = str(filial or '').strip().upper()
+        for _k, _st in (COLAB_STATUS_MAP or {}).items():
+            if not isinstance(_st, dict):
+                continue
+            if _colab_norm_key_py(_st.get('nome') or '') == nn and str(_st.get('filial') or '').strip().upper() == ff:
+                base = dict(_st)
+                status = str(base.get('status') or 'ativo').lower().strip()
+                base['status'] = 'inativo' if status in ('inativo','desligado','bloqueado','0','false') else 'ativo'
+                return base
+    except Exception:
+        pass
+    return None
+
+def _colab_esta_liberado_py(nome, filial, is_gerente=False, flag='participa_cobrancas'):
+    try:
+        st = _colab_get_status_py(nome, filial, is_gerente)
+        alt = _colab_status_by_nome_filial_py(nome, filial) or {}
+        if alt:
+            st.update(alt)
+        return st.get('status') == 'ativo' and bool(st.get(flag, True))
+    except Exception:
+        return True
+
+def _colab_get_status_py(nome, filial, is_gerente=False):
+    key = _colab_status_key_py(nome, filial, is_gerente)
+    st = COLAB_STATUS_MAP.get(key) or {}
+    if not isinstance(st, dict):
+        st = {}
+    base = _colab_default_status_py('', nome, filial, is_gerente)
+    base.update(st)
+    # compatibilidade com valores antigos
+    status = str(base.get('status') or 'ativo').lower().strip()
+    base['status'] = 'inativo' if status in ('inativo','desligado','bloqueado','0','false') else 'ativo'
+    for flag in ('participa_cobrancas','participa_sem_movimento','participa_aniversariantes','participa_murais'):
+        base[flag] = bool(base.get(flag, True))
+    return base
+
+def _colab_participa_cobranca_py(nome, filial, is_gerente=False):
+    st = _colab_get_status_py(nome, filial, is_gerente)
+    return st.get('status') == 'ativo' and bool(st.get('participa_cobrancas', True))
+
 # Totaliza BRUTO (deve bater com "Total Geral" do arquivo)
 total_bruto_p  = df["pendente"].sum()
 total_bruto_pg = df["pago"].sum()
@@ -1944,6 +2294,28 @@ df[["filial_vendedor","is_gerente"]] = df["vendedor"].apply(
 df["filial_erp"] = df["filial_num"].apply(
     lambda n: "FDEP" if n in (90,99) else f"F{n}"
 )
+
+# V5.6: aplica status administrativo ANTES do rateio.
+# Se o Master marcar um vendedor/gerente como inativo ou sem participação em cobrança,
+# a tag (F2)/(GERF2) é ignorada nesta execução e a carteira dele entra como inativa
+# para ser redistribuída aos ativos da mesma filial.
+_colab_bloqueados_rateio = []
+try:
+    for _idx_colab, _row_colab in df.iterrows():
+        _fil_tag_colab = _row_colab.get("filial_vendedor")
+        if pd.notna(_fil_tag_colab) and str(_fil_tag_colab).strip():
+            _nome_colab = str(_row_colab.get("vendedor") or "")
+            _is_ger_colab = bool(_row_colab.get("is_gerente"))
+            _st_colab = _colab_get_status_py(_nome_colab, _fil_tag_colab, _is_ger_colab)
+            if _st_colab.get('status') != 'ativo' or not bool(_st_colab.get('participa_cobrancas', True)):
+                df.at[_idx_colab, "filial_erp"] = str(_fil_tag_colab).strip().upper()
+                df.at[_idx_colab, "filial_vendedor"] = None
+                df.at[_idx_colab, "is_gerente"] = False
+                _colab_bloqueados_rateio.append(f"{limpar_nome_display(_nome_colab)} ({_fil_tag_colab})")
+    if _colab_bloqueados_rateio:
+        print("👥 Status administrativo aplicado no rateio: " + "; ".join(_colab_bloqueados_rateio[:20]) + ("..." if len(_colab_bloqueados_rateio)>20 else ""))
+except Exception as _e_colab_status:
+    print(f"⚠️ Não consegui aplicar status administrativo no rateio: {_e_colab_status}")
 
 # Filial definitiva:
 # - ativo/gerente → usa a filial do nome (ex: SANDY (F1) → F1)
@@ -2008,9 +2380,9 @@ _vend_cli_atual   = None
 # 3. Fallback: snapshot mais recente disponível
 import json as _json_tmp
 
-_mes_atual_str   = _dt.now().strftime("%Y-%m")
+_mes_atual_str   = now_brasilia().strftime("%Y-%m")
 _ref_path        = os.path.join(pasta, "cache_historico", f"snapshot_referencia_{_mes_atual_str}.json")
-_ontem_str_parse = (_dt.now() - __import__("datetime").timedelta(days=1)).strftime("%Y-%m-%d")
+_ontem_str_parse = (now_brasilia() - __import__("datetime").timedelta(days=1)).strftime("%Y-%m-%d")
 _snap_ontem_path = os.path.join(pasta, "cache_historico", f"snapshot_{_ontem_str_parse}.json")
 
 if os.path.exists(_ref_path):
@@ -2026,7 +2398,7 @@ elif os.path.exists(_snap_ontem_path):
 else:
     _data_corte_parse = None
     for _d in range(1, 60):
-        _d_str = (_dt.now() - __import__("datetime").timedelta(days=_d)).strftime("%Y-%m-%d")
+        _d_str = (now_brasilia() - __import__("datetime").timedelta(days=_d)).strftime("%Y-%m-%d")
         _p = os.path.join(pasta, "cache_historico", f"snapshot_{_d_str}.json")
         if os.path.exists(_p):
             _data_corte_parse = _dt.strptime(_d_str, "%Y-%m-%d")
@@ -2390,8 +2762,14 @@ for _, row_in in inat_agg.iterrows():
 
     tem_ativo = (ativos["filial_vendedor"] == filial).any()
     if tem_ativo:
-        ativos = ratear(ativos, filial, total_p, total_pg)
-        print(f"  ↳ Inativos→{filial}: rateado pend={total_p:,.2f} pago={total_pg:,.2f}")
+        # V6.0: quando colaborador sai, a carteira PENDENTE pode ser redistribuída
+        # para os ativos da filial, mas o RECEBIDO histórico do ex-colaborador não deve
+        # inflar comissão/ranking de quem ficou no lugar. Mantém o pago como consolidado
+        # da filial para fechar totais, sem jogar em vendedor/gerente ativo.
+        ativos = ratear(ativos, filial, total_p, 0.0)
+        filiais_sem_ativo.setdefault(f"{filial}_INATIVOS_HIST", {"pendente": 0.0, "pago": 0.0})
+        filiais_sem_ativo[f"{filial}_INATIVOS_HIST"]["pago"] += float(total_pg or 0)
+        print(f"  ↳ Inativos→{filial}: pendente rateado={total_p:,.2f}; pago histórico NÃO rateado={total_pg:,.2f}")
     else:
         filiais_sem_ativo[filial] = {"pendente": total_p, "pago": total_pg}
         print(f"  ↳ Inativos→{filial}: SEM ATIVO, consolidado pend={total_p:,.2f} pago={total_pg:,.2f}")
@@ -2418,10 +2796,14 @@ fdep_total_rateado_pg = 0.0
 
 if not df_dep.empty or (fdep_inat_p + fdep_inat_pg) > 0:
     total_dep_p  = df_dep["pendente"].sum() + fdep_inat_p
-    total_dep_pg = df_dep["pago"].sum()     + fdep_inat_pg
+    # V6.0: pago de FDEP vindo de inativos fica histórico/consolidado; não entra no rateio dos ativos.
+    total_dep_pg = df_dep["pago"].sum()
+    if fdep_inat_pg:
+        filiais_sem_ativo.setdefault("FDEP_INATIVOS_HIST", {"pendente": 0.0, "pago": 0.0})
+        filiais_sem_ativo["FDEP_INATIVOS_HIST"]["pago"] += float(fdep_inat_pg or 0)
     fdep_total_rateado_p  = total_dep_p
     fdep_total_rateado_pg = total_dep_pg
-    print(f"\n💰 FDEP a ratear: pend={total_dep_p:,.2f}  pago={total_dep_pg:,.2f} (ativos={df_dep['pendente'].sum():,.2f} + inativos={fdep_inat_p:,.2f})")
+    print(f"\n💰 FDEP a ratear: pend={total_dep_p:,.2f}  pago={total_dep_pg:,.2f} (ativos={df_dep['pendente'].sum():,.2f} + inativos pend={fdep_inat_p:,.2f}; pago inativo histórico={fdep_inat_pg:,.2f})")
 
     # Calcula peso de cada filial
     for f in ORDEM_FILIAIS:
@@ -2561,11 +2943,24 @@ def _v23_extrair_usuarios_das_metas_vendas(metas_info):
             nome, raw_nome = _v23_nome_from_meta_row(row)
             if not nome or nome.upper() == "TOTAL":
                 continue
+
+            # V5.8: NÃO recria usuário comercial automático quando o nome do SGI
+            # não tem tag operacional no próprio nome, ex.: (F6) ou (GERF6).
+            # Isso evita colaborador desligado voltar para murais/rateios apenas
+            # porque ainda existe linha antiga em metas/vendas.
+            raw_nome_txt = str(raw_nome or "")
+            if not re.search(r"\((?:GER\s*)?F\s*\d+\)", raw_nome_txt, flags=re.I):
+                continue
+
             filial, is_ger = _v23_filial_from_any_text(raw_nome, *[row.get(k) for k in row.keys() if not str(k).startswith("_")])
             if not filial or filial == "FDEP":
                 continue
             if re.search(r"\(GER\s*F\d+\)", str(raw_nome), flags=re.I) or re.search(r"\bGERENTE\b", str(raw_nome), flags=re.I):
                 is_ger = True
+
+            if not _colab_esta_liberado_py(nome, filial, is_ger, 'participa_cobrancas'):
+                continue
+
             key = f"{_v23_norm_name_key(nome)}_{filial}_{1 if is_ger else 0}"
             out[key] = {"nome": nome, "filial": filial, "is_gerente": bool(is_ger), "origem": chave}
     return list(out.values())
@@ -2877,7 +3272,56 @@ auth_users[LOGIN_PAINEL] = {
 }
 linhas_txt.append(f"{LOGIN_PAINEL} | Painel | {_senha_painel} | --- | VISUALIZAÇÃO")
 
+# V5.6: preserva e publica a camada administrativa de status/participação.
+_status_map_final = {}
+_status_antigo = cred_state.get("colaborador_status", {}) if isinstance(cred_state.get("colaborador_status", {}), dict) else {}
+for _login_st, _u_st in list(auth_users.items()):
+    if not isinstance(_u_st, dict):
+        continue
+    _nome_st = _u_st.get("nome") or _login_st
+    _fil_st = _u_st.get("filial") or ""
+    _is_ger_st = bool(_u_st.get("is_gerente"))
+    _key_st = _colab_status_key_py(_nome_st, _fil_st, _is_ger_st)
+    _prev_st = dict(_status_antigo.get(_key_st) or {})
+    _base_st = _colab_default_status_py(_login_st, _nome_st, _fil_st, _is_ger_st)
+    _base_st.update(_prev_st)
+    _base_st["login"] = _login_st
+    _base_st["nome"] = _nome_st
+    _base_st["filial"] = str(_fil_st or '').strip().upper()
+    if _u_st.get("is_terceiro"):
+        _base_st["tipo"] = "Cobrança terceiro"
+    elif _u_st.get("is_crediarista"):
+        _base_st["tipo"] = "Crediarista"
+    elif _u_st.get("is_viewer"):
+        _base_st["tipo"] = "Painel"
+    else:
+        _base_st["tipo"] = "Gerente" if _is_ger_st else "Vendedor"
+    _base_st["status"] = "inativo" if str(_base_st.get("status") or "ativo").lower().strip() in ("inativo","desligado","bloqueado","0","false") else "ativo"
+    for _flag_st in ("participa_cobrancas","participa_sem_movimento","participa_aniversariantes","participa_murais"):
+        _base_st[_flag_st] = bool(_base_st.get(_flag_st, True))
+        _u_st[_flag_st] = _base_st[_flag_st]
+        if _login_st in credenciais:
+            credenciais[_login_st][_flag_st] = _base_st[_flag_st]
+    _u_st["status_operacional"] = _base_st["status"]
+    _u_st["access_disabled"] = (_base_st["status"] != "ativo")
+    _u_st["data_entrada"] = _base_st.get("data_entrada", "")
+    _u_st["data_saida"] = _base_st.get("data_saida", "")
+    _u_st["substituto"] = _base_st.get("substituto", "")
+    _u_st["obs"] = _base_st.get("obs", "")
+    if _login_st in credenciais:
+        credenciais[_login_st]["status_operacional"] = _base_st["status"]
+        credenciais[_login_st]["access_disabled"] = (_base_st["status"] != "ativo")
+        credenciais[_login_st]["data_saida"] = _base_st.get("data_saida", "")
+        credenciais[_login_st]["substituto"] = _base_st.get("substituto", "")
+    _status_map_final[_key_st] = _base_st
+
+# Mantém registros antigos inativos mesmo que não tenham vindo no SGI nesta execução, para histórico/configuração.
+for _key_old_st, _old_st in _status_antigo.items():
+    if _key_old_st not in _status_map_final and isinstance(_old_st, dict) and str(_old_st.get("status") or "").lower() == "inativo":
+        _status_map_final[_key_old_st] = _old_st
+
 cred_state["users"] = auth_users
+cred_state["colaborador_status"] = _status_map_final
 cred_state["director"] = {
     "login": LOGIN_DIRETOR,
     "password": cred_state.get("director", {}).get("password") or SENHA_DIRETOR,
@@ -2930,8 +3374,8 @@ from pathlib import Path
 CACHE_DIR  = os.path.join(pasta, "cache_historico")
 Path(CACHE_DIR).mkdir(exist_ok=True)
 
-hoje_str = datetime.now().strftime("%Y-%m-%d")
-mes_str  = datetime.now().strftime("%Y-%m")
+hoje_str = now_brasilia().strftime("%Y-%m-%d")
+mes_str  = now_brasilia().strftime("%Y-%m")
 
 # Carrega configurações de meta (definidas pelo master no dashboard)
 # Estrutura: config_meta.json tem "global" (padrão) e "individual" (por vendedor/filial)
@@ -2981,6 +3425,8 @@ _config_meta_default_global = {
     "servicos_min_pct": 80.0,
     "gerente_vendas_min_pct": 90.0,
     "gerente_servicos_min_pct": 90.0,
+    "vendedor_rentab_min_mercantil_pct": 80.0,
+    "gerente_rentab_min_mercantil_pct": 80.0,
     "vendedor_policy": [],
     "gerente_policy": [],
     "vendedor_policy_headers": [],
@@ -2998,6 +3444,8 @@ _config_meta_default_global = {
     "cob_cred_rateio_filial_pct": 50.0,
     "cob_cred_rateio_cred_pct": 50.0,
     "cobranca_global_rateio_pct": 20.0,
+    "comissao_pagamento_texto": "A comissão reinicia a cada mês e o pagamento é previsto para o dia 10 do mês seguinte.",
+    "telegram_contacts": [],
     "crediaristas_config": [
         {"login": "crediaristaf02_01", "nome": "Crediarista F2 01", "filial": "F2", "pct": 100},
         {"login": "crediaristaf03_01", "nome": "Crediarista F3 01", "filial": "F3", "pct": 100},
@@ -3115,7 +3563,7 @@ def _historico_comissao_cobranca10():
         'recebido': recebido,
         'comissao': com,
         'total_comissao': round(sum(com.values()), 2),
-        'updated_at': datetime.now().isoformat(),
+        'updated_at': now_brasilia().isoformat(),
     }
     with open(COMISSAO_HIST_PATH, 'w', encoding='utf-8') as f:
         json.dump(hist, f, ensure_ascii=False, indent=2)
@@ -3181,7 +3629,7 @@ def ensure_month_reference_locked(_month_str, _today_str):
     if _base_snap:
         _ref_payload = {
             'data': _base_snap.get('data', _today_str),
-            'gerado_em': datetime.now().isoformat(),
+            'gerado_em': now_brasilia().isoformat(),
             'origem': 'ultimo_snapshot_anterior',
             'snapshot_origem_path': _base_snap.get('_path',''),
             'snapshot_origem_data': _base_snap.get('data', _today_str),
@@ -3189,7 +3637,7 @@ def ensure_month_reference_locked(_month_str, _today_str):
     else:
         _ref_payload = {
             'data': f'{_month_str}-01',
-            'gerado_em': datetime.now().isoformat(),
+            'gerado_em': now_brasilia().isoformat(),
             'origem': 'inicio_mes_sem_snapshot_anterior',
             'snapshot_origem_path': '',
             'snapshot_origem_data': f'{_month_str}-01',
@@ -3220,7 +3668,7 @@ def fechar_mes_anterior_travado(_mes_atual, _hist_dash, _config_global, _config_
     _resumo_final = (_hist_dash.get('dates', {}).get(_last_hist_date, {}) if _last_hist_date else {})
     _entry = {
         'mes': _prev_month,
-        'fechado_em': datetime.now().isoformat(),
+        'fechado_em': now_brasilia().isoformat(),
         'meta_file': os.path.basename(_prev_meta_path),
         'meta_final': _prev_meta,
         'empresa_final': _resumo_final.get('empresa', {}),
@@ -3366,7 +3814,7 @@ if _base_report_path:
         with open(ref_path(mes_str), "w", encoding="utf-8") as _fr:
             json.dump({
                 "data": BASE_MENSAL_INFO["data"],
-                "gerado_em": datetime.now().isoformat(),
+                "gerado_em": now_brasilia().isoformat(),
                 "origem": "arquivo_base_relatorio",
                 "arquivo_base": os.path.basename(_base_report_path),
                 "snapshot_origem_data": BASE_MENSAL_INFO["data"],
@@ -3386,7 +3834,7 @@ else:
 
 # ── Snapshot de hoje ──────────────────────────────────────────────────
 snapshot_hoje = {
-    "data": hoje_str, "gerado_em": datetime.now().isoformat(),
+    "data": hoje_str, "gerado_em": now_brasilia().isoformat(),
     "total_p": total_final_p, "total_pg": total_final_pg,
     "filiais": {}, "vendedores": {}
 }
@@ -3435,14 +3883,14 @@ def load_snapshot(d):
         with open(p, encoding="utf-8") as f: return json.load(f)
     return None
 
-ontem_str  = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+ontem_str  = (now_brasilia() - timedelta(days=1)).strftime("%Y-%m-%d")
 snap_ontem = load_snapshot(ontem_str)
-semana_str = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+semana_str = (now_brasilia() - timedelta(days=7)).strftime("%Y-%m-%d")
 snap_semana= load_snapshot(semana_str)
 
 if not snap_ontem:
     for d in range(2, 30):
-        snap_ontem = load_snapshot((datetime.now()-timedelta(days=d)).strftime("%Y-%m-%d"))
+        snap_ontem = load_snapshot((now_brasilia()-timedelta(days=d)).strftime("%Y-%m-%d"))
         if snap_ontem: break
 
 # Identifica clientes NOVOS agora que snap_ontem está disponível
@@ -4083,6 +4531,93 @@ print(f"📊 Histórico: {len(list(Path(CACHE_DIR).glob('snapshot_*.json')))} sn
 # =========================================
 js_creds = json.dumps(credenciais, ensure_ascii=False)
 js_metas_vendas = json.dumps(metas_vendas_info.get('dados', {}), ensure_ascii=False)
+js_metas_vendas_dia = json.dumps(metas_vendas_dia_info.get('dados', {}), ensure_ascii=False)
+
+
+def _v54_num_pct_meta_diaria(v):
+    """Converte '104,20%' / 104.2 / '1.234,56%' para float."""
+    try:
+        if isinstance(v, (int, float)):
+            return float(v)
+        s = str(v or "").strip().replace("%", "").replace("R$", "").replace(" ", "")
+        if not s:
+            return 0.0
+        if "," in s and "." in s:
+            s = s.replace(".", "").replace(",", ".")
+        elif "," in s:
+            s = s.replace(",", ".")
+        return float(s)
+    except Exception:
+        return 0.0
+
+def _v54_cell(row, *keys):
+    for k in keys:
+        if isinstance(row, dict) and row.get(k) not in (None, ""):
+            return row.get(k)
+    return ""
+
+def _v54_meta_diaria_precalc(dados):
+    """Pré-calcula no Python quem bateu meta diária para evitar erro JS no HTML."""
+    out = []
+    try:
+        metas = (dados or {}).get("metas", {}) or {}
+        if str((dados or {}).get("versao_coleta") or "") not in ("V5.9", "V6.0", "V6.2", "V6.3", "V6.4", "V6.5"):
+            # Proteção: não renderiza metadados antigos da meta diária, pois algumas versões antigas
+            # podiam exibir valores totais/mensais no mural.
+            return []
+        def add_row(row, kind):
+            if not isinstance(row, dict) or row.get("_is_total"):
+                return
+            ating = row.get("Atingido Período_float")
+            if ating in (None, ""):
+                ating = _v54_num_pct_meta_diaria(_v54_cell(row, "Atingido Período", "Atingido Periodo"))
+            else:
+                ating = _v54_num_pct_meta_diaria(ating)
+            if ating < 100:
+                return
+            meta = _v54_cell(row, "Meta (R$) Período", "Meta (R$) Periodo", "Meta(R$) Período", "Meta(R$) Periodo") or "R$ 0,00"
+            realizado = _v54_cell(row, "Realizado (R$) Período", "Realizado (R$) Periodo", "Realizado(R$) Período", "Realizado(R$) Periodo") or "R$ 0,00"
+            if kind == "filial":
+                raw = str(_v54_cell(row, "Filial", "Nome") or "Filial").strip()
+                filial = _filial_key_from_text(raw) or ""
+                nome = raw
+                if filial and filial in ORDEM_FILIAIS:
+                    nome = f"Filial {filial[1:]}"
+                info = f"{raw} · {ating:.2f}% no dia · {realizado} / {meta}"
+            else:
+                raw_fil = str(_v54_cell(row, "Vendedor", "Filial") or "").strip()
+                filial = _filial_key_from_text(raw_fil) or ""
+                nome = str(_v54_cell(row, "Vendedor_2", "Nome_2", "Nome", "Vendedor") or "Vendedor").strip()
+                # V5.8: se for colaborador desligado/inativo, não entra no mural de meta diária.
+                if not _colab_esta_liberado_py(nome, filial, False, 'participa_murais'):
+                    return
+                info = f"{filial or raw_fil} · {ating:.2f}% no dia · {realizado} / {meta}"
+            out.append({
+                "nome": nome,
+                "info": info.replace(".", ",", 1) if False else info,
+                "filial": filial,
+                "tipo": kind,
+                "kind": kind,
+                "ating": round(float(ating), 2),
+                "realizado_periodo": str(realizado),
+                "meta_periodo": str(meta),
+            })
+        _mf = (metas.get("venda_filial_meta", {}) or {})
+        if _mf.get("coleta_diaria_v59"):
+            for row in _mf.get("linhas", []) or []:
+                add_row(row, "filial")
+        _mv = (metas.get("venda_filial_vendedor_meta", {}) or {})
+        if _mv.get("coleta_diaria_v59"):
+            for row in _mv.get("linhas", []) or []:
+                add_row(row, "vendedor")
+        out.sort(key=lambda x: (-float(x.get("ating") or 0), str(x.get("nome") or "")))
+    except Exception as e:
+        print(f"⚠️ Falha ao pré-calcular meta diária batida: {e}")
+    return out
+
+_meta_diaria_batida_precalc = _v54_meta_diaria_precalc(metas_vendas_dia_info.get('dados', {}) or {})
+print(f"🎯 Meta diária BATIDA pré-calculada para o HTML: {len(_meta_diaria_batida_precalc)} item(ns)")
+js_meta_diaria_batida_precalc = json.dumps(_meta_diaria_batida_precalc, ensure_ascii=False)
 js_margens_brutas = json.dumps(margens_brutas_info.get('dados', {}), ensure_ascii=False)
 # placeholders; valores reais serão definidos após montar _sales_emp/_sales_fil/_sales_vend
 js_sales_empresa = json.dumps({}, ensure_ascii=False)
@@ -4640,7 +5175,7 @@ def _atualizar_meta_diaria_historico():
     _hist_md = hist_dash.setdefault("daily_meta", {})
     _hist_md.setdefault("dates", {})
     _hist_md.setdefault("months", {})
-    _today_entry = {"filiais": {}, "vendedores": {}, "prev_date": _prev_date, "updated_at": datetime.now().isoformat()}
+    _today_entry = {"filiais": {}, "vendedores": {}, "prev_date": _prev_date, "updated_at": now_brasilia().isoformat()}
     _month_entry = _hist_md["months"].setdefault(mes_str, {"filiais": {}, "vendedores": {}})
 
     # Filiais
@@ -4705,20 +5240,20 @@ hist_dash["sales_dates"][hoje_str] = {
     "empresa": _sales_emp,
     "filiais": _sales_fil,
     "vendedores": _sales_vend,
-    "updated_at": datetime.now().isoformat(),
+    "updated_at": now_brasilia().isoformat(),
 }
 hist_dash["sales_months"][mes_str] = {
     "empresa": _sales_emp,
     "filiais": _sales_fil,
     "vendedores": _sales_vend,
-    "updated_at": datetime.now().isoformat(),
+    "updated_at": now_brasilia().isoformat(),
 }
 
 hist_dash["dates"][hoje_str] = {
     "empresa": _hist_empresa,
     "vendedores": _hist_vends,
     "filiais": _hist_fils,
-    "updated_at": datetime.now().isoformat(),
+    "updated_at": now_brasilia().isoformat(),
 }
 _fech_mensal = fechar_mes_anterior_travado(mes_str, hist_dash, CONFIG_META, CONFIG_META_IND)
 hist_dash['months_closed'] = _fech_mensal.get('months', {})
@@ -4962,7 +5497,821 @@ for _cred_cfg in CREDIARISTAS_CONFIG:
         clientes_crediarista_js[_login_cred][_fx] = _base_fx[:_n]
     recebimentos_crediarista_js[_login_cred] = {'grave': [], 'alerta': [], 'atencao': []}
 
+
+def aplicar_anti_duplicidade_operacional_carteiras():
+    """
+    Remove duplicidade real entre listas OPERACIONAIS de cobrança.
+    Importante: clientes_js da filial continua sendo visão gerencial da carteira.
+    A trava vale para quem recebe lista para cobrar: terceiro, crediarista e vendedor.
+    Prioridade: Cobrança terceiro > crediarista > vendedor.
+    """
+    prioridade = []
+    try:
+        for fx in ['grave','alerta','atencao']:
+            for idx, r in enumerate((clientes_terceiro_js or {}).get(fx, []) or []):
+                prioridade.append(('terceiro', 'Cobrança10', fx, idx, r, 0))
+    except Exception:
+        pass
+    try:
+        for login, data in list((clientes_crediarista_js or {}).items()):
+            for fx in ['grave','alerta','atencao']:
+                for idx, r in enumerate((data or {}).get(fx, []) or []):
+                    prioridade.append(('crediarista', login, fx, idx, r, 1))
+    except Exception:
+        pass
+    try:
+        for nome, data in list((clientes_por_vend_js or {}).items()):
+            for fx in ['grave','alerta','atencao']:
+                for idx, r in enumerate((data or {}).get(fx, []) or []):
+                    prioridade.append(('vendedor', nome, fx, idx, r, 2))
+    except Exception:
+        pass
+
+    prioridade.sort(key=lambda x: (x[5], cobranca_row_key_py(x[4]), str(x[1])))
+    keep = set()
+    removidos = []
+    seen = {}
+    for tipo, dono, fx, idx, r, pr in prioridade:
+        k = cobranca_row_key_py(r)
+        if not k or k.count('|') < 2:
+            continue
+        ident = (tipo, dono, fx, idx)
+        if k not in seen:
+            seen[k] = {'tipo': tipo, 'dono': dono, 'faixa': fx}
+            keep.add(ident)
+        else:
+            removidos.append({'key': k, 'removido_de': f'{tipo}:{dono}', 'mantido_em': f"{seen[k]['tipo']}:{seen[k]['dono']}"})
+
+    def filtra_lista(tipo, dono, fx, arr):
+        novo = []
+        for idx, r in enumerate(arr or []):
+            if (tipo, dono, fx, idx) in keep:
+                novo.append(r)
+        return novo
+
+    try:
+        for login, data in list((clientes_crediarista_js or {}).items()):
+            for fx in ['grave','alerta','atencao']:
+                data[fx] = filtra_lista('crediarista', login, fx, data.get(fx, []))
+    except Exception:
+        pass
+    try:
+        for nome, data in list((clientes_por_vend_js or {}).items()):
+            for fx in ['grave','alerta','atencao']:
+                data[fx] = filtra_lista('vendedor', nome, fx, data.get(fx, []))
+    except Exception:
+        pass
+    try:
+        for fx in ['grave','alerta','atencao']:
+            clientes_terceiro_js[fx] = filtra_lista('terceiro', 'Cobrança10', fx, clientes_terceiro_js.get(fx, []))
+    except Exception:
+        pass
+
+    if removidos:
+        print(f"🧯 Anti-duplicidade operacional aplicado: {len(removidos)} título(s) removido(s) de listas duplicadas.")
+        try:
+            with open(os.path.join(pasta, 'relatorio_duplicidades_resolvidas.json'), 'w', encoding='utf-8') as f:
+                json.dump({'gerado_em': now_brasilia().isoformat(), 'total_removidos': len(removidos), 'removidos': removidos[:1000]}, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+    else:
+        print('✅ Anti-duplicidade operacional: nada para remover.')
+
+
+aplicar_anti_duplicidade_operacional_carteiras()
+
 _historico_comissao_cobranca10()
+
+
+
+# =========================================================
+# 🧡 DASHBOARD 2.0 - clientes sem movimento / dedupe carteira
+# =========================================================
+def _digits_only(v):
+    return re.sub(r"\D+", "", str(v or ""))
+
+
+def _parse_cliente_codigo_nome(raw):
+    s = re.sub(r"\s+", " ", str(raw or "").strip())
+    codigo = ""
+    nome = s
+    m = re.match(r"^(?:C\.)?\s*([0-9]+|Sem Código)\s*-\s*(.+)$", s, flags=re.I)
+    if m:
+        codigo = m.group(1).strip()
+        nome = m.group(2).strip()
+    nome = re.sub(r"\s+", " ", nome).strip()
+    primeiro = nome.split()[0].title() if nome else "Cliente"
+    return codigo, nome, primeiro
+
+
+
+
+CLIENTES_SEM_MOV_FILIAL_VALUE_TO_KEY = {
+    "1": "F1", "2": "F2", "3": "F3", "4": "F4", "5": "F5", "6": "F6",
+    "7": "F8", "8": "F9", "10": "F1", "90": "F1", "99": "F1",
+}
+CLIENTES_SEM_MOV_FILIAL_TAG_BY_VALUE = {
+    "1": "FILIAL_01", "2": "FILIAL_02", "3": "FILIAL_03", "4": "FILIAL_04", "5": "FILIAL_05", "6": "FILIAL_06",
+    "7": "FILIAL_08", "8": "FILIAL_09", "10": "FILIAL_90_99",
+}
+CLIENTES_SEM_MOV_CIDADES_PERMITIDAS = {
+    "CASTRO", "CARAMBEI", "CARAMBEÍ", "PIRAI DO SUL", "PIRAÍ DO SUL", "SOCAVAO", "SOCAVÃO",
+    "ABAPAN", "ABAPA", "ABAPÃ", "TIBAGI", "VENTANIA", "TELEMACO BORBA", "TELÊMACO BORBA",
+    "PONTA GROSSA", "TRONCO", "ITAIACOCA", "ITAICACOCA", "CARAMBEI PR", "CASTRO PR",
+}
+
+def _norm_cidade_mdl(v):
+    s = str(v or "").strip().upper()
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = re.sub(r"[^A-Z0-9 ]+", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+def _cidade_cliente_sem_movimento_permitida(cidade, uf=""):
+    nc = _norm_cidade_mdl(cidade)
+    nuf = _norm_cidade_mdl(uf)
+    permitidas = {_norm_cidade_mdl(x) for x in CLIENTES_SEM_MOV_CIDADES_PERMITIDAS}
+    if not nc:
+        return False
+    if nuf and nuf not in {"PR", "PARANA"}:
+        return False
+    if nc in permitidas:
+        return True
+    # Mantém alguns distritos/bairros próximos que podem vir compostos no SGI.
+    for base in permitidas:
+        if base and (nc.startswith(base + " ") or nc.endswith(" " + base) or base in nc):
+            return True
+    return False
+def _extrair_telefones_mdl(contatos):
+    """
+    Extrai somente números prováveis de WhatsApp/celular.
+    Mantém o número interno com DDI 55 para abrir wa.me, mas evita:
+      - telefone fixo com 10 dígitos (ex.: 42 3224-2622)
+      - número vindo misturado de e-mail/código
+      - duplicidades
+    Regras aceitas:
+      - 42 9XXXX-XXXX / XX 9XXXX-XXXX -> 55 + DDD + 9 dígitos
+      - 9XXXX-XXXX sem DDD -> assume DDD 42
+    """
+    txt = str(contatos or "")
+    nums = []
+    seen = set()
+
+    # Captura trechos telefônicos comuns, mas valida depois.
+    candidatos = []
+    for m in re.finditer(r"(?:\+?55\s*)?(?:\(?\d{2}\)?\s*)?\d{4,5}[-\s]?\d{4}", txt):
+        candidatos.append(_digits_only(m.group(0)))
+
+    for raw in candidatos:
+        if raw.startswith("55") and len(raw) > 11:
+            raw = raw[2:]
+
+        # Quando vier só 9 dígitos de celular sem DDD, assume DDD 42.
+        if len(raw) == 9 and raw.startswith("9"):
+            local = "42" + raw
+        elif len(raw) >= 11:
+            local = raw[-11:]
+        else:
+            # 10 dígitos normalmente é fixo; não usar para WhatsApp.
+            continue
+
+        # Precisa ser DDD + celular 9 dígitos.
+        if len(local) != 11:
+            continue
+        if local[2] != "9":
+            continue
+        if len(set(local[-8:])) <= 1:
+            continue
+
+        final = "55" + local
+        if final not in seen:
+            seen.add(final)
+            nums.append(final)
+    return nums
+
+
+def _filial_key_from_sem_movimento_filename(path):
+    name = os.path.basename(str(path)).upper()
+    if "FILIAL_90_99" in name or "FILIAL 90" in name or "90_99" in name:
+        return "F1"
+    m = re.search(r"FILIAL[_\s-]*(\d+)", name)
+    if m:
+        n = int(m.group(1))
+        if n in (90, 99):
+            return "F1"
+        if n in (7,):
+            # No SGI o value 7 representa FILIAL 08. Se algum arquivo antigo ficou FILIAL_07,
+            # tratamos como F8 para não criar F7 no dashboard.
+            return "F8"
+        if n == 8:
+            # Arquivo antigo FILIAL_08 é F8; arquivo novo value 8 será renomeado como FILIAL_09.
+            return "F8"
+        if n == 9:
+            return "F9"
+        return f"F{n}"
+    return "F1"
+
+
+def parse_clientes_sem_movimento_xls(path, filial_key=None):
+    filial_key = filial_key or _filial_key_from_sem_movimento_filename(path)
+    try:
+        df = pd.read_excel(path, engine="openpyxl")
+    except Exception:
+        try:
+            df = pd.read_excel(path)
+        except Exception as e:
+            print(f"⚠️ Não consegui ler clientes sem movimento {path}: {e}")
+            return []
+    df.columns = [re.sub(r"\s+", " ", str(c)).strip() for c in df.columns]
+    out = []
+    for _, row in df.iterrows():
+        cliente_raw = row.get("Cliente", "")
+        codigo, nome, primeiro = _parse_cliente_codigo_nome(cliente_raw)
+        if not nome or nome.lower() in {"nan", "cliente"}:
+            continue
+        cidade = str(row.get("Cidade", "") or "")
+        uf = str(row.get("UF", "") or "")
+        if not _cidade_cliente_sem_movimento_permitida(cidade, uf):
+            continue
+        contatos = str(row.get("Contatos", "") or "")
+        telefones = _extrair_telefones_mdl(contatos)
+        if not telefones:
+            continue
+        dias = row.get("Dias Sem Movimento", 0)
+        try:
+            dias = int(float(str(dias).replace(",", ".")))
+        except Exception:
+            dias = 0
+        # Regra MDL: reativação de 45 dias até no máximo 5 anos sem comprar.
+        # Muito antigo tende a ter telefone desatualizado e polui a carteira.
+        if dias < 45 or dias > 1825:
+            continue
+        out.append({
+            "filial": "F1" if str(filial_key).upper() in {"F90", "F99", "90", "99"} else str(filial_key).upper(),
+            "codigo": codigo,
+            "cliente": nome,
+            "primeiro_nome": primeiro,
+            "dias_sem_movimento": dias,
+            "ultimo_movimento": str(row.get("Data do Último Movimento", "") or ""),
+            "tipo_movimento": str(row.get("Tipo de Movimento", "") or ""),
+            "cidade": cidade,
+            "bairro": str(row.get("Bairro", "") or ""),
+            "uf": uf,
+            "contatos_raw": contatos,
+            "telefones": telefones,
+            "origem": os.path.basename(str(path)),
+        })
+    return out
+
+
+
+
+
+# =========================================================
+# 🎂 Aniversariantes do dia - XLS + Selenium
+# =========================================================
+ANIVERSARIANTES_FILIAL_VALUE_TO_KEY = CLIENTES_SEM_MOV_FILIAL_VALUE_TO_KEY.copy()
+ANIVERSARIANTES_FILIAL_TAG_BY_VALUE = CLIENTES_SEM_MOV_FILIAL_TAG_BY_VALUE.copy()
+
+def _filial_key_from_aniversario_text(v):
+    s = str(v or "").upper()
+    if "90/99" in s or "FILIAL 90" in s:
+        return "F1"
+    m = re.search(r"FILIAL\s*(\d+)", s)
+    if m:
+        n = int(m.group(1))
+        if n in (90,99): return "F1"
+        if n == 7: return "F8"
+        if n == 8: return "F9"
+        if n == 9: return "F9"
+        return f"F{n}"
+    return "F1"
+
+def _filial_key_from_aniversario_filename(path):
+    name = os.path.basename(str(path)).upper()
+    if "90_99" in name or "FILIAL_90" in name or "90/99" in name:
+        return "F1"
+    m = re.search(r"FILIAL[_\s-]*(\d+)", name)
+    if m:
+        n = int(m.group(1))
+        if n in (90,99): return "F1"
+        if n == 7: return "F8"
+        if n == 8: return "F9"
+        if n == 9: return "F9"
+        return f"F{n}"
+    return "F1"
+
+def nome_arquivo_aniversariantes_valido(fname):
+    s = str(fname or "").lower().strip()
+    if s.startswith("~$") or not (s.endswith(".xls") or s.endswith(".xlsx")):
+        return False
+    return ("anivers" in s or "aniversario" in s or "aniversarios" in s or "birthday" in s)
+
+def parse_aniversariantes_xls(path):
+    try:
+        df = pd.read_excel(path, engine="openpyxl")
+    except Exception:
+        try:
+            df = pd.read_excel(path)
+        except Exception as e:
+            print(f"⚠️ Não consegui ler aniversariantes {path}: {e}")
+            return []
+    df.columns = [re.sub(r"\s+", " ", str(c)).strip() for c in df.columns]
+    out=[]
+    for _, row in df.iterrows():
+        nome = str(row.get("Cliente", "") or "").strip()
+        if not nome or nome.lower() in {"nan", "cliente"}:
+            continue
+        primeiro = nome.split()[0].title() if nome else "Cliente"
+        cidade_raw = str(row.get("Cidade", "") or "").strip()
+        cidade = cidade_raw
+        uf = ""
+        m = re.match(r"(.+?)\s*-\s*([A-Z]{2})$", cidade_raw.strip(), flags=re.I)
+        if m:
+            cidade = m.group(1).strip(); uf = m.group(2).strip().upper()
+        if not _cidade_cliente_sem_movimento_permitida(cidade, uf):
+            continue
+        filial_text = str(row.get("Filial Ult. Venda", row.get("Filial", "")) or "")
+        filial = _filial_key_from_aniversario_text(filial_text) or _filial_key_from_aniversario_filename(path)
+        contatos=[]
+        for c in list(df.columns):
+            if str(c).lower().startswith("contato") or "meios" in str(c).lower():
+                val = row.get(c, "")
+                if val is not None and str(val).lower() != "nan": contatos.append(str(val))
+        telefones = _extrair_telefones_mdl(" | ".join(contatos))
+        if not telefones:
+            continue
+        nasc = str(row.get("Data de Nascimento", row.get("Nascimento", "")) or "")
+        ult = str(row.get("Data Ult. Venda", row.get("Data Últ. Venda", "")) or "")
+        out.append({
+            "filial":"F1" if str(filial).upper() in {"F90","F99","90","99"} else str(filial).upper(),
+            "cliente":nome,
+            "primeiro_nome":primeiro,
+            "nascimento":nasc,
+            "ultima_venda":ult,
+            "cidade":cidade,
+            "uf":uf,
+            "telefones":telefones,
+            "contatos_raw":" | ".join(contatos),
+            "origem":os.path.basename(str(path)),
+        })
+    return out
+
+def carregar_aniversariantes_local():
+    arquivos=[]
+    for fname in os.listdir(pasta):
+        if nome_arquivo_aniversariantes_valido(fname):
+            arquivos.append(os.path.join(pasta, fname))
+    arquivos=sorted(arquivos, key=lambda x: os.path.getmtime(x), reverse=True)
+    print(f"🎂 Aniversariantes: {len(arquivos)} XLS encontrado(s) para leitura")
+    if not arquivos:
+        print("ℹ️ Para testar sem Selenium, coloque aniversarios.xls ou relatorio_aniversariantes*.xls nesta pasta. Para baixar pelo Sólidus, rode com BAIXAR_ANIVERSARIANTES=1.")
+    todos=[]; seen=set()
+    for arq in arquivos:
+        for row in parse_aniversariantes_xls(arq):
+            key = (row.get('filial',''), _norm_cidade_mdl(row.get('cliente','')), tuple(row.get('telefones') or []))
+            if key in seen: continue
+            seen.add(key); todos.append(row)
+    try:
+        with open(os.path.join(pasta, "aniversariantes_dia.json"), "w", encoding="utf-8") as f:
+            json.dump({"gerado_em": now_brasilia().isoformat(), "total": len(todos), "dados": todos}, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"⚠️ Não consegui salvar aniversariantes_dia.json: {e}")
+    print(f"🎂 Aniversariantes carregados: {len(todos)} cliente(s)")
+    return todos
+
+def baixar_aniversariantes_selenium():
+    if os.getenv("BAIXAR_ANIVERSARIANTES", "0") != "1":
+        print("ℹ️ Download aniversariantes desativado por BAIXAR_ANIVERSARIANTES=0")
+        return []
+    print("🎂 Iniciando download Aniversariantes do dia...")
+    baixados=[]
+    try:
+        driver.get(URL + "/relatorio_aniversariantes")
+        time.sleep(2)
+        hoje_dm = now_brasilia().strftime("%d/%m")
+        for input_id in ["data_inicial", "data_final"]:
+            try:
+                el = wait.until(EC.presence_of_element_located((By.ID, input_id)))
+                driver.execute_script("arguments[0].removeAttribute('readonly'); arguments[0].value='';", el)
+                el.click(); el.send_keys(hoje_dm); driver.execute_script("arguments[0].dispatchEvent(new Event('input',{bubbles:true})); arguments[0].dispatchEvent(new Event('change',{bubbles:true})); arguments[0].blur();", el)
+            except Exception:
+                pass
+        try:
+            Select(wait.until(EC.presence_of_element_located((By.ID, "_formato")))).select_by_value("xls")
+        except Exception:
+            driver.execute_script("var s=document.getElementById('_formato'); if(s){s.value='xls'; s.dispatchEvent(new Event('change',{bubbles:true}));}")
+        inicio_download_ts=time.time()
+        antes=set(os.listdir(download_dir))
+        try:
+            btn=wait.until(EC.element_to_be_clickable((By.ID, "gerar")))
+            driver.execute_script("arguments[0].click();", btn)
+        except Exception:
+            driver.execute_script("document.getElementById('gerar')?.click();")
+        limite=time.time()+75
+        novo=None
+        while time.time()<limite:
+            time.sleep(1)
+            nomes=set(os.listdir(download_dir))
+            novos=[n for n in (nomes-antes) if (n.lower().endswith('.xls') or n.lower().endswith('.xlsx')) and not n.startswith('~$') and not n.lower().endswith('.crdownload')]
+            recentes=[n for n in nomes if (n.lower().endswith('.xls') or n.lower().endswith('.xlsx')) and not n.startswith('~$') and not n.lower().endswith('.crdownload') and os.path.getmtime(os.path.join(download_dir,n))>=inicio_download_ts-2]
+            candidatos=novos or recentes
+            if candidatos:
+                novo=max([os.path.join(download_dir,n) for n in candidatos], key=os.path.getmtime)
+                break
+        if novo:
+            ext = ".xlsx" if novo.lower().endswith(".xlsx") else ".xls"
+            destino=os.path.join(pasta, f"aniversariantes_{now_brasilia().strftime('%Y%m%d')}{ext}")
+            shutil.copy2(novo,destino)
+            baixados.append(destino)
+            print(f"✅ Aniversariantes baixado: {os.path.basename(destino)}")
+        else:
+            print("⚠️ Aniversariantes: download não encontrado")
+    except Exception as e:
+        print(f"⚠️ Erro baixando aniversariantes: {e}")
+    return baixados
+
+# =========================================================
+# 🧡 Selenium - baixar relatório Clientes sem Movimento por filial
+# =========================================================
+def nome_arquivo_clientes_sem_movimento_valido(fname):
+    """
+    Aceita o XLS do relatório Clientes sem Movimento.
+    O SGI normalmente baixa como relatorio_clientes_sem_movimento_*.xls,
+    mas em alguns ambientes pode vir com prefixo UUID ou nome diferente.
+    Por isso o download desta rotina usa também detecção por arquivo novo.
+    """
+    s = str(fname or "").lower().strip()
+    if s.startswith("~$"):
+        return False
+    if not (s.endswith(".xls") or s.endswith(".xlsx")):
+        return False
+    bloqueados = [
+        "relatorio_contas", "contas_pagar_receber", "margem_bruta", "metas_vendas",
+        "dashboard", "historico", "fechamentos", "credenciais", "config_meta",
+        "cobrancas_log", "quitados_180d"
+    ]
+    if any(b in s for b in bloqueados):
+        return False
+    return ("cliente" in s and "mov" in s) or "sem_movimento" in s or "relatorio_clientes" in s
+
+
+def _qualquer_xls_novo_clientes(fname):
+    """Fallback: aceita qualquer XLS novo que não seja dos relatórios de cobrança/vendas/margem."""
+    s = str(fname or "").lower().strip()
+    if s.startswith("~$") or not (s.endswith(".xls") or s.endswith(".xlsx")):
+        return False
+    bloqueados = [
+        "relatorio_contas", "contas_pagar_receber", "margem_bruta", "metas_vendas",
+        "dashboard", "historico", "fechamentos", "credenciais", "config_meta",
+        "cobrancas_log", "quitados_180d"
+    ]
+    return not any(b in s for b in bloqueados)
+
+
+def _renomear_download_clientes_sem_movimento(caminho, filial_value):
+    try:
+        filial_value = str(filial_value)
+        tag = CLIENTES_SEM_MOV_FILIAL_TAG_BY_VALUE.get(filial_value)
+        if not tag:
+            tag = f"FILIAL_{int(filial_value):02d}"
+        ext = ".xlsx" if str(caminho).lower().endswith(".xlsx") else ".xls"
+        destino = os.path.join(pasta, f"{tag}_relatorio_clientes_sem_movimento_{now_brasilia().strftime('%Y%m%d%H%M%S')}{ext}")
+        if os.path.abspath(caminho) != os.path.abspath(destino):
+            try:
+                if os.path.exists(destino):
+                    os.remove(destino)
+            except Exception:
+                pass
+            shutil.copy2(caminho, destino)
+        return destino
+    except Exception as e:
+        print(f"⚠️ Não consegui renomear XLS clientes sem movimento: {e}")
+        return caminho
+
+
+def _set_input_clientes_sem_movimento(input_id, valor):
+    try:
+        el = wait.until(EC.presence_of_element_located((By.ID, input_id)))
+        try:
+            driver.execute_script("arguments[0].removeAttribute('readonly'); arguments[0].removeAttribute('disabled');", el)
+        except Exception:
+            pass
+        driver.execute_script("arguments[0].value = '';", el)
+        if valor is not None and str(valor) != "":
+            try:
+                el.click()
+                el.send_keys(str(valor))
+            except Exception:
+                driver.execute_script("arguments[0].value = arguments[1];", el, str(valor))
+        driver.execute_script("arguments[0].dispatchEvent(new Event('input',{bubbles:true})); arguments[0].dispatchEvent(new Event('change',{bubbles:true})); arguments[0].dispatchEvent(new Event('blur',{bubbles:true}));", el)
+        return True
+    except Exception:
+        return False
+
+
+def _select_by_id_value(select_id, value):
+    try:
+        el = wait.until(EC.presence_of_element_located((By.ID, select_id)))
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
+        try:
+            Select(el).select_by_value(str(value))
+        except Exception:
+            driver.execute_script("arguments[0].value = arguments[1];", el, str(value))
+        driver.execute_script("""
+            arguments[0].value = arguments[1];
+            arguments[0].dispatchEvent(new Event('input',{bubbles:true}));
+            arguments[0].dispatchEvent(new Event('change',{bubbles:true}));
+            arguments[0].dispatchEvent(new Event('blur',{bubbles:true}));
+            if (document.activeElement) document.activeElement.blur();
+        """, el, str(value))
+        time.sleep(0.35)
+        return True
+    except Exception as e:
+        print(f"⚠️ Não consegui selecionar {select_id}={value}: {e}")
+        return False
+
+
+def _set_checkbox_switch_by_id(input_id, checked=True):
+    try:
+        el = driver.find_element(By.ID, input_id)
+        atual = bool(el.is_selected())
+        if atual != bool(checked):
+            driver.execute_script("arguments[0].click();", el)
+            time.sleep(0.4)
+        return True
+    except Exception:
+        try:
+            return bool(driver.execute_script("""
+                const id=arguments[0], checked=!!arguments[1];
+                const el=document.getElementById(id);
+                if(!el) return false;
+                el.checked=checked;
+                el.value=checked?'true':'false';
+                el.dispatchEvent(new Event('change',{bubbles:true}));
+                return true;
+            """, input_id, checked))
+        except Exception:
+            return False
+
+
+def _preparar_filtros_clientes_sem_movimento(filial_value):
+    """
+    V2.3 - simples e fiel ao que funciona manualmente no SGI:
+    1) seleciona filial_id
+    2) garante dias_sem_movimentacao = 45 se o campo existir
+    3) seleciona _formato = xls
+    4) NÃO mexe em Considerar Movimento, Período, Situação Financeira ou Tipo de Cliente.
+    """
+    esperar_sumir_overlays(timeout=8)
+    _select_by_id_value("filial_id", filial_value)
+    time.sleep(0.35)
+    _set_input_clientes_sem_movimento("dias_sem_movimentacao", "45")
+    _select_by_id_value("_formato", "xls")
+    try:
+        driver.execute_script("document.body.click();")
+    except Exception:
+        pass
+    esperar_sumir_overlays(timeout=8)
+
+
+def _clicar_gerar_clientes_sem_movimento():
+    """Clica no botão Gerar com JS para não depender de dropdown/overlay aberto."""
+    esperar_sumir_overlays(timeout=10)
+    try:
+        btn = wait.until(EC.presence_of_element_located((By.ID, "gerar")))
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", btn)
+        time.sleep(0.2)
+        driver.execute_script("arguments[0].click();", btn)
+        return True
+    except Exception as e:
+        print(f"⚠️ Clique JS em Gerar falhou, tentando clique seguro: {e}")
+        try:
+            clicar_seguro_xpath("//button[@id='gerar' or contains(normalize-space(.),'Gerar')]", timeout=15)
+            return True
+        except Exception as e2:
+            print(f"⚠️ Não consegui clicar em Gerar: {e2}")
+            return False
+
+
+def _aguardar_download_clientes_sem_movimento(arquivos_antes, filial_label, timeout_seg=180):
+    inicio = time.time()
+    while time.time() - inicio < timeout_seg:
+        time.sleep(1.5)
+        nomes = os.listdir(download_dir)
+        baixando = any(str(f).lower().endswith((".crdownload", ".tmp")) for f in nomes)
+        if baixando:
+            if int(time.time() - inicio) % 15 in (0, 1):
+                print(f"   ⏳ {filial_label}: aguardando download...")
+            continue
+        novos_especificos = set(f for f in nomes if nome_arquivo_clientes_sem_movimento_valido(f)) - arquivos_antes
+        novos_fallback = set(f for f in nomes if _qualquer_xls_novo_clientes(f)) - arquivos_antes
+        novos = novos_especificos or novos_fallback
+        if novos:
+            return max([os.path.join(download_dir, f) for f in novos], key=os.path.getctime)
+    return None
+
+
+def baixar_clientes_sem_movimento_selenium():
+    """
+    Baixa o relatório Clientes sem Movimento filial por filial.
+    F90/99 é renomeada e depois unificada na F1 pelo parser.
+    Pode desativar com BAIXAR_CLIENTES_SEM_MOVIMENTO=0.
+    """
+    if os.getenv("BAIXAR_CLIENTES_SEM_MOVIMENTO", "0") == "0":
+        print("ℹ️ Download clientes sem movimento desativado por BAIXAR_CLIENTES_SEM_MOVIMENTO=0 (padrão). Scheduler libera 1x ao dia às 07h.")
+        return []
+
+    print("\n🧡 Iniciando download Clientes sem Movimento +45 dias por filial...")
+    baixados = []
+    filiais = [("1", "F1"), ("2", "F2"), ("3", "F3"), ("4", "F4"), ("5", "F5"), ("6", "F6"), ("7", "F8"), ("8", "F9"), ("10", "F90/99→F1")]
+
+    try:
+        driver.get(URL + "/relatorio_clientes_sem_movimento")
+        wait.until(EC.presence_of_element_located((By.ID, "formulario")))
+        wait.until(EC.presence_of_element_located((By.ID, "filial_id")))
+        wait.until(EC.presence_of_element_located((By.ID, "_formato")))
+        time.sleep(1.0)
+    except Exception as e:
+        print(f"⚠️ Não consegui abrir relatório Clientes sem Movimento: {e}")
+        return baixados
+
+    for filial_value, filial_label in filiais:
+        try:
+            print(f"📥 Clientes sem movimento: gerando {filial_label}...")
+            arquivos_antes = set(f for f in os.listdir(download_dir) if _qualquer_xls_novo_clientes(f) or nome_arquivo_clientes_sem_movimento_valido(f))
+            _preparar_filtros_clientes_sem_movimento(filial_value)
+            time.sleep(0.8)
+            if not _clicar_gerar_clientes_sem_movimento():
+                print(f"⚠️ Clientes sem movimento {filial_label}: não clicou em Gerar")
+                continue
+            caminho = _aguardar_download_clientes_sem_movimento(arquivos_antes, filial_label, timeout_seg=210)
+            if not caminho:
+                try:
+                    vals = driver.execute_script("""
+                        return {
+                          filial: document.getElementById('filial_id')?.value,
+                          formato: document.getElementById('_formato')?.value,
+                          dias: document.getElementById('dias_sem_movimentacao')?.value
+                        };
+                    """)
+                    print(f"⚠️ Clientes sem movimento {filial_label}: download não encontrado | tela={vals}")
+                except Exception:
+                    print(f"⚠️ Clientes sem movimento {filial_label}: download não encontrado")
+                continue
+            destino = _renomear_download_clientes_sem_movimento(caminho, filial_value)
+            baixados.append(destino)
+            print(f"✅ Clientes sem movimento {filial_label}: {destino}")
+        except Exception as e:
+            print(f"⚠️ Erro baixando clientes sem movimento {filial_label}: {e}")
+            try:
+                driver.get(URL + "/relatorio_clientes_sem_movimento")
+                wait.until(EC.presence_of_element_located((By.ID, "formulario")))
+                time.sleep(1.0)
+            except Exception:
+                pass
+
+    print(f"🧡 Clientes sem movimento: {len(baixados)} arquivo(s) baixado(s)")
+    return baixados
+
+def carregar_clientes_sem_movimento_local():
+    """
+    V2.4 - prioridade correta:
+    1) Se existir XLS FILIAL_*_relatorio_clientes_sem_movimento na pasta, SEMPRE lê os XLS e recria clientes_sem_movimento.json.
+    2) Só usa clientes_sem_movimento.json se não houver XLS disponível.
+    Isso evita ficar preso num JSON antigo/vazio gerado antes do download.
+    """
+    json_path = os.path.join(pasta, "clientes_sem_movimento.json")
+
+    candidatos = []
+    for base in list(dict.fromkeys([pasta, download_dir, "/mnt/data"])):
+        try:
+            for fn in os.listdir(base):
+                low = fn.lower()
+                if low.startswith("~$"):
+                    continue
+                if ("relatorio_clientes_sem_movimento" in low or "clientes_sem_movimento" in low) and (low.endswith(".xls") or low.endswith(".xlsx")):
+                    candidatos.append(os.path.join(base, fn))
+        except Exception:
+            pass
+
+    # remove duplicados de caminho e ordena por filial/nome
+    candidatos = sorted(list(dict.fromkeys(candidatos)))
+
+    # Compatibilidade com arquivos baixados por versões antigas:
+    # no SGI, value 7 = FILIAL 08/F8 e value 8 = FILIAL 09/F9.
+    # Algumas versões antigas salvaram como FILIAL_07 e FILIAL_08.
+    nomes_up = [os.path.basename(x).upper() for x in candidatos]
+    esquema_antigo_7_8 = any("FILIAL_07" in n for n in nomes_up) and any("FILIAL_08" in n for n in nomes_up) and not any("FILIAL_09" in n for n in nomes_up)
+
+    rows = []
+    if candidatos:
+        print(f"🧡 Clientes sem movimento: {len(candidatos)} XLS encontrado(s) para leitura")
+        for path in candidatos:
+            try:
+                base_up = os.path.basename(path).upper()
+                filial_override = None
+                if esquema_antigo_7_8:
+                    if "FILIAL_07" in base_up:
+                        filial_override = "F8"
+                    elif "FILIAL_08" in base_up:
+                        filial_override = "F9"
+                parsed = parse_clientes_sem_movimento_xls(path, filial_override)
+                rows.extend(parsed)
+                print(f"   ✅ {os.path.basename(path)} → {len(parsed)} cliente(s) com telefone" + (f" | {filial_override}" if filial_override else ""))
+            except Exception as e:
+                print(f"   ⚠️ Erro lendo {os.path.basename(path)}: {e}")
+    else:
+        print("⚠️ Clientes sem movimento: nenhum XLS encontrado na pasta. Tentando JSON anterior...")
+        if os.path.exists(json_path):
+            try:
+                with open(json_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                old_rows = data.get("clientes", data) if isinstance(data, dict) else data
+                if isinstance(old_rows, list):
+                    print(f"ℹ️ Clientes sem movimento: usando JSON existente com {len(old_rows)} registro(s)")
+                    return old_rows
+            except Exception as e:
+                print(f"⚠️ Não consegui ler clientes_sem_movimento.json: {e}")
+        return []
+
+    # dedupe por filial + cliente + primeiro telefone
+    seen = set(); final = []
+    for r in rows:
+        tels = r.get("telefones") or []
+        k = (r.get("filial"), normalizar_texto_match(r.get("cliente")), tels[0] if tels else "")
+        if k in seen:
+            continue
+        seen.add(k)
+        final.append(r)
+
+    final.sort(key=lambda x: (str(x.get("filial","")), -int(x.get("dias_sem_movimento") or 0), str(x.get("cliente",""))))
+    try:
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump({"gerado_em": now_brasilia().isoformat(), "versao": DASHBOARD_BUILD_VERSION, "clientes": final}, f, ensure_ascii=False, indent=2)
+        print(f"💾 Clientes sem movimento JSON atualizado: {json_path} ({len(final)} cliente(s))")
+    except Exception as e:
+        print(f"⚠️ Não consegui salvar clientes_sem_movimento.json: {e}")
+
+    por_filial = {}
+    for r in final:
+        por_filial[r.get("filial") or "?"] = por_filial.get(r.get("filial") or "?", 0) + 1
+    print("🧡 Clientes sem movimento carregados: " + (" · ".join(f"{k}: {v}" for k, v in sorted(por_filial.items())) or "0"))
+    return final
+
+
+def relatorio_duplicidades_carteira_py():
+    buckets = []
+    try:
+        for vend_nome, data in (clientes_por_vend_js or {}).items():
+            for fx in ["grave", "alerta", "atencao"]:
+                for r in (data or {}).get(fx, []) or []:
+                    filial = str(r.get("filial") or "")
+                    buckets.append((cobranca_row_key_py(r), "vendedor", vend_nome, filial, fx, r))
+    except Exception:
+        pass
+    try:
+        for login, data in (clientes_crediarista_js or {}).items():
+            for fx in ["grave", "alerta", "atencao"]:
+                for r in (data or {}).get(fx, []) or []:
+                    buckets.append((cobranca_row_key_py(r), "crediarista", login, str(r.get("filial") or ""), fx, r))
+    except Exception:
+        pass
+    try:
+        for fx in ["grave", "alerta", "atencao"]:
+            for r in (clientes_terceiro_js or {}).get(fx, []) or []:
+                buckets.append((cobranca_row_key_py(r), "terceiro", "Cobrança10", str(r.get("filial") or "FTER"), fx, r))
+    except Exception:
+        pass
+    mp = {}
+    for k, tipo, nome, filial, fx, r in buckets:
+        if not k or k.count("|") < 2:
+            continue
+        mp.setdefault(k, []).append({"tipo": tipo, "responsavel": nome, "filial": filial, "faixa": fx, "cliente": r.get("cliente") or r.get("nome"), "titulo": r.get("titulo"), "parcela": r.get("parcela"), "vencimento": r.get("vencimento"), "pendente": r.get("pendente")})
+    conflitos = []
+    for k, arr in mp.items():
+        responsaveis = {(a.get("tipo"), a.get("responsavel"), a.get("filial")) for a in arr}
+        if len(responsaveis) > 1:
+            conflitos.append({"key": k, "qtd": len(arr), "responsaveis": arr})
+    conflitos.sort(key=lambda x: x.get("qtd",0), reverse=True)
+    out = {"gerado_em": now_brasilia().isoformat(), "total_conflitos": len(conflitos), "conflitos": conflitos[:300]}
+    try:
+        with open(os.path.join(pasta, "relatorio_duplicidades_carteira.json"), "w", encoding="utf-8") as f:
+            json.dump(out, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"⚠️ Não consegui salvar relatório de duplicidades: {e}")
+    if conflitos:
+        print(f"🚨 Duplicidades de carteira encontradas: {len(conflitos)}. Veja relatorio_duplicidades_carteira.json")
+    else:
+        print("✅ Check anti-duplicidade da carteira: nenhum conflito entre responsáveis.")
+    return out
+
+baixar_clientes_sem_movimento_selenium()
+baixar_aniversariantes_selenium()
+clientes_sem_movimento_js = carregar_clientes_sem_movimento_local()
+aniversariantes_js = carregar_aniversariantes_local()
+duplicidades_carteira_js = relatorio_duplicidades_carteira_py()
 
 js_todos    = json.dumps(todos_js,            ensure_ascii=False)
 js_filiais  = json.dumps(filiais_js_ordered,  ensure_ascii=False)
@@ -4982,6 +6331,9 @@ js_crediaristas_map = json.dumps(CREDIARISTAS_CONFIG, ensure_ascii=False)
 js_destaque = json.dumps(destaque_semana or {}, ensure_ascii=False)
 js_hist_dash = json.dumps(hist_dash, ensure_ascii=False)
 js_quitados_180 = json.dumps((quitados_180_info.get('dados') or {}).get('quitados', []), ensure_ascii=False)
+js_clientes_sem_movimento = json.dumps(clientes_sem_movimento_js, ensure_ascii=False)
+js_aniversariantes = json.dumps(aniversariantes_js, ensure_ascii=False)
+js_duplicidades_carteira = json.dumps(duplicidades_carteira_js, ensure_ascii=False)
 
 total_dash_p  = round(total_final_p,  2)
 total_dash_pg = round(total_final_pg, 2)
@@ -5050,6 +6402,7 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 .btn.danger{background:rgba(240,82,82,.12);color:var(--red-400);border-color:rgba(240,82,82,.2)}
 .btn.danger:hover{background:rgba(240,82,82,.2)}
 .btn.wa{background:linear-gradient(135deg,#25D366,#1a9e4a);color:#fff;font-weight:700;box-shadow:0 4px 14px rgba(37,211,102,.25)}
+.pulse-alert{animation:hotPulse 1.1s ease-in-out infinite}@keyframes hotPulse{0%,100%{box-shadow:0 0 0 rgba(245,140,16,0)}50%{box-shadow:0 0 22px rgba(245,140,16,.75);transform:translateY(-1px)}}
 .badge{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:99px;font-size:12px;font-weight:700;letter-spacing:.02em;background:rgba(249,168,50,.1);color:var(--amber-300);border:1px solid rgba(249,168,50,.2)}
 .tabs{display:flex;gap:6px;flex-wrap:wrap;padding:6px;background:var(--bg-surface);border-radius:var(--radius-lg);border:1px solid var(--glass-border);margin-bottom:20px}
 .tab{padding:10px 16px;border-radius:var(--radius-md);border:none;background:transparent;color:var(--text-secondary);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:var(--transition)}
@@ -5251,6 +6604,7 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 .modal-card{width:min(420px,100%);padding:24px;border-radius:var(--radius-xl)}
 .modal-card h3{font-size:18px;font-weight:800;margin-bottom:6px;color:var(--text-primary)}
 .modal-list{display:grid;gap:10px;margin-top:16px}
+.pulse-notify{animation:pulseNotify 1.1s ease-in-out infinite}@keyframes pulseNotify{0%,100%{box-shadow:0 0 0 rgba(249,168,50,0)}50%{box-shadow:0 0 26px rgba(249,168,50,.65)}}
 .toast{position:fixed;right:20px;bottom:20px;z-index:60;display:grid;gap:10px}
 .toast-item{min-width:280px;padding:14px 16px;border-radius:var(--radius-lg);background:var(--bg-elevated);border:1px solid var(--glass-border);box-shadow:var(--shadow-lg);display:flex;gap:12px;align-items:center;animation:slideInToast .25s ease}
 @keyframes slideInToast{from{transform:translateX(40px);opacity:0}to{transform:translateX(0);opacity:1}}
@@ -5438,6 +6792,68 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 .kpi .laranjito-caption{display:none!important;}
 
 
+
+/* ===== V3.9: corrigir botões de acordeão e mascotes sem sobrepor texto ===== */
+.acc-head span:last-child,
+.accordion.open .acc-head span:last-child{
+  transform:none!important;
+  writing-mode:horizontal-tb!important;
+}
+.acc-head .acc-hint,
+.acc-head > span:last-child{
+  width:auto!important;
+  height:auto!important;
+  min-width:auto!important;
+  max-width:360px!important;
+  padding:6px 12px!important;
+  border-radius:999px!important;
+  background:rgba(255,255,255,.06)!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  line-height:1.2!important;
+  font-size:12px!important;
+  text-align:center!important;
+  flex:0 0 auto!important;
+}
+.kpi.kpi-laranjito{
+  padding-right:92px!important;
+  min-height:94px!important;
+}
+.kpi .laranjito-card{
+  width:62px!important;
+  height:62px!important;
+  right:14px!important;
+  bottom:12px!important;
+  top:auto!important;
+  transform:none!important;
+  object-fit:contain!important;
+  border-radius:14px!important;
+  background:transparent!important;
+  z-index:0!important;
+  opacity:.95!important;
+}
+.kpi.kpi-laranjito .label,
+.kpi.kpi-laranjito .value,
+.kpi.kpi-laranjito .subline{
+  position:relative!important;
+  z-index:2!important;
+}
+.kpi.kpi-laranjito .subline{
+  max-width:calc(100% - 12px)!important;
+}
+.meta-diaria-empty{
+  padding:10px 12px;
+  border-radius:14px;
+  background:rgba(34,197,94,.055);
+  border:1px dashed rgba(34,197,94,.22);
+  color:#9fb0c8;
+  font-weight:700;
+}
+
 /* ===== CONFIGURAÇÃO GLOBAL DE MENSAGEM DE COBRANÇA ===== */
 .cobranca-config-grid{
   display:grid;
@@ -5478,6 +6894,14 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 
 /* ===== LISTA SEM COBRANÇAS HOJE ===== */
 .sem-cobrancas-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-top:12px}
+
+.aviso-ticker{margin-top:10px;overflow:hidden;border:1px solid rgba(245,158,11,.18);border-radius:14px;background:rgba(0,0,0,.16);min-height:44px;display:flex;align-items:center;position:relative}
+.aviso-ticker::before,.aviso-ticker::after{content:'';position:absolute;top:0;bottom:0;width:42px;z-index:2;pointer-events:none}.aviso-ticker::before{left:0;background:linear-gradient(90deg,rgba(17,24,39,.98),transparent)}.aviso-ticker::after{right:0;background:linear-gradient(270deg,rgba(17,24,39,.98),transparent)}
+.aviso-ticker-track{display:flex;gap:12px;align-items:center;white-space:nowrap;will-change:transform;animation:mdlTicker 520s linear infinite;padding:8px 18px}.aviso-ticker:hover .aviso-ticker-track{animation-play-state:paused}
+.aviso-ticker.fast .aviso-ticker-track{animation-duration:130s!important}
+.aviso-pill{display:inline-flex;align-items:center;gap:8px;border:1px solid rgba(255,255,255,.08);border-radius:999px;background:rgba(255,255,255,.04);padding:8px 12px;font-weight:900;color:#f4f7ff}.aviso-pill small{font-weight:700;color:#aeb7ca;margin-left:4px}.aviso-pill .red-dot{width:7px;height:7px;border-radius:999px;background:#ef4444;box-shadow:0 0 0 4px rgba(239,68,68,.12)}
+@keyframes mdlTicker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+.reat-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 12px}.reat-tab{border:1px solid rgba(255,255,255,.08);border-radius:999px;background:rgba(255,255,255,.04);color:#dbe4ff;padding:8px 12px;font-weight:900;font-size:12px}.reat-tab.ok{border-color:rgba(34,197,94,.25);color:#86efac}.reat-tab.pending{border-color:rgba(245,158,11,.25);color:#fbbf24}
 .sem-cobranca-chip{display:flex;align-items:center;gap:8px;border:1px solid rgba(239,68,68,.18);background:rgba(239,68,68,.06);border-radius:12px;padding:8px 10px;font-size:12px;font-weight:700}
 .sem-cobranca-chip small{display:block;color:var(--text-muted);font-weight:600;margin-top:2px}
 
@@ -5737,7 +7161,8 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
   padding:14px;
   box-shadow:0 22px 55px rgba(0,0,0,.55);
 }
-#laranjitoNotifyPanel.show{display:block}
+#laranjitoNotifyPanel.show:not(:empty){display:block}
+#laranjitoNotifyPanel:empty{display:none!important;border:none!important;box-shadow:none!important;padding:0!important;height:0!important;min-height:0!important;overflow:hidden!important}
 .laranjito-note{
   padding:11px 12px;
   border-radius:15px;
@@ -5857,6 +7282,43 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 body.master-view #laranjitoNotify, body.diretor-view #laranjitoNotify{display:none!important}
 
 
+/* ===== V3.1: acordeões e início compacto ===== */
+.acc-head .acc-hint{
+  width:auto!important;height:auto!important;min-width:180px!important;max-width:520px!important;
+  border-radius:999px!important;background:rgba(255,255,255,.06)!important;
+  padding:6px 12px!important;font-size:12px!important;line-height:1.2!important;
+  color:#dbe4ff!important;white-space:nowrap!important;text-align:right!important;display:inline-flex!important;
+  align-items:center!important;justify-content:flex-end!important;transform:none!important;writing-mode:horizontal-tb!important;
+}
+.accordion.open .acc-head .acc-hint{transform:none!important}
+.reat-tabs .reat-tab{cursor:pointer;user-select:none}.reat-tabs .reat-tab.active{box-shadow:0 0 0 2px rgba(249,168,50,.35) inset;background:rgba(249,168,50,.12)}
+.inicio-compact .kpis{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
+body.inicio-view .kpi{padding:14px 16px;min-height:92px}body.inicio-view .kpi .value{font-size:21px}body.inicio-view .app-shell{padding-top:14px}
+.inicio-murais-grid{display:grid;grid-template-columns:1fr;gap:10px;margin-top:10px}.inicio-murais-grid .glass.panel{margin-bottom:0!important;padding:12px 14px!important}.inicio-murais-grid h2{font-size:16px!important}.inicio-murais-grid .hint{font-size:11px}.inicio-murais-grid .aviso-ticker{min-height:38px}.inicio-murais-grid .aviso-ticker-track{animation-duration:620s!important;padding:7px 14px}.inicio-campaign-compact .campaign-banner{margin-bottom:12px;padding:12px 14px}
+.inicio-operacional-compact{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}.inicio-operacional-compact .glass.panel{padding:12px 14px!important;margin-bottom:0!important}.inicio-operacional-compact h2{font-size:16px!important}.inicio-operacional-compact .hint{font-size:11px}.inicio-operacional-compact .aviso-ticker{min-height:38px}.inicio-operacional-compact .aviso-ticker-track{animation-duration:620s!important;padding:7px 14px}.inicio-operacional-compact .aviso-ticker.fast .aviso-ticker-track{animation-duration:150s!important}
+/* ===== V3.4: enquadramento menor + murais sem vazar ===== */
+html,body{overflow-x:hidden!important}
+.app-shell{max-width:1560px!important;margin:0 auto!important;padding:20px 24px 100px!important;overflow-x:hidden!important}
+#app,#mainScreen,#inicioSection{max-width:100%!important;overflow-x:hidden!important}
+.inicio-compact,.inicio-murais-grid,.inicio-operacional-compact{max-width:100%!important;min-width:0!important;overflow:hidden!important}
+.inicio-operacional-compact{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:12px!important;align-items:start!important}
+.inicio-operacional-compact .glass.panel,.inicio-murais-grid .glass.panel{min-width:0!important;max-width:100%!important;overflow:hidden!important;margin-bottom:0!important}
+.inicio-operacional-compact .glass.panel.full{grid-column:1/-1!important}
+.aviso-ticker{width:100%!important;max-width:100%!important;min-width:0!important;overflow:hidden!important}
+.aviso-ticker-track{animation-duration:1400s!important;will-change:transform}
+.aviso-ticker.fast .aviso-ticker-track{animation-duration:260s!important}
+.inicio-operacional-compact .aviso-ticker-track{animation-duration:1400s!important}
+.inicio-operacional-compact .aviso-ticker.fast .aviso-ticker-track{animation-duration:260s!important}
+.aviso-pill{flex:0 0 auto;max-width:420px!important;overflow:hidden!important;text-overflow:ellipsis!important}
+.acc-head{gap:12px!important;min-width:0!important;overflow:hidden!important}
+.acc-head>span:first-child{min-width:0!important;overflow:hidden!important;text-overflow:ellipsis!important}
+.acc-head .acc-hint{position:static!important;margin-left:auto!important;flex:0 0 auto!important;min-width:0!important;max-width:520px!important;white-space:nowrap!important;writing-mode:horizontal-tb!important;transform:none!important;text-align:right!important}
+body.inicio-view .kpis{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:12px!important}
+body.inicio-view .kpi{padding:14px 16px!important;min-height:88px!important}
+body.inicio-view .kpi .value{font-size:21px!important}
+@media(max-width:1180px){.inicio-operacional-compact{grid-template-columns:1fr!important}.app-shell{padding:16px 16px 90px!important}}
+@media(max-width:1100px){.inicio-murais-grid,.inicio-operacional-compact{grid-template-columns:1fr}.acc-head .acc-hint{max-width:100%!important;text-align:left!important;white-space:normal!important;justify-content:flex-start!important}}
+
 /* ===== V27D: LISTA COMPACTA MASTER/DIRETOR + PAGINAÇÃO LOGS ===== */
 .entity-list{display:grid;gap:8px;margin-bottom:18px}
 .entity-row{display:grid;grid-template-columns:minmax(240px,1.5fr) repeat(6,minmax(105px,.7fr)) minmax(140px,.8fr);gap:10px;align-items:center;padding:12px 14px;border-radius:16px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.09);cursor:pointer;transition:var(--transition)}
@@ -5868,6 +7330,18 @@ body.master-view #laranjitoNotify, body.diretor-view #laranjitoNotify{display:no
 .log-pager{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08)}
 @media(max-width:1100px){.entity-row{grid-template-columns:1fr 1fr}.entity-row-head{display:none}}
 
+
+/* ===== V3.5 ajustes visuais e murais ===== */
+.senhas-table-wrap{overflow:hidden!important;width:100%!important;max-width:100%!important}
+.senhas-table{min-width:0!important;width:100%!important;table-layout:fixed!important;font-size:12px!important}
+.senhas-table th,.senhas-table td{padding:8px 8px!important;font-size:12px!important;line-height:1.25!important;overflow:hidden!important;text-overflow:ellipsis!important;vertical-align:middle!important}
+.senhas-table th:nth-child(1),.senhas-table td:nth-child(1){width:12%!important}.senhas-table th:nth-child(2),.senhas-table td:nth-child(2){width:10%!important}.senhas-table th:nth-child(3),.senhas-table td:nth-child(3){width:16%!important}.senhas-table th:nth-child(4),.senhas-table td:nth-child(4){width:5%!important}.senhas-table th:nth-child(5),.senhas-table td:nth-child(5){width:9%!important}.senhas-table th:nth-child(6),.senhas-table td:nth-child(6){width:9%!important}.senhas-table th:nth-child(7),.senhas-table td:nth-child(7){width:17%!important}.senhas-table th:nth-child(8),.senhas-table td:nth-child(8){width:14%!important}.senhas-table th:nth-child(9),.senhas-table td:nth-child(9){width:8%!important}
+.senha-view-row,.senha-nova-row{gap:4px!important;min-width:0!important;width:100%!important;flex-wrap:nowrap!important}.senha-view-row input,.senha-nova-row input{min-width:0!important;width:100%!important;max-width:140px!important;padding:7px 8px!important}.senhas-table .btn-xs{padding:7px 8px!important;font-size:11px!important}.senhas-table td strong{white-space:normal!important;word-break:break-word!important}
+.admin-accounts-line{display:block!important}.admin-accounts-line .senhas-table-wrap{margin-top:8px!important}
+.inicio-operacional-compact{display:block!important;grid-template-columns:1fr!important;gap:0!important}.inicio-operacional-compact .glass.panel{width:100%!important;margin:0 0 10px 0!important}.inicio-operacional-compact .section-head{margin-bottom:6px!important}.inicio-operacional-compact .legend-inline{display:flex!important;flex-wrap:wrap!important;gap:10px!important}.inicio-operacional-compact .legend-inline span{white-space:normal!important}
+.aviso-ticker{width:100%!important;max-width:100%!important;overflow:hidden!important}.aviso-ticker-track{animation-duration:1800s!important}.aviso-ticker.fast .aviso-ticker-track{animation-duration:45s!important}.inicio-operacional-compact .aviso-ticker-track{animation-duration:1800s!important}.inicio-operacional-compact .aviso-ticker.fast .aviso-ticker-track{animation-duration:45s!important}.ticker-speed-btn{min-width:104px;justify-content:center}.mural-section-title{margin:14px 0 8px!important}.mural-section-title h2{font-size:18px!important}
+@media(max-width:1400px){.senhas-table th,.senhas-table td{font-size:11px!important;padding:7px 6px!important}.senha-view-row input,.senha-nova-row input{max-width:120px!important}.senhas-table .btn-xs{padding:6px 7px!important}}
+
 </style>
 </head>
 <body>
@@ -5876,6 +7350,7 @@ body.master-view #laranjitoNotify, body.diretor-view #laranjitoNotify{display:no
     <img class="logo-big" src="__LOGO__" alt="logo">
     <h2>Dashboard – Lojas MDL</h2>
     <div class="sub" style="text-align:center">Entre com seu usuário de colaborador ou Master</div>
+    <div class="note" style="text-align:center;margin-top:8px;color:#f59e0b;font-weight:900">__DASH_VERSION_LABEL__</div>
     <div class="login-form">
       <input id="loginUser" placeholder="Usuário">
       <input id="loginPass" type="password" placeholder="Senha">
@@ -5897,24 +7372,32 @@ body.master-view #laranjitoNotify, body.diretor-view #laranjitoNotify{display:no
         <div>
           <h1>Dashboard – Lojas MDL</h1>
           <div class="sub">Período Cobrança: __PERIODO__ · Vendedores: painel individual · Gerentes: painel de filial</div>
+          <div class="sub" style="color:#f59e0b;font-weight:900">__DASH_VERSION_LABEL__</div>
         </div>
       </div>
       <div class="header-actions">
         <button id="bellBtn" class="btn soft" onclick="openBell()">🔔 Avisos <span id="bellCount" class="badge" style="padding:4px 8px;margin-left:4px;background:#eef5ff">0</span></button>
+        <button id="goalNotifBtn" class="btn soft hidden" onclick="openGoalNotifications()">🎉 Notificações <span id="goalNotifCount" class="badge" style="padding:4px 8px;margin-left:4px;background:#fff4d6">0</span></button>
         <div id="userBadge" class="badge">👑 Master</div>
         <button class="btn soft" onclick="logout()">Sair</button>
       </div>
     </div>
 
+    <div id="topMural" class="hidden"></div>
+
     <div id="kpis" class="kpis"></div>
 
     <div id="masterTabs" class="tabs hidden">
-      <button class="tab active" data-tab="vendedores" onclick="setMainTab('vendedores')">👥 Por Colaborador</button>
+      <button class="tab active" data-tab="inicio" onclick="setMainTab('inicio')">🏠 Início</button>
+      <button class="tab" data-tab="vendedores" onclick="setMainTab('vendedores')">👥 Por Colaborador</button>
       <button class="tab" data-tab="filiais" onclick="setMainTab('filiais')">🏬 Por Filial</button>
       <button class="tab" data-tab="metas" onclick="setMainTab('metas')">🎯 Metas</button>
       <button class="tab" data-tab="servicos" onclick="setMainTab('servicos')">🛠️ Serviços</button>
       <button class="tab" data-tab="cobrancas" onclick="setMainTab('cobrancas')">🧾 Cobranças</button>
+      <button class="tab" data-tab="reativacao" onclick="setMainTab('reativacao')">🧡 Clientes sem movimento</button>
+      <button class="tab" data-tab="aniversariantes" onclick="setMainTab('aniversariantes')">🎂 Aniversariantes</button>
       <button class="tab" data-tab="avisos" onclick="setMainTab('avisos')">📣 Avisos</button>
+      <button class="tab" data-tab="telegram" onclick="setMainTab('telegram')">📲 Telegram</button>
       <button class="tab" data-tab="senhas" onclick="setMainTab('senhas')">🔐 Senhas</button>
       <button class="tab" data-tab="historico" onclick="setMainTab('historico')">🗂️ Histórico</button>
     </div>
@@ -5922,11 +7405,15 @@ body.master-view #laranjitoNotify, body.diretor-view #laranjitoNotify{display:no
     <div id="mainFilters" class="filters hidden"></div>
 
     <div id="mainScreen">
+      <div id="inicioSection" class="hidden"></div>
       <div id="listSection"></div>
       <div id="metaSection" class="hidden"></div>
       <div id="servicesSection" class="hidden"></div>
       <div id="logSection" class="hidden"></div>
+      <div id="reativacaoSection" class="hidden"></div>
+      <div id="aniversariantesSection" class="hidden"></div>
       <div id="avisosSection" class="hidden"></div>
+      <div id="telegramSection" class="hidden"></div>
       <div id="senhasSection" class="hidden"></div>
       <div id="histSection" class="hidden"></div>
     </div>
@@ -5962,6 +7449,20 @@ const RECEBIMENTOS=__JS_RECEBIMENTOS__;
 const RECEBIMENTOS_TERCEIRO=__JS_RECEBIMENTOS_TERCEIRO__;
 const RECEBIMENTOS_CREDIARISTA=__JS_RECEBIMENTOS_CREDIARISTA__||{};
 const QUITADOS_180=__JS_QUITADOS_180__||[];
+const DASHBOARD_BUILD_VERSION=__JS_DASHBOARD_BUILD_VERSION__;
+const DASHBOARD_BUILD_TAG=__JS_DASHBOARD_BUILD_TAG__;
+
+function isAdminLike(){
+  const t=String(usuarioAtual?.tipo||'').toLowerCase();
+  const l=String(usuarioAtual?.login||'').toLowerCase();
+  return ['master','diretor','painel','director'].includes(t) || ['master','diretorcomercial','painel'].includes(l);
+}
+function renderBackButton(){
+  return isAdminLike()?'<button class="btn soft" onclick="backToMain()">↩️ Voltar</button>':'';
+}
+const CLIENTES_SEM_MOVIMENTO=__JS_CLIENTES_SEM_MOVIMENTO__||[];
+const ANIVERSARIANTES=__JS_ANIVERSARIANTES__||[];
+const DUPLICIDADES_CARTEIRA=__JS_DUPLICIDADES_CARTEIRA__||{total_conflitos:0,conflitos:[]};
 let RECEBIMENTOS_CONCILIADOS={};
 let CREDIARISTAS_CONFIG=Array.isArray(__JS_CREDIARISTAS_MAP__)?__JS_CREDIARISTAS_MAP__:[];
 if(!CREDIARISTAS_CONFIG.length && __JS_CREDIARISTAS_MAP__ && typeof __JS_CREDIARISTAS_MAP__==='object'){
@@ -5971,7 +7472,8 @@ function getCrediaristasConfig(){return Array.isArray(CONFIG_META?.crediaristas_
 const CREDIARISTAS_MAP=new Proxy({}, {get(t,k){const row=getCrediaristasConfig().find(r=>String(r.filial||'').toUpperCase()===String(k||'').toUpperCase());return row?String(row.login||'').toLowerCase():undefined}, ownKeys(){return getCrediaristasConfig().map(r=>r.filial)}, getOwnPropertyDescriptor(){return {enumerable:true,configurable:true}}});
 const COBRANCA10_LOGIN='cobranca10';
 const COBRANCA10_NOME='Cobrança10';
-const METAS_VENDAS=__JS_METAS_VENDAS__||{metas:{}};
+let METAS_VENDAS=__JS_METAS_VENDAS__||{metas:{}};
+let METAS_VENDAS_DIA=__JS_METAS_VENDAS_DIA__||{metas:{}};
 const MARGENS_BRUTAS=__JS_MARGENS_BRUTAS__||{filiais:{},vendedores:{}};
 let SALES_EMPRESA=__JS_SALES_EMPRESA__||{};
 let RENT_EMPRESA=__JS_RENT_EMPRESA__||{};
@@ -6002,7 +7504,15 @@ function getRentEmpresa(){
 }
 
 let SERVICOS_RELATORIO=__JS_SERVICOS_RELATORIO__||{empresa:{},servicos:{},filiais:{},vendedores:{},detalhes:[]};
-let CONFIG_META={grave_pct:20,alerta_pct:15,atencao_pct:10,peso_grave:60,peso_alerta:30,peso_atencao:10,bonus_50:'',bonus_75:'',bonus_85:'',bonus_100:'',cob_cred_rateio_filial_pct:50,cob_cred_rateio_cred_pct:50,cobranca_global_rateio_pct:20,cobranca_msg_template_terceira:`Olá, {primeiro_nome}. Tudo bem?
+let CONFIG_META={grave_pct:20,alerta_pct:15,atencao_pct:10,comissao_pagamento_texto:'A comissão reinicia a cada mês e o pagamento é previsto para o dia 10 do mês seguinte.',reativacao_rateio_modo:'igualitario',reativacao_msg_template_filiais:{},aniversario_msg_template_filiais:{},dias_uteis_meta_diaria:25,aniversario_msg_template:`Olá, {primeiro_nome}! Feliz aniversário!
+
+Aqui é da Lojas MDL - Móveis do Lar. Desejamos muita saúde, paz e felicidades neste dia especial.
+
+Preparamos condições especiais para você comemorar com a gente.`,reativacao_msg_template:`Olá, {primeiro_nome}! Tudo bem?
+
+Aqui é da Lojas MDL - Móveis do Lar. Estamos com saudades de você! Faz um tempinho que você não aparece na loja.
+
+Venha conhecer nossas novidades e aproveitar condições especiais que preparamos para nossos clientes.`,peso_grave:60,peso_alerta:30,peso_atencao:10,vendas_min_pct:80,servicos_min_pct:80,gerente_vendas_min_pct:90,gerente_servicos_min_pct:90,vendedor_rentab_min_mercantil_pct:80,gerente_rentab_min_mercantil_pct:80,bonus_50:'',bonus_75:'',bonus_85:'',bonus_100:'',cob_cred_rateio_filial_pct:50,cob_cred_rateio_cred_pct:50,cobranca_global_rateio_pct:20,cobranca_msg_template_terceira:`Olá, {primeiro_nome}. Tudo bem?
 Aqui é da Lojas MDL - Móveis do Lar.
 
 Já tentamos contato sobre a parcela vencida em {vencimento}, no valor de {valor}, referente ao título {titulo}/{parcela}.
@@ -6029,6 +7539,30 @@ const API_HIST='historico_api.php';
 const API_COMIS='historico_comissionamento_api.php';
 
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
+function normName(s){
+  return String(s||'')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g,'')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g,' ')
+    .replace(/\s+/g,' ')
+    .trim();
+}
+function fmtTelBR(t){
+  const d=String(t||'').replace(/\D/g,'').replace(/^55/,'');
+  return d;
+}
+function ordenarFiliaisReativacao(filiais){
+  const ordem=ORDEM||['F1','F2','F3','F4','F5','F6','F8','F9'];
+  return [...filiais].filter(f=>f!=='F7').sort((a,b)=>{
+    const ia=ordem.indexOf(a), ib=ordem.indexOf(b);
+    return (ia<0?999:ia)-(ib<0?999:ib);
+  });
+}
+function firstNameFromFullName(s){
+  const n=String(s||'').replace(/^\s*\d+\s*-\s*/,'').trim();
+  return (n.split(/\s+/)[0]||n||'Cliente');
+}
 async function fetchComTimeout(url, opts={}, ms=3500){
   const ctrl = new AbortController();
   const timer = setTimeout(()=>{try{ctrl.abort()}catch(e){}}, ms);
@@ -6145,7 +7679,7 @@ function renderLaranjitoNotify(){
 
   const visible = shouldShowLaranjitoBubble() && LARANJITO_NOTES.length>0;
   btn.style.display = visible ? 'flex' : 'none';
-  if(!visible){panel.classList.remove('show'); return;}
+  if(!visible){panel.classList.remove('show'); panel.style.display='none'; panel.innerHTML=''; return;}
 
   btn.classList.toggle('has-notes', LARANJITO_UNREAD>0);
   btn.classList.toggle('no-new', LARANJITO_UNREAD<=0);
@@ -6159,7 +7693,10 @@ function renderLaranjitoNotify(){
 }
 function toggleLaranjitoNotifyPanel(){
   const panel=document.getElementById('laranjitoNotifyPanel');
-  if(panel) panel.classList.toggle('show');
+  if(!panel) return;
+  if(!panel.textContent.trim() && !panel.querySelector('*')){panel.classList.remove('show'); panel.style.display='none'; return;}
+  panel.style.display='block';
+  panel.classList.toggle('show');
 }
 function clearLaranjitoNotes(){
   // Não apaga as mensagens. Apenas limpa o contador vermelho da bolinha.
@@ -6173,7 +7710,7 @@ function showLaranjitoOncePerAccess(){
     const k=currentSessionNoticeKey();
     if(localStorage.getItem(k)==='1') return;
     const panel=document.getElementById('laranjitoNotifyPanel');
-    if(panel && LARANJITO_NOTES.length){
+    if(panel && LARANJITO_NOTES.length && panel.textContent.trim()){
       setTimeout(()=>panel.classList.add('show'),700);
       localStorage.setItem(k,'1');
     }
@@ -6190,14 +7727,19 @@ const app=document.getElementById('app');
 const userBadge=document.getElementById('userBadge');
 const masterTabs=document.getElementById('masterTabs');
 const mainFilters=document.getElementById('mainFilters');
+const topMural=document.getElementById('topMural');
+const inicioSection=document.getElementById('inicioSection');
 const listSection=document.getElementById('listSection');
 const metaSection=document.getElementById('metaSection');
 const servicesSection=document.getElementById('servicesSection');
 const logSection=document.getElementById('logSection');
 const detailScreen=document.getElementById('detailScreen');
 const avisosSection=document.getElementById('avisosSection');
+const telegramSection=document.getElementById('telegramSection');
 const senhasSection=document.getElementById('senhasSection');
 const histSection=document.getElementById('histSection');
+const reativacaoSection=document.getElementById('reativacaoSection');
+const aniversariantesSection=document.getElementById('aniversariantesSection');
 
 function R(v){return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
 function pct(v){return `${Math.round(Number(v||0))}%`}
@@ -6308,10 +7850,11 @@ function makeKpi(label,val,accent,sub='',extraClass='',mascote='',iconHtml=''){
   </div>`;
 }
 
+const LARANJITO_TRANSPARENTE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAFUAAABaCAYAAADJoxqPAAA08klEQVR4nLW9efBk2VXf+Tn33bdk5m+prWvpfVdvai0tJCEhJCRACIWEQTACHIQdHgO2YWyw/8CDI2xjHDjGEQzjBZtB4EEeHCCjGANCslZQo61ba6/qRb1WdVVXdS2/X/2WfNu998wf976X+asWomeYyYiqzJfv/V6+PO/cs3zP95yUU1dcobzEx59mGfeYjC9nwpYxgJKlfWJAdHjWcdsYUF3sR0CGv0HH1wgw7Ne923/VZ/1m24AiCBCW3te4A2VxXFAZtxXQAEFkPC6ExfEBwb4UYZ4Ww7/Jc76YGSQJJUMRASOk96IgTdo/HCcomCRIuUSospDn8EL4/+eh43/jE5qkZoY3ZVmoy4JUgg6vBRUIqlGgCJKlfQpG9S8X6seyjN+0lk0jo2YZFJO2jYmCMwgiisjiOBHFSFQRSSqYNpNA4/HDN5Jhh16y/f9GRVXQS86nkraDxiuU9Kyg6ThN+0MSuoosXZ0SBDRokkK8KUFZfK58C03dEuF9NucjNkNkr2YakSSwtK2DQAFRDElT03GDgJOiMlyCyGJLBv2RwSSM+vRXfo7ap4t3s/QJKnuO0kGQBoym/Qoh/f2gjSETgkbtNRqFGtL+AN9cqB/ILB+wGReNLJa2JA0dn2WhtaKIkbiMDBgCYiTaVFkIlEHYg4YmW4sutkn7/z+1qYF4IUrUVl3W0Kh5UUNBjaCaNDLZTAnxwkMY/j5ui0JY2g4ar32PUO8Xw2/nlodMttDKQZCGhWaKYJKgZdhOmhuFn26GWdbawa7q3mcYrNceeyrLG7x0W3up11WF6E113KdJ4qP9NItnHTVOF5qaMQo6aFKWpNEBSe8rIQl+FOr7spzftTYJR5ecj4yaKklDDQFjkmDNkubKQpNlaf+g0TLYtGRjB41cRAWaNCCpuC5tL9ms4f09z0v79ZL3dXgeBa0Lbz/YbE0aagwaomKEEFARJHn7UQ4h/l0Ii1uoKggBMQb7lAi/agoetmbJXkYbaoxgJJogY+IHGVm8P/5DMGZhYyUt+UHLR5u6ZEqGr7jQ4EEbNQlZl7R4WQdf2vOol6qoDO/Ii8IlRUcPH22molnSvGQK1CxsaAhRc0MyWaJRyDJobVDsz+cVG8JCO5Mmiomal41LOgooM1FAmYmhSJb+zgwaaxhNw7AtsBTHLhyWsLTMk8ZKslGSluRf1aaOS1xSNLD8XvrooClUSsINISpHSMeE4eYHQTJFPIsoR0A0XXyyyXbDCJnqaAcNSiZ7NTRLyzgTyJJGZulGZIPtHP7WLNnW4WbB6MT2autCQ/do66i1g7wvtZTf+rFsnRcCXAh0Wahj7Jm8UiDa1qCy8Oiq+CBJQ+PxXpWggleQTCFI/H5BsaKaVOSSZTou4fj8J3d/VfI8p6oq6rpGVamqihACbdNQlCXWWuq6BmA2ndK2Lb1zTKfTeFzbkltLXuQ0TYuGwHQ2pet62rZlZTZDgXo+J89ziqIYz1dVFc57+q6jKEuMMezu7jJc03w+B1WqyQTvHG3XUabj6rrGGMNkMqFpGpxzrKys4FxP28bjsiyjqWskHde2LX3fM5tNCUGZz+dUVUWeW3Z35xhjKMsS1/f0zlFVFQDf9Zpb1EahyahVmciSNkZbmYmQ5znGGJxzZFkWjXoIqCo2t6gqPu0DcM6BCLm1eOdQSPsE5xzGRLV1vQMUay3OOwAya1Ggdw4xMYtz3qOqZFlGCB5Uya1FROj7HmMMAnjvUeI+1UDwis0yxBi8j5+b5znOOVTB2nTt3sfrS+eDuM+54bNyVJW+j99RRPDex+OyjBBCvPbkYzAyhDSaYsql5SxgJFBV8a53bUtmDEWR4/qeEAJlWSFA1/cURU6e5zRti4hQlCW9c4TgKYoCRem6nizLsNbSti2qURO7rqfveoqiAKBrW6y1ZJml6zo0BPKiiFrfdZRVhRGhbRryPMfmOX3XoQpFWRJ8oHeOoizJMkPbxGsvy5K2bdO1l/i0Amyek5mMrmsxIhRFQdd19M5RVuViteU5WZbRdR0AeVHgnUvKotjonYVMlMzsfTaGUVPruokXVFW4vgcHNo93r2kajDEURUHbduNy9d7TNA1FOq5t28WycVEry6oiBE9d1xRFgYgsjquqUcvLskTTl4o3JB8/t5pMonapUhQFQZW2bTBZhhVDm25wVVU45+j7fjRdTdOQZRkmz+n7Ph5XRlPj2jZ+rip1XWOtpaoq+r5DiN/DBx8VzdqFpkbvFZZy8b1hz2AWNAEIxkQnMIYUycjHCMCgGkA1Lm9iiCLJc2kIMT5NLl9V0/nkxX8jks6n47ZCPIfEc2hYfNZwfZLOEXwYowtN+aUsXbsZrn0834uP0+G4FPMO1xRCTGqHkGq4vsGMWkmCGsKl5fjTmpiMZMLSnY3qn4tEmycS75hzdF1HUZQANE0TnVJZ0vU9glBWJd55uq4jtxZEaJoWazOqqqJtWxjO5x1tWv7AqKFlVdH3Pc71o/NqmoaiyLnQnNBTZx+nCZsIniKbspYf48jsZsnNKm26dpvM097zKXluUSWaCWspy4K2W6y8Pml5URSoKl3XkRlDXhRp5SmZKNZwCeAxpJtm0L64PTilzBhQ8LrQmBACLGkWyaEo4AdNSNoTtT0hPAGyzACCDwGTRQwteA9IXEbjChk00KfzGXxyDi/UT+vdT/4nntn5MrXbRMRTFJbClEyLVfZNjunta9/HLatvF6traAhkybGFMGi0jCmqMVn6rGH1aPweQGZMRKlER2erSRYgGAN2DNwlauWQ52ey+GeM0jYNNs8py5KmaQghUFXVaOfyoogOqq5RYDab0bUtXddRTSaoBtq2i1qe57RNE8OyyQTXx5BqOp0CUNd1DKnKkqap2TzxgJ790m9z5KbXs3Lbe2UIgXZ2d3jw3N36e4/+Uy70z0bPLgWSKavTipVqBUvGRvss95x/Hyfqr+gbD/w9VrNjMp1Ocb2jazvK5ITbZKPLtGr6vmM6m6JBmdc1VVVibU49nyPLIVXXU6aQyohiY+aRUsMEgAzhsxBShqUUZVzWXddhjCHLMpxzCIzLoe97bG6B6GwEGZeGAEWeE9KyMSn06rouRglFER0FkCfH1nUd7e4Wn/3gr9M8/XHu2HiMaw7fqfnlrxDf93z55J/p+776P3Ohew4xSpFlWBuYTiw1nkIEJ4ZqMiU3ltP11/mzs7/Gmw//fbXdtSJAXli89zGkshaU5NiiV++6GF4VQ9TRtmQ2XnvfdSCCTSEaS0qZvPwibx+11MRcPzOCtSk2c44sCXU0CTbGdzHWs2TG4J0HAWszvPfROSRBeu8jMGNMivVinDp+uSyiZN57qtkqN772Bzh5cYWnHnuCzUc+hHc9T555VP/93f+MZ8+cYHvLU9eBzjs8nrrr6YOncy3zds7WfJvduoNQcKF7ms+e+w22m7OqqtgsxqnB+xjrmvgdQciydO3ep7g3xrPGZIgYnPegMf7WEAghLOLUPWlgigJGQCPtr+d1/JKTGJZ0bUuR5xiT0TRNDI/Kkq5tabuOybRKoUhDURQxY2ma0bE578fQBoS6rinLgqIsadP5qqoCybj59W+X7/zRX+CxJzc48+RX6HfO8Lv3/m88e+oJdhtHawK+DPSZoham1YyimLI6Weey9cOsTdZZqWa0fUvdNBzfup+vbH0AMSaFVCbG010Xv2M1AVW6FFIVZcl8PseISfH0cFwFkpyoteR5Hn3SANuNgMmQVZGcFAOIMoRPg6TTrZDxPwYkI4Y7w02RMVwbHY8OTpERLhqROtUxLBogj8zmvPZdf1NWj72c408/xR9/4lf1kXs+y6qZMMkyCND3Cl5QbzCSkYcKowV9D7mp8KqsTlYRY9itt3nw3Kc4Nf+6sicsTNcq6ZMHWJDla2IREiZHOThiiCvcjpoJI765FwuI+6ezGc456rqmqqpo2FNQPZ1Oo/1rWqrJBID5fE5ZFpTllPl8HoPqScya2qYZs6F5ckrT6ZTd3V1EYu7ddR319kVKd17ZPk1z7gSvvPFyvvCVj1Ns/QH//OXfzebmJvc8cR8PmE3OrgXMYUUOZtTqKVcDO3WH97tsNzsYI1hjEANeDGe2n+PrFz7NldfejmsdQZWyjFnTfD6nKIqIKezOMSZ+x6Zp6OZzJtMJIShN25LndszQSDitNSQM1SyA5QUKxWhTm6ZGxIwxqZdoc9AYGUiK1/quBxkyIB3TOlWla5NTKotoP5PJGLKtooiv+52zmNOf1/L05zH1Cdh6lnzrBa72G+xeH7h2fYdD/R9xxRSuORZ40ynPNx6HZx7uuZAF3KzBru9y2Y1XcvCWV1Cs7UcUOlez0ZzhfPME85VdnrjwZV5z8HndNzkqmQjOpXg6XXvXdRRlTJmHLC8rS/o+OqWYKUaHZbMMRaKmjktz2esnkFgYSs4B5xzW5lhrafqesIRS9SmksllGnYLlcjajbVtc3493tu17cmtjzt+0hJRWOtfTdY7ZtICTd6s+9JvI9jfAX0CkQekp1wJXzVquyCdkmUGMAp5DKFc74bXzQLetbJ50nH7O8/zxFvf8s1zZXMNV7/kbVFfeIWVZUDdzmnauDz7+Mb504k+4cPlpDswux5gFMFNZS9t1uISwDcpRVRXW2mhfjcGmiMU5T5XnyRQE5Ntuu16tiaCzNUqenrNMyQVspuQS+J1PPSU+OZe8KDBi6PqkeXmO8w7vQgRDhDEfzrKMvutimSEhVs57ijyPeX7XkRkhb8+qPvDbmOMfhnAeCVtgHYiL68lqDFFsFhFsM7AzwuhgRT2EgLoAndCfd2yeEeb+MPu/9xfJbn2XFKuHyDIbY23fR+AlgAYlL/JFaJiuvW0TuFLG8GoAdVQV1/cRX8iyEdn6qXfcoktxajTKQ1FsLGkk1R2gLTPAfoQEHKSMCsGYmF2oLnLwwQFAyspYZFQxtwZz9iGVh96HnPoM9OcQ20DmQEPMSEQWpQNMFKSxsUpgcjTEL6Q2j+4hV5hAvhI4dLmD+gL9E/+U4B5VvfN/IqxeLTHWrjBiUDyYiAOM2VuCNkc8IkRHG5ayRpFlfMOMtS8z4KmRXTJURWVE7rPktZu2xYcwBsF915FZGx3WEgTWdR2u7/fYygipmRjoEzXbO49zjvzik6qf/1Xck58i7JxG/S5oB+oX9B8RXA/v/8yMD31lgsdCVuIc3P1Vz3/6ZEnjMyCHbILYCZgS8ilSTWBtRn6ZUO58iOyJf083v0BRFKOzNVk2YqwRDiwinnsplLmURfkQRnvb9RHKzPM88SDG0GW5ZLHMcYr4apHnGBH6LsJjNs9jYBwCRbInMaPKyayNSz4Zc+ccPoTksAK9i8vG7J6h+8g/wZ/4EtTnIdQYIjCBAc3iDe9b5d98eMrvf2Yfjx5fY3c3Q3vo6pLP/HnHB++e8i//S0XdK9gZmq1ANoNsitrZUn29Rs5/lOKp/6gDFpznOSFEn5FZixGh62JmZ62l7x3eufG4ruvIUiK0DGZ7H5VE9mhqUgoz2KfB+yspZcsRY3CuH9PU4AfkPwp1yIayLBsRLGvtokKQZSlj8VBfIHz+P6o/9w3oNkHbaA+H+6vQdsIDz1j+xR+u8rGHVlifWI7as6xWOSIleZZz40FPc3GDp84c4Jd+9xB33+c5fcHgmKJ2H2LXkXwN7AQyg+ic7NQH4fgfKOoi8h8CwfsIsogZqxbWZjHSCSGiZcolWWNMv5czKkGxsQi2VN6V5aLbYrtploDjdFdsbiGB1FmWUSTkfYDvgve03QDfLXJ+mwlu44zqoRtQseAbyALGRpSsD4YHjhd88vGce58qOLUh5NTctP8s73hlDgjqlayqeNOrZzz6zEU+8cwJdueXcX5ryg1XCNcdU157G1x7tEIsSOghKyA0qBGy5ll8c1ZbPSI2s4gwKkJVljjv6Fq/wDySmSjzcoFRDKaw70eQWmKcqmM5OgK3A2dKRzBlzHwGp7OcBS3flCHLWnJOI8CsEDTQ726B38XO1jA3v5n+5EPYx55FxIGA98JHHin4jc+VnNxUNLRcVjjefU3Hj70JDq5ZCD04D9OSYzes87M/HLjxIxv88fGGRy9Meea5KdNJyUNP9vzkD+7j6kMFZKvg5qhzbG5dxeTO78XanODncR+J8zksU2TJbbPIAtPrEeoMYQTs0yJPDBVl8ZTOMlrYpLaT6RTX9zR1TVlV5AkqE2OYTCd0XU/XLmVUu3OKsqCqJtR1jQCu3qSbX9CyLHBBsEXF9K1/n6AX4enfRz3MO3j40Y5y3nPbWsmhw4d5xe03cajK+MZz97C+tkN1zKKTGTS7YAy+Dex72Wv4jqsmXDh3nnrjHFdOL3DNvpw1AdgHUhDcFv3BH6V69d8kkOH6DlsVaH+RTiaU5QQNIeIQRUFRlcznNUaEyXRC07R0fc9kMgD2NbnNqVJGNcjPpqhorMMPqWnMtBYaORS5bJ4TgkcTqCwwwmOZtSPMlxfRzrrkGevt88w3T2lR5jjXU5ZTtG+5ePwBOPkk+zzghYlV/sdvz3jza1+B3vEubnj1G1g7cISsKDn3+AMc/+g/5oaVE2R5DjZnvpvT3fbTvOm9P8hbqlVEDPOtC1x44M+57MJ/Zn1igRwN27QbsHVhg/LQRSaHr0OMldC32KJCQ4t3FiRWW6P3d2Ploe+Tj8iyWGEFrI3HLVeHhcH7J8R72bbq8L+ApNAohEBR5HgfxgBZUqgEEQftUx18CKkiXqrsbp3Vtt6mqeuIxdabPPfQ5zn+1S+Stdvj50lhcIdexuXf91Pc8eZ30mUz/ts9j/DH9zzG6nWvlJVv+wnm8xxCIKhhbq+nPXQX/+fnv8G//dh9PHJmzr7LXybXf89PiN74N2gu9qirkeDIxLPxyP088+k/YOP4gwTXqRhD385VcPi+WYRUKQkoioLc5ktFyypVkf1YqIw2NTpoIdWoSLjpQluXWHxp/2w2wzuXwIZUrk4A83QyxbmepmkiHKaMRIfJdMrO9iZ9F6HDqc0IfUOzs8Gh6+/k8lteh33qSvjCLyNmG5eV1Ptew8rhawkof+s3P8lX2xXeeOuVPPL8PfqTd95B/8wRtH4en83Y4gp+5eNP8MFTGbdduR9XnmR9ZV2vP7omxdVvxJ37BHSnUTWwdjNX/PWf49y28NzjDyDFjH3HborFSu/IbUEwwu7unGXiyDJo1CeSRliqsJZlFUvjafkvNJUxkllo6qi4OmYLUeRLhnjJ7l66Pbzd1rvUOxcpy4pqMsX1HcXsANVsBT8/x/aJx/BtBxm4bEo7vQoV4Xf++xe4+/gW8rH38bcObXAun/Hfv34aUxxEDCgZXzkl/PnzLfUf/zo3Pf4JEM/v3/sQIXiy2QGkOIi2c0KnnPvGJrsXznH0hpdx61v+B9qmodm+oLaYislSZqYB2fOFFt9zqEPt+cqDXGTxN1YY4tSBAxU9oEkgy0DQHcKmSIlp0KCJYKA0dT3Wr9q2AYRJqsX3TU29s6ldM4dZhRgLkmEIbD71NZ7+o//M5Vv3snakARW8ZvSa4VzHF55vMM15ds+c4B//s3/NhVe+ncmbXoZWBjUZiLLZeHbOPQ/NDn/04U8yeUH59u9+O76vFQmosWgfEDrC+VM89+Hf4Ujbcuj2N3HoipsIvgeUoF6Dc6hMZDKZ0fUdbdunOpwmXkJOMaki2G4iYO16lxC2YvRJNgp7QSOMtyHSD3UEbJU8zwFNwX8WcclUThhIFd65WJ5IxlsQrM2Z72zQtbu0dcnO1nlym+F3tnj4Dz9A+cCfcvD2QGZjQ4IYg5tv0jdzDkwM2ZGjVJMJFzY2ma8fZsVdhG4bKQJSFKzlW0yvvIX5dIp1HbvTfVy2XuH7Br+zgbhNjLVIlnPgCsvTn/gij9cdppxy8ObXUa3sEw0BVY8GB8HRj+WUSPtRHWhEMZYdalnLlKWQOAgqQwIlwpBZDQt8jASImEAsFRi6LmZUMU2NMVqeEKchIcjzPNnbWDDr2xrverquwfctBI/4lvDsE1x7REnKG5dOmFPOT9BsX+DHX3mE8tqbse/9O3Q/8jNMr7qGdxzryPrnIReyTLnrsk1uX3OU/+BX0J/4h8y+/c28545j+HYHv/kNsu5kpGXmEyaHCm64LnD881+jfvJedi+cou9qDb5X9SGBQf3oK/I8p+96vPcU5YB5RAdtMkPvUkQ01NdCwCw0lUTNXliRPUjAWGEciA4+aqW1C5A6yyKg0i5lVCGwu7NNU+8QvIuMWe8QzfFtzZrZpaqi2UEUKYWibDlYP8yZU1dy5MqX82s3Oj4wvZwcz9+98gKXX7yb2XQbzBSTFRzbv82/vOkpPrA55fmrZrzzZSWvOiD0GyfInvswZbEB2QQIkMOhq+DoqkN3ztJtn6Nf2Y8tJjFxUY8ETzUr8T7EOlxZgEJTt5jMYCtL1yVZFCU+BLo2gtRD8mNhKUZdcjBmyRgPtB9JBAc/UGxIfM7heJHRhER6TOD86Se13j6H9g19W+HKgl47tp9+nBWzS5al8wQhUzCZ47LZs4Tdj7L5zAu8ZnYtr79xyoTzTDfvZV/4CmaWoVmBoExXDNf5B/iZ6iKuug6bnUee2yVvH2OaPYWZHQSxEV/wHXYmHN2v1OfPkG+eoVw/nOC6jOAdeVZqMnwE1YTiDzSftJqH5GjIGokZ1pCBWoSRh6TLcaoOMUDU1EFDm8RFHUKqZZ5m13WUCQ5rEhNve+M0xy6/gnOnT7CzeZbMz3Gh4/mvfYH97Q69i80HoRNCExmGxbTn8tnTHNTT+G6KdJDTYM0uZhbQLEf6BvpdJMtZXS+Y+Kfw+jziDZIZ7FShFWh3Iw7bnkWCh0I4dlR49JmTFNc/hVk5yFSVvJxg8yqy+eptbLkaHe9QAU70oK5rxorHAMQXRTGGVKOmLnj5CaBm6H9K25J4n6pkl9TJgUTTSdqZqD2RHhQozz3Lls259sY72Dx7krNP3se5Rx+i/uLnOXigJ3ih68BU4FuQTMAHTOWZZB7YjQVJrykeCRAcmADbm2jdgC2x031Y0yfCQgl9HW2kb6G5CH0XwyX1HDgmbHzqNNnjDzEzM9a6jgNX3Mhs337p60010xUG/u2QNY4g/cBVWOIxhOATYK3L3n8ADUY93WNXVRdc0bIsaFJ2VaWQKtJ+coq8oKlrkBhSbT/2OZ1/6JfZyQ5z/NVvZ//1t3DVjXcwf/xx8tBgDDinuF7o6gQitYIpQWqNJRSJrTchCOoCwRu8CziF3nd4CYjsYuwFZusVdv8MsUTky3eQIhRxHog3v5goR2cNT93/GDdefiPVzXchwPZTn9fJyd+jesXf1f6yN0vXdUwmk0gXrWuKsqTIc+qmSSWWEud6+t5RFsXCpg62dK9NXbRCDqajKMvolLpuJOy63i2cUkpJbZ4jAvXFc8y/+Lvsl3OsdS9w9tPP8cinjnGmLSjOPMVVhSMEwfuoRLaEvk5IUEZsxenjjd3dhrM7K8zNPsLkIDLZB/kMs74fiinB9TSbZ+DxR7m8PMXRKxx2xaJZXC0Ej3ofzx0CxsCxy5TTJ7aZP/UEL3SeaXeWy1eeoDp4AR7518i+V1CUB8YUPHJRA533S7SkFklYgUur9Zto6iKfGnP/tN/aCCQ45xKrOhurj5m1hD6yNgZeVfPcw9o/8Rmmybu39Sb3PbjByQ3l5kNQHIqNCq43ZFYJPq5q70BrxdgY871wPufr/W1Mbnodq0evZeXQ5VSr+zBZTl5WZHlJX2/TNXOOP3gvn/zkf+ONW09xw20tZhqX5EDsQAVNDQ/71pRZu8Xzf/rnzKef49brHNPbFVZmsP117AufVr32R2QIr7KyxLUtzvVMUhXA+0BuDVlmRi7VN/H+SzaVvTZ1d3eOtZbZbEZT1wTtRoO9u7NDUZZMJhHmQxXZOI4/f4KQxwhhe0exKOuzipVJh2TgFLpOsVbpG8gLoWuUolA0wMU5/PzvtTy5+RAHDj5LPq245tqrWF2LXNOiKpnvzDl9/CRbF7c4d36btnW89gr4X1cNB66T+A2DxJXvPHgD3lNNhYOryvPnOk5vCTccEZoNWF2Zgzj8qT+jPfwOprMVVGF3Z4eyqqiqMhIssozpZELvHHXdjI0U38Km8iKbam2GSQG+yTJENUKASsq2FuUUQamdo+0gcwHvwDnh2ttv4VXf+SNsffp95N0FxPQEgd5B3inNDhRTcBKpRr/zGeXhUwA955oLHMjh6eOncArbDlZyuCyHSqBzkHXR0d97Aj7xZeWHjyjZFHC6qGaHAN5gMmVl3XLFy2+iPnGC85s77NsQJque3LRIs4M14F38jjbPQRXnFg0Xg/NebqRQoiv4pnHqAjqI70eevk9hUxkbGNLSKBO5q+/7CFKrYq58BebKV7Hz9L2QTzn81ndx8Ht+mur6V8nT9RM6v/9j6PwisfwNXRdL+r4DY6H38NGHlMLAuoVvW4eXr0tMXS280AUOToRj05KiKLmw0/LpEy0fPRPY8fCRrys/8JZAZhkbdumjCYj0ckN16DJe9QO/QNMqZ//rL7O7+zTVeZhphr39FvJqSlOnfoHUBuQTqU41Bf02xxY5XQKpv7VNvSROHWtURZEclI7tMk0dmXMxo4oU87Vr75TqZz/A/Lmv6/TwNdj1oxLEIFnG4e/4YZ578gv4fo7vO4xXghPaHsQK1innPAQPUwu3r8CbrxVuvVU4coOhOihQzRBTIMUUdSXzp8+y/iXH6XsDX9qE8zWoU9SnVKYPSBA0Edm8VJQ3vpbqpm9j/bJr5NDLX6cXPvHv2H32c5iXvZXJnX9HtI3EEWAElGKFtWfovFlUWBdFlLFaNbaL/wVx6kALN5lBnYOgiF3OKGIM16dalikKspX9TG96vZRlgQbFdT0mg5UbXiNrt79Ft77yJygXUQ+9V6QHlymuEI4etXzHHQ6rgXe/Em67wZBnSnCBsAHBzUF2yaptzErF7MY1Xv6ydX7227f58Gd3uXa/Uq74pJ0BcfELBy/4zuCz/UxufRvZ+lERY8iPXCcH3/u/gCwIyME7ioGHGwKSeA6LrDG1q7+oRqXLGVVc7uGbxKmL7r42hU2S6twLPGBAykHHRgpblqlFZkFMC9U+1l//wzTP3kf7fE3QBoPSO9AGVJRsw/OL329QB6FXuvPQk0gecX0lpMwR6h2yzW1MDrftK7jtPVW0nTtz6KLTU5UYXXiDCwV63Ruo7vx+KaYz+r6PSNTQSJGaLIqiXGAeqV3IJQ7AQLhbJmIMmjqiVJfGqYPUB00eZoYM9JYBC4BFtjFUWlWH9p9hnyTAYoELTG9+g6y/4Ucx01Uks3gkBvQOmho2zwQuPufYPRdod8A1im+V4GN2lZnY55WlBmO8oD2w0yEbO+jmLjrXmP72gmuhb4XOFbTVNeRv+Udk60djrV4ipqFJ68xSJTiONVnKqCTRgxLtZ9GStICvzfDHy3jqEKeGUVOj5mmq3wxaafNE+2kj87kocrqEAcQQI9ERiyXaj8Q+ADWW9bf9tKzf9W6y2RqSWie9B5fi1WYObQN9C30DfS+4Tuga6HajU3Ot4ttYtQ4d+EZiMrUl9Lsxoehq6BrofUFbHMO++9eYXftqETF0bUxm8qLA+dTBWC3qa0VRYvNiqeVo6GCMtB9JrB1rbcSVGeNUidDbi+LUBRpTFiUI9AlPHZZ/FGYBqqn6GPtPu7YDIibpEp8zT1DhwJYzmeHQe/65kJc6/+of4TfPYHwsaXifsKIuCtkI2FzIughoOxNtsDGMgx6GDsU00QMfYtoYAjip0EM3M/2uf0hxwxuk69p4fUW+1Gtgx2Utwoingi5xyEKE+UhNIIDNbQy9khKawWbuiVN18Q+NmZ7N7SjIkfYz0HlsKkc7R5ZF7e1dJP9aa/GJcGCTNroExmQmg2LKwXf8vKx/19/G7D+GFCVYGwcSIDgvBA/OC20T6HpoGqVroWuUroG2hnYeAal2N9IBmh1oW6g7y1zW6Q+/kuK7f5HyzneJLUpc79AQsHZoXo7XNDQ1C5HU7PyC9qOq9ClON4n2o6SGXx0aoC/JqKJqRq0djKqmSGAoLVeJOt73PWXqA22aJoEtybADk9Qf1dT1WK5uRlCmHJ1DVU3w+RFWv/Nvy+y6u/TM//Uv6E48jPgGUR8nPoRYO1OBro9a6xykpsGFfU9FOIE0KSInlGsUd/41Vt76D5gcvV565+nqmslkgvd+bPQwJlKWBhp93zv6tqVa6k0thl6xpZ5Y51zsD0s8ByEF/6NNDbECMOKpo+Yu6gDD69E0jOlX/AMZ7w6jYxuclAzLYPkh6bhyyuyOt8k119/Fcx/4Zd345P9B3tfkeXIWwkgzCsRlr31UgACYdH4NA3iuZOuXs++Hf4Xitu8RsQWIQSQsqEtLoRCLy15+MX695eOGV4uaHnuOt6OfX6r7a9qOUFbME/Y0UpQlpijGDrk4CKGLFO5E+6nnkfZTlhXzeaydVwnoHfgBIrHhYmikiIMQLG52FU+c9FRBWZ/C2nrJZLUA7ccqBEYJmNELB0C9YevinL5XXICDByccPHQNk5VVvA9jE0hZluxsb2PzfBysoKpjp/bQSDGpKuZLdf+maWjblsl0igZ/SRW5HaVqDwZlc9QAiXeYheYOlYEBAS+KItrIwc6wqF/ZxFCBCBXqENcmB9Ulmnqe50st50XEa7vYYunqTXYf/DhrpqXzcH5bWH3993HkHe/Fb79At3EKabdR18WGt3JKue8oYXaI+dmznPvtf0Xhdrn+hozDV7xAvvUAXXsHSMwGg/e03kcBAl3XjsySSx1v1/cjrjEwVIqiiK35MNLU+0RtGjX17U3g91ciQLJHU1PdBeIgrD4V+sqiWIRXQ1mh6yiKYu+4j9mMtmnonYtA73IPq7U0bYuqUhSJH9B38W/OPav67Be58ojQ90pjDnD0LT/Evtf9oHjf09Y1RZ6TZYb5fI7NC6rJhLrtyM+d4siXP6XlM5/m2NUZ5SEhbH6Jpn4nplynmFS0bYNznpXZjN45ui6O6jBicG0zsqXbtk2NFLEJpK7nS40UNUYMRZXT9zEhKBPlUgH7Q63n05VwNk+z7BSyFOiHkMYPBZhOp7FGlVTeGBnjzsmkwjlPmzrkhLisrY3ki4GzWk0qvIt1riErq+sam2VMJlOapuXigx9npdhlug59Df2RGzlw53dKm+phk9lq7Dj0gena/uhsmjhXJT98JfvueD39858lMx7EYba/zsQ69bmVsZG4KJnX80gOGQYrqJLncXJGPTjlqqSpm/Qdp/G4rl5gxnUc1DA43iGMMgDvbAcOasr2ReLrIbMQRrLAcgv3kImNr/dUHmWwHeO+IXTbO0Rh0YxgROie+TJVAZMKqkpYu/Uu7PplDMMXhrh5uXIraXiDZJbZNbchkzV8T8weto6jrl7KlDQNThj4N4tr0hRDjo4oLA2AGD5reL3k5DSk72jMIk19e+O5qYteNCjkecHNt93Gt7/hTVx9zXVAbDgYmgeGSqK1FmOy0UgXeT7OQYnw2KKRYpnQVhQRK4gNFwWSGhpsbvEXz0GIgHaeQ3HFy8YGDkiM5tQI1yYTMsCSfd9T7D8KxYy+0Rh/NXPaJpLjyjRXpUkryhiJFdEhf/cO70P0B8mmFslcLbet92MjRWJZ94sS0xinArw3m/KviPHbd3/329jZ2uT8hfPccOPNXHbwQKRNAs5FtGqkurAAqYdJQAIjPGaTUwJGh+VcH3PoLIvdc5qShK5l52IDXVwtWQF2OlskEywoRs65cbqF6/vE15c05Uzo54FQx3KKFYMaE6/JCLnJR4p5NvYkhL2Tilia9oNGpxQCfRLgcJwgI0gdgamU+wPcdmGLu9rAsSuuoO977vnC5/n6ww/z0MMPcuDQodhMli4sG2k/kfw7CtX72NSVMMcocDu2po8ZVcrKIoG2R1HcyUf0qV98nR5uH2H/voygcSnNn/wazDfxfvFFY33IY4tol0fv6zs2n7yfZmeL3bmwezGD3JB/9Huxj/2uutRWPkQfA2VJQ0iIvhnPNyiOcw7vYrEvjKm4HTMviCOkhlRXB5s6PH5qy7P96BN8/OMfwwU/ZlRgxrJ0WcaQqu+68eTD8o+k35RtjX1Uw2iiFy//3rn4um85f+IRshtehz/6GmxRIVmstF685wM0j35KB4Jt17VkSTBd0yWQJ04P2j35hG5+8j/g203Ob0XEC53iV1+H7p7Dih9nsxRlGa+pjS08cSTU0Ee1DKgU2DxfACqJOBKSSYphWZRFnnpV9wh1qvDj2z6VG+Jotquuvo4LGxtjJjTAXWFIDRMUBgPcl6Cw5UxKFscNTQgxG1M0eE7d/yk9d99HmGuPffvPYu/6UYpqwurBkqMHPDqSFVIWkwDxoGHM2uIIuYANHesTuOLyjLo/yM4tP8POte/l4rnn2fraf9V+Z2OE++L5UjDOcE1L1J5wyZwYhs9NDm101AtnHC4VKsArW+UHd6J3v/mWW1lbXefBB+5nMp2OI96GeLVPZelJmn3SNA1lWVKWJfXuPDYgXDJ0QIC2jViBNfD0l/5I+52TXP22H+fmV70ac/9vsT1Zxa+tMt9s6bZr2HqBpp4nAsdkDO2mwzWlDIi+5dwLc86eU3YuOrbyFc6ceprs4fezcuv3s3L9q8jaU1plPXVdEzSM+XvXxW5vk5k0IyUC003T0Hcd08kU7/z4WZnJxmEPZVmlWDuBSJcKFeBdO4Gtm65j340384XPfZrduhm5QmOzGYyUmEXnWzbalbyIx/XOjRN93NJ4Otds05y4X6vnPkd18RG6Rzbg1X+dlRvvonjsv5BNesxh6Lc6uotPk4UOkZjNDPau7zs06Gjfd578GutFzb4ZrK0Ka/1TdA9fYPttv8DqYx8iXHgQXbsaufU9ao+9UdCYeps0oXyg8+R5zKgGvq0I9C46OWvsOI5uqEv5oZEC8Gr+4pnU7376PL9cf4rd3R1sFiunY0bVNoSwNEAxMYnzvEjtPcJ0Fgcodm1LNZ3E9u6miSPcul3qi89rvu8QB9/69zD9HHPyHvr73k82zbBlhjTbiE8xY32O3MSBscN0nswYdudzcmtjLX5es3vyGxGfCEK2BaurSul36O/9DfwV11O87uewR+5AiqkIPd7PaV1sSzJp9IcxJrbwJCQutqYH5glty/Oc+e4uJjNJQ5MPSXX/PSHVpY/VzS1+8vZX8uz33QqujeofPPMEgRljxkxpGEc0ACWKMl9qpBjHwk0mdF3LmWcf1mllKFb2kdmSbLIqrL4b8YWWD/8KtJvQtKgTvM/Y2mkIuzuU+Wqc4dL3dCHEz3UukRuEZ48/Qd7HEnQIEaRe8R2hDDSv+TnswWuQfCqZLWOy0DdxBJ2L2OqQKc2XRtAN3LDpdErfdcy7PsWxYcy8ymrRSBG+lVABbvrcffzekw/yQqH86D/61ZhFsKhlRfxq8WLkCSxlKozvxX8bZ45z/vknkcsOk9scMRnGxMli5qY3s3vfbzLrXiDYy+jWbqa+/h20q1cylaHwK+PnytJnNbtbuGtuRVf30z5xH/3289Tzhsb3uLvewYEAfTMns7lq5P+o6xuMIhQHl77U8vTVSx5DZURiIfHSfZKAqL90zv/3Xgy8/9AiR68mE7o2TpUYQerkeIpv0kgxOK/YSTfn+ONf0tA1bF/cAPVM+oa+nJJlsX9Vb/sxmt1T9IfupF89Rt00FOU609V9IDIOZJQ8j5qS8AUNnvXLb+FiVpBddjl9UyMXn+dis0Ox72q2N86hwdO1u+TlVLMsjY+RRieTw2KyxLdNEGWXBpCVl4LUCSoceLnex8lHeVEgAl5fwi9SvL5WvjKXPVmTmGiMfaL9DF1xQ51nPC45lMGwGyPsXDzLbFKmMfbZANsSYxiFa99A4zq6ziHFPtYvOyx5tQomfv5IsUkOapgQURQlr3zzD8nm2ZN67uQTnH76fnRllelsFamm42fIEqCOyfCuRzXgXYjlHdHU+Bs/a+G87PhZQ41qcMpDaQlewvIfHu/Y1jE4bts2jXHLxt7Usijo+h43zplir2FPM0eqyYybX/V2nrz/z5g/9wwH6m3W9h2ibGcYiTY6K1dZOXiVrB05giJxRhQLhsgAy3kf55v0LvbETiYTpvkqJrtWLrvieu54w/dz/PH79LnHvsjFjfOE4AneEVxHZuPs12K6n/WjN0kIMcYd6ZLDTJjCUieAfTqZ0rQN3rk4Zi/EGa55no9zYAehykv9QZrql36J8sd+TAYu/zBMMUKEIZU8DMH7MWyK4zOGUZwpmE45ete2zLc30dDF4mFesrJ+CJNlkQ2TjhvDlyxDNRBCPJ8QhzPGSUWCT6M9x8/SMI4cca5nvr2B+h7vHUU5ZWX9YBz+PZxPJE4QRmIvf0LlLp36JolJLbL0WWHoRBfe85236EvSVIDu13+d4p3vRPbv3wNADAMIRGI859OF5dbiNE5zjFMe4+sMkCzDZBmz9QOx9JtS1mwY/ZaOM2kbFjUxP4yPE4m0+CzDSobqYvSdaojnEEk3QJitHRyZJN57TLbI15ezppj9pQqr92Q2i+Vu7zE2H48zIkhmCEO11USf4MI3yaj+okd44QW6979f21Q5LZbKvMvDFYu8oEjVARIlKPKS/Ajf9YmNnaecWlXH9u6ROiSxhGGzNHKp6whBl4YzpPHJKb60Q0NDHzW/LGLYM0wnGib3RPC5oh0na6Yxy32PtfmeIWbR8SY2Y1kSgh8bRIbzwTATxtH3DlV56UIFaH/rt+D0aVVN7OQUX10K4C5PyVnc/UtB5WHaT6IOLYPZSzQi1UgOGyYMq6ZZrYOpSZ8VTcMAPjMu5eF8Q34ehrEco7aHgZWUjltM+9FBI7l0RmwYAfZhatEAnDsF85z8hVHZix5a1+iHPrQ3V07DFCANUFzKMIaCYT6gVE0DEgtrA3WorKpFqFQU43BtkHGSr/N+7NxuE6WzSA0dkTsQe0T7vhsH6AzllzzPaZewh+A9bUpSjIlTjGxm09AxR/BhqSiYyjRFTtMOtf7ICRiAc5E47cdaO7Zays9ce53+k7576eo6mbD22c+KrK4uxrAvOa9hmMBg+8zgbCSSwMKgoXucjcEYwaVmh8EuRgewV+OHERuqccRozJ7COCZfNSDEkZ1hdDYLstxwTW6ghppEAh4cb0Lg9jgloqOMk4U1zbLae02DLL7/jXeq+YTJ+HKWfTPxffNHXdN/8IMaZ4su5vxDBKnj1LQ4FQgSzyj46NhS9WAAIMwAUquOUy188JGPpbG5dpmKownoDhpGQByJ0y+MMWOzhxJiXBl0pOwsU5aGUvp4vhBnpJr0ewCu70Eiou+TY7PD+Kc0539UFhZxqvc+/kLFDdfdpK8Njl91L11bz2fCzx+yCOk3VIbx9QzjQYdhjGBMCnVgZJksl8MZt5MZGoJ0kUX6mzDUMT/9S55VGekssRqcMowQtwdiyR5yDYsf9IrPJhJ6ST9Co6lUQ2R4e2T8mQ8NSlCDD0Pwr/BlY/mU8bwt+Jck1INeectu4M8myaCbdEGiGJX4qz/pB7FCiL8eFCTCwANDe8jdF5JdhoqHmavD46Xb/UsfUYCRw6iwxA9dEioxlx8FmxKuPYLUeMz4Sz8q4/shmCTcKGwb0q36E2NfslAB/trcc3ch9Jlg/NJP0y3/TtVYxh6AGFlsSypfG0GSR1/8HtVCjjJI4P+JqjIMP1oIbzgLyKiZqI4JgC69Hz26LH7lZ1lT0w/VDI0uihC84jGExJuwIX3Ul8VwjzG8Pgy38ls/DgT43kb50GTxfXSo7SfBaFzr0ZjrYvkzaKoAnlh/lOHdZQ1eFuxLf+glG3uEurydioujoJX0M3SR97DQ2CXtTYJbvKeRLqWL9y2kFaHwh1hez0u3rT8299yTW86YONTWKEsaGoWRpXUshvRjWMOkdpCwWPYvEt6Spuql+y45bFmIL8q59cUvddn2stemKqTfRU37lbi0WdLMwdamv/NhaNFKv/N31VU36fibUQL/u2+5XV+atgK8YIR/OzU8mpul36FaOKLRQaELu7ksyD3LfHjzJcERL/2xhH3uESzLjoqkxUsOi4VtXba1cb/s0eKFeYD/G3Za/uujbZ8OAAAAAElFTkSuQmCC';
 const LARANJITO_IMG = {
-  triste: '/colaborador/mascote%20triste1.png',
-  preocupado: '/colaborador/mascote%20preocupado1.png',
-  feliz: '/colaborador/mascote%20feliz1.png'
+  triste: 'https://moveisdolar.com.br/colaborador/mascote%20triste1.png',
+  preocupado: 'https://moveisdolar.com.br/colaborador/mascote%20preocupado1.png',
+  feliz: 'https://moveisdolar.com.br/colaborador/mascote%20feliz1.png'
 };
 function laranjitoSrc(status){
   return LARANJITO_IMG[status] || LARANJITO_IMG.triste;
@@ -6381,7 +7924,61 @@ function renderKPIs(){
     : Number(sales.servico_atingido_total||0);
 
   const prevServicoReal = Number(prevEmpresa.servico_realizado_total || 0);
-  const vendaDiaria=Math.max(0, Number(sales.venda_realizado_total||0)-Number(prevEmpresa.venda_realizado_total||0)) + Math.max(0, servicoRealizadoOficial-prevServicoReal);
+
+  // V6.5: Venda Diária precisa vir do Controle de Meta do Sólidus filtrado HOJE-HOJE,
+  // nunca mais da diferença entre snapshots/histórico. A diferença por snapshot podia pegar
+  // vários dias acumulados quando o último snapshot era antigo e inflar o card.
+  function _mdlBrNumber(v){
+    if(typeof v === 'number' && isFinite(v)) return v;
+    let s=String(v??'').trim().replace(/R\$/g,'').replace(/%/g,'').replace(/\s+/g,'');
+    if(!s) return 0;
+    // pt-BR: 1.234.567,89 -> 1234567.89
+    if(s.includes(',') && s.includes('.')) s=s.replace(/\./g,'').replace(',', '.');
+    else if(s.includes(',')) s=s.replace(',', '.');
+    const n=Number(s);
+    return isFinite(n)?n:0;
+  }
+  function _mdlDailyMetaTotalValue(chave, nomesCampos){
+    try{
+      const linhas=((((METAS_VENDAS_DIA||{}).metas||{})[chave]||{}).linhas)||[];
+      if(!linhas.length) return {ok:false, value:0};
+      const total=linhas.find(x=>x && x._is_total) || {};
+      const rowsToTry=[total, ...linhas.filter(x=>x && !x._is_total)];
+      for(const row of rowsToTry){
+        for(const campo of nomesCampos){
+          if(row[campo]!==undefined && row[campo]!==null && String(row[campo]).trim()!==''){
+            return {ok:true, value:_mdlBrNumber(row[campo])};
+          }
+          const semEspaco=campo.replace(/\s+/g,'');
+          for(const k of Object.keys(row)){
+            if(String(k).replace(/\s+/g,'')===semEspaco && row[k]!==undefined && row[k]!==null && String(row[k]).trim()!==''){
+              return {ok:true, value:_mdlBrNumber(row[k])};
+            }
+          }
+        }
+      }
+    }catch(e){ console.warn('Venda diária SGI total falhou', chave, e); }
+    return {ok:false, value:0};
+  }
+  const _diaVenda=_mdlDailyMetaTotalValue('venda_filial_meta',[
+    'Realizado (R$) Período_float','Realizado(R$) Período_float','Realizado (R$) Periodo_float','Realizado(R$) Periodo_float',
+    'Realizado (R$) Período','Realizado(R$) Período','Realizado (R$) Periodo','Realizado(R$) Periodo'
+  ]);
+  const _diaServico=_mdlDailyMetaTotalValue('servico_filial_ouro_fob',[
+    'Realizado (R$) Período_float','Realizado(R$) Período_float','Realizado (R$) Periodo_float','Realizado(R$) Periodo_float',
+    'Realizado (R$) Período','Realizado(R$) Período','Realizado (R$) Periodo','Realizado(R$) Periodo'
+  ]);
+  const vendaDiaria = (_diaVenda.ok || _diaServico.ok)
+    ? Math.max(0, Number(_diaVenda.value||0)) + Math.max(0, Number(_diaServico.value||0))
+    : 0;
+  try{
+    console.log('[MDL venda diaria V6.5]', {
+      venda_dia_sgi: _diaVenda.value,
+      servico_dia_sgi: _diaServico.value,
+      total_card: vendaDiaria,
+      regra: 'metas_vendas_dia_atual.json hoje-hoje; sem snapshot'
+    });
+  }catch(e){}
   try{
     console.log('[MDL serviços]', {
       total_controle_meta_sgi: Number(sales.servico_realizado_total||0),
@@ -6439,9 +8036,9 @@ function renderKPIs(){
     makeKpi('🚨 Grave',R(grave),'var(--red)','', 'card-cobranca'),
     makeKpi('🟠 Alerta',R(alerta),'var(--orange)','', 'card-cobranca'),
     makeKpi('📦 Mercantil realizado',R(sales.venda_realizado_total||0),'var(--amber-400)',`Meta ${R(sales.venda_meta_total||0)} · Atingido ${pct(sales.venda_atingido_total||0)}`),
-    makeKpi('📈 Mercantil projetado',R(sales.venda_projetado||0),'var(--amber-500)',`Meta período ${R(sales.venda_meta_periodo||0)}`),
+    makeKpi('📈 Mercantil projetado',R(sales.venda_projetado||0),'var(--amber-500)',`Meta período ${R(sales.venda_meta_periodo||0)} · Projetado ${pct((Number(sales.venda_meta_total||0)>0?Number(sales.venda_projetado||0)/Number(sales.venda_meta_total||0)*100:0))}`),
     makeKpi('🛠️ Serviços realizado',R(servicoRealizadoOficial),'var(--blue)',`Meta ${R(sales.servico_meta_total||0)} · Atingido ${pct(servicoAtingidoOficial)} · controle de meta SGI`),
-    makeKpi('🧰 Serviços projetado',R(sales.servico_projetado||0),'var(--blue-400)',`Meta período ${R(sales.servico_meta_periodo||0)}`),
+    makeKpi('🧰 Serviços projetado',R(sales.servico_projetado||0),'var(--blue-400)',`Meta período ${R(sales.servico_meta_periodo||0)} · Projetado ${pct((Number(sales.servico_meta_total||0)>0?Number(sales.servico_projetado||0)/Number(sales.servico_meta_total||0)*100:0))}`),
     ...topServiceCards,
     makeKpi('🚚 Caminhão realizado',R(sales.caminhao_realizado_total||0),'var(--yellow)',`Meta ${R(sales.caminhao_meta_total||0)} · Atingido ${pct(sales.caminhao_atingido_total||0)}`),
     makeKpi('🛣️ Caminhão projetado',R(sales.caminhao_projetado||0),'var(--yellow-400)',`Meta período ${R(sales.caminhao_meta_periodo||0)}`),
@@ -6458,7 +8055,7 @@ async function fetchJsonNoCache(url){
   if(!r.ok) throw new Error('HTTP '+r.status);
   return await r.json();
 }
-const DASHBOARD_UPDATED_AT_LABEL='12/05/2026 17:28:27';
+const DASHBOARD_UPDATED_AT_LABEL=__DASHBOARD_UPDATED_AT_LABEL__;  // V7.8 gerado no momento da execução
 
 function formatUpdatedLabel(v){
   try{
@@ -6545,12 +8142,14 @@ async function pollSalesLive(){
       return;
     }
 
-    let metasWrap=null, margensWrap=null, servWrap=null;
+    let metasWrap=null, metasDiaWrap=null, margensWrap=null, servWrap=null;
     try{ metasWrap=await fetchJsonNoCache('metas_vendas_mes_atual.json'); }catch(_e){}
+    try{ metasDiaWrap=await fetchJsonNoCache('metas_vendas_dia_atual.json'); }catch(_e){}
     try{ margensWrap=await fetchJsonNoCache('margens_brutas_mes_atual.json'); }catch(_e){}
     try{ servWrap=await fetchJsonNoCache('relatorio_servicos_mes_atual.json'); }catch(_e){}
 
-    if(metasWrap) SALES_EMPRESA=calcSalesEmpresaFromMetas(metasWrap||{});
+    if(metasWrap){ METAS_VENDAS=metasWrap||{}; SALES_EMPRESA=calcSalesEmpresaFromMetas(metasWrap||{}); }
+    if(metasDiaWrap) METAS_VENDAS_DIA=metasDiaWrap||{};
     if(margensWrap) RENT_EMPRESA=((margensWrap||{}).empresa)||{};
     if(servWrap) SERVICOS_RELATORIO=(servWrap||{});
 
@@ -6655,7 +8254,40 @@ function renderServicosTab(isViewer=false){
   }
 }
 
-function setMainTab(tab){const isDiretor=usuarioAtual?.tipo==='master' && usuarioAtual?.roleLabel==='Diretor Comercial';if(isDiretor && ['cobrancas','senhas'].includes(tab)){tab='vendedores';}mainTab=tab;document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden');const hiddenMain=['metas','servicos','cobrancas','avisos','senhas','historico'].includes(tab);listSection.classList.toggle('hidden',hiddenMain);metaSection.classList.toggle('hidden',tab!=='metas');servicesSection.classList.toggle('hidden',tab!=='servicos');logSection.classList.toggle('hidden',tab!=='cobrancas');avisosSection.classList.toggle('hidden',tab!=='avisos');senhasSection.classList.toggle('hidden',tab!=='senhas');histSection.classList.toggle('hidden',tab!=='historico');mainFilters.classList.toggle('hidden',hiddenMain);if(tab==='vendedores'||tab==='filiais'){renderFilters();renderList()} if(tab==='metas') renderMetasTab(); if(tab==='servicos') renderServicosTab(false); if(tab==='cobrancas') renderLogsTab(); if(tab==='avisos') renderAvisosTab(); if(tab==='senhas') renderSenhasTab(); if(tab==='historico') renderHistoricoTab();}
+function setMainTab(tab){
+  const isDiretor=usuarioAtual?.tipo==='master' && usuarioAtual?.roleLabel==='Diretor Comercial';
+  if(isDiretor && ['cobrancas','senhas'].includes(tab)){tab='vendedores';}
+  mainTab=tab;
+  try{document.body.classList.toggle('inicio-view', tab==='inicio')}catch(e){}
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
+  detailScreen.classList.add('hidden');
+  document.getElementById('mainScreen').classList.remove('hidden');
+  const hiddenMain=['inicio','metas','servicos','cobrancas','reativacao','aniversariantes','avisos','telegram','senhas','historico'].includes(tab);
+  if(inicioSection) inicioSection.classList.toggle('hidden',tab!=='inicio');
+  listSection.classList.toggle('hidden',hiddenMain);
+  metaSection.classList.toggle('hidden',tab!=='metas');
+  servicesSection.classList.toggle('hidden',tab!=='servicos');
+  logSection.classList.toggle('hidden',tab!=='cobrancas');
+  if(reativacaoSection) reativacaoSection.classList.toggle('hidden',tab!=='reativacao');
+  if(aniversariantesSection) aniversariantesSection.classList.toggle('hidden',tab!=='aniversariantes');
+  avisosSection.classList.toggle('hidden',tab!=='avisos');
+  if(telegramSection) telegramSection.classList.toggle('hidden',tab!=='telegram');
+  senhasSection.classList.toggle('hidden',tab!=='senhas');
+  histSection.classList.toggle('hidden',tab!=='historico');
+  mainFilters.classList.toggle('hidden',!(tab==='vendedores'||tab==='filiais'));
+  renderTopMural();
+  if(tab==='inicio') renderInicioTab();
+  if(tab==='vendedores'||tab==='filiais'){renderFilters();renderList()}
+  if(tab==='metas') renderMetasTab();
+  if(tab==='servicos') renderServicosTab(false);
+  if(tab==='cobrancas') renderLogsTab();
+  if(tab==='reativacao') renderReativacaoTab();
+  if(tab==='aniversariantes') renderAniversariantesTab();
+  if(tab==='avisos') renderAvisosTab();
+  if(tab==='telegram') renderTelegramTab();
+  if(tab==='senhas') renderSenhasTab();
+  if(tab==='historico') renderHistoricoTab();
+}
 function renderFilters(){if(mainTab!=='vendedores'&&mainTab!=='filiais'){mainFilters.innerHTML='';return} let html=`<button class="pill ${filtroFilial==='TODAS'?'active':''}" onclick="setFiltroFilial('TODAS')">Todas</button>`; ORDEM.forEach(f=>{html+=`<button class="pill ${filtroFilial===f?'active':''}" onclick="setFiltroFilial('${f}')">${f}</button>`}); mainFilters.innerHTML=html;}
 function setFiltroFilial(f){
   filtroFilial=f;
@@ -6683,6 +8315,45 @@ function currentEntities(){let arr=mainTab==='filiais'?flattenFiliais():flattenV
 function renderEntityCard(ent){const m=calcMeta(ent); const isThird=!!(ent?.is_terceiro || ent?.type==='terceiro'); const isCred=!!(ent?.is_crediarista || ent?.type==='crediarista'); if(isThird || isCred){const credLogin=String(ent.login||crediaristaLoginByFilial(ent.filial)||'').toLowerCase(); const credFilial=String(ent.filial||'').toUpperCase(); const credNome=String(ent.nome||`CREDIARISTA${credFilial}`); const label=isThird?'Cobrança terceiro':'Crediarista'; const sub=isThird?'Clique para abrir a carteira terceirizada':'Clique para abrir a carteira do crediarista'; const actionAttr=isThird?`data-action="third-card" role="button" tabindex="0"`:`data-action="cred-card" data-login="${esc(credLogin)}" data-filial="${esc(credFilial)}" data-nome="${esc(credNome)}" role="button" tabindex="0"`; return `<div class="glass card ${m.geral>=50?'card-hit':(m.geral<30?'card-low-red':(m.geral<40?'card-low-orange':''))}" style="box-shadow:0 0 0 2px rgba(239,68,68,.12) inset" ${actionAttr}><div class="title">${esc(credNome)}</div><div class="numbers" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="stat-box" style="min-width:0"><div class="mini">Pendente</div><div class="big" style="color:var(--red);font-size:15px;word-break:break-word">${R(ent.pendente||0)}</div></div><div class="stat-box" style="min-width:0"><div class="mini">Recebido</div><div class="big" style="color:var(--green);font-size:15px;word-break:break-word">${R(ent.pago||0)}</div></div></div><div class="meta-row"><div class="mini-chip">🔴 Grave ${pct(m.grave.perc)}</div><div class="mini-chip">🟠 Alerta ${pct(m.alerta.perc)}</div><div class="mini-chip">🟡 Atenção ${pct(m.atencao.perc)}</div><div class="mini-chip" style="font-size:12px">🔵 Meta geral ${pct(m.geral)}</div></div>${renderMascotStatus(m.geral,label)}<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>${sub}</span></div></div>`} const bonus=getBonus(m.cfg,m.geral);const sales=summarizeSalesCard(ent);const salesPct=sales?.n||0;const salesBorder=salesPct>=100?'box-shadow:0 0 0 2px rgba(242,201,76,.35) inset':salesPct>=80?'box-shadow:0 0 0 2px rgba(34,197,94,.18) inset':salesPct>=50?'box-shadow:0 0 0 2px rgba(249,115,22,.18) inset':'box-shadow:0 0 0 2px rgba(239,68,68,.12) inset';const cls=m.geral>=50?'card-hit':(m.geral<30?'card-low-red':(m.geral<40?'card-low-orange':''));const pulseNote=m.geral>=50?'<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>Meta atingida no mês</span></div>':'';return `<div class="glass card ${cls}" style="${salesBorder}" onclick='openEntity(${JSON.stringify({type:ent.type,filial:ent.filial,nome:ent.nome})})'><div class="title">${esc(ent.nome)} ${ent.type==='vendedor'?`(${ent.filial})`:''}</div><div class="numbers" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="stat-box" style="min-width:0"><div class="mini">Pendente</div><div class="big" style="color:var(--red);font-size:15px;word-break:break-word">${R(ent.pendente||0)}</div></div><div class="stat-box" style="min-width:0"><div class="mini">Recebido</div><div class="big" style="color:var(--green);font-size:15px;word-break:break-word">${R(ent.pago||0)}</div></div></div><div class="meta-row"><div class="mini-chip">🔴 Grave ${pct(m.grave.perc)}</div><div class="mini-chip">🟠 Alerta ${pct(m.alerta.perc)}</div><div class="mini-chip">🟡 Atenção ${pct(m.atencao.perc)}</div><div class="mini-chip" style="font-size:12px">🔵 Meta geral ${pct(m.geral)}</div></div>${renderSalesCardSummary(ent)}${renderDualMascotStatus(ent)}${bonus?`<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>${esc(bonus.text)}</span></div>`:''}${pulseNote}</div>`}
 function renderGroupBars(entities){if(!entities.length) return `<div class="empty">Nenhum dado para exibir.</div>`; const max=Math.max(1,...entities.map(e=>Math.max(Number(e.grave_pend||0),Number(e.alerta_pend||0),Number(e.atencao_pend||0),Number(e.pago||0)))); return `<div class="glass big-chart-card"><div class="section-head"><div><h2>📊 Panorama por ${mainTab==='filiais'?'filial':'vendedor'}</h2><div class="hint">Barras por faixa: Grave, Alerta, Atenção e Recebido</div></div><div class="legend-inline"><span><i class="dot" style="background:var(--red)"></i>Grave</span><span><i class="dot" style="background:var(--orange)"></i>Alerta</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção</span><span><i class="dot" style="background:var(--green)"></i>Recebido</span></div></div><div class="groupbars">${entities.map(e=>{const vals=[{c:'var(--red)',v:Number(e.grave_pend||0),t:'Grave'},{c:'var(--orange)',v:Number(e.alerta_pend||0),t:'Alerta'},{c:'var(--yellow)',v:Number(e.atencao_pend||0),t:'Atenção'},{c:'var(--green)',v:Number(e.pago||0),t:'Recebido'}]; return `<div class="group"><div class="bars">${vals.map(v=>`<div title="${v.t}: ${R(v.v)}" class="bar" style="height:${Math.max(12,(v.v/max)*240)}px;background:linear-gradient(180deg,${v.c},${v.c})"></div>`).join('')}<span class="wave one"></span><span class="wave two"></span><span class="bubble b1"></span><span class="bubble b2"></span><span class="bubble b3"></span></div><div class="glabel">${esc(trunc(e.nome,16))}</div></div>`}).join('')}</div><div class="axis"><span>Escala relativa automática</span><span>${entities.length} ${mainTab==='filiais'?'filiais':'colaboradores'}</span></div></div>`}
 
+
+function toggleTickerSpeed(btn){
+  const box=btn?.closest('.glass.panel')?.querySelector('.aviso-ticker');
+  if(!box) return;
+  const track=box.querySelector('.aviso-ticker-track');
+  const fast=!box.classList.contains('fast');
+  box.classList.toggle('fast',fast);
+  if(track) track.style.animationDuration = fast ? '45s' : '1800s';
+  if(btn){btn.textContent=fast?'🐢 Normal':'⚡ Acelerar'; btn.classList.toggle('primary',fast);}
+}
+function renderAvisoTicker(title,hint,entries,opts={}){
+  const arr=(entries||[]).filter(Boolean);
+  if(!arr.length) return '';
+  const icon=opts.icon||'🔔';
+  const color=opts.color||'rgba(245,158,11,.35)';
+  const doubled=[...arr,...arr];
+  const accel=(usuarioAtual?.tipo==='master' || usuarioAtual?.is_viewer)?`<button class="btn soft btn-xs ticker-speed-btn" onclick="toggleTickerSpeed(this)">⚡ Acelerar</button>`:'';
+  return `<div class="glass panel" style="margin-bottom:16px;padding:14px 18px;border-color:${color}">
+    <div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:18px">${icon} ${esc(title)}</h2><div class="hint">${esc(hint||'')}</div></div><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><div class="badge">${arr.length}</div>${accel}</div></div>
+    <div class="aviso-ticker"><div class="aviso-ticker-track" style="animation-duration:1800s">${doubled.map(e=>`<span class="aviso-pill"><i class="red-dot"></i>${esc(e.nome||e.label||'')}<small>${esc(e.info||'')}</small></span>`).join('')}</div></div>
+  </div>`;
+}
+
+
+function renderMetaDiariaBatidaAlerts(){
+  try{
+    const hoje=dateOnlyISO(new Date());
+    const entry=HIST_DASH?.daily_meta?.dates?.[hoje] || {};
+    const arr=[];
+    Object.values(entry.vendedores||{}).forEach(v=>{if(Number(v.ponto||0)>0) arr.push({nome:v.nome||v.key, info:`${v.filial||''} · vendeu ${R(v.realizado_dia||0)} / meta ${R(v.meta_diaria||0)}`})});
+    Object.values(entry.filiais||{}).forEach(f=>{if(Number(f.ponto||0)>0) arr.push({nome:filialLabel(f.filial||''), info:`${f.filial||''} · vendeu ${R(f.realizado_dia||0)} / meta ${R(f.meta_diaria||0)}`})});
+    if(!arr.length){
+      return `<div class="glass panel" style="margin-bottom:16px;padding:14px 18px;border-color:rgba(34,197,94,.22)"><div class="section-head" style="margin:0 0 8px"><div><h2 style="margin:0;font-size:18px">🎯 Meta diária BATIDA</h2><div class="hint">Mural ativo. Quando vendedor ou filial bater a meta diária mercantil, aparecerá aqui.</div></div><div class="badge">0</div></div><div class="meta-diaria-empty">Nenhuma meta diária batida até o momento.</div></div>`;
+    }
+    arr.sort((a,b)=>String(a.nome).localeCompare(String(b.nome),'pt-BR'));
+    return renderAvisoTicker('Meta diária BATIDA','Controle de Meta do Sólidus filtrado na data atual: Atingido Período acima de 100%.', arr, {icon:'🎯',color:'rgba(34,197,94,.30)'});
+  }catch(e){console.warn('renderMetaDiariaBatidaAlerts',e); return '';}
+}
+
 function renderNoChargeAlerts(){
   const hoje=dateOnlyISO(new Date());
   const totalPend=(obj)=>((obj?.grave||[]).length+(obj?.alerta||[]).length+(obj?.atencao||[]).length);
@@ -6691,7 +8362,8 @@ function renderNoChargeAlerts(){
     const dn=String(x.destino_nome||'').toLowerCase();
     const f=String(x.filial||'').toUpperCase();
     const keyset=keys.map(k=>String(k||'').toLowerCase());
-    const userMatch=keyset.includes(u)||keyset.includes(dn)||(filial && f===String(filial).toUpperCase());
+    const filialOnly=keyset.some(k=>/^f\d+$/i.test(k)||String(k).startsWith('filial f'));
+    const userMatch=keyset.includes(u)||keyset.includes(dn)||keyset.includes(String(x.login||'').toLowerCase())||(filialOnly && filial && f===String(filial).toUpperCase());
     return userMatch && dateOnlyISO(x.server_time||x.criado_em||x.data||'')===hoje;
   }).length;
   const entries=[];
@@ -6714,7 +8386,7 @@ function renderNoChargeAlerts(){
   crediaristaEntities().forEach(c=>{
     const key=String(c.login||'').toLowerCase();
     const pending=totalPend(CLIENTES_CREDIARISTA[key]||{});
-    const done=doneHoje([c.nome, c.login, c.filial], c.filial);
+    const done=doneHoje([c.nome, c.login], c.filial);
     if(pending>0 && done===0) entries.push({tipo:'Crediarista',nome:c.nome,filial:c.filial,pending,done});
   });
 
@@ -6732,28 +8404,79 @@ function renderNoChargeAlerts(){
   });
   uniq.sort((a,b)=>String(a.tipo).localeCompare(String(b.tipo),'pt-BR') || Number(b.pending||0)-Number(a.pending||0));
   if(!uniq.length) return '';
-  return `<div class="glass panel" style="margin-bottom:16px;padding:14px 18px">
-    <div class="section-head" style="margin:0">
-      <div><h2 style="margin:0;font-size:18px">⏰ Sem cobranças hoje</h2><div class="hint">Todos os usuários/carteiras que ainda não registraram cobrança hoje: colaboradores, filiais, crediaristas e cobrança.</div></div>
-    </div>
-    <div class="sem-cobrancas-grid">${uniq.map(e=>`<div class="sem-cobranca-chip"><i class="dot" style="background:#ef4444"></i><div>${esc(e.nome)}<small>${esc(e.tipo)} ${e.filial?`· ${esc(e.filial)}`:''} · ${e.pending} clientes</small></div></div>`).join('')}</div>
-  </div>`;
+  return renderAvisoTicker('Sem cobranças hoje','Lista giratória de usuários/carteiras sem cobrança registrada hoje.', uniq.map(e=>({nome:e.nome, info:`${e.tipo}${e.filial?` · ${e.filial}`:''} · ${e.pending} clientes`})), {icon:'⏰',color:'rgba(239,68,68,.30)'});
 }
 
-function renderHighlights(){const cobrarParts=[]; const vendasParts=[]; const filiais=flattenFiliais(); const vendedores=flattenVendedores(); const calcDelta=(e)=>{const delta=Number(e.var_pago_delta||0); const prev=Math.max(Math.abs(Number(e.pago||0)-delta),1); const perc=(Math.abs(delta)/prev)*100; return {delta,perc};}; const bestFil=filiais.slice().sort((a,b)=>Number(b.var_pago_delta||0)-Number(a.var_pago_delta||0))[0]; const bestVend=vendedores.slice().sort((a,b)=>Number(b.var_pago_delta||0)-Number(a.var_pago_delta||0))[0]; if(bestFil){const d=calcDelta(bestFil); cobrarParts.push(`<div class="glass panel highlight-pulse" style="margin-bottom:12px;padding:16px 18px"><div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:20px">🏆 Destaque da semana · Filial</h2><div class="hint">${esc(filialLabel(bestFil.filial))} recebeu ${R(d.delta)} a mais</div></div>${renderDeltaPill(d.delta,d.perc)}</div></div>`);} if(bestVend){const d=calcDelta(bestVend); cobrarParts.push(`<div class="glass panel highlight-pulse" style="margin-bottom:16px;padding:16px 18px"><div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:20px">🥇 Destaque da semana · Vendedor</h2><div class="hint">${esc(bestVend.nome)} recebeu ${R(d.delta)} a mais</div></div>${renderDeltaPill(d.delta,d.perc)}</div></div>`);} const achievers=currentEntities().filter(e=>calcMeta(e).geral>=50); if(achievers.length){cobrarParts.push(`<div class="glass panel" style="margin-bottom:16px;padding:14px 18px"><div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:18px">🔔 Metas atingidas</h2><div class="hint">${achievers.length} colaboradores/filiais com meta alcançada</div></div></div><div class="legend-inline">${achievers.slice(0,10).map(e=>`<span><i class="dot" style="background:#2f67f6"></i>${esc(e.nome)} ${pct(calcMeta(e).geral)}</span>`).join('')}</div></div>`);} cobrarParts.push(renderNoChargeAlerts());
+function renderNoReactivationAlerts(){
+  try{
+    const rows=(CLIENTES_SEM_MOVIMENTO||[]).map((r,i)=>({...r,_idx:i,_owner:reativacaoOwnerInfo(r)}));
+    if(!rows.length) return '';
+    const hoje=dateOnlyISO(new Date());
+    const todayOnly=(x)=>dateOnlyISO(x.server_time||x.criado_em||x.data||x.created_at||'')===hoje;
+    const sentLogs=(COB_LOGS||[]).filter(x=>String(x.titulo||'')==='REATIVACAO' && todayOnly(x));
+    const limpaNome=x=>normName(String(x||'').replace(/\(F\d+\)/gi,'').replace(/gerente\s*f\d+/gi,'gerente'));
+    const byOwner={};
+    rows.forEach(r=>{
+      const o=r._owner||{}; const key=String(o.key||''); if(!key) return;
+      if(!byOwner[key]) byOwner[key]={key,nome:o.label||o.nome||key, filial:o.filial||r.filial, total:0, sent:0, login:String(o.login||'')};
+      byOwner[key].total++;
+      if(isReativacaoEnviadaHoje(r)) byOwner[key].sent++;
+    });
+    const usuarioEnviouHoje=(o)=>sentLogs.some(x=>{
+      const fLog=String(x.filial||'').toUpperCase();
+      const fOwner=String(o.filial||'').toUpperCase();
+      const u=limpaNome(x.usuario||'');
+      const d=limpaNome(x.destino_nome||'');
+      const l=String(x.login||'').toLowerCase();
+      const on=limpaNome(o.nome||o.label||'');
+      const ol=String(o.login||'').toLowerCase();
+      const ok=String(o.key||'');
+      const parcela=String(x.parcela||'');
+      const mesmaFilial=(!fOwner || !fLog || fOwner===fLog);
+      if(!mesmaFilial) return false;
+      if(ok && (String(x.owner_key||'')===ok || parcela.includes(ok))) return true;
+      if(ol && (l===ol || String(x.usuario||'').toLowerCase()===ol)) return true;
+      return !!(on && (u===on || d===on || u.includes(on) || on.includes(u) || d.includes(on) || on.includes(d)));
+    });
+    const faltantes=Object.values(byOwner)
+      .filter(o=>o.total>0 && o.sent===0 && !usuarioEnviouHoje(o) && !usuarioReativacaoLocalHoje(o))
+      .sort((a,b)=>String(a.filial).localeCompare(String(b.filial),'pt-BR')||Number(b.total)-Number(a.total));
+    if(!faltantes.length) return '';
+    return renderAvisoTicker('Clientes sem movimento: ninguém acionou ainda','Usuários com lista de reativação e zero WhatsApp enviado hoje.', faltantes.map(e=>({nome:e.nome, info:`${e.filial||''} · ${e.total} clientes`})), {icon:'🧡',color:'rgba(245,158,11,.30)'});
+  }catch(e){console.warn('renderNoReactivationAlerts',e); return '';}
+}
+
+function renderTopMural(){
+  if(!topMural) return;
+  if(mainTab!=='inicio'){topMural.classList.add('hidden'); topMural.innerHTML=''; return;}
+  const camp=renderCampaignStrip();
+  if(camp){topMural.innerHTML=`<div class="inicio-campaign-compact">${camp}</div>`; topMural.classList.remove('hidden');}
+  else {topMural.classList.add('hidden'); topMural.innerHTML='';}
+}
+function renderInicioTab(){
+  if(!inicioSection) return;
+  const oper=renderHighlights();
+  const murais=oper?`<div class="inicio-operacional-compact">${oper}</div>`:'<div class="glass panel" style="padding:12px 14px;margin-top:10px;border-color:rgba(34,197,94,.22)"><strong>✅ Operação em dia</strong><div class="hint">Sem alertas de cobrança, reativação, vendas ou duplicidade neste momento.</div></div>';
+  inicioSection.innerHTML=`<div class="inicio-compact"><div class="glass panel" style="padding:12px 16px;margin-bottom:10px"><div class="section-head" style="margin:0"><div><h2 style="font-size:17px;margin:0">🏠 Início</h2><div class="hint">Avisos do Master/Diretor ficam acima dos cards. Cards principais e murais operacionais ficam reunidos aqui.</div></div></div></div>${murais}</div>`;
+}
+
+function renderHighlights(){const cobrarParts=[]; const vendasParts=[]; const filiais=flattenFiliais(); const vendedores=flattenVendedores(); const calcDelta=(e)=>{const delta=Number(e.var_pago_delta||0); const prev=Math.max(Math.abs(Number(e.pago||0)-delta),1); const perc=(Math.abs(delta)/prev)*100; return {delta,perc};}; const bestFil=filiais.filter(e=>Number(e.var_pago_delta||0)>0).sort((a,b)=>Number(b.var_pago_delta||0)-Number(a.var_pago_delta||0))[0]; const bestVend=vendedores.filter(e=>Number(e.var_pago_delta||0)>0).sort((a,b)=>Number(b.var_pago_delta||0)-Number(a.var_pago_delta||0))[0]; if(bestFil){const d=calcDelta(bestFil); cobrarParts.push(`<div class="glass panel highlight-pulse" style="margin-bottom:12px;padding:16px 18px"><div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:20px">🏆 Destaque da semana · Filial</h2><div class="hint">${esc(filialLabel(bestFil.filial))} recebeu ${R(d.delta)} a mais que a referência anterior</div></div>${renderDeltaPill(d.delta,d.perc)}</div></div>`);} if(bestVend){const d=calcDelta(bestVend); cobrarParts.push(`<div class="glass panel highlight-pulse" style="margin-bottom:16px;padding:16px 18px"><div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:20px">🥇 Destaque da semana · Vendedor</h2><div class="hint">${esc(bestVend.nome)} recebeu ${R(d.delta)} a mais que a referência anterior</div></div>${renderDeltaPill(d.delta,d.perc)}</div></div>`);}  const achievers=currentEntities().filter(e=>calcMeta(e).geral>=50); if(achievers.length){cobrarParts.push(`<div class="glass panel" style="margin-bottom:16px;padding:14px 18px"><div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:18px">🔔 Metas atingidas</h2><div class="hint">${achievers.length} colaboradores/filiais com meta alcançada</div></div></div><div class="legend-inline">${achievers.slice(0,10).map(e=>`<span><i class="dot" style="background:#2f67f6"></i>${esc(e.nome)} ${pct(calcMeta(e).geral)}</span>`).join('')}</div></div>`);} cobrarParts.push(renderDuplicidadeCarteiraBanner());
+cobrarParts.push(renderNoChargeAlerts());
+cobrarParts.push(renderNoReactivationAlerts());
+const metaDiariaBatida=renderMetaDiariaBatidaAlerts(); if(metaDiariaBatida) vendasParts.push(metaDiariaBatida);
 const topVendaVend=bestLiveSalesEntity(vendedores,'venda_filial_vendedor_meta'); const topServVend=bestLiveSalesEntity(vendedores,'servico_filial_vendedor_ouro_fob'); const topVendaFil=bestLiveSalesEntity(filiais,'venda_filial_meta'); const topServFil=bestLiveSalesEntity(filiais,'servico_filial_ouro_fob');
-vendasParts.push(`<div class="glass panel sales-panel" style="margin-bottom:16px;padding:16px 18px"><div class="section-head" style="margin:0 0 10px"><div><h2 style="margin:0;font-size:20px">💲 Mural de vendas do dia</h2><div class="hint">Comparativos atuais de venda e serviço do dia/semana.</div></div></div><div class="legend-inline">${topVendaVend?`<span><i class="dot" style="background:#f97316"></i>Venda vendedor: ${esc(topVendaVend.ent.nome)} ${R(topVendaVend.val||0)}</span>`:''}${topServVend?`<span><i class="dot" style="background:#f59e0b"></i>Serviço vendedor: ${esc(topServVend.ent.nome)} ${R(topServVend.val||0)}</span>`:''}${topVendaFil?`<span><i class="dot" style="background:#fb923c"></i>Venda filial: ${esc(filialLabel(topVendaFil.ent.filial))} ${R(topVendaFil.val||0)}</span>`:''}${topServFil?`<span><i class="dot" style="background:#fdba74"></i>Serviço filial: ${esc(filialLabel(topServFil.ent.filial))} ${R(topServFil.val||0)}</span>`:''}</div></div>`);
+vendasParts.push(`<div class="glass panel sales-panel" style="margin-bottom:16px;padding:16px 18px"><div class="section-head" style="margin:0 0 10px"><div><h2 style="margin:0;font-size:20px">💲 Vendas do mês</h2><div class="hint">Melhores resultados acumulados de venda e serviço do mês.</div></div></div><div class="legend-inline">${topVendaVend?`<span><i class="dot" style="background:#f97316"></i>Venda vendedor: ${esc(topVendaVend.ent.nome)} ${R(topVendaVend.val||0)}</span>`:''}${topServVend?`<span><i class="dot" style="background:#f59e0b"></i>Serviço vendedor: ${esc(topServVend.ent.nome)} ${R(topServVend.val||0)}</span>`:''}${topVendaFil?`<span><i class="dot" style="background:#fb923c"></i>Venda filial: ${esc(filialLabel(topVendaFil.ent.filial))} ${R(topVendaFil.val||0)}</span>`:''}${topServFil?`<span><i class="dot" style="background:#fdba74"></i>Serviço filial: ${esc(filialLabel(topServFil.ent.filial))} ${R(topServFil.val||0)}</span>`:''}</div></div>`);
 return `<div class="section-head" style="margin-bottom:8px"><div><h2>📌 Mural de cobrança</h2><div class="hint">Notificações e destaques do dia da cobrança.</div></div></div>${cobrarParts.join('')}<div class="section-head" style="margin:20px 0 8px"><div><h2>💲 Mural de vendas</h2><div class="hint">Comparativos de venda e serviço do dia/semana.</div></div></div>${vendasParts.join('')}`}
 
 function bindSpecialCards(){document.querySelectorAll('[data-action="cred-card"]').forEach(el=>{el.style.cursor='pointer';el.onclick=(ev)=>{ev.preventDefault();ev.stopPropagation();const node=ev.currentTarget.closest('[data-action="cred-card"]')||ev.currentTarget;const ds=node.dataset||{};openCrediaristaPanel(ds.login||'',ds.filial||'',ds.nome||'');return false};el.onkeydown=(ev)=>{if(ev.key==='Enter' || ev.key===' '){ev.preventDefault();const node=ev.currentTarget.closest('[data-action="cred-card"]')||ev.currentTarget;const ds=node.dataset||{};openCrediaristaPanel(ds.login||'',ds.filial||'',ds.nome||'')}}});document.querySelectorAll('[data-action="third-card"]').forEach(el=>{el.style.cursor='pointer';el.onclick=(ev)=>{ev.preventDefault();ev.stopPropagation();openThirdChargePanel();return false};el.onkeydown=(ev)=>{if(ev.key==='Enter' || ev.key===' '){ev.preventDefault();openThirdChargePanel()}}})}
 function openEntityFromRowPayload(payload){try{const ref=JSON.parse(decodeURIComponent(payload)); if(ref?.type==='terceiro') return openThirdChargePanel(); if(ref?.type==='crediarista') return openCrediaristaPanel(ref.login||'',ref.filial||'',ref.nome||''); return openEntity(ref);}catch(e){}}
 function renderEntityRow(ent){const m=calcMeta(ent); const isThird=!!(ent?.is_terceiro||ent?.type==='terceiro'); const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista'); const ref=isThird?{type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}:isCred?{type:'crediarista',login:String(ent.login||crediaristaLoginByFilial(ent.filial)||'').toLowerCase(),filial:ent.filial,nome:ent.nome}:{type:ent.type,filial:ent.filial,nome:ent.nome}; const payload=encodeURIComponent(JSON.stringify(ref)); const sales=summarizeSalesCard(ent)||{}; const role=isThird?'Cobrança terceiro':isCred?'Crediarista':(ent.type==='filial'?'Filial':'Colaborador'); return `<div class="entity-row" onclick="openEntityFromRowPayload('${payload}')"><div class="entity-cell"><div class="v">${esc(ent.nome||filialLabel(ent.filial)||'')}</div><div class="small muted">${esc(role)} ${ent.filial?`· ${esc(ent.filial)}`:''}</div></div><div class="entity-cell"><div class="k">Pendente</div><div class="v red">${R(ent.pendente||0)}</div></div><div class="entity-cell"><div class="k">Recebido</div><div class="v green">${R(ent.pago||0)}</div></div><div class="entity-cell"><div class="k">Grave</div><div class="v red">${pct(m.grave.perc||0)}</div></div><div class="entity-cell"><div class="k">Alerta</div><div class="v orange">${pct(m.alerta.perc||0)}</div></div><div class="entity-cell"><div class="k">Atenção</div><div class="v">${pct(m.atencao.perc||0)}</div></div><div class="entity-cell"><div class="k">Meta geral</div><div class="v blue">${pct(m.geral||0)}</div></div><div class="entity-cell"><div class="k">Vendas/serviços</div><div class="v">${sales.n!=null?pct(sales.n):'—'}</div></div></div>`}
 function renderEntityList(entities){return `<div class="entity-list"><div class="entity-row entity-row-head"><div>Nome / tipo</div><div>Pendente</div><div>Recebido</div><div>Grave</div><div>Alerta</div><div>Atenção</div><div>Meta</div><div>Vendas</div></div>${entities.map(renderEntityRow).join('')}</div>`}
-function renderList(){const entities=currentEntities();const title=mainTab==='filiais'?'🏬 Filiais':'👥 Colaboradores';const hint=`${entities.length} ${mainTab==='filiais'?'filiais':'colaboradores'} exibidos`; const useRows=usuarioAtual?.tipo==='master'; listSection.innerHTML=`${renderCampaignStrip()}${usuarioAtual?.tipo==='master'?renderHighlights():''}<div class="section-head"><div><h2>${title}</h2><div class="hint">Clique em uma linha para abrir a tela individual completa.</div></div><div class="hint">${hint}</div></div>${useRows?renderEntityList(entities):`<div class="grid-cards">${entities.map(renderEntityCard).join('')}</div>`}${renderGroupBars(entities)}`; bindSpecialCards()}
+function renderList(){const entities=currentEntities();const title=mainTab==='filiais'?'🏬 Filiais':'👥 Colaboradores';const hint=`${entities.length} ${mainTab==='filiais'?'filiais':'colaboradores'} exibidos`; const useRows=usuarioAtual?.tipo==='master'; listSection.innerHTML=`${renderCampaignStrip()}<div class="section-head"><div><h2>${title}</h2><div class="hint">Clique em uma linha para abrir a tela individual completa.</div></div><div class="hint">${hint}</div></div>${useRows?renderEntityList(entities):`<div class="grid-cards">${entities.map(renderEntityCard).join('')}</div>`}`; bindSpecialCards()}
 function findEntity(ref){const n=String(ref?.nome||'').toLowerCase(); const f=String(ref?.filial||'').toUpperCase(); const t=String(ref?.type||'').toLowerCase(); if(t==='terceiro' || ref?.is_terceiro || n===String(COBRANCA10_NOME).toLowerCase() || n===String(COBRANCA10_LOGIN).toLowerCase() || f==='FTER'){return thirdChargeEntity()} if(t==='crediarista' || ref?.is_crediarista || n.startsWith('crediarista') || String(ref?.login||'').toLowerCase().startsWith('crediaristaf')){return crediaristaEntityByLogin(ref?.login||ref?.nome||ref?.filial)} if(ref.type==='filial'){return flattenFiliais().find(x=>x.filial===ref.filial)} return flattenVendedores().find(x=>x.filial===ref.filial && x.nome===ref.nome)}
 function keysFromLogsForCommission(logs){const out=new Set(); (logs||[]).forEach(l=>{out.add(cobrancaRowKey(l)); const alt=[String(l.cliente||'').trim().toUpperCase(),String(l.titulo||'').trim(),String(l.parcela||'').trim()].join('|'); out.add(alt);}); return out}
 function key3Cob(r){return [String(r.cliente||r.nome||'').trim().toUpperCase(),String(r.titulo||'').trim(),String(r.parcela||'').trim()].join('|')}
-function renderTerceiroCommission(ent){const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista'); const baseCfg=isCred?entityConfig({type:'vendedor',nome:ent.nome,filial:ent.filial}):entityConfig({type:'vendedor',nome:COBRANCA10_NOME,filial:'FTER'}); const cfg=commissionCfg(baseCfg); const policy=(isCred?(cfg.camp_cob_crediarista||[]):(cfg.camp_cobranca_terceiro||[])); const policyOk=Array.isArray(policy)&&policy.length?policy:(isCred?defaultCampCrediarista():defaultCampTerceiro()); const byFaixa={atencao:{pct:0,cobrado:0,recebido:0,comissao:0},alerta:{pct:0,cobrado:0,recebido:0,comissao:0},grave:{pct:0,cobrado:0,recebido:0,comissao:0}}; policyOk.forEach(r=>{const fx=String(r.faixa||'').toLowerCase(); if(byFaixa[fx]) byFaixa[fx].pct=Number(String(r.pct||0).replace(',','.'))||0}); const mesAtual=dateOnlyISO(new Date()).slice(0,7); const userKeys=isCred?[String(ent.login||'').toLowerCase(),String(ent.nome||'').toLowerCase()]:[COBRANCA10_NOME.toLowerCase(),COBRANCA10_LOGIN]; const cobrados=(COB_LOGS||[]).filter(x=>userKeys.includes(String(x.usuario||'').toLowerCase()) && dateOnlyISO(x.server_time||x.criado_em||x.data||'').slice(0,7)===mesAtual); const keys=keysFromLogsForCommission(cobrados); const srcCli=isCred?(CLIENTES_CREDIARISTA?.[String(ent.login||'').toLowerCase()]||{grave:[],alerta:[],atencao:[]}):(CLIENTES_TERCEIRO||{grave:[],alerta:[],atencao:[]}); const srcRec=getRecebimentos(ent)||{grave:[],alerta:[],atencao:[]}; ['atencao','alerta','grave'].forEach(fx=>{byFaixa[fx].cobrado=(srcCli?.[fx]||[]).filter(r=>keys.has(cobrancaRowKey(r))||keys.has(key3Cob(r))).length; (srcRec?.[fx]||[]).forEach(r=>{const pagMes=dateOnlyISO(r.pagamento||r.data_pagamento||'').slice(0,7); if((keys.has(cobrancaRowKey(r))||keys.has(key3Cob(r))) && pagMes===mesAtual){byFaixa[fx].recebido+=Number(r.pago||0)}}); byFaixa[fx].comissao=byFaixa[fx].recebido*(byFaixa[fx].pct/100)}); const total=Object.values(byFaixa).reduce((a,b)=>a+b.comissao,0); const item=(t,v,s='')=>`<div class="commission-item unlocked ${s}"><div class="k">${t}</div><div class="v">${v}</div></div>`; return `<div class="glass panel commission-card"><h3>💵 ${isCred?'Comissão crediarista':'Comissão cobrança terceiro'} <span class="note">· só títulos cobrados pelo usuário e pagos no mês</span></h3><div class="commission-grid">${item('Atenção %',String(byFaixa.atencao.pct.toFixed(2)).replace('.',',')+'%')}${item('Alerta %',String(byFaixa.alerta.pct.toFixed(2)).replace('.',',')+'%')}${item('Grave %',String(byFaixa.grave.pct.toFixed(2)).replace('.',',')+'%')}${item('Recebido atenção',R(byFaixa.atencao.recebido||0))}${item('Recebido alerta',R(byFaixa.alerta.recebido||0))}${item('Recebido grave',R(byFaixa.grave.recebido||0))}${item('Comissão atenção',R(byFaixa.atencao.comissao||0))}${item('Comissão alerta',R(byFaixa.alerta.comissao||0))}${item('Comissão grave',R(byFaixa.grave.comissao||0))}${item('Total previsto',R(total||0),'total-final')}</div><div class="commission-note">A comissão reinicia a cada mês e o pagamento é previsto para o dia 10 do mês seguinte.</div></div>`}
+function renderTerceiroCommission(ent){const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista'); const baseCfg=isCred?entityConfig({type:'vendedor',nome:ent.nome,filial:ent.filial}):entityConfig({type:'vendedor',nome:COBRANCA10_NOME,filial:'FTER'}); const cfg=commissionCfg(baseCfg); const policy=(isCred?(cfg.camp_cob_crediarista||[]):(cfg.camp_cobranca_terceiro||[])); const policyOk=Array.isArray(policy)&&policy.length?policy:(isCred?defaultCampCrediarista():defaultCampTerceiro()); const byFaixa={atencao:{pct:0,cobrado:0,recebido:0,comissao:0},alerta:{pct:0,cobrado:0,recebido:0,comissao:0},grave:{pct:0,cobrado:0,recebido:0,comissao:0}}; policyOk.forEach(r=>{const fx=String(r.faixa||'').toLowerCase(); if(byFaixa[fx]) byFaixa[fx].pct=Number(String(r.pct||0).replace(',','.'))||0}); const mesAtual=dateOnlyISO(new Date()).slice(0,7); const userKeys=isCred?[String(ent.login||'').toLowerCase(),String(ent.nome||'').toLowerCase()]:[COBRANCA10_NOME.toLowerCase(),COBRANCA10_LOGIN]; const cobrados=(COB_LOGS||[]).filter(x=>userKeys.includes(String(x.usuario||'').toLowerCase()) && dateOnlyISO(x.server_time||x.criado_em||x.data||'').slice(0,7)===mesAtual); const keys=keysFromLogsForCommission(cobrados); const srcCli=isCred?(CLIENTES_CREDIARISTA?.[String(ent.login||'').toLowerCase()]||{grave:[],alerta:[],atencao:[]}):(CLIENTES_TERCEIRO||{grave:[],alerta:[],atencao:[]}); const srcRec=getRecebimentos(ent)||{grave:[],alerta:[],atencao:[]}; ['atencao','alerta','grave'].forEach(fx=>{byFaixa[fx].cobrado=(srcCli?.[fx]||[]).filter(r=>keys.has(cobrancaRowKey(r))||keys.has(key3Cob(r))).length; (srcRec?.[fx]||[]).forEach(r=>{const pagMes=dateOnlyISO(r.pagamento||r.data_pagamento||'').slice(0,7); if((keys.has(cobrancaRowKey(r))||keys.has(key3Cob(r))) && pagMes===mesAtual){byFaixa[fx].recebido+=Number(r.pago||0)}}); byFaixa[fx].comissao=byFaixa[fx].recebido*(byFaixa[fx].pct/100)}); const total=Object.values(byFaixa).reduce((a,b)=>a+b.comissao,0); const item=(t,v,s='')=>`<div class="commission-item unlocked ${s}"><div class="k">${t}</div><div class="v">${v}</div></div>`; return `<div class="glass panel commission-card"><h3>💵 ${isCred?'Comissão crediarista':'Comissão cobrança terceiro'} <span class="note">· só títulos cobrados pelo usuário e pagos no mês</span></h3><div class="commission-grid">${item('Atenção %',String(byFaixa.atencao.pct.toFixed(2)).replace('.',',')+'%')}${item('Alerta %',String(byFaixa.alerta.pct.toFixed(2)).replace('.',',')+'%')}${item('Grave %',String(byFaixa.grave.pct.toFixed(2)).replace('.',',')+'%')}${item('Recebido atenção',R(byFaixa.atencao.recebido||0))}${item('Recebido alerta',R(byFaixa.alerta.recebido||0))}${item('Recebido grave',R(byFaixa.grave.recebido||0))}${item('Comissão atenção',R(byFaixa.atencao.comissao||0))}${item('Comissão alerta',R(byFaixa.alerta.comissao||0))}${item('Comissão grave',R(byFaixa.grave.comissao||0))}${item('Total previsto',R(total||0),'total-final')}</div><div class="commission-note">${esc(CONFIG_META?.comissao_pagamento_texto||'A comissão reinicia a cada mês e o pagamento é previsto para o dia 10 do mês seguinte.')}</div></div>`}
 function openCrediaristaPanel(login, filial, nome){
   const filialNorm=String(filial||'').toUpperCase();
   const loginNorm=String(login||crediaristaLoginByFilial(filialNorm)||'').toLowerCase();
@@ -6813,7 +8536,7 @@ document.addEventListener('click', function(ev){
 window.openCrediaristaPanel=openCrediaristaPanel;
 window.openThirdChargePanel=openThirdChargePanel;
 
-function renderTerceiroDetail(ent){const src=getClientesEnt(ent); const totalTit=(src.grave?.length||0)+(src.alerta?.length||0)+(src.atencao?.length||0); detailScreen.innerHTML=`${renderUpdateStrip()}<div class="back-row"><button class="btn soft" onclick="backToMain()">⬅️ Voltar</button><div><h2>${esc(ent.nome)}</h2><div class="sub">${ent.is_crediarista?`Painel de cobrança da filial ${ent.filial} · base configurada ${Number(ent.pct_base||100)}% · recebido só por cobrança própria paga`:`Painel de cobrança terceirizada · percentual global sem duplicidade`}</div></div><div class="badge">${ent.is_crediarista?'🧾 Crediarista':'🤝 Cobrança terceiro'}</div></div><div class="detail-top"><div class="glass panel"><h3>🧾 Resumo da carteira</h3><div class="metrics-grid"><div class="metric"><div class="k">Títulos</div><div class="v">${totalTit}</div></div><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">Cobrado hoje</div><div class="v">${getCobradosHoje(ent).length}</div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave ${src.grave?.length||0}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta ${src.alerta?.length||0}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção ${src.atencao?.length||0}</span></div></div><div>${renderTerceiroCommission(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span>clique para abrir</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span>clique para abrir</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
+function renderTerceiroDetail(ent){const src=getClientesEnt(ent); const totalTit=(src.grave?.length||0)+(src.alerta?.length||0)+(src.atencao?.length||0); detailScreen.innerHTML=`${renderUpdateStrip()}<div class="back-row">${renderBackButton()}<div><h2>${esc(ent.nome)}</h2><div class="sub">${ent.is_crediarista?`Painel de cobrança da filial ${ent.filial} · base configurada ${Number(ent.pct_base||100)}% · recebido só por cobrança própria paga`:`Painel de cobrança terceirizada · percentual global sem duplicidade`}</div></div><div class="badge">${ent.is_crediarista?'🧾 Crediarista':'🤝 Cobrança terceiro'}</div></div><div class="detail-top"><div class="glass panel"><h3>🧾 Resumo da carteira</h3><div class="metrics-grid"><div class="metric"><div class="k">Títulos</div><div class="v">${totalTit}</div></div><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">Cobrado hoje</div><div class="v">${getCobradosHoje(ent).length}</div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave ${src.grave?.length||0}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta ${src.alerta?.length||0}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção ${src.atencao?.length||0}</span></div></div><div>${renderTerceiroCommission(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span class="acc-hint">clique para abrir</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)"><span>🧾 Relatório de cobranças</span><span class="acc-hint">clique para abrir</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
 
 // ── PAINEL CREDIARISTA ─────────────────────────────────────────────────────
 // Mostra: resumo da carteira espelhada + meta de cobrança + recebimentos + cobranças
@@ -6826,7 +8549,7 @@ function renderCrediaristaDetail(ent){
     ${renderInboxBanner()}
     ${renderUpdateStrip()}
     <div class="back-row">
-      <button class="btn soft" onclick="backToMain()">⬅️ Voltar</button>
+      ${renderBackButton()}
       <div>
         <h2>${esc(ent.nome)}</h2>
         <div class="sub">Painel de cobrança espelhado da filial ${esc(ent.filial)} · mesma base do gerente/filial em tempo real</div>
@@ -6863,17 +8586,17 @@ function renderCrediaristaDetail(ent){
       <div>${renderTerceiroCommission(ent)}</div>
     </div>
     <div class="accordion">
-      <div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span>clique para abrir</span></div>
+      <div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span class="acc-hint">clique para abrir</span></div>
       <div class="acc-body">${renderRecebimentos(ent)}</div>
     </div>
     <div class="accordion">
-      <div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span>clique para abrir</span></div>
+      <div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span class="acc-hint">clique para abrir</span></div>
       <div class="acc-body">${renderCobrancasEnt(ent)}</div>
     </div>
   `;
 }
 
-function openEntity(ref){if(ref && (ref.type==='crediarista' || ref.is_crediarista)){return openCrediaristaPanel(ref.login||'', ref.filial||'', ref.nome||'')} const ent=findEntity(ref); if(!ent) return; currentDetailRef={type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''}; mascotCongrats(ent); try{renderLaranjitoNotify(); showLaranjitoOncePerAccess()}catch(e){}; document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(ent.is_terceiro || ent.type==='terceiro'){return renderTerceiroDetail(ent)} if(ent.is_crediarista || ent.type==='crediarista'){return openCrediaristaPanel(ent.login||'', ent.filial||'', ent.nome||'')} const meta=calcMeta(ent); const bonus=getBonus(meta.cfg,meta.geral); const deltaVal=Number(ent.var_pago_delta||0); const prevBase=Math.max(Math.abs(Number(ent.pago||0)-deltaVal),1); const pctFallback=(Math.abs(deltaVal)/prevBase)*100; const compPerc=(ent.var_pago_perc==null || Math.abs(Number(ent.var_pago_perc||0))<0.01)?pctFallback:Math.abs(Number(ent.var_pago_perc||0)); detailScreen.innerHTML=`${usuarioAtual && usuarioAtual.tipo!=='master' ? renderInboxBanner() : ''}${renderUpdateStrip()}<div class="back-row"><button class="btn soft" onclick="backToMain()">⬅️ Voltar</button><div><h2>${ent.type==='filial'?filialLabel(ent.filial):esc(ent.nome)}</h2><div class="sub">${ent.type==='filial'?'Painel individual da filial':'Painel individual do vendedor'} · ${ent.filial}</div></div><div class="badge">${ent.type==='filial'?'🏬 Filial':'👤 Vendedor'}</div></div><div class="detail-top"><div class="glass panel"><h3>🎯 Meta do mês <span class="note">· Não acumulativo</span></h3><div class="mega-progress"><div class="ring-wrap">${renderPiggyBank(meta.geral)}</div><div><div class="metrics-grid"><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">% da filial</div><div class="v">${pct(ent.perc_filial||100)}</div></div><div class="metric"><div class="k">Configuração usada</div><div class="v">${Number(meta.cfg.grave_pct||0)}/${Number(meta.cfg.alerta_pct||0)}/${Number(meta.cfg.atencao_pct||0)}</div></div><div class="metric"><div class="k">Comparado a ontem</div><div class="v" style="font-size:16px">${renderDeltaPill(ent.var_pago_delta,compPerc)} <span>${R(Math.abs(Number(ent.var_pago_delta||0)))}</span></div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave alvo ${R(meta.grave.alvo)} · recebido ${R(meta.grave.rec)}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta alvo ${R(meta.alerta.alvo)} · recebido ${R(meta.alerta.rec)}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção alvo ${R(meta.atencao.alvo)} · recebido ${R(meta.atencao.rec)}</span></div></div></div><div class="meta-grid">${renderMetaBox('Grave','var(--red)',meta.grave)}${renderMetaBox('Alerta','var(--orange)',meta.alerta)}${renderMetaBox('Atenção','var(--yellow)',meta.atencao)}${renderMetaBox('Meta geral','var(--blue)',{perc:meta.geral,alvo:meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,rec:meta.grave.rec+meta.alerta.rec+meta.atencao.rec})}</div><div style="height:18px"></div><h3>🌊 Gráfico Geral Contas a Receber</h3>${renderSingleBars(ent,meta,true)}<div style="height:16px"></div><div class="glass panel"><h3>🏆 Bônus e premiações <span class="note">· Não acumulativo</span></h3>${renderBonusBox(meta.cfg,meta.geral)}</div></div><div>${renderSalesPanel(ent)}<div style="height:16px"></div>${renderCommissionSummary(ent)}<div style="height:16px"></div>${renderCampaignSummary(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span>clique para ${'abrir'}</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span>clique para ${'abrir'}</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
+function openEntity(ref){if(ref && (ref.type==='crediarista' || ref.is_crediarista)){return openCrediaristaPanel(ref.login||'', ref.filial||'', ref.nome||'')} const ent=findEntity(ref); if(!ent) return; currentDetailRef={type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''}; mascotCongrats(ent); try{renderLaranjitoNotify(); showLaranjitoOncePerAccess()}catch(e){}; document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(ent.is_terceiro || ent.type==='terceiro'){return renderTerceiroDetail(ent)} if(ent.is_crediarista || ent.type==='crediarista'){return openCrediaristaPanel(ent.login||'', ent.filial||'', ent.nome||'')} const meta=calcMeta(ent); const bonus=getBonus(meta.cfg,meta.geral); const deltaVal=Number(ent.var_pago_delta||0); const prevBase=Math.max(Math.abs(Number(ent.pago||0)-deltaVal),1); const pctFallback=(Math.abs(deltaVal)/prevBase)*100; const compPerc=(ent.var_pago_perc==null || Math.abs(Number(ent.var_pago_perc||0))<0.01)?pctFallback:Math.abs(Number(ent.var_pago_perc||0)); detailScreen.innerHTML=`${usuarioAtual && usuarioAtual.tipo!=='master' ? renderInboxBanner() : ''}${renderUpdateStrip()}<div class="back-row">${renderBackButton()}<div><h2>${ent.type==='filial'?filialLabel(ent.filial):esc(ent.nome)}</h2><div class="sub">${ent.type==='filial'?'Painel individual da filial':'Painel individual do vendedor'} · ${ent.filial}</div></div><div class="badge">${ent.type==='filial'?'🏬 Filial':'👤 Vendedor'}</div></div><div class="detail-top"><div class="glass panel"><h3>🎯 Meta do mês <span class="note">· Não acumulativo</span></h3><div class="mega-progress"><div class="ring-wrap">${renderPiggyBank(meta.geral)}</div><div><div class="metrics-grid"><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">% da filial</div><div class="v">${pct(ent.perc_filial||100)}</div></div><div class="metric"><div class="k">Configuração usada</div><div class="v">${Number(meta.cfg.grave_pct||0)}/${Number(meta.cfg.alerta_pct||0)}/${Number(meta.cfg.atencao_pct||0)}</div></div><div class="metric"><div class="k">Comparado a ontem</div><div class="v" style="font-size:16px">${renderDeltaPill(ent.var_pago_delta,compPerc)} <span>${R(Math.abs(Number(ent.var_pago_delta||0)))}</span></div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave alvo ${R(meta.grave.alvo)} · recebido ${R(meta.grave.rec)}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta alvo ${R(meta.alerta.alvo)} · recebido ${R(meta.alerta.rec)}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção alvo ${R(meta.atencao.alvo)} · recebido ${R(meta.atencao.rec)}</span></div></div></div><div class="meta-grid">${renderMetaBox('Grave','var(--red)',meta.grave)}${renderMetaBox('Alerta','var(--orange)',meta.alerta)}${renderMetaBox('Atenção','var(--yellow)',meta.atencao)}${renderMetaBox('Meta geral','var(--blue)',{perc:meta.geral,alvo:meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,rec:meta.grave.rec+meta.alerta.rec+meta.atencao.rec})}</div><div style="height:18px"></div><h3>🌊 Gráfico Geral Contas a Receber</h3>${renderSingleBars(ent,meta,true)}<div style="height:16px"></div><div class="glass panel"><h3>🏆 Bônus e premiações <span class="note">· Não acumulativo</span></h3>${renderBonusBox(meta.cfg,meta.geral)}</div></div><div>${renderSalesPanel(ent)}<div style="height:16px"></div>${renderCommissionSummary(ent)}<div style="height:16px"></div>${renderCampaignSummary(ent)}</div></div>${renderReativacaoEnt(ent)}<div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span class="acc-hint">clique para ${'abrir'}</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span class="acc-hint">clique para ${'abrir'}</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
 function canVerComissionamento(){return usuarioAtual?.tipo==='master'}
 function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';
   const c=calcCommissionSummary(ent);
@@ -6884,7 +8607,7 @@ function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';
   const rentNote = c.rentUnlocked
     ? `Rentabilidade atual ${String(Number(c.rentAtual||0).toFixed(2)).replace('.',',')}% · faixa aplicada ${c.rentFaixaTxt}.`
     : `Rentabilidade atual ${String(Number(c.rentAtual||0).toFixed(2)).replace('.',',')}% · bloqueada até bater 50% da meta de cobrança.`;
-  return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,!(c.rentUnlocked && c.rentAtual>=48))}${moneyCell('Rentab 52,15%',c.rent52,!(c.rentUnlocked && c.rentAtual>=52.15))}${moneyCell('Rentab 55,50%',c.rent55,!(c.rentUnlocked && c.rentAtual>=55.50))}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo vendas ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)} · rentabilidades liberam ao bater 50% da meta de cobrança. ${rentNote}</div></div>`
+  return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,!(c.rentUnlocked && c.rentAtual>=48))}${moneyCell('Rentab 52,15%',c.rent52,!(c.rentUnlocked && c.rentAtual>=52.15))}${moneyCell('Rentab 55,50%',c.rent55,!(c.rentUnlocked && c.rentAtual>=55.50))}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo vendas ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)} · rentab exige cobrança 50% + mercantil ${pct(c.rentMinMercantil)}. ${rentNote}</div></div>`
 }
 
 function backToMain(){currentDetailRef=null; try{renderLaranjitoNotify()}catch(e){}; detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden')}
@@ -6991,7 +8714,7 @@ const MASCOTE_TRISTE='https://moveisdolar.com.br/colaborador/mascote%20triste1.p
 function mascotByPerc(p){const n=Number(p||0); if(n>=80) return {src:MASCOTE_FELIZ,txt:'Laranjito feliz: meta em ótimo ritmo!'}; if(n>=60) return {src:MASCOTE_PREOC,txt:'Laranjito preocupado: atenção para a meta.'}; return {src:MASCOTE_TRISTE,txt:'Laranjito triste: precisa reagir já!'} }
 function renderMascotStatus(p,label=''){const m=mascotByPerc(p); return `<div class="mascot-status"><img src="${m.src}" alt=""><div><strong>${label?label+': ':''}${m.txt}</strong></div></div>`}
 function renderDualMascotStatus(ent){const metaCob=calcMeta(ent).geral||0; if(ent?.is_terceiro || ent?.type==='terceiro'){return `<div>${renderMascotStatus(metaCob,'Cobrança terceiro')}</div>`} const vendaRow=(getSalesRows(ent, ent.type==='filial'?'venda_filial_meta':'venda_filial_vendedor_meta')[0])||null; const vendaPerc=salesNum(salesCell(vendaRow,['Atingido Total'])); return `<div>${renderMascotStatus(metaCob,'Cobrança')}${renderMascotStatus(vendaPerc,'Vendas/serviços')}</div>`}
-function salesCfgHeader(ent){const c=calcMeta(ent).cfg||{}; return ent.type==='filial' ? `mín. vendas ${Number(c.gerente_vendas_min_pct||0)}% · mín. serviços ${Number(c.gerente_servicos_min_pct||0)}%` : `mín. vendas ${Number(c.vendas_min_pct||0)}% · mín. serviços ${Number(c.servicos_min_pct||0)}%`}
+function salesCfgHeader(ent){const c=calcMeta(ent).cfg||{}; return ent.type==='filial' ? `mín. vendas ${Number(c.gerente_vendas_min_pct||0)}% · mín. serviços ${Number(c.gerente_servicos_min_pct||0)}% · rentab libera com mercantil ${Number(c.gerente_rentab_min_mercantil_pct||80)}%` : `mín. vendas ${Number(c.vendas_min_pct||0)}% · mín. serviços ${Number(c.servicos_min_pct||0)}% · rentab libera com mercantil ${Number(c.vendedor_rentab_min_mercantil_pct||80)}%`}
 function rentabilidadeAtualPct(ent){return Number(ent?.rentabilidade_pct||0)}
 function renderRentabilidadeBadge(ent){const r=rentabilidadeAtualPct(ent); const txt=r?`${r.toFixed(2).replace('.',',')}%`:'Sem dado'; return `<div class="rent-badge"><span>📊 Rentabilidade atual</span><strong>${txt}</strong></div>`}
 function renderSalesPanel(ent){const blocks = ent.type==='filial' ? [['venda_filial_meta','📈 Venda · Meta Filial'],['servico_filial_ouro_fob','🛠️ Serviço · Ouro / FOB'],['venda_filial_subgrupo_20k','🚚 Venda · Caminhão 20K / Subgrupo']] : [['venda_filial_vendedor_meta','📈 Venda · Meta Vendedor'],['servico_filial_vendedor_ouro_fob','🛠️ Serviço · Ouro / FOB Vendedor'],['venda_vendedor_subgrupo_20k','🚚 Venda · Caminhão 20K / Subgrupo']]; return `<div class="glass panel sales-panel"><div class="section-head" style="margin:0 0 10px;align-items:flex-start"><div><h3 style="margin:0">💲 Vendas e metas <span class="sales-note">· SGI / mês atual</span></h3><div style="margin-top:8px">${renderRentabilidadeBadge(ent)}</div></div><div class="sales-note" style="text-align:right;max-width:280px">${salesCfgHeader(ent)}</div></div>${renderDualMascotStatus(ent)}<div class="sales-stack">${blocks.map(([k,t])=>renderSalesRows(ent,k,t)).join('')}</div><div style="height:14px"></div>${renderServicosEntidade(ent)}</div>`}
@@ -7023,6 +8746,8 @@ function defaultGerPolicy(){return [
 {faixa1:'321000',faixa2:'ACIMA',bonusLoja:'1000',comissao:'0.45',rent48:'100',rent52:'150',rent55:'300',servico_pct:'6',caminhao_pct:'10'}
 ]}
 function commissionCfg(cfg){return {
+vendedor_rentab_min_mercantil_pct:Number(cfg?.vendedor_rentab_min_mercantil_pct||80),
+gerente_rentab_min_mercantil_pct:Number(cfg?.gerente_rentab_min_mercantil_pct||80),
 vendedor_policy:Array.isArray(cfg?.vendedor_policy)&&cfg.vendedor_policy.length?cfg.vendedor_policy:defaultVendPolicy(),
 gerente_policy:Array.isArray(cfg?.gerente_policy)&&cfg.gerente_policy.length?cfg.gerente_policy:defaultGerPolicy(),
 vendedor_policy_headers:Array.isArray(cfg?.vendedor_policy_headers)&&cfg.vendedor_policy_headers.length?cfg.vendedor_policy_headers:['De','Até','% Comissão','Bônus 90%','Bônus 100%','Bônus 120%','Rentab 48%','Rentab 52,15%','Rentab 55,50%','% Serviços','% Caminhão'],
@@ -7112,6 +8837,7 @@ function calcCommissionSummary(ent){
   let bonusLiberado=false;
   const minVenda = ent.type==='filial' ? Number(cfg.gerente_vendas_min_pct||90) : Number(cfg.vendas_min_pct||80);
   const minServico = ent.type==='filial' ? Number(cfg.gerente_servicos_min_pct||90) : Number(cfg.servicos_min_pct||80);
+  const rentMinMercantil = ent.type==='filial' ? Number(cfg.gerente_rentab_min_mercantil_pct||80) : Number(cfg.vendedor_rentab_min_mercantil_pct||80);
   const rentMin50 = 50;
   const geralMeta = calcMeta(ent).geral||0;
   if(ent.type==='filial'){
@@ -7127,7 +8853,7 @@ function calcCommissionSummary(ent){
   const caminhaoComissao=elegivelServicos?(camReal*camPct/100):0;
 
   const rentAtual = Number(ent?.rentabilidade_pct||0);
-  const rentUnlocked = geralMeta>=rentMin50;
+  const rentUnlocked = (geralMeta>=rentMin50) && (vendaPerc>=rentMinMercantil);
   const rentThresholds = [
     {label:'48%', key:'rent48', min:48.0, valor:Number(faixa.rent48||0)},
     {label:'52,15%', key:'rent52', min:52.15, valor:Number(faixa.rent52||0)},
@@ -7155,7 +8881,7 @@ function calcCommissionSummary(ent){
     rentAtual,rentPremio,rentFaixaTxt,rentAppliedKey,
     totalPrevisto:(vendasComissao+servicosComissao+caminhaoComissao+bonusMeta+rentPremio),
     faixaTxt:`${faixa.faixa1||'-'} até ${faixa.faixa2||'-'}`,
-    metaAtingida,minVenda,minServico,geralMeta
+    metaAtingida,minVenda,minServico,rentMinMercantil,geralMeta
   }
 }
 
@@ -7344,7 +9070,7 @@ function renderCampaignSummary(ent){
   </div>`;
 }
 
-function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';const c=calcCommissionSummary(ent); const totalLiberado = c.elegivelMercantil && c.elegivelServicos; const totalExibido = totalLiberado ? c.totalPrevisto : 0; const moneyCell=(title,val,locked=false,extra='')=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''} ${extra}"><div class="k">${title}</div><div class="v">${R(val||0)}</div></div>`; const pctCell=(title,val,locked=false)=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''}"><div class="k">${title}</div><div class="v">${String(Number(val||0).toFixed(2)).replace('.',',')}%</div></div>`; return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,!c.rentUnlocked)}${moneyCell('Rentab 52,15%',c.rent52,!c.rentUnlocked)}${moneyCell('Rentab 55,50%',c.rent55,!c.rentUnlocked)}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo vendas ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)} · rentabilidades liberam ao bater 50% da meta de cobrança.</div></div>`}
+function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';const c=calcCommissionSummary(ent); const totalLiberado = c.elegivelMercantil && c.elegivelServicos; const totalExibido = totalLiberado ? c.totalPrevisto : 0; const moneyCell=(title,val,locked=false,extra='')=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''} ${extra}"><div class="k">${title}</div><div class="v">${R(val||0)}</div></div>`; const pctCell=(title,val,locked=false)=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''}"><div class="k">${title}</div><div class="v">${String(Number(val||0).toFixed(2)).replace('.',',')}%</div></div>`; return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,!c.rentUnlocked)}${moneyCell('Rentab 52,15%',c.rent52,!c.rentUnlocked)}${moneyCell('Rentab 55,50%',c.rent55,!c.rentUnlocked)}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo vendas ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)} · rentab exige cobrança 50% + mercantil ${pct(c.rentMinMercantil)}.</div></div>`}
 function backToMain(){currentDetailRef=null; try{renderLaranjitoNotify()}catch(e){}; detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden')}
 function renderMetaBox(title,color,obj){return `<div class="meta-card"><div class="meta-title">${title}</div><div class="meta-main" style="color:${color}">${pct(obj.perc||0)}</div><div class="meta-sub">Alvo: ${R(obj.alvo||0)}</div><div class="meta-sub">Recebido: ${R(obj.rec||0)}</div></div>`}
 function renderBonusBox(cfg,geral){const achieved=(geral>=100&&cfg.bonus_100)?100:(geral>=85&&cfg.bonus_85)?85:(geral>=75&&cfg.bonus_75)?75:(geral>=50&&cfg.bonus_50)?50:0; const items=[[50,cfg.bonus_50||'-'],[75,cfg.bonus_75||'-'],[85,cfg.bonus_85||'-'],[100,cfg.bonus_100||'-']];return `<div class="bonus-box"><h4>Faixas configuradas</h4><div class="bonus-list">${items.map(([p,t])=>`<div class="bonus-item ${achieved===p?'active':''}" style="${achieved===p?'box-shadow:0 0 0 2px rgba(59,130,246,.18),0 0 26px rgba(59,130,246,.2);animation:liquid 1.6s ease-in-out infinite alternate':''}"><div class="left"><span>🎯</span><span>${p}%</span></div><div style="display:flex;align-items:center;gap:10px">${achieved===p?`<img src="${LARANJITO}" alt="laranjito" style="width:34px;height:34px;border-radius:10px;object-fit:cover">`:''}<span>${esc(t)}</span></div></div>`).join('')}</div></div>`}
@@ -7481,20 +9207,21 @@ function getClientesEnt(ent){
   return dedupeCobrancaBuckets(filtered);
 }
 function isTodayStr(s){return dateOnlyISO(s)===dateOnlyISO(new Date())}
+function isLogCobrancaReal(x){const t=String(x?.titulo||'').toUpperCase(); return t!=='REATIVACAO' && t!=='ANIVERSARIO'}
 function getCobradosHoje(ent){
   if(ent.type==='terceiro' || ent.is_terceiro)
-    return (COB_LOGS||[]).filter(x=>isTodayStr(x.server_time||x.data||'') && (String(x.usuario||'').toLowerCase()===COBRANCA10_LOGIN || String(x.usuario||'').toLowerCase()===COBRANCA10_NOME.toLowerCase()));
+    return (COB_LOGS||[]).filter(x=>isLogCobrancaReal(x) && isTodayStr(x.server_time||x.data||'') && (String(x.usuario||'').toLowerCase()===COBRANCA10_LOGIN || String(x.usuario||'').toLowerCase()===COBRANCA10_NOME.toLowerCase()));
   if(ent.type==='crediarista' || ent.is_crediarista){
     const credLogin=String(ent.login||'').toLowerCase();
     const credNome=String(ent.nome||'').toLowerCase();
     const credFilial=String(ent.filial||'').toUpperCase();
-    return (COB_LOGS||[]).filter(x=>isTodayStr(x.server_time||x.data||'') && (
+    return (COB_LOGS||[]).filter(x=>isLogCobrancaReal(x) && isTodayStr(x.server_time||x.data||'') && (
       String(x.usuario||'').toLowerCase()===credLogin ||
       String(x.usuario||'').toLowerCase()===credNome ||
       (String(x.filial||'').toUpperCase()===credFilial && String(x.destino_tipo||'').toLowerCase()==='crediarista')
     ));
   }
-  return (COB_LOGS||[]).filter(x=>isTodayStr(x.server_time||x.data||'') && String(x.filial||'')===String(ent.filial||'') && (ent.type==='filial' || String(x.destino_nome||'')===String(ent.nome||'')));
+  return (COB_LOGS||[]).filter(x=>isLogCobrancaReal(x) && isTodayStr(x.server_time||x.data||'') && String(x.filial||'')===String(ent.filial||'') && (ent.type==='filial' || String(x.destino_nome||'')===String(ent.nome||'')));
 }
 
 const DEFAULT_COBRANCA_TEMPLATE = `Olá, {primeiro_nome} tudo bem?
@@ -7730,6 +9457,7 @@ function renderCobrancaConfigPanel(){
 
 function normalizarListaTelefones(contatos){let base=[]; if(Array.isArray(contatos)) base=contatos; else if(typeof contatos==='string') base=contatos.split(/[;,/|]+/); const out=[]; const seen=new Set(); base.forEach(item=>{const num=String(item||'').replace(/\D/g,''); if(num.length>=10){const finalNum=num.startsWith('55')?num:'55'+num; if(!seen.has(finalNum)){seen.add(finalNum); out.push(finalNum);}}}); return out}
 function matchCob(r,ent=null){return cobLogsTitulo(r,ent).length>0}
+let cobExportCounter=0;
 function renderCobrancasEnt(ent){
   const src=getClientesEnt(ent);
   const cobradosHoje=getCobradosHoje(ent);
@@ -7784,8 +9512,15 @@ function renderCobrancasEnt(ent){
     const m=srcAll.find(r=>cobrancaRowKey(r)===cobrancaRowKey(x))||{};
     return decorateRow({cliente:x.cliente,titulo:x.titulo,parcela:x.parcela,vencimento:x.vencimento,pendente:x.pendente,vendedor:x.usuario||m.vendedor||'',dias:m.dias||'',telefones:Array.isArray(m.telefones)&&m.telefones.length?m.telefones:[x.telefone],contato:m.contato||x.telefone,avalista:m.avalista||'',restricao:m.restricao||'',faixa_label:m.faixa||'',novo:false,pagamento:m.pagamento||'',lancamento:m.lancamento||''});
   });
+  const exportId='cob_export_'+(++cobExportCounter);
+  const exportRows=[];
+  faixas.forEach(fx=>{((src[fx]||[]).map(r=>decorateRow({...r,faixa_label:fx}))).forEach(r=>exportRows.push(mdlCobExportRow(r,'Para cobrar')))});
+  allHoje.forEach(r=>exportRows.push(mdlCobExportRow(decorateRow({...r,faixa_label:r.faixa||''}),'Novo hoje')));
+  cobradosRows.forEach(r=>exportRows.push(mdlCobExportRow(r,'Cobrado hoje')));
+  aguardando.forEach(r=>exportRows.push(mdlCobExportRow(r,'Aguardando 3 dias')));
+  mdlRegisterExport(exportId, 'Relatorio de cobrancas - '+(ent?.nome||ent?.filial||'usuario'), exportRows);
 
-  return `${tabs}<div class="cob-pane" data-cobpane="geral">${geral}</div><div class="cob-pane hidden" data-cobpane="novos">${renderRows(allHoje.map(r=>decorateRow({...r,faixa_label:r.faixa||''})).filter(shouldShowInGeral),true)}</div><div class="cob-pane hidden" data-cobpane="cobrados">${renderRows(cobradosRows,true)}</div><div class="cob-pane hidden" data-cobpane="aguardando">${renderRows(aguardando,true)}</div>`;
+  return `<div style="display:flex;justify-content:flex-end;margin:0 0 10px">${mdlExportButtons(exportId)}</div>${tabs}<div class="cob-pane" data-cobpane="geral">${geral}</div><div class="cob-pane hidden" data-cobpane="novos">${renderRows(allHoje.map(r=>decorateRow({...r,faixa_label:r.faixa||''})).filter(shouldShowInGeral),true)}</div><div class="cob-pane hidden" data-cobpane="cobrados">${renderRows(cobradosRows,true)}</div><div class="cob-pane hidden" data-cobpane="aguardando">${renderRows(aguardando,true)}</div>`;
 }
 function switchCobTab(btn,name){const box=btn.closest('.acc-body'); box.querySelectorAll('[data-cobtab]').forEach(b=>b.classList.toggle('active',b===btn)); box.querySelectorAll('[data-cobpane]').forEach(p=>p.classList.toggle('hidden',p.dataset.cobpane!==name));}
 function abrirWhats(reg,entRef){const nums=normalizarListaTelefones((reg.telefones&&reg.telefones.length)?reg.telefones:reg.contato); if(!nums.length){toast('Cliente sem telefone válido.'); return} reg._cob_status=cobStatusTitulo(reg,entRef); phoneContext={reg,entRef}; if(nums.length===1){enviarWhats(nums[0]); return} const phoneList=document.getElementById('phoneList'); phoneList.innerHTML=nums.map(n=>`<button class="btn soft" style="width:100%" onclick="enviarWhats('${n}')">${n}</button>`).join(''); document.getElementById('phoneModal').classList.add('show')}
@@ -7798,17 +9533,19 @@ async function registrarCobrancaOnline(r,entRef,numero){
     : (usuarioAtual?.nome||usuarioAtual?.login||'master');
   const payload={
     cliente:r.cliente||r.nome||'',titulo:r.titulo||'',parcela:r.parcela||'',
-    cliente_key:r.cliente_key||'',cobranca_key:r.cobranca_key||'',
+    cliente_key:r.cliente_key||'',cobranca_key:r.cobranca_key||'',owner_key:r.owner_key||'',
     vencimento:r.vencimento||'',pendente:Number(r.pendente||0),telefone:numero,
-    usuario:usuarioLog,filial:entRef.filial||'',
+    usuario:usuarioLog,login:entRef.login||usuarioAtual?.login||'',filial:entRef.filial||'',
     destino_tipo:entRef.type||'',destino_nome:entRef.nome||'',acao:'whatsapp',tentativa:Number(r._cob_status?.proxima_tentativa||1),qtd_cobrancas_antes:Number(r._cob_status?.qtd||0),ultima_cobranca_anterior:String(r._cob_status?.ultima_fmt||'')
   };
+  if(payload.titulo==='REATIVACAO') marcarReativacaoUsuarioHoje(payload);
   try{
     const resp=await fetch(API_COB,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const j=await resp.json();
     if(j.ok){
+      if(payload.titulo==='REATIVACAO') registrarReativacaoLocal(payload);
       await carregarCobrancasOnline();
-      toast('Cobrança registrada online com sucesso.','success');
+      toast(payload.titulo==='REATIVACAO'?'Mensagem de reativação registrada.':'Cobrança registrada online com sucesso.','success');
       if(!detailScreen.classList.contains('hidden')){
         if(entRef.type==='crediarista'||entRef.is_crediarista){
           openCrediaristaPanel(entRef.login||'',entRef.filial||'',entRef.nome||'');
@@ -7816,8 +9553,98 @@ async function registrarCobrancaOnline(r,entRef,numero){
           openEntity(entRef);
         }
       }
-    } else toast('Não consegui gravar a cobrança online.');
-  }catch(e){toast('Falha ao salvar cobrança online.');}
+    } else {
+      if(payload.titulo==='REATIVACAO'){
+        registrarReativacaoLocal(payload); toast('Reativação registrada localmente para teste.','success');
+      } else if(window.location.protocol==='file:'){
+        registrarCobrancaLocal(payload); toast('Cobrança registrada localmente para teste.','success');
+      } else toast('Não consegui gravar a cobrança online.');
+    }
+  }catch(e){
+    if(payload.titulo==='REATIVACAO'){
+      registrarReativacaoLocal(payload); toast('Reativação registrada localmente para teste.','success');
+    } else if(window.location.protocol==='file:'){
+      registrarCobrancaLocal(payload); toast('Cobrança registrada localmente para teste.','success');
+    } else toast('Falha ao salvar cobrança online.');
+  }
+}
+function registrarCobrancaLocal(payload){
+  try{
+    const now=new Date(); const iso=now.toISOString();
+    const rec={...payload,id:'LOCAL_COB_'+Date.now(),server_time:iso,criado_em:iso,data:iso,_local:true};
+    COB_LOGS=Array.isArray(COB_LOGS)?COB_LOGS:[];
+    COB_LOGS.push(rec);
+    localStorage.setItem('mdl_cobrancas_log_cache', JSON.stringify(COB_LOGS));
+    if(!detailScreen.classList.contains('hidden') && currentDetailRef) openEntity(currentDetailRef);
+    if(mainTab==='inicio') renderInicioTab();
+  }catch(e){console.warn('registrarCobrancaLocal',e)}
+}
+function reativacaoOwnerLocalKeyFromPayload(payload){
+  const filial=String(payload?.filial||'').toUpperCase();
+  const nome=String(payload?.destino_nome||payload?.usuario||payload?.nome||'');
+  const login=String(payload?.login||'');
+  if(String(payload?.destino_tipo||'')==='filial' || /^GERENTE/i.test(nome)) return `GERENTE_${filial}`;
+  return reatUserKeyFromNome(nome||login,filial);
+}
+function marcarReativacaoUsuarioHoje(payload){
+  try{
+    const hoje=(new Date()).toISOString().slice(0,10);
+    const storageKey='mdl_reativacao_usuarios_'+hoje;
+    const arr=JSON.parse(localStorage.getItem(storageKey)||'[]');
+    const filial=String(payload?.filial||'').toUpperCase();
+    const baseNome=payload?.destino_nome||payload?.usuario||payload?.nome||'';
+    const key=reativacaoOwnerLocalKeyFromPayload(payload);
+    const aliases=[key, reatUserKeyFromNome(baseNome,filial), String(payload?.login||'').toLowerCase()].filter(Boolean);
+    const item={key,nome:baseNome,login:payload?.login||'',filial,aliases,ts:Date.now()};
+    if(key && !arr.some(x=>String(x.key)===key || (Array.isArray(x.aliases)&&x.aliases.some(a=>aliases.includes(a))))) arr.push(item);
+    localStorage.setItem(storageKey,JSON.stringify(arr));
+  }catch(e){console.warn('marcarReativacaoUsuarioHoje',e)}
+}
+function usuarioReativacaoLocalHoje(o){
+  try{
+    const hoje=(new Date()).toISOString().slice(0,10);
+    const arr=JSON.parse(localStorage.getItem('mdl_reativacao_usuarios_'+hoje)||'[]');
+    const key=String(o?.key||'');
+    const filial=String(o?.filial||'').toUpperCase();
+    const nome=normName(o?.nome||o?.label||'');
+    const label=normName(o?.label||'');
+    const login=String(o?.login||'').toLowerCase();
+    return arr.some(x=>{
+      const xk=String(x.key||'');
+      const xf=String(x.filial||'').toUpperCase();
+      const xn=normName(x.nome||x.label||'');
+      const xl=String(x.login||'').toLowerCase();
+      const aliases=Array.isArray(x.aliases)?x.aliases.map(a=>String(a||'')):[];
+      if(key && (xk===key || aliases.includes(key))) return true;
+      if(login && (xl===login || aliases.includes(login))) return true;
+      if(filial && xf && filial!==xf) return false;
+      return !!(nome && (xn===nome || xn.includes(nome) || nome.includes(xn) || (label && (xn===label || xn.includes(label) || label.includes(xn)))));
+    });
+  }catch(e){return false}
+}
+function registrarReativacaoLocal(payload){
+  try{
+    const now=new Date();
+    const iso=now.toISOString();
+    const rec={...payload, id:'LOCAL_REAT_'+Date.now(), server_time:iso, criado_em:iso, data:iso, _local:true};
+    COB_LOGS=Array.isArray(COB_LOGS)?COB_LOGS:[];
+    COB_LOGS.push(rec);
+    localStorage.setItem('mdl_cobrancas_log_cache', JSON.stringify(COB_LOGS));
+    marcarReativacaoUsuarioHoje(payload);
+    if(mainTab==='inicio') renderInicioTab();
+    if(mainTab==='reativacao') renderReativacaoTab();
+  }catch(e){console.warn('registrarReativacaoLocal',e)}
+}
+function mergeLocalCobLogs(){
+  try{
+    const cache=localStorage.getItem('mdl_cobrancas_log_cache');
+    if(!cache) return;
+    const local=JSON.parse(cache)||[];
+    COB_LOGS=Array.isArray(COB_LOGS)?COB_LOGS:[];
+    const keyOf=x=>String(x.id||'') || [x.titulo,x.cliente,x.parcela,x.telefone,x.server_time||x.criado_em||x.data].map(v=>String(v||'')).join('|');
+    const seen=new Set(COB_LOGS.map(keyOf));
+    local.forEach(x=>{const k=keyOf(x); if(k && !seen.has(k)){COB_LOGS.push(x); seen.add(k);}});
+  }catch(e){console.warn('mergeLocalCobLogs',e)}
 }
 async function carregarCobrancasOnline(){
   try{
@@ -7826,19 +9653,21 @@ async function carregarCobrancasOnline(){
     try{j=JSON.parse(txt);}catch(e){}
     if(j.ok && Array.isArray(j.data)){
       COB_LOGS=j.data;
+      mergeLocalCobLogs();
       try{localStorage.setItem('mdl_cobrancas_log_cache', JSON.stringify(COB_LOGS));}catch(e){}
     }else{
       const cache=localStorage.getItem('mdl_cobrancas_log_cache');
-      if(cache && (!COB_LOGS || !COB_LOGS.length)) COB_LOGS=JSON.parse(cache)||[];
+      if(cache) COB_LOGS=JSON.parse(cache)||COB_LOGS||[];
       if(txt) console.log('cobrancas_api retorno:', txt);
     }
   }catch(e){
     console.log(e);
     try{
       const cache=localStorage.getItem('mdl_cobrancas_log_cache');
-      if(cache && (!COB_LOGS || !COB_LOGS.length)) COB_LOGS=JSON.parse(cache)||[];
+      if(cache) COB_LOGS=JSON.parse(cache)||COB_LOGS||[];
     }catch(_e){}
   }
+  mergeLocalCobLogs();
   RECEBIMENTOS_CONCILIADOS=getQuitadosConciliados();
   console.log('🔗 Quitados conciliados:', RECEBIMENTOS_CONCILIADOS);
 }
@@ -7848,7 +9677,7 @@ function toggleAcc(el){el.parentElement.classList.toggle('open')}
 async function carregarConfigOnline(){try{const r=await fetchComTimeout(API_CFG+'?_='+Date.now(),{},2500); const j=await r.json(); if(j.ok && j.data){CONFIG_META={...CONFIG_META,...(j.data.global||{})}; CREDIARISTAS_CONFIG=getCrediaristasConfig(); const ind=(j.data.individual && typeof j.data.individual==='object' && !Array.isArray(j.data.individual))?j.data.individual:{}; CONFIG_META_IND=ind;}}catch(e){console.log('Falha ao carregar config meta',e);}}
 
 function optionTargets(){let opts=''; flattenFiliais().forEach(f=>{opts+=`<option value="FILIAL::${f.filial}">🏬 ${filialLabel(f.filial)}</option>`}); opts+=`<option value="VEND::${COBRANCA10_NOME}_FTER">🤝 ${COBRANCA10_NOME} (Cobranças Terceiro)</option>`; crediaristaEntities().forEach(c=>{opts+=`<option value="VEND::${c.nome}_${c.filial}">🧾 ${c.nome} (${c.filial})</option>`}); flattenVendedores().forEach(v=>{opts+=`<option value="VEND::${v.nome}_${v.filial}">👤 ${v.nome} (${v.filial})</option>`}); return opts}
-function fillMetaForm(mode,val){const cfg=mode==='global'?{...CONFIG_META}:mergedMetaConfig(metaAliasesFromRaw(val)); ['grave_pct','alerta_pct','atencao_pct','peso_grave','peso_alerta','peso_atencao','bonus_50','bonus_75','bonus_85','bonus_100','vendas_min_pct','servicos_min_pct','gerente_vendas_min_pct','gerente_servicos_min_pct','cobranca_global_rateio_pct'].forEach(k=>{const el=document.getElementById('cfg_'+k); if(el) el.value=cfg[k]??''}); renderCommissionPanel(cfg)}
+function fillMetaForm(mode,val){const cfg=mode==='global'?{...CONFIG_META}:mergedMetaConfig(metaAliasesFromRaw(val)); ['grave_pct','alerta_pct','atencao_pct','peso_grave','peso_alerta','peso_atencao','bonus_50','bonus_75','bonus_85','bonus_100','vendas_min_pct','servicos_min_pct','gerente_vendas_min_pct','gerente_servicos_min_pct','vendedor_rentab_min_mercantil_pct','gerente_rentab_min_mercantil_pct','cobranca_global_rateio_pct','comissao_pagamento_texto'].forEach(k=>{const el=document.getElementById('cfg_'+k); if(el) el.value=cfg[k]??''}); renderCommissionPanel(cfg)}
 function canonicalMetaLabelFromKey(k){
   const v=String(k||'').trim();
   if(!v) return '';
@@ -7899,10 +9728,10 @@ function readCrediaristasConfigFromUI(){
   }).filter(r=>r.login&&r.filial&&r.pct>0);
 }
 
-function renderMetasTab(){const cards=[...flattenVendedores(),...flattenFiliais()]; const currentMode=window._metaMode||'global'; const currentTarget=window._metaSelectedTarget||''; metaSection.innerHTML=`<div class="section-head"><div><h2>🎯 Configuração de metas e bônus</h2><div class="hint">Altere globalmente ou por vendedor/filial. Ao salvar, já fica online.</div></div></div><div class="meta-layout"><div class="glass panel"><div class="tabs" style="justify-content:flex-start;margin-top:0"><button id="btnModeGlobal" class="tab" onclick="setMetaMode('global')">🌐 Padrão global</button><button id="btnModeInd" class="tab" onclick="setMetaMode('individual')">👤 Por vendedor/filial</button></div><div id="metaSelectWrap" class="hidden" style="margin:8px 0 14px"><div class="input-card"><label>Selecionar alvo</label><select id="metaTarget" onchange="loadMetaSelected()"><option value="">Selecione...</option>${optionTargets()}</select></div></div><div class="section-head" style="margin-top:10px"><div><h2 style="font-size:18px">% de meta por faixa</h2></div></div><div class="form-grid"><div class="input-card"><label>Grave</label><input id="cfg_grave_pct" type="number" step="0.01"></div><div class="input-card"><label>Alerta</label><input id="cfg_alerta_pct" type="number" step="0.01"></div><div class="input-card"><label>Atenção</label><input id="cfg_atencao_pct" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">Pesos da meta geral</h2></div></div><div class="form-grid"><div class="input-card"><label>Peso Grave</label><input id="cfg_peso_grave" type="number" step="0.01"></div><div class="input-card"><label>Peso Alerta</label><input id="cfg_peso_alerta" type="number" step="0.01"></div><div class="input-card"><label>Peso Atenção</label><input id="cfg_peso_atencao" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">Bônus / mensagem da faixa <span class="note">· Não acumulativo</span></h2></div></div><div class="form-grid bonus"><div class="input-card"><label>50%</label><input id="cfg_bonus_50" placeholder="Ex: Parabéns, você ganhou R$ 100,00"></div><div class="input-card"><label>75%</label><input id="cfg_bonus_75"></div><div class="input-card"><label>85%</label><input id="cfg_bonus_85"></div><div class="input-card"><label>100%</label><input id="cfg_bonus_100"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">💲 Meta mínima Vendas e Serviços</h2><div class="hint">Configuração inicial para comissão de vendedor e gerente/filial.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Vendedor · mínimo vendas (%)</label><input id="cfg_vendas_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Vendedor · mínimo serviços (%)</label><input id="cfg_servicos_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial · mínimo vendas (%)</label><input id="cfg_gerente_vendas_min_pct" type="number" step="0.01" placeholder="90"></div><div class="input-card"><label>Gerente/Filial · mínimo serviços (%)</label><input id="cfg_gerente_servicos_min_pct" type="number" step="0.01" placeholder="90"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🤝 Rateio cobrança global</h2><div class="hint">Percentual do total único da cobrança geral distribuído para os usuários do tipo cobrança global (ex.: Cobrança10).</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Usuários de cobrança global (%)</label><input id="cfg_cobranca_global_rateio_pct" type="number" step="0.01" placeholder="20"></div></div>${renderCrediaristasConfigPanel()}<div id="commissionPanel"></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button class="btn primary" onclick="salvarMeta()">💾 Salvar configuração</button><button class="btn ghost" onclick="removerMetaIndividual()">🗑️ Remover individual</button></div><div id="metaSaveMsg" class="note" style="margin-top:10px"></div><div id="metaSavedList" class="note" style="margin-top:10px"></div></div></div>`; const sel=document.getElementById('metaTarget'); if(sel && currentTarget) sel.value=currentTarget; setMetaMode(currentMode); renderSavedMetaList();}
+function renderMetasTab(){const cards=[...flattenVendedores(),...flattenFiliais()]; const currentMode=window._metaMode||'global'; const currentTarget=window._metaSelectedTarget||''; metaSection.innerHTML=`<div class="section-head"><div><h2>🎯 Configuração de metas e bônus</h2><div class="hint">Altere globalmente ou por vendedor/filial. Ao salvar, já fica online.</div></div></div><div class="meta-layout"><div class="glass panel"><div class="tabs" style="justify-content:flex-start;margin-top:0"><button id="btnModeGlobal" class="tab" onclick="setMetaMode('global')">🌐 Padrão global</button><button id="btnModeInd" class="tab" onclick="setMetaMode('individual')">👤 Por vendedor/filial</button></div><div id="metaSelectWrap" class="hidden" style="margin:8px 0 14px"><div class="input-card"><label>Selecionar alvo</label><select id="metaTarget" onchange="loadMetaSelected()"><option value="">Selecione...</option>${optionTargets()}</select></div></div><div class="section-head" style="margin-top:10px"><div><h2 style="font-size:18px">% de meta por faixa</h2></div></div><div class="form-grid"><div class="input-card"><label>Grave</label><input id="cfg_grave_pct" type="number" step="0.01"></div><div class="input-card"><label>Alerta</label><input id="cfg_alerta_pct" type="number" step="0.01"></div><div class="input-card"><label>Atenção</label><input id="cfg_atencao_pct" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">Pesos da meta geral</h2></div></div><div class="form-grid"><div class="input-card"><label>Peso Grave</label><input id="cfg_peso_grave" type="number" step="0.01"></div><div class="input-card"><label>Peso Alerta</label><input id="cfg_peso_alerta" type="number" step="0.01"></div><div class="input-card"><label>Peso Atenção</label><input id="cfg_peso_atencao" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">Bônus / mensagem da faixa <span class="note">· Não acumulativo</span></h2></div></div><div class="form-grid bonus"><div class="input-card"><label>50%</label><input id="cfg_bonus_50" placeholder="Ex: Parabéns, você ganhou R$ 100,00"></div><div class="input-card"><label>75%</label><input id="cfg_bonus_75"></div><div class="input-card"><label>85%</label><input id="cfg_bonus_85"></div><div class="input-card"><label>100%</label><input id="cfg_bonus_100"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">💲 Meta mínima Vendas e Serviços</h2><div class="hint">Configuração inicial para comissão de vendedor e gerente/filial.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Vendedor · mínimo vendas (%)</label><input id="cfg_vendas_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Vendedor · mínimo serviços (%)</label><input id="cfg_servicos_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial · mínimo vendas (%)</label><input id="cfg_gerente_vendas_min_pct" type="number" step="0.01" placeholder="90"></div><div class="input-card"><label>Gerente/Filial · mínimo serviços (%)</label><input id="cfg_gerente_servicos_min_pct" type="number" step="0.01" placeholder="90"></div><div class="input-card"><label>Vendedor · mercantil mínimo para rentab (%)</label><input id="cfg_vendedor_rentab_min_mercantil_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial · mercantil mínimo para rentab (%)</label><input id="cfg_gerente_rentab_min_mercantil_pct" type="number" step="0.01" placeholder="80"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🤝 Rateio cobrança global</h2><div class="hint">Percentual do total único da cobrança geral distribuído para os usuários do tipo cobrança global (ex.: Cobrança10).</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Usuários de cobrança global (%)</label><input id="cfg_cobranca_global_rateio_pct" type="number" step="0.01" placeholder="20"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🧾 Texto da comissão</h2><div class="hint">Frase exibida no card de comissão de crediaristas/cobrança terceira.</div></div></div><div class="form-grid bonus"><div class="input-card" style="grid-column:1/-1"><label>Mensagem abaixo da comissão</label><input id="cfg_comissao_pagamento_texto" placeholder="Ex: Pagamento previsto para o dia 10 do mês seguinte"></div></div>${renderCrediaristasConfigPanel()}<div id="commissionPanel"></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button class="btn primary" onclick="salvarMeta()">💾 Salvar configuração</button><button class="btn ghost" onclick="removerMetaIndividual()">🗑️ Remover individual</button></div><div id="metaSaveMsg" class="note" style="margin-top:10px"></div><div id="metaSavedList" class="note" style="margin-top:10px"></div></div></div>`; const sel=document.getElementById('metaTarget'); if(sel && currentTarget) sel.value=currentTarget; setMetaMode(currentMode); renderSavedMetaList();}
 function setMetaMode(mode){window._metaMode=mode; const bg=document.getElementById('btnModeGlobal'); const bi=document.getElementById('btnModeInd'); if(bg) bg.classList.toggle('active',mode==='global'); if(bi) bi.classList.toggle('active',mode==='individual'); const wrap=document.getElementById('metaSelectWrap'); if(wrap) wrap.classList.toggle('hidden',mode!=='individual'); if(mode==='global'){fillMetaForm('global')} else {const raw=(document.getElementById('metaTarget')?.value)||window._metaSelectedTarget||''; if(raw){window._metaSelectedTarget=raw; fillMetaForm('individual',raw)} else {fillMetaForm('global')}}}
 function loadMetaSelected(){const val=document.getElementById('metaTarget').value; window._metaSelectedTarget=val; if(!val){fillMetaForm('global'); return;} fillMetaForm('individual',val)}
-function collectMetaForm(){const out={}; ['grave_pct','alerta_pct','atencao_pct','peso_grave','peso_alerta','peso_atencao','vendas_min_pct','servicos_min_pct','gerente_vendas_min_pct','gerente_servicos_min_pct','cobranca_global_rateio_pct'].forEach(k=>out[k]=Number(document.getElementById('cfg_'+k).value||0)); ['bonus_50','bonus_75','bonus_85','bonus_100'].forEach(k=>out[k]=document.getElementById('cfg_'+k).value||''); return {...out,crediaristas_config:readCrediaristasConfigFromUI(),...readCommissionPanel()}}
+function collectMetaForm(){const out={}; ['grave_pct','alerta_pct','atencao_pct','peso_grave','peso_alerta','peso_atencao','vendas_min_pct','servicos_min_pct','gerente_vendas_min_pct','gerente_servicos_min_pct','vendedor_rentab_min_mercantil_pct','gerente_rentab_min_mercantil_pct','cobranca_global_rateio_pct'].forEach(k=>out[k]=Number(document.getElementById('cfg_'+k).value||0)); ['bonus_50','bonus_75','bonus_85','bonus_100','comissao_pagamento_texto'].forEach(k=>out[k]=document.getElementById('cfg_'+k)?.value||''); return {...out,crediaristas_config:readCrediaristasConfigFromUI(),...readCommissionPanel()}}
 async function salvarMeta(){
   const msgEl=document.getElementById('metaSaveMsg');
   const cfg=collectMetaForm();
@@ -7942,6 +9771,127 @@ async function removerMetaIndividual(){
     if(j.ok){await carregarConfigOnline(); renderMetasTab(); const restoreMsg=document.getElementById('metaSaveMsg'); if(restoreMsg) restoreMsg.textContent='✅ Configuração individual removida.';}
   }catch(e){console.log('Erro ao remover meta individual',e); if(msgEl) msgEl.textContent='⚠️ Não consegui remover online.';}
 }
+
+
+// ===== V7.3 EXPORTAÇÃO INDIVIDUAL PDF/EXCEL =====
+window.MDL_EXPORT_LISTS = window.MDL_EXPORT_LISTS || {};
+function mdlExportVal(v){return String(v??'').replace(/<[^>]+>/g,'').replace(/&nbsp;/g,' ').trim()}
+function mdlExportSafeFile(s){return String(s||'lista').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9_-]+/g,'_').replace(/^_+|_+$/g,'').slice(0,90)||'lista'}
+function mdlExportEscapeHtml(s){return String(s??'').replace(/[&<>'"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]))}
+function mdlExportRowsToHtmlTable(rows,title){
+  rows=Array.isArray(rows)?rows:[];
+  const headers=[...new Set(rows.flatMap(r=>Object.keys(r||{})))]
+  const head=headers.map(h=>`<th>${mdlExportEscapeHtml(h)}</th>`).join('');
+  const body=rows.map(r=>`<tr>${headers.map(h=>`<td>${mdlExportEscapeHtml(r?.[h]??'')}</td>`).join('')}</tr>`).join('');
+  return `<table border="1" cellspacing="0" cellpadding="5"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+function mdlDownloadBlob(filename, mime, content){
+  const blob=new Blob([content],{type:mime});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),800);
+}
+function mdlExportList(id,fmt){
+  try{
+    const pack=(window.MDL_EXPORT_LISTS||{})[id];
+    if(!pack || !Array.isArray(pack.rows) || !pack.rows.length){toast('Não há dados para exportar.','warn'); return;}
+    const title=pack.title||'Lista Dashboard MDL';
+    const filename=mdlExportSafeFile(title)+'_'+new Date().toISOString().slice(0,10);
+    const table=mdlExportRowsToHtmlTable(pack.rows,title);
+    if(fmt==='excel'){
+      const html=`<html><head><meta charset="UTF-8"></head><body><h2>${mdlExportEscapeHtml(title)}</h2><p>Gerado em ${new Date().toLocaleString('pt-BR')}</p>${table}</body></html>`;
+      mdlDownloadBlob(filename+'.xls','application/vnd.ms-excel;charset=utf-8',html);
+      return;
+    }
+    const w=window.open('','_blank');
+    if(!w){toast('Pop-up bloqueado. Libere pop-ups para exportar PDF.','warn'); return;}
+    w.document.write(`<html><head><meta charset="UTF-8"><title>${mdlExportEscapeHtml(title)}</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#111}h1{font-size:20px}table{border-collapse:collapse;width:100%;font-size:11px}th{background:#f1f5f9}td,th{border:1px solid #cbd5e1;padding:5px;text-align:left;vertical-align:top}@media print{button{display:none}}</style></head><body><button onclick="window.print()" style="padding:10px 14px;margin-bottom:16px">Imprimir / Salvar PDF</button><h1>${mdlExportEscapeHtml(title)}</h1><p>Gerado em ${new Date().toLocaleString('pt-BR')}</p>${table}<script>setTimeout(()=>window.print(),500)<\/script></body></html>`);
+    w.document.close();
+  }catch(e){console.error(e); toast('Erro ao exportar lista.','warn')}
+}
+function mdlExportButtons(id){return `<span class="export-actions" onclick="event.stopPropagation()"><button class="btn soft btn-xs" onclick="mdlExportList('${id}','pdf')">📄 PDF</button><button class="btn soft btn-xs" onclick="mdlExportList('${id}','excel')">📊 Excel</button></span>`}
+function mdlRegisterExport(id,title,rows){window.MDL_EXPORT_LISTS=window.MDL_EXPORT_LISTS||{}; window.MDL_EXPORT_LISTS[id]={title,rows:Array.isArray(rows)?rows:[]}; return id;}
+function mdlReatExportRow(r,status){return {Cliente:r.cliente||'',Filial:r.filial||'',Cidade:r.cidade||'',Responsavel:r._owner?.label||'',Telefone:(r.telefones||[]).map(fmtTelBR).join(', '),Dias_sem_compra:r.dias_sem_movimento||'',Ultimo_movimento:r.ultimo_movimento||'',Status:status||''}}
+function mdlAnivExportRow(r,status){return {Cliente:r.cliente||'',Filial:r.filial||'',Cidade:r.cidade||'',Responsavel:r._owner?.label||'',Telefone:(r.telefones||[]).map(fmtTelBR).join(', '),Nascimento:r.nascimento||'',Status:status||''}}
+function mdlCobExportRow(r,status){return {Cliente:r.cliente||r.nome||'',Titulo:r.titulo||'',Parcela:r.parcela||'',Filial:r.filial||'',Vendedor:r.vendedor||'',Faixa:r.faixa_label||r.faixa||'',Vencimento:r.vencimento||'',Dias:r.dias||'',Pendente:R(r.pendente||0),Telefone:Array.isArray(r.telefones)?r.telefones.join(', '):(r.contato||''),Avalista:r.avalista||'',Restricao:r.restricao||'',Status:status||''}}
+
+// ===== V6.8 TELEGRAM CONFIGURÁVEL PELO MASTER =====
+function tgBool(v){return v===true || v==='1' || v===1 || String(v||'').toLowerCase()==='true'}
+function telegramContacts(){return Array.isArray(CONFIG_META?.telegram_contacts)?CONFIG_META.telegram_contacts:[]}
+function tgNovoContato(){
+  CONFIG_META.telegram_contacts = telegramContacts();
+  CONFIG_META.telegram_contacts.push({id:'tg_'+Date.now(),nome:'',chat_id:'',ativo:true,erros:true,meta_diaria:true,meta_mensal:true,avisos:true,resumo:true});
+  renderTelegramTab();
+}
+function tgRemoverContato(id){
+  CONFIG_META.telegram_contacts = telegramContacts().filter(x=>String(x.id)!==String(id));
+  renderTelegramTab();
+}
+function tgReadRows(){
+  const rows=[...document.querySelectorAll('.tg-row')];
+  return rows.map((row,idx)=>({
+    id: row.dataset.id || ('tg_'+Date.now()+'_'+idx),
+    nome: row.querySelector('[data-k="nome"]')?.value?.trim() || '',
+    chat_id: row.querySelector('[data-k="chat_id"]')?.value?.trim() || '',
+    ativo: !!row.querySelector('[data-k="ativo"]')?.checked,
+    erros: !!row.querySelector('[data-k="erros"]')?.checked,
+    meta_diaria: !!row.querySelector('[data-k="meta_diaria"]')?.checked,
+    meta_mensal: !!row.querySelector('[data-k="meta_mensal"]')?.checked,
+    avisos: !!row.querySelector('[data-k="avisos"]')?.checked,
+    resumo: !!row.querySelector('[data-k="resumo"]')?.checked
+  })).filter(x=>x.nome || x.chat_id);
+}
+function tgRowHtml(c){
+  const id=esc(c.id||('tg_'+Math.random().toString(16).slice(2)));
+  const ck=(k)=>tgBool(c[k])?'checked':'';
+  return `<div class="row-item tg-row" data-id="${id}">
+    <div class="row-top" style="grid-template-columns:1.2fr 1.1fr 72px 92px 118px 118px 92px 92px 76px;gap:8px;align-items:center">
+      <div class="input-card" style="padding:8px"><label>Nome/grupo</label><input data-k="nome" value="${esc(c.nome||'')}" placeholder="Ex: Grupo Diretoria"></div>
+      <div class="input-card" style="padding:8px"><label>Chat ID</label><input data-k="chat_id" value="${esc(c.chat_id||'')}" placeholder="Ex: -100123..."></div>
+      <label class="pill" style="justify-content:center"><input data-k="ativo" type="checkbox" ${ck('ativo')}> Ativo</label>
+      <label class="pill"><input data-k="erros" type="checkbox" ${ck('erros')}> Erros</label>
+      <label class="pill"><input data-k="meta_diaria" type="checkbox" ${ck('meta_diaria')}> Meta diária</label>
+      <label class="pill"><input data-k="meta_mensal" type="checkbox" ${ck('meta_mensal')}> Meta mensal</label>
+      <label class="pill"><input data-k="avisos" type="checkbox" ${ck('avisos')}> Avisos</label>
+      <label class="pill"><input data-k="resumo" type="checkbox" ${ck('resumo')}> Resumo</label>
+      <button class="btn soft btn-xs" onclick="tgRemoverContato('${id}')">Remover</button>
+    </div>
+  </div>`;
+}
+async function salvarTelegramConfig(){
+  CONFIG_META.telegram_contacts=tgReadRows();
+  CONFIG_META.telegram_templates={
+    meta_diaria: document.getElementById('tgTplMetaDiaria')?.value || '',
+    meta_mensal: document.getElementById('tgTplMetaMensal')?.value || ''
+  };
+  const msg=document.getElementById('tgSaveMsg');
+  try{
+    const resp=await fetch(API_CFG,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({global:CONFIG_META,individual:CONFIG_META_IND})});
+    const j=await resp.json();
+    if(msg) msg.textContent=j.ok?'Configuração Telegram salva.':'Não consegui salvar configuração Telegram.';
+    toast(j.ok?'Contatos Telegram salvos.':'Falha ao salvar Telegram.',j.ok?'success':'warn');
+  }catch(e){
+    if(msg) msg.textContent='Salvo localmente para teste, mas não confirmou no servidor.';
+    toast('Falha ao salvar no servidor.','warn');
+  }
+}
+function renderTelegramTab(){
+  if(!telegramSection) return;
+  const rows=telegramContacts();
+  const tpl=CONFIG_META.telegram_templates||{};
+  const defDiaria='🎯🚀 PARABÉNS! META DIÁRIA BATIDA\n\n👏 Destaque: {nome}\n📈 Meta atingida: {atingido}\n🛒 Tipo: Venda mercantil\n📅 Data: {data}\n\n🔥 Excelente resultado no Controle de Meta do Sólidus!\n💪 MISSÃO DADA! MISSÃO CUMPRIDA!';
+  const defMensal='🏆🚀 PARABÉNS! META MENSAL BATIDA\n\n👏 Destaque: {nome}\n📈 Meta atingida: {atingido}\n🛒 Tipo: Venda mercantil / {tipo}\n🗓️ Competência: {competencia}\n\n🔥 Excelente resultado no Controle de Meta do Sólidus!\n💪 Resultado de time forte!';
+  telegramSection.innerHTML=`<div class="section-head"><div><h2>📲 Telegram / Notificações</h2><div class="hint">Configure grupos/contatos e também personalize as mensagens automáticas. O token do bot continua seguro no Railway; aqui entra somente o Chat ID.</div></div></div>
+  <div class="glass panel">
+    <div class="section-head" style="margin:0 0 12px"><div><h2 style="font-size:18px">Contatos ativos para envio</h2><div class="hint">Para grupo, adicione o bot no grupo e use o Chat ID negativo. Para pessoa individual, ela precisa iniciar conversa com o bot primeiro.</div></div><button class="btn primary" onclick="tgNovoContato()">+ Adicionar contato/grupo</button></div>
+    <div class="tableish">${rows.length?rows.map(tgRowHtml).join(''):'<div class="empty">Nenhum contato configurado ainda. Use o botão Adicionar contato/grupo.</div>'}</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="salvarTelegramConfig()">💾 Salvar Telegram</button><button class="btn soft" onclick="toast('Para testar, abra o monitor Railway/local e clique em Teste Telegram.','info')">Como testar?</button></div>
+    <div id="tgSaveMsg" class="note" style="margin-top:10px"></div>
+  </div>
+  <div class="glass panel" style="margin-top:14px"><div class="section-head" style="margin:0 0 12px"><div><h2 style="font-size:18px">✏️ Mensagens automáticas do Telegram</h2><div class="hint">Você pode editar o texto. Variáveis disponíveis: {nome}, {atingido}, {tipo}, {escopo}, {data}, {competencia}. Por segurança, o robô remove valores em R$ das mensagens de meta.</div></div></div><div class="search-row" style="grid-template-columns:1fr 1fr;align-items:stretch"><div class="input-card"><label>Mensagem de META DIÁRIA BATIDA</label><textarea id="tgTplMetaDiaria" rows="9" style="min-height:210px;width:100%;resize:vertical">${esc(tpl.meta_diaria||defDiaria)}</textarea></div><div class="input-card"><label>Mensagem de META MENSAL BATIDA</label><textarea id="tgTplMetaMensal" rows="9" style="min-height:210px;width:100%;resize:vertical">${esc(tpl.meta_mensal||defMensal)}</textarea></div></div><div class="hint" style="margin-top:8px">Não use valores em reais aqui. O sistema mantém apenas percentual de meta atingida.</div></div>
+  <div class="glass panel" style="margin-top:14px"><h3>Como pegar o Chat ID</h3><div class="hint">1) Crie/adicone o bot em um grupo. 2) Mande uma mensagem no grupo. 3) No navegador, abra: https://api.telegram.org/botSEU_TOKEN/getUpdates. 4) Procure o campo <b>chat</b> e copie o <b>id</b>. Grupo normalmente começa com -100.</div></div>`;
+}
+
 function renderLogsTab(){const cfgPanel=renderCobrancaConfigPanel(); const filOpts=['<option value="">Todas as filiais</option>',...ORDEM.map(f=>`<option value="${f}">${f}</option>`)].join(''); const vendOpts=['<option value="">Todos os usuários</option>',...Array.from(new Set(COB_LOGS.map(x=>x.usuario).filter(Boolean))).sort().map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)].join(''); logSection.innerHTML=cfgPanel+`<div class="section-head"><div><h2>🧾 Histórico de cobranças</h2><div class="hint">Filtre por data, usuário ou filial. Também é possível remover lançamentos indevidos.</div></div></div><div class="glass panel"><div class="search-row"><div class="input-card"><label>Buscar cliente/título</label><input id="logQ" placeholder="Nome, título, parcela"></div><div class="input-card"><label>Data inicial</label><input id="logDe" type="date"></div><div class="input-card"><label>Data final</label><input id="logAte" type="date"></div><div class="input-card"><label>Filial</label><select id="logFil">${filOpts}</select></div></div><div class="search-row" style="margin-top:10px"><div class="input-card"><label>Usuário</label><select id="logVend">${vendOpts}</select></div><div style="display:flex;align-items:end;gap:10px"><button class="btn primary" onclick="applyLogFilter()">Filtrar</button><button class="btn soft" onclick="clearLogFilter()">Limpar</button></div></div><div id="logsList" class="logs-list"></div></div>`; applyLogFilter()}
 function parseDateBR(s){if(!s) return null; const v=String(s).trim(); let m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/); if(m){let y=Number(m[3]); if(y<100)y+=2000; const d=new Date(y, Number(m[2])-1, Number(m[1])); return isNaN(d.getTime())?null:d} m=v.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/); if(m){const d=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]),Number(m[4]||0),Number(m[5]||0),Number(m[6]||0)); return isNaN(d.getTime())?null:d} const d=new Date(v); return isNaN(d.getTime())?null:d}
 function parseDate(s){return parseDateBR(s)}
@@ -7960,8 +9910,15 @@ function msgMatchesUser(m){
   if(targetType==='all') return true;
   if(targetType==='filial' && String(usuarioAtual.filial||'')===targetId) return true;
   if(targetType==='user'){
-    const keys=[String(usuarioAtual.login||''), String(usuarioAtual.nome||''), `${usuarioAtual.nome||''}_${usuarioAtual.filial||''}`];
-    return keys.includes(targetId);
+    const targetLabel=String(m.target_label||'');
+    const keys=[String(usuarioAtual.login||''), String(usuarioAtual.nome||''), `${usuarioAtual.nome||''}_${usuarioAtual.filial||''}`, `${usuarioAtual.nome||''} (${usuarioAtual.filial||''})`];
+    if(keys.includes(targetId) || keys.includes(targetLabel)) return true;
+    const cleanTarget=normName(targetId.replace(/_F\d+$/i,'').replace(/\([^)]*\)/g,''));
+    const cleanLabel=normName(targetLabel.replace(/\([^)]*\)/g,''));
+    const userName=normName(usuarioAtual.nome||'');
+    const userLogin=String(usuarioAtual.login||'').toLowerCase();
+    if(userLogin && String(targetId||'').toLowerCase()===userLogin) return true;
+    return !!(userName && (cleanTarget===userName || cleanLabel===userName || cleanTarget.includes(userName) || cleanLabel.includes(userName) || userName.includes(cleanTarget) || userName.includes(cleanLabel)));
   }
   return false;
 }
@@ -7981,7 +9938,51 @@ function isReadMsg(m){
   const readBy=Array.isArray(m.read_by)?m.read_by:[];
   return readBy.includes(currentUserKey());
 }
-async function carregarMsgsOnline(){try{const r=await fetchComTimeout(API_MSG+'?_='+Date.now(),{},3000); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} MSGS=(j.ok&&Array.isArray(j.data))?j.data:[]; if(!j.ok && txt) console.log('mensagens_api retorno:', txt);}catch(e){console.log(e); MSGS=[]} refreshBell()}
+
+function localMsgsKey(){return 'mdl_msgs_local_cache_v40'}
+function getLocalMsgs(){try{return JSON.parse(localStorage.getItem(localMsgsKey())||'[]')}catch(e){return []}}
+function saveLocalMsgs(arr){try{localStorage.setItem(localMsgsKey(),JSON.stringify(arr||[]))}catch(e){}}
+function addMensagemLocal(obj){
+  const now=new Date();
+  const msg={id:'LOCAL_MSG_'+Date.now(),server_time:now.toISOString(),read_by:[],hidden_on_master:false,_local:true,...obj};
+  const arr=getLocalMsgs(); arr.push(msg); saveLocalMsgs(arr); return msg;
+}
+
+function allMsgRecipientUsers(m){
+  const targetType=String(m?.target_type||'all');
+  const targetId=String(m?.target_id||'');
+  const users=[];
+  const add=(u)=>{if(!u) return; const login=String(u.login||''); const nome=String(u.nome||u.label||login); const filial=String(u.filial||''); const key=login || `${nome}_${filial}`; if(!key || ['master','diretorcomercial'].includes(key.toLowerCase())) return; if(!users.some(x=>String(x.key)===String(key))) users.push({key,nome,filial});};
+  Object.values((AUTH_STATE&&AUTH_STATE.users)||{}).forEach(u=>add(u));
+  flattenVendedores().forEach(v=>add({login:`${v.nome}_${v.filial}`,nome:v.nome,filial:v.filial}));
+  if(targetType==='all') return users;
+  if(targetType==='filial') return users.filter(u=>String(u.filial||'')===targetId);
+  if(targetType==='user') return users.filter(u=>String(u.key||'')===targetId || String(u.login||'')===targetId || `${u.nome}_${u.filial}`===targetId || normName(u.nome||'')===normName(targetId.replace(/_F\d+$/,'')));
+  return users;
+}
+function naoLidosMsg(m){
+  const read=new Set(Array.isArray(m?.read_by)?m.read_by.map(String):[]);
+  return allMsgRecipientUsers(m).filter(u=>!read.has(String(u.key)) && !read.has(String(u.login||'')) && !read.has(`${u.nome}_${u.filial}`));
+}
+function mostrarNaoLidosAviso(id){
+  const m=(MSGS||[]).find(x=>String(x.id)===String(id));
+  if(!m){alert('Aviso não encontrado.'); return;}
+  const arr=naoLidosMsg(m);
+  alert(arr.length?('Ainda não leram:\n\n'+arr.map(u=>`${u.nome}${u.filial?` (${u.filial})`:''}`).join('\n')):'Todos os destinatários já leram este aviso/campanha.');
+}
+
+async function carregarMsgsOnline(){
+  let remote=[];
+  try{
+    const r=await fetchComTimeout(API_MSG+'?_='+Date.now(),{},3000);
+    const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){}
+    remote=(j.ok&&Array.isArray(j.data))?j.data:[]; if(!j.ok && txt) console.log('mensagens_api retorno:', txt);
+  }catch(e){console.log(e); remote=[]}
+  const local=getLocalMsgs();
+  const seen=new Set();
+  MSGS=[...remote,...local].filter(m=>{const id=String(m.id||''); if(id && seen.has(id)) return false; if(id) seen.add(id); return true;});
+  refreshBell();
+}
 
 function refreshBell(){const count=(MSGS||[]).filter(m=>msgMatchesUser(m) && !m.hidden_on_master && !isExpiredCampaign(m) && !isReadMsg(m) && !isCampaign(m)).length; const bell=document.getElementById('bellCount'); if(bell) bell.textContent=count;}
 function renderMsgCard(m, showRemove=false, showClear=false, compact=false){
@@ -7992,14 +9993,16 @@ function renderMsgCard(m, showRemove=false, showClear=false, compact=false){
     else if(String(m.media_type||'').startsWith('audio')) media = compact ? `<div class="msg-media compact"><audio src="${m.media_url}" controls></audio></div>` : `<div class="msg-media"><audio src="${m.media_url}" controls></audio></div>`;
     else media = `<div class="msg-media"><a href="${m.media_url}" target="_blank" class="btn soft">Abrir anexo</a></div>`;
   }
-  const masterRead = (usuarioAtual?.tipo==='master') ? ((Array.isArray(m.read_by)&&m.read_by.length>0)?`<span class="read-chip">Lido por ${m.read_by.length}</span>`:'<span class="unread-chip">Não lido</span>') : null;
+  const unreadList = (usuarioAtual?.tipo==='master') ? naoLidosMsg(m) : [];
+  const masterRead = (usuarioAtual?.tipo==='master') ? (unreadList.length?`<span class="unread-chip">${unreadList.length} não lido(s)</span>`:`<span class="read-chip">Todos leram</span>`) : null;
   const status = masterRead || (isReadMsg(m) ? '<span class="read-chip">Lido</span>' : '<span class="unread-chip">Não lido</span>');
   const markBtn = (!isReadMsg(m) && !isCampaign(m) && usuarioAtual?.tipo!=='master') ? `<button class="btn soft" onclick="marcarMsgLida('${m.id||''}')">✔️ Marcar como lido</button>` : '';
+  const unreadBtn = (usuarioAtual?.tipo==='master') ? `<button class="btn soft" onclick="mostrarNaoLidosAviso('${m.id||''}')">👀 Não lido por</button>` : '';
   const removeBtn = showRemove ? `<button class="btn danger" onclick="removerMensagem('${m.id||''}')">Remover</button>` : '';
   const clearBtn = showClear ? `<button class="btn soft" onclick="limparMensagemTela('${m.id||''}')">Limpar</button>` : '';
   const detailBtn = compact && m.media_url ? `<button class="btn soft" onclick="openMsgPreview('${m.id||''}')">🔎 Detalhes</button>` : '';
   const typeTag = isCampaign(m) ? '<span class="mini-chip" style="background:#fff7ed;border-color:#fdba74;color:#c2410c">Campanha</span>' : '<span class="mini-chip">Aviso</span>';
-  return `<div class="msg-card ${isCampaign(m)?'campaign-banner':''}"><div class="msg-head"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><strong>${esc(m.title||'Aviso')}</strong>${typeTag}${status}</div><span class="small muted">${esc((m.server_time||'').replace('T',' ').slice(0,16))}</span></div><div class="small muted">Para: ${esc(m.target_label||m.target_type||'Todos')}${m.expires_at?` · Até ${esc(m.expires_at)}`:''}</div><div style="margin-top:8px;white-space:pre-wrap">${esc(m.body||'')}</div>${media}<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">${detailBtn}${markBtn}${clearBtn}${removeBtn}</div></div>`;
+  return `<div class="msg-card ${isCampaign(m)?'campaign-banner':''}"><div class="msg-head"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><strong>${esc(m.title||'Aviso')}</strong>${typeTag}${status}</div><span class="small muted">${esc((m.server_time||'').replace('T',' ').slice(0,16))}</span></div><div class="small muted">Para: ${esc(m.target_label||m.target_type||'Todos')}${m.expires_at?` · Até ${esc(m.expires_at)}`:''}</div><div style="margin-top:8px;white-space:pre-wrap">${esc(m.body||'')}</div>${media}<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">${detailBtn}${markBtn}${unreadBtn}${clearBtn}${removeBtn}</div></div>`;
 }
 function openBell(){
   const arr=(MSGS||[]).filter(m=>msgMatchesUser(m) && !isExpiredCampaign(m)).reverse();
@@ -8031,7 +10034,12 @@ async function marcarMsgLida(id){
     const r=await fetch(API_MSG,{method:'POST',body:fd}); const j=await r.json();
     if(j.ok){await carregarMsgsOnline(); if(!detailScreen.classList.contains('hidden')){const titleEl=detailScreen.querySelector('.back-row h2'); const subEl=detailScreen.querySelector('.back-row .sub'); if(titleEl && subEl){}} openBell(); if(usuarioAtual?.tipo!=='master'){const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); if(usuarioAtual?.is_terceiro){openThirdChargePanel()} else if(usuarioAtual?.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome});} }
     else {toast('Não consegui marcar como lido.')}
-  }catch(e){toast('Não consegui marcar como lido.')}
+  }catch(e){
+    if(String(id||'').startsWith('LOCAL_MSG_')){
+      const arr=getLocalMsgs().map(m=>String(m.id)===String(id)?{...m,read_by:[...(Array.isArray(m.read_by)?m.read_by:[]),currentUserKey()]}:m);
+      saveLocalMsgs(arr); await carregarMsgsOnline(); openBell(); refreshBell(); toast('Aviso local marcado como lido.','success');
+    } else toast('Não consegui marcar como lido.');
+  }
 }
 function targetOptionsMsg(){
   let o='<option value="all|ALL">Todos</option>';
@@ -8581,6 +10589,58 @@ function renderHistoricoTab(){
   setHistMode(window._histMode||'daily');
 }
 
+function colabBool(u,k,def=true){return u && Object.prototype.hasOwnProperty.call(u,k) ? !!u[k] : def}
+function colabStatusBadge(u){const st=String(u?.status_operacional||'ativo').toLowerCase(); return st==='inativo'?'<span class="mini-chip" style="background:#450a0a;color:#fecaca;border:1px solid #991b1b">Inativo</span>':'<span class="mini-chip" style="background:#052e16;color:#bbf7d0;border:1px solid #166534">Ativo</span>'}
+function renderColaboradorStatusPanel(users){
+  const normalUsers=(users||[]).filter(u=>u && !u.is_viewer);
+  const options=normalUsers.map(u=>`<option value="${esc(u.login||'')}">${esc(u.nome||u.login||'')} ${u.filial?`- ${esc(u.filial)}`:''}</option>`).join('');
+  return `<div class="glass panel" style="margin-bottom:14px;border-color:rgba(34,197,94,.28)">
+    <div class="section-head" style="margin:0 0 10px"><div><h2 style="font-size:18px">👥 Status operacional dos colaboradores</h2><div class="hint">Use quando alguém sair, entrar ou trocar de função. Inativo não acessa e, na próxima geração, sai do rateio de cobrança. A data de saída é só histórico/controle interno. As flags controlam em quais murais/listas ele participa.</div></div></div>
+    <div class="senhas-table-wrap"><table class="senhas-table"><thead><tr><th>Colaborador</th><th>Filial</th><th>Tipo</th><th>Status</th><th>Cobrança</th><th>Sem movimento</th><th>Aniversário</th><th>Murais</th><th>Saída</th><th>Substituto</th><th>Obs</th><th>Ações</th></tr></thead><tbody>${normalUsers.map(u=>{
+      const login=String(u.login||'').toLowerCase(); const dom=_senhaDomKey(login);
+      return `<tr>
+        <td><strong>${esc(u.nome||login)}</strong><div class="small muted">${esc(login)}</div></td>
+        <td>${esc(u.filial||'-')}</td>
+        <td>${u.is_crediarista?'Crediarista':(u.is_terceiro?'Terceiro':(u.is_gerente?'Gerente':'Vendedor'))}</td>
+        <td><select id="colab_status_${dom}" style="min-width:110px"><option value="ativo" ${String(u.status_operacional||'ativo')!=='inativo'?'selected':''}>Ativo</option><option value="inativo" ${String(u.status_operacional||'ativo')==='inativo'?'selected':''}>Inativo</option></select><div style="margin-top:6px">${colabStatusBadge(u)}</div></td>
+        <td style="text-align:center"><input type="checkbox" id="colab_cob_${dom}" ${colabBool(u,'participa_cobrancas')?'checked':''}></td>
+        <td style="text-align:center"><input type="checkbox" id="colab_mov_${dom}" ${colabBool(u,'participa_sem_movimento')?'checked':''}></td>
+        <td style="text-align:center"><input type="checkbox" id="colab_ani_${dom}" ${colabBool(u,'participa_aniversariantes')?'checked':''}></td>
+        <td style="text-align:center"><input type="checkbox" id="colab_mur_${dom}" ${colabBool(u,'participa_murais')?'checked':''}></td>
+        <td><input id="colab_saida_${dom}" type="date" value="${esc(u.data_saida||'')}" style="min-width:130px"></td>
+        <td><select id="colab_sub_${dom}" style="min-width:180px"><option value="">Sem substituto</option>${options}</select></td>
+        <td><input id="colab_obs_${dom}" value="${esc(u.obs||'')}" placeholder="Ex: saiu, férias, troca filial" style="min-width:210px"></td>
+        <td><button class="btn primary" onclick="adminSalvarStatusColaborador('${login}')">💾 Salvar</button><div id="colab_msg_${dom}" class="small muted" style="margin-top:6px"></div></td>
+      </tr>`
+    }).join('')}</tbody></table></div>
+  </div>`;
+}
+async function adminSalvarStatusColaborador(login){
+  const dom=_senhaDomKey(login); const msg=document.getElementById(`colab_msg_${dom}`);
+  const fd=new FormData();
+  fd.append('action','admin_update_user_status'); fd.append('login',login);
+  fd.append('status',document.getElementById(`colab_status_${dom}`)?.value||'ativo');
+  fd.append('participa_cobrancas',document.getElementById(`colab_cob_${dom}`)?.checked?'1':'0');
+  fd.append('participa_sem_movimento',document.getElementById(`colab_mov_${dom}`)?.checked?'1':'0');
+  fd.append('participa_aniversariantes',document.getElementById(`colab_ani_${dom}`)?.checked?'1':'0');
+  fd.append('participa_murais',document.getElementById(`colab_mur_${dom}`)?.checked?'1':'0');
+  fd.append('data_saida',document.getElementById(`colab_saida_${dom}`)?.value||'');
+  fd.append('substituto',document.getElementById(`colab_sub_${dom}`)?.value||'');
+  fd.append('obs',document.getElementById(`colab_obs_${dom}`)?.value||'');
+  try{
+    const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json();
+    if(j.ok){ if(msg) msg.textContent='✅ Salvo online. Rode o dashboard novamente para recalcular rateio/listas.'; await carregarCredenciaisOnline(); renderSenhasTab(); toast('Status salvo. Próxima execução recalcula rateio/listas.','success'); }
+    else{ throw new Error(j.error||'erro'); }
+  }catch(e){
+    // fallback local para testar a tela abrindo o HTML pelo arquivo, sem FTP/API.
+    const u=(AUTH_STATE?.users||{})[login];
+    if(u){u.status_operacional=fd.get('status'); u.access_disabled=(u.status_operacional==='inativo'); ['participa_cobrancas','participa_sem_movimento','participa_aniversariantes','participa_murais'].forEach(k=>u[k]=fd.get(k)==='1'); u.data_saida=fd.get('data_saida'); u.substituto=fd.get('substituto'); u.obs=fd.get('obs');}
+    localStorage.setItem('mdl_colab_status_teste_'+login, JSON.stringify(u||{}));
+    if(msg) msg.textContent='🧪 Salvo só no navegador para teste local. Para recalcular rateio, precisa salvar no JSON/API e rodar o robô.';
+    renderSenhasTab();
+  }
+}
+
 function renderSenhasTab(){
   const users=Object.values(AUTH_STATE?.users||{}).sort((a,b)=>String(a.nome||'').localeCompare(String(b.nome||''),'pt-BR'));
   const reqs=[...(AUTH_STATE?.password_reset_requests||[])].reverse();
@@ -8619,8 +10679,9 @@ function renderSenhasTab(){
       <div></div>
     </div>`).join('')}</div>`:''}
   </div>
-  <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">👑 Contas administrativas</h2></div></div>${renderSenhaCard(AUTH_STATE?.director||{login:'diretorcomercial',nome:'Diretor Comercial',must_change_password:true}, true)}</div>
-  <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">➕ Criar usuário de acesso</h2><div class="hint">Aqui você cria apenas o login/senha de acesso. Depois vá em Metas > Crediaristas configuráveis para vincular esse usuário à filial/base e ao percentual.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Login</label><input id="newUserLogin" placeholder="ex: crediaristaf07"></div><div class="input-card"><label>Nome</label><input id="newUserNome" placeholder="ex: CREDIARISTAF07"></div><div class="input-card"><label>Filial</label><input id="newUserFilial" placeholder="ex: F7"></div><div class="input-card"><label>Senha inicial</label><input id="newUserSenha" placeholder="mín. 4 caracteres"></div></div><div class="form-grid bonus" style="margin-top:10px"><div class="input-card"><label>Tipo</label><select id="newUserTipo"><option value="crediarista">Crediarista</option><option value="cobranca">Cobrança</option></select></div></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="adminCriarUsuarioCobranca()">💾 Criar usuário</button></div><div id="newUserMsg" class="note" style="margin-top:10px"></div></div>
+  <div class="glass panel admin-accounts-line" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">👑 Contas administrativas</h2><div class="hint">Contas administrativas em linha para caber melhor na tela.</div></div></div><div class="senhas-table-wrap"><table class="senhas-table"><thead><tr><th>Usuário</th><th>Login atual</th><th>Alterar login</th><th>Filial</th><th>Tipo</th><th>Status</th><th>Senha ativa atual</th><th>Nova senha</th><th>Ações</th></tr></thead><tbody>${renderSenhaRow(AUTH_STATE?.director||{login:'diretorcomercial',nome:'Diretor Comercial',must_change_password:true}, true)}</tbody></table></div></div>
+  <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">➕ Criar usuário de acesso</h2><div class="hint">Aqui você cria apenas o login/senha de acesso. Depois vá em Metas > Crediaristas configuráveis para vincular esse usuário à filial/base e ao percentual.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Login</label><input id="newUserLogin" placeholder="ex: crediaristaf08"></div><div class="input-card"><label>Nome</label><input id="newUserNome" placeholder="ex: CREDIARISTAF08"></div><div class="input-card"><label>Filial</label><input id="newUserFilial" placeholder="ex: F8"></div><div class="input-card"><label>Senha inicial</label><input id="newUserSenha" placeholder="mín. 4 caracteres"></div></div><div class="form-grid bonus" style="margin-top:10px"><div class="input-card"><label>Tipo</label><select id="newUserTipo"><option value="crediarista">Crediarista</option><option value="cobranca">Cobrança</option></select></div></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="adminCriarUsuarioCobranca()">💾 Criar usuário</button></div><div id="newUserMsg" class="note" style="margin-top:10px"></div></div>
+  ${renderColaboradorStatusPanel(users)}
   <div class="section-head"><div><h2>👥 Usuários do dashboard</h2><div class="hint">Visualização em linha para conferir login, senha ativa, status e alterar rapidamente.</div></div></div>
   <div class="senhas-table-wrap"><table class="senhas-table"><thead><tr><th>Usuário</th><th>Login atual</th><th>Alterar login</th><th>Filial</th><th>Tipo</th><th>Status</th><th>Senha ativa atual</th><th>Nova senha</th><th>Ações</th></tr></thead><tbody>${users.map(u=>renderSenhaRow(u,false)).join('')}</tbody></table></div>`;
 }
@@ -8682,6 +10743,181 @@ async function adminCriarUsuarioCobranca(){
   }catch(e){ if(msg) msg.textContent='⚠️ Não consegui criar o usuário.'; }
 }
 
+
+function reativacaoTemplateAtual(filial=""){filial=String(filial||"").toUpperCase(); const porFilial=CONFIG_META?.reativacao_msg_template_filiais||{}; if(filial && String(porFilial[filial]||"").trim()) return String(porFilial[filial]); return String(CONFIG_META?.reativacao_msg_template||`Olá, {primeiro_nome}! Tudo bem? 😊
+
+Aqui é da Lojas MDL - Móveis do Lar.
+Estamos com saudades de você! Faz um tempinho que você não aparece na loja.
+
+Passando para te convidar a conhecer nossas novidades e aproveitar condições especiais que preparamos para nossos clientes. 🧡`)}
+function primeiroNomeClienteJs(nome){return String(nome||'Cliente').trim().split(/\s+/)[0]||'Cliente'}
+function montarMensagemReativacao(c){let tpl=reativacaoTemplateAtual(c?.filial||""); const dados={primeiro_nome:c.primeiro_nome||primeiroNomeClienteJs(c.cliente||''),nome:c.cliente||'',filial:c.filial||'',dias:String(c.dias_sem_movimento||''),ultimo_movimento:c.ultimo_movimento||''}; Object.entries(dados).forEach(([k,v])=>{tpl=tpl.replaceAll(`{${k}}`,v)}); return tpl;}
+function reatUserKeyFromNome(nome,filial){return normName(nome)+'_'+String(filial||'').toUpperCase()}
+function reativacaoDestinatariosFilial(filial){
+  filial=String(filial||'').toUpperCase();
+  const vends=flattenVendedores().filter(v=>String(v.filial||'').toUpperCase()===filial).map(v=>({tipo:'vendedor',nome:v.nome,filial,key:reatUserKeyFromNome(v.nome,filial),label:`${v.nome} (${filial})`}));
+  const temGerente=!!CREDS && Object.values(CREDS).some(u=>u && u.is_gerente && String(u.filial||'').toUpperCase()===filial);
+  const gerente=temGerente?[{tipo:'gerente',nome:`GERENTE ${filial}`,filial,key:`GERENTE_${filial}`,label:`Gerente ${filial}`}]:[];
+  const arr=[...gerente,...vends].filter((x,i,a)=>a.findIndex(y=>y.key===x.key)===i);
+  return arr.length?arr:[{tipo:'filial',nome:`FILIAL ${filial}`,filial,key:`GERENTE_${filial}`,label:`Filial ${filial}`}];
+}
+function hashStr(s){
+  s=String(s||'');
+  let h=0;
+  for(let i=0;i<s.length;i++){
+    h=((h<<5)-h)+s.charCodeAt(i);
+    h|=0;
+  }
+  return h;
+}
+function reativacaoClienteKey(c){
+  const filial=String(c?.filial||'').toUpperCase();
+  const codigo=String(c?.codigo||'').replace(/\D/g,'');
+  const nome=normName(c?.cliente||'');
+  const ultimo=String(c?.ultimo_movimento||'');
+  const cidade=normName(c?.cidade||'');
+  return `REAT|${filial}|${codigo||nome}|${ultimo}|${cidade}`;
+}
+function reativacaoOwnerInfo(c){
+  const filial=String(c.filial||'F1').toUpperCase(); const arr=reativacaoDestinatariosFilial(filial);
+  const k=hashStr(String(c.codigo||'')+'|'+String(c.cliente||'')+'|'+filial);
+  return arr[Math.abs(k)%arr.length];
+}
+function reativacaoOwnerKey(c){return reativacaoOwnerInfo(c).key}
+function reativacaoCurrentKey(){
+  if(!usuarioAtual || usuarioAtual.tipo==='master' || usuarioAtual.is_viewer) return '';
+  const filial=String(usuarioAtual.filial||'').toUpperCase();
+  if(usuarioAtual.is_gerente) return `GERENTE_${filial}`;
+  return reatUserKeyFromNome(usuarioAtual.nome||usuarioAtual.login||'',filial);
+}
+function isReativacaoEnviadaHoje(c){
+  const hoje=new Date().toISOString().slice(0,10);
+  const rowKey=reativacaoClienteKey(c);
+  const cod=String(c.codigo||'').replace(/\D/g,'');
+  const nome=normName(c.cliente||'');
+  const filialRow=String(c.filial||'').toUpperCase();
+  return (COB_LOGS||[]).some(x=>{
+    if(String(x.titulo||'').toUpperCase()!=='REATIVACAO') return false;
+    if(String(x.filial||'').toUpperCase()!==filialRow) return false;
+    if(String(x.server_time||x.data||x.created_at||x.criado_em||'').slice(0,10)!==hoje) return false;
+    const logKey=String(x.cliente_key||x.cobranca_key||'');
+    const parc=String(x.parcela||'');
+    if(rowKey && (logKey===rowKey || parc.includes(rowKey))) return true;
+    // fallback seguro para registros antigos: precisa bater cliente + código/telefone, nunca apenas owner_key.
+    const nomeLog=normName(x.cliente||'');
+    if(nome && nomeLog && nomeLog===nome){
+      if(cod && parc.includes(cod)) return true;
+      const tels=(c.telefones||[]).map(t=>String(t||'').replace(/\D/g,''));
+      const telLog=String(x.telefone||'').replace(/\D/g,'');
+      if(telLog && tels.includes(telLog)) return true;
+      if(!cod && !telLog) return true;
+    }
+    return false;
+  });
+}
+function reativacaoRowsPermitidas(){
+  let rows=(CLIENTES_SEM_MOVIMENTO||[]).map((r,i)=>({...r,_idx:i,_owner:reativacaoOwnerInfo(r)}));
+  const ck=reativacaoCurrentKey();
+  if(ck) rows=rows.filter(r=>String(r._owner?.key||'')===ck);
+  return rows;
+}
+function abrirWhatsReativacao(idx,tel){
+  const c=(CLIENTES_SEM_MOVIMENTO||[])[idx]; if(!c) return;
+  const num=String(tel||((c.telefones||[])[0]||'')).replace(/\D/g,'');
+  const msg=montarMensagemReativacao(c);
+  const owner=reativacaoOwnerInfo(c)||{};
+  const clienteKey=reativacaoClienteKey(c);
+  const entRef={type:owner.tipo||'reativacao',filial:c.filial,nome:owner.nome||owner.label||usuarioAtual?.nome||'',login:owner.login||''};
+  registrarCobrancaOnline({cliente:c.cliente,titulo:'REATIVACAO',parcela:`CLIENTE_SEM_MOVIMENTO|${clienteKey}|${owner.key||''}`,cliente_key:clienteKey,cobranca_key:clienteKey,owner_key:owner.key||'',vencimento:c.ultimo_movimento||'',pendente:0,filial:c.filial,telefones:[num]}, entRef, num);
+  window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,'_blank');
+  setTimeout(()=>carregarCobrancasOnline().then(()=>{ if(detailScreen && !detailScreen.classList.contains('hidden') && currentDetailRef){ openEntity(currentDetailRef); } else { renderReativacaoTab(); renderInicioTab(); } }),800)
+}
+let reatBuscaState='';
+let reatBuscaTimer=null;
+let reatFilialState='';
+function reatBuscaChanged(v){reatBuscaState=String(v||''); clearTimeout(reatBuscaTimer); reatBuscaTimer=setTimeout(()=>renderReativacaoTab(),380)}
+function reatFilialChanged(v){reatFilialState=String(v||''); renderReativacaoTab()}
+async function salvarMensagemReativacaoGlobal(){const el=document.getElementById('reatMsgTemplate'); CONFIG_META.reativacao_msg_template=el?el.value:reativacaoTemplateAtual(); try{const resp=await fetch(API_CFG,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({global:CONFIG_META,individual:CONFIG_META_IND})}); const j=await resp.json(); toast(j.ok?'Mensagem global de reativação salva.':'Não consegui salvar mensagem.',j.ok?'success':'warn')}catch(e){toast('Falha ao salvar mensagem.','warn')}}
+async function salvarMensagemReativacaoFilial(){const f=String(document.getElementById('reatMsgFilial')?.value||'').toUpperCase(); const el=document.getElementById('reatMsgTemplateFilial'); if(!f){toast('Selecione uma filial para salvar mensagem individual.','warn'); return} CONFIG_META.reativacao_msg_template_filiais=CONFIG_META.reativacao_msg_template_filiais||{}; CONFIG_META.reativacao_msg_template_filiais[f]=el?el.value:''; try{const resp=await fetch(API_CFG,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({global:CONFIG_META,individual:CONFIG_META_IND})}); const j=await resp.json(); toast(j.ok?`Mensagem da ${f} salva.`:'Não consegui salvar mensagem por filial.',j.ok?'success':'warn')}catch(e){toast('Falha ao salvar mensagem por filial.','warn')}}
+function trocarMensagemReativacaoFilial(f){const el=document.getElementById('reatMsgTemplateFilial'); if(el) el.value=reativacaoTemplateAtual(f)}
+function renderReativacaoTab(){
+  const box=reativacaoSection; if(!box) return;
+  try{
+    const filial=String(reatFilialState||'');
+    const q=String(reatBuscaState||'').toLowerCase();
+    let rows=reativacaoRowsPermitidas();
+    if(filial) rows=rows.filter(r=>String(r.filial||'')===filial);
+    if(q) rows=rows.filter(r=>`${r.cliente||''} ${r.cidade||''} ${r.bairro||''} ${r._owner?.label||''}`.toLowerCase().includes(q));
+    const filiais=ordenarFiliaisReativacao([...new Set((CLIENTES_SEM_MOVIMENTO||[]).map(r=>r.filial).filter(Boolean))]);
+    const enviadosHoje=rows.filter(isReativacaoEnviadaHoje).length;
+    const totalPermitido=reativacaoRowsPermitidas().length;
+    const porFilial=filiais.map(f=>`${f}: ${(CLIENTES_SEM_MOVIMENTO||[]).filter(r=>r.filial===f).length}`).join(' · ');
+    const semBase=!(CLIENTES_SEM_MOVIMENTO||[]).length;
+    const tituloLista=(usuarioAtual?.tipo==='master'||usuarioAtual?.is_viewer)?'Lista geral / filtro':'Minha lista de reativação';
+    box.innerHTML=`<div class="section-head"><div><h2>🧡 Clientes sem movimento +45 dias <span class="note" style="color:#f59e0b">${esc(DASHBOARD_BUILD_VERSION)}</span></h2><div class="hint">Base do Sólidus para reativação por WhatsApp. ${esc(porFilial||'Nenhum XLS carregado ainda.')}</div></div></div>
+    ${semBase?'<div class="glass panel" style="border-color:rgba(245,158,11,.35);margin-bottom:14px"><strong>⚠️ Sem base de clientes carregada</strong><div class="hint">Coloque ou baixe os XLS de Clientes sem Movimento na pasta do dashboard e rode o script novamente.</div></div>':''}
+    <div class="kpis" style="margin-bottom:14px">
+      ${makeKpi('Clientes na base',String(CLIENTES_SEM_MOVIMENTO.length),'var(--amber-400)','Com WhatsApp válido e cidade permitida')}
+      ${makeKpi(tituloLista,String(rows.length),'var(--blue)',usuarioAtual?.tipo==='master'?'Filtro atual':'Distribuída sem duplicar')}
+      ${makeKpi('Enviados hoje',String(enviadosHoje),'var(--green)','Da lista exibida')}
+      ${makeKpi('Minha base total',String(totalPermitido),'var(--orange)','Rateio automático por filial')}
+    </div>
+    <div class="glass panel" style="margin-bottom:14px">
+      <div class="search-row" style="grid-template-columns:1.5fr 220px minmax(420px,1fr);align-items:stretch">
+        <div class="input-card"><label>Buscar</label><input id="reatBusca" value="${esc(reatBuscaState)}" oninput="reatBuscaChanged(this.value)" placeholder="Cliente, bairro, cidade, responsável"></div>
+        <div class="input-card"><label>Filial</label><select id="reatFilial" onchange="reatFilialChanged(this.value)"><option value="">Todas</option>${filiais.map(f=>`<option value="${esc(f)}" ${filial===f?'selected':''}>${esc(f)}</option>`).join('')}</select></div>
+        <div class="input-card" style="min-width:420px"><label>Mensagem padrão global</label><textarea id="reatMsgTemplate" rows="6" style="min-height:135px;width:100%;resize:vertical" oninput="CONFIG_META.reativacao_msg_template=this.value">${esc(reativacaoTemplateAtual())}</textarea><div class="hint">Variáveis: {primeiro_nome}, {nome}, {filial}, {dias}, {ultimo_movimento}</div><button class="btn primary" style="margin-top:8px" onclick="salvarMensagemReativacaoGlobal()">Salvar mensagem global</button></div>
+      </div>
+      <div class="search-row" style="grid-template-columns:220px minmax(520px,1fr);align-items:stretch;margin-top:12px">
+        <div class="input-card"><label>Mensagem por filial</label><select id="reatMsgFilial" onchange="trocarMensagemReativacaoFilial(this.value)">${filiais.map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join('')}</select></div>
+        <div class="input-card"><label>Texto específico da filial selecionada</label><textarea id="reatMsgTemplateFilial" rows="5" style="min-height:120px;width:100%;resize:vertical">${esc(reativacaoTemplateAtual(filiais[0]||''))}</textarea><div class="hint">Se vazio, usa a mensagem global.</div><button class="btn primary" style="margin-top:8px" onclick="salvarMensagemReativacaoFilial()">Salvar mensagem desta filial</button></div>
+      </div>
+    </div>
+    <div class="faixa-title atencao" style="margin-bottom:10px"><span>📋 ${esc(tituloLista)}</span><span>${rows.length} cliente(s) · ${enviadosHoje} enviado(s) hoje</span></div>
+    <div class="logs-list">${rows.slice(0,700).map(r=>{const tels=(r.telefones||[]); const enviado=isReativacaoEnviadaHoje(r); return `<div class="log-row" style="grid-template-columns:1.45fr .85fr .9fr auto"><div><strong>${esc(r.cliente||'')}</strong><div class="small muted">${esc(r.filial||'')} · ${esc(r.cidade||'')} · ${Number(r.dias_sem_movimento||0)} dias sem comprar · último ${esc(r.ultimo_movimento||'')}</div></div><div><strong>${esc(r._owner?.label||'')}</strong><div class="small muted">Responsável pelo envio</div></div><div><strong>${enviado?'✅ Enviado hoje':esc(tels.length+' WhatsApp(s)')}</strong><div class="small muted">${esc(tels.map(fmtTelBR).join(', '))}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap">${tels.map(t=>`<button class="btn wa" ${enviado?'disabled style="opacity:.45"':''} onclick="abrirWhatsReativacao(${r._idx},'${esc(t)}')">Whats ${esc(fmtTelBR(t))}</button>`).join('')}</div></div>`}).join('') || '<div class="empty">Nenhum cliente encontrado.</div>'}</div>`;
+  }catch(e){console.error('Erro renderReativacaoTab',e); box.innerHTML=`<div class="glass panel" style="border-color:rgba(239,68,68,.35)"><strong>⚠️ Erro na aba Clientes sem movimento</strong><div class="hint">${esc(e.message||e)}</div></div>`;}
+}
+
+function reativacaoRowsParaEnt(ent){
+  if(!ent) return [];
+  const filial=String(ent.filial||'').toUpperCase();
+  let rows=(CLIENTES_SEM_MOVIMENTO||[]).map((r,i)=>({...r,_idx:i,_owner:reativacaoOwnerInfo(r)}));
+  if(ent.type==='filial') return rows.filter(r=>String(r.filial||'').toUpperCase()===filial);
+  const key=reatUserKeyFromNome(ent.nome||ent.login||'',filial);
+  return rows.filter(r=>String(r._owner?.key||'')===key);
+}
+function showReatPanel(id,mode){
+  const pend=document.getElementById(id+'_pend'); const sent=document.getElementById(id+'_sent');
+  const bp=document.getElementById(id+'_btn_pend'); const bs=document.getElementById(id+'_btn_sent');
+  if(!pend||!sent) return;
+  pend.style.display=mode==='sent'?'none':'block';
+  sent.style.display=mode==='sent'?'block':'none';
+  if(bp) bp.classList.toggle('active',mode!=='sent');
+  if(bs) bs.classList.toggle('active',mode==='sent');
+}
+let reatPanelCounter=0;
+function renderReativacaoEnt(ent){
+  const rows=reativacaoRowsParaEnt(ent);
+  const enviadosRows=rows.filter(isReativacaoEnviadaHoje);
+  const pendentesRows=rows.filter(r=>!isReativacaoEnviadaHoje(r));
+  const tipo=ent?.type==='filial'?'filial':'vendedor';
+  const panelId='reat_panel_'+(++reatPanelCounter);
+  const exportId='export_'+panelId;
+  mdlRegisterExport(exportId, 'Clientes sem movimento - '+(ent?.nome||ent?.filial||'usuario'), [
+    ...pendentesRows.map(r=>mdlReatExportRow(r,'Pendente')),
+    ...enviadosRows.map(r=>mdlReatExportRow(r,'Enviado hoje'))
+  ]);
+  const rowHtml=(r,enviado=false)=>{const tels=(r.telefones||[]); return `<div class="log-row" style="grid-template-columns:1.5fr .7fr .8fr auto"><div><strong>${esc(r.cliente||'')}</strong><div class="small muted">${esc(r.filial||'')} · ${esc(r.cidade||'')} · ${Number(r.dias_sem_movimento||0)} dias sem comprar · último ${esc(r.ultimo_movimento||'')}</div></div><div><strong>${esc(r._owner?.label||'')}</strong><div class="small muted">Responsável</div></div><div><strong>${enviado?'✅ Enviado hoje':esc(tels.length+' WhatsApp(s)')}</strong><div class="small muted">${esc(tels.map(fmtTelBR).join(', '))}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap">${tels.map(t=>`<button class="btn wa" ${enviado?'disabled style="opacity:.45"':''} onclick="abrirWhatsReativacao(${r._idx},'${esc(t)}')">Whats ${esc(fmtTelBR(t))}</button>`).join('')}</div></div>`};
+  return `<div class="accordion"><div class="acc-head" onclick="toggleAcc(this)"><span>🧡 Clientes sem movimento para reativação</span><span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${mdlExportButtons(exportId)}<span class="acc-hint">${rows.length} cliente(s) · ${enviadosRows.length} enviado(s) hoje · clique para abrir</span></span></div><div class="acc-body">
+    <div class="faixa-title atencao" style="margin-bottom:10px"><span>Lista individual de ${esc(tipo)}</span><span>sem duplicar com outros usuários</span></div>
+    <div class="reat-tabs"><span id="${panelId}_btn_pend" class="reat-tab pending active" onclick="showReatPanel('${panelId}','pend')">📋 Pendentes: ${pendentesRows.length}</span><span id="${panelId}_btn_sent" class="reat-tab ok" onclick="showReatPanel('${panelId}','sent')">✅ Enviados hoje: ${enviadosRows.length}</span></div>
+    <div id="${panelId}_pend" class="faixa-block"><div class="faixa-title alerta"><span>📋 Para enviar hoje</span><span>${pendentesRows.length} cliente(s)</span></div><div class="logs-list">${pendentesRows.slice(0,500).map(r=>rowHtml(r,false)).join('') || '<div class="empty">Nenhum cliente pendente para este usuário/filial.</div>'}</div></div>
+    <div id="${panelId}_sent" class="faixa-block" style="display:none"><div class="faixa-title atencao"><span>✅ Enviados hoje</span><span>${enviadosRows.length} cliente(s)</span></div><div class="logs-list">${enviadosRows.slice(0,500).map(r=>rowHtml(r,true)).join('') || '<div class="empty">Nenhuma mensagem de reativação enviada hoje.</div>'}</div></div>
+  </div></div>`;
+}
+
+function renderDuplicidadeCarteiraBanner(){const d=DUPLICIDADES_CARTEIRA||{}; const n=Number(d.total_conflitos||0); if(!n) return '<div class="glass panel" style="margin-bottom:14px;border-color:rgba(34,197,94,.22)"><strong>✅ Check anti-duplicidade</strong><div class="hint">Nenhum cliente/título duplicado entre responsáveis na carteira gerada.</div></div>'; const exemplos=(d.conflitos||[]).slice(0,5).map(c=>`<div class="sem-cobranca-chip"><i class="dot" style="background:#ef4444"></i><div>${esc(c.responsaveis?.[0]?.cliente||c.key||'Título')}<small>${(c.responsaveis||[]).map(r=>esc(`${r.tipo}:${r.responsavel}`)).join(' · ')}</small></div></div>`).join(''); return `<div class="glass panel" style="margin-bottom:14px;border-color:rgba(239,68,68,.35)"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px;margin:0">🚨 Duplicidade na carteira</h2><div class="hint">${n} conflito(s). Revise antes de disparar cobranças para evitar dois usuários cobrando o mesmo título.</div></div></div><div class="sem-cobrancas-grid">${exemplos}</div></div>`;}
+
 function renderAvisosTab(){
   avisosSection.innerHTML=`<div class="section-head"><div><h2>📣 Central de avisos</h2><div class="hint">Envie mensagens, imagens, vídeos e áudios para um usuário, uma filial ou todos.</div></div></div>
   ${renderCampaignStrip()}
@@ -8723,22 +10959,32 @@ async function enviarMensagemOnline(){
   const kind=document.getElementById('msgKind').value||'notice';
   const expires=document.getElementById('msgExpires').value||'';
   const file=document.getElementById('msgFile').files[0];
+  const target_label=document.getElementById('msgTarget').selectedOptions[0]?.textContent || target;
   const fd=new FormData();
-  fd.append('target_type',target_type); fd.append('target_id',target_id); fd.append('target_label', document.getElementById('msgTarget').selectedOptions[0]?.textContent || target);
+  fd.append('target_type',target_type); fd.append('target_id',target_id); fd.append('target_label', target_label);
   fd.append('title',title); fd.append('body',body); fd.append('message_kind', kind); if(expires) fd.append('expires_at', expires);
   if(file) fd.append('media', file);
   try{
     const r=await fetch(API_MSG,{method:'POST',body:fd});
     const j=await r.json();
-    document.getElementById('msgSendInfo').textContent=j.ok?'✅ Aviso enviado online com sucesso.':'⚠️ Não consegui enviar o aviso.';
-    if(j.ok){document.getElementById('msgTitle').value=''; document.getElementById('msgBody').value=''; document.getElementById('msgFile').value=''; document.getElementById('msgExpires').value=''; await carregarMsgsOnline(); renderMsgHistory(); renderList();}
-  }catch(e){document.getElementById('msgSendInfo').textContent='⚠️ Não consegui enviar o aviso.'}
+    if(!j.ok) throw new Error('api_not_ok');
+    document.getElementById('msgSendInfo').textContent='✅ Aviso enviado online com sucesso.';
+    document.getElementById('msgTitle').value=''; document.getElementById('msgBody').value=''; document.getElementById('msgFile').value=''; document.getElementById('msgExpires').value='';
+    await carregarMsgsOnline(); renderMsgHistory(); renderList(); renderTopMural();
+  }catch(e){
+    addMensagemLocal({target_type,target_id,target_label,title,body,message_kind:kind,expires_at:expires});
+    document.getElementById('msgSendInfo').textContent='✅ Aviso salvo localmente para teste. Em produção vai pelo FTP/API.';
+    document.getElementById('msgTitle').value=''; document.getElementById('msgBody').value=''; document.getElementById('msgFile').value=''; document.getElementById('msgExpires').value='';
+    await carregarMsgsOnline(); renderMsgHistory(); renderList(); renderTopMural();
+  }
 }
 async function removerMensagem(id){
   if(!confirm('Remover esta mensagem?')) return;
+  if(String(id||'').startsWith('LOCAL_MSG_')){saveLocalMsgs(getLocalMsgs().filter(m=>String(m.id)!==String(id))); await carregarMsgsOnline(); renderMsgHistory(); renderList(); renderTopMural(); toast('Mensagem local removida.','success'); return;}
   const fd=new FormData(); fd.append('action','delete'); fd.append('id',id);
   try{const r=await fetch(API_MSG,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){toast('Mensagem removida.','success'); await carregarMsgsOnline(); renderMsgHistory(); renderList();}else{toast('Não consegui remover a mensagem.')}}catch(e){toast('Não consegui remover a mensagem.')}}
 async function limparMensagemTela(id){
+  if(String(id||'').startsWith('LOCAL_MSG_')){const arr=getLocalMsgs().map(m=>String(m.id)===String(id)?{...m,hidden_on_master:true}:m); saveLocalMsgs(arr); await carregarMsgsOnline(); renderMsgHistory(); renderList(); renderTopMural(); toast('Mensagem local enviada ao histórico.','success'); return;}
   const fd=new FormData(); fd.append('action','archive_master'); fd.append('id',id);
   try{const r=await fetch(API_MSG,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){toast('Mensagem removida da tela e enviada ao histórico.','success'); await carregarMsgsOnline(); renderMsgHistory(); renderList();}else{toast('Não consegui limpar a mensagem.')}}catch(e){toast('Não consegui limpar a mensagem.')}}
 async function openPrimeiroAcesso(prefillLogin=''){document.getElementById('faLogin').value=prefillLogin||document.getElementById('loginUser').value||''; document.getElementById('faCurrentPass').value=document.getElementById('loginPass').value||''; document.getElementById('faNewPass').value=''; document.getElementById('faNewPass2').value=''; document.getElementById('faMsg').textContent=''; document.getElementById('firstAccessModal').classList.add('show')}
@@ -8787,6 +11033,10 @@ async function fazerLogin(){
 
   const auth=getAuthUser(u);
   if(CREDS[u] && auth && String(auth.password)===s){
+    if(auth.access_disabled || auth.status_operacional==='inativo' || CREDS[u]?.access_disabled || CREDS[u]?.status_operacional==='inativo'){
+      msg.innerHTML='🔒 Usuário inativo/bloqueado pelo Master.<br><small>Peça liberação ao responsável.</small>';
+      return;
+    }
     if(auth.must_change_password){
       msg.textContent='Primeiro acesso: defina sua nova senha.';
       return openPrimeiroAcesso(u);
@@ -8800,7 +11050,7 @@ async function fazerLogin(){
 }
 async function abrirApp(){
   try{document.body.classList.toggle('master-view', String(usuarioAtual?.tipo||'').toLowerCase()==='master'); document.body.classList.toggle('diretor-view', String(usuarioAtual?.tipo||'').toLowerCase()==='diretor');}catch(e){}
- loginScreen.classList.add('hidden'); app.classList.remove('hidden'); if(usuarioAtual.tipo==='master'){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); const isDiretor=usuarioAtual?.roleLabel==='Diretor Comercial'; userBadge.textContent=isDiretor?'👑 Diretor Comercial':'👑 Master'; masterTabs.classList.remove('hidden'); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{const t=btn.dataset.tab; btn.classList.toggle('hidden', isDiretor && ['cobrancas','senhas'].includes(t));}); setMainTab('vendedores')} else if(usuarioAtual.is_viewer){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); userBadge.textContent='📺 Painel'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); listSection.classList.add('hidden'); metaSection.classList.add('hidden'); logSection.classList.add('hidden'); avisosSection.classList.add('hidden'); senhasSection.classList.add('hidden'); histSection.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden');} else {document.getElementById('kpis').classList.add('hidden'); userBadge.textContent=usuarioAtual.is_terceiro?`🤝 ${usuarioAtual.nome}`:(usuarioAtual.is_crediarista?`🧾 ${usuarioAtual.nome}`:(usuarioAtual.is_gerente?`🏬 ${usuarioAtual.filial}`:`👤 ${usuarioAtual.nome}`)); masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(usuarioAtual.is_terceiro){openThirdChargePanel()} else if(usuarioAtual.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login}) }
+ loginScreen.classList.add('hidden'); app.classList.remove('hidden'); if(usuarioAtual.tipo==='master'){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); const isDiretor=usuarioAtual?.roleLabel==='Diretor Comercial'; userBadge.textContent=isDiretor?'👑 Diretor Comercial':'👑 Master'; masterTabs.classList.remove('hidden'); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{const t=btn.dataset.tab; btn.classList.toggle('hidden', isDiretor && ['cobrancas','senhas'].includes(t));}); setMainTab('inicio')} else if(usuarioAtual.is_viewer){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); userBadge.textContent='📺 Painel'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); listSection.classList.add('hidden'); metaSection.classList.add('hidden'); logSection.classList.add('hidden'); avisosSection.classList.add('hidden'); senhasSection.classList.add('hidden'); histSection.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden'); mainTab='inicio'; renderTopMural(); renderInicioTab();} else {document.getElementById('kpis').classList.add('hidden'); userBadge.textContent=usuarioAtual.is_terceiro?`🤝 ${usuarioAtual.nome}`:(usuarioAtual.is_crediarista?`🧾 ${usuarioAtual.nome}`:(usuarioAtual.is_gerente?`🏬 ${usuarioAtual.filial}`:`👤 ${usuarioAtual.nome}`)); masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(usuarioAtual.is_terceiro){openThirdChargePanel()} else if(usuarioAtual.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login}) }
   setTimeout(()=>{tentarAtualizarOnlineDepoisLogin();}, 80);
 }
 function logout(){clearSession(); location.reload()}
@@ -8827,6 +11077,1311 @@ window.addEventListener('load',async ()=>{
   setTimeout(pollSalesLive,3000);
   setTimeout(pollDashboardLiveReload,5000);
 })
+
+// ===== V4.1 HOTFIX: notificações individuais, histórico comissionamento atual e aniversariantes visível =====
+function _entAtualUsuario(){
+  try{
+    if(currentDetailRef){ const e=findEntity(currentDetailRef); if(e) return e; }
+    const login=String(usuarioAtual?.login||'').toLowerCase();
+    const nome=normName(usuarioAtual?.nome||'');
+    return flattenVendedores().find(e=>String(e.login||'').toLowerCase()===login || normName(e.nome||'')===nome) || null;
+  }catch(e){return null;}
+}
+function _goalNotifsFor(ent){
+  const arr=[]; if(!ent) return arr;
+  try{ const meta=calcMeta(ent); if(Number(meta.geral||0)>=100) arr.push({k:'meta_cobranca',t:'Meta geral de recebimentos atingida',d:`Você chegou em ${pct(meta.geral||0)} da meta de cobrança.`}); }
+  catch(e){}
+  try{ const c=calcCommissionSummary(ent); if(c?.bonusLiberado) arr.push({k:'bonus_meta',t:'Bônus liberado',d:`Bônus previsto: ${R(c.bonusMeta||0)}.`}); if(c?.elegivelMercantil) arr.push({k:'meta_vendas',t:'Meta mercantil liberada',d:`Comissão de vendas liberada: ${R(c.vendasComissao||0)}.`}); if(c?.elegivelServicos) arr.push({k:'meta_servicos',t:'Meta de serviços liberada',d:`Comissão de serviços liberada: ${R(c.servicosComissao||0)}.`}); }
+  catch(e){}
+  try{ const b=calcularMetaDiariaBatida().find(x=>normName(x.nome||'')===normName(ent.nome||'') || (x.filial && x.filial===ent.filial && ent.type==='filial')); if(b) arr.push({k:'meta_diaria',t:'Meta diária BATIDA',d:`${b.nome||filialLabel(b.filial)} bateu a meta diária: ${R(b.realizado||0)} / ${R(b.meta_diaria||0)}.`}); }catch(e){}
+  return arr;
+}
+function updateGoalNotifications(){
+  const btn=document.getElementById('goalNotifBtn'), count=document.getElementById('goalNotifCount'); if(!btn||!count) return;
+  const ent=_entAtualUsuario(); const arr=_goalNotifsFor(ent);
+  if(!ent || isAdminLike() || !arr.length){btn.classList.add('hidden'); count.textContent='0'; return;}
+  btn.classList.remove('hidden');
+  const readKey='mdl_goal_notifs_read_'+(usuarioAtual?.login||usuarioAtual?.nome||'user')+'_'+mesAtualComissao();
+  let read=[]; try{read=JSON.parse(localStorage.getItem(readKey)||'[]')}catch(e){}
+  const unread=arr.filter(n=>!read.includes(n.k)); count.textContent=String(unread.length||arr.length);
+  btn.classList.toggle('pulse-alert', unread.length>0);
+}
+function openGoalNotifications(){
+  const ent=_entAtualUsuario(); const arr=_goalNotifsFor(ent); if(!arr.length){toast('Nenhuma notificação de meta no momento.'); return;}
+  const readKey='mdl_goal_notifs_read_'+(usuarioAtual?.login||usuarioAtual?.nome||'user')+'_'+mesAtualComissao();
+  try{localStorage.setItem(readKey, JSON.stringify(arr.map(n=>n.k)))}catch(e){}
+  updateGoalNotifications();
+  const html=`<div class="glass panel" style="max-width:760px;margin:40px auto"><div class="section-head"><div><h2>🎉 Notificações de metas</h2><div class="hint">Metas e bônus atingidos no mês.</div></div><button class="btn soft" onclick="this.closest('.goal-modal')?.remove()">Fechar</button></div><div class="tableish">${arr.map(n=>`<div class="row-item"><div class="row-top" style="grid-template-columns:72px 1fr"><img src="${LARANJITO}" style="width:58px;height:58px;object-fit:contain;border-radius:14px"><div><div class="name">${esc(n.t)}</div><div class="small muted">${esc(n.d)}</div></div></div></div>`).join('')}</div></div>`;
+  const div=document.createElement('div'); div.className='goal-modal'; div.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:99999;padding:20px;overflow:auto'; div.innerHTML=html; document.body.appendChild(div);
+}
+
+// Histórico comissionamento: sempre permite gerar fechamento atual e abrir tela visual por usuário
+function _allComissaoEntitiesNow(){
+  let ents=[]; try{ents=ents.concat(flattenVendedores())}catch(e){} try{ents=ents.concat(flattenFiliais())}catch(e){} try{ents=ents.concat(crediaristaEntities())}catch(e){} try{ents.push(thirdChargeEntity())}catch(e){}
+  return ents.filter(Boolean);
+}
+function _comKeyNow(e){try{return (typeof _comEntKey==='function')?_comEntKey(e):`${e.type||'ent'}::${e.filial||''}::${e.login||e.nome||''}`}catch(_){return `${e.type||'ent'}::${e.filial||''}::${e.login||e.nome||''}`}}
+function abrirTelaComissionamentoAtual(){
+  const key=document.getElementById('histComCurrentEntity')?.value||''; const ent=_allComissaoEntitiesNow().find(e=>_comKeyNow(e)===key) || _allComissaoEntitiesNow()[0];
+  if(!ent){toast('Nenhum usuário encontrado.'); return;}
+  const html=snapshotEntityHTML(ent)||'<div>Não foi possível montar tela congelada.</div>';
+  const w=window.open('','_blank'); if(!w){toast('Pop-up bloqueado.');return}
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Fechamento ${esc(ent.nome||ent.filial||'')}</title><style>body{margin:0;background:#080a0f;color:#f4f6fb;font-family:Inter,Arial,sans-serif;padding:12px}@media print{body{padding:0}}</style></head><body><div style="display:flex;gap:8px;margin:0 0 12px"><button onclick="window.print()">Salvar PDF / Imprimir</button></div>${html}</body></html>`); w.document.close();
+}
+function exportarComissaoAtualExcel(){
+  const rows=_allComissaoEntitiesNow().map(e=>snapshotComissaoEntidade(e));
+  const header=['Tipo','Nome','Filial','Login','Pendente','Recebido','Meta cobrança %','Venda mercantil','Serviços','Caminhão','Comissão vendas','Comissão serviços','Comissão caminhão','Bônus meta','Rentab 48','Rentab 52,15','Rentab 55,50','Total previsto'];
+  const lines=[header].concat(rows.map(r=>[r.tipo,r.nome,r.filial,r.login,r.pendente,r.recebido,r.meta_geral,r.venda_real,r.servico_real,r.caminhao_real,r.comissao_vendas,r.comissao_servicos,r.comissao_caminhao,r.bonus_meta,r.rent48,r.rent52,r.rent55,r.total_previsto]));
+  const csv=lines.map(row=>row.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(';')).join('\n');
+  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='comissionamento_atual_'+mesAtualComissao()+'.csv'; a.click();
+}
+const _oldRenderHistoricoComissaoResults = typeof renderHistoricoComissaoResults==='function' ? renderHistoricoComissaoResults : null;
+renderHistoricoComissaoResults=function(){
+  const months=_histComMeses(); const current=document.getElementById('histComMonth')?.value || months[0] || mesAtualComissao();
+  const box=document.getElementById('histComResults'); if(!box) return;
+  const ents=_allComissaoEntitiesNow();
+  const currentPanel=`<div class="glass panel" style="margin-bottom:14px"><div class="section-head"><div><h2 style="font-size:18px">🧊 Tela individual congelada atual</h2><div class="hint">Escolha qualquer usuário/filial/crediarista/terceiro e abra a tela visual para salvar em PDF. Também exporta o resultado geral para Excel/CSV.</div></div></div><div class="form-grid"><div class="input-card"><label>Usuário / filial</label><select id="histComCurrentEntity">${ents.map(e=>`<option value="${esc(_comKeyNow(e))}">${esc(e.nome||filialLabel(e.filial)||'Entidade')} · ${esc(e.filial||'')}</option>`).join('')}</select></div><div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap"><button class="btn primary" onclick="abrirTelaComissionamentoAtual()">Abrir tela congelada</button><button class="btn soft" onclick="exportarComissaoAtualExcel()">Exportar Excel</button></div></div></div>`;
+  const snap=HIST_COMISSAO?.months?.[current];
+  if(!snap){box.innerHTML=currentPanel+`<div class="empty">Nenhum histórico salvo para ${esc(current)}. Use “Salvar fechamento do mês atual” para gravar no histórico.</div>`; return;}
+  const rows=[...(snap.entidades||[])].sort((a,b)=>String(a.tipo).localeCompare(String(b.tipo),'pt-BR')||String(a.nome).localeCompare(String(b.nome),'pt-BR'));
+  box.innerHTML=currentPanel+`<div class="kpis">${makeKpi('Mês',esc(snap.month||current),'var(--blue)')}${makeKpi('Total previsto',R(snap.total_previsto||0),'var(--green)')}${makeKpi('Entidades',String(rows.length),'var(--orange)')}${makeKpi('Salvo em',esc((snap.atualizado_em_br||snap.gerado_em||'').replace('T',' ').slice(0,19)),'var(--blue)')}</div>`+`<div class="glass panel"><div class="form-grid"><div class="input-card"><label>Ver tela congelada salva</label><select id="histComEntityView">${rows.map(r=>`<option value="${esc(r.key||'')}">${esc(r.nome||'')} · ${esc(r.filial||'')}</option>`).join('')}</select></div><div style="display:flex;align-items:end"><button class="btn primary" onclick="abrirTelaComissionamentoCongeladaPorSelect()">Abrir salva</button></div></div></div>`+renderComissionamentoHistoricoTable(rows);
+};
+
+// Botões extras na cobrança terceiro
+const _oldRenderHistoricoTerceiro = typeof renderHistoricoTerceiro==='function' ? renderHistoricoTerceiro : null;
+renderHistoricoTerceiro=function(){
+  if(_oldRenderHistoricoTerceiro) _oldRenderHistoricoTerceiro();
+  const box=document.getElementById('histThirdResults'); if(!box) return;
+  box.insertAdjacentHTML('afterbegin', `<div class="glass panel" style="margin-bottom:14px"><button class="btn primary" onclick="window.print()">Salvar tela/PDF</button> <button class="btn soft" onclick="exportarComissaoAtualExcel()">Exportar comissões Excel</button></div>`);
+};
+
+// Reprocessa notificações após abrir painel individual
+const _oldOpenEntity = typeof openEntity==='function' ? openEntity : null;
+if(_oldOpenEntity){ openEntity=function(ref){ const ret=_oldOpenEntity(ref); setTimeout(updateGoalNotifications,600); return ret; } }
+
+
+// ===== V4.3: hotfix real - aniversariantes, notificações sempre visíveis e botão voltar só admin =====
+try{
+  const st=document.createElement('style');
+  st.textContent=`body.individual-view .back-row .btn{display:none!important} body.individual-view .back-row{grid-template-columns:1fr!important}`;
+  document.head.appendChild(st);
+}catch(e){}
+function _setIndividualViewFlag(){try{document.body.classList.toggle('individual-view', !!usuarioAtual && !isAdminLike() && !usuarioAtual.is_viewer)}catch(e){}}
+try{setInterval(_setIndividualViewFlag,1000)}catch(e){}
+
+function aniversarioTemplateAtual(filial){
+  filial=String(filial||'').toUpperCase();
+  const map=CONFIG_META.aniversario_msg_template_filiais||{};
+  return (filial && map[filial]) ? map[filial] : (CONFIG_META.aniversario_msg_template||`Olá, {primeiro_nome}! Feliz aniversário! 🎂🎉\n\nAqui é da Lojas MDL – Móveis do Lar. Desejamos muita saúde, paz e felicidades neste dia especial.\n\nPreparamos condições especiais para você comemorar com a gente. 🧡`);
+}
+function aniversarioClienteKey(c){
+  const filial=String(c?.filial||'').toUpperCase();
+  const nome=normName(c?.cliente||'');
+  const nasc=String(c?.nascimento||'');
+  const cidade=normName(c?.cidade||'');
+  return `ANIV|${filial}|${nome}|${nasc}|${cidade}`;
+}
+function aniversarioOwnerInfo(c){
+  const filial=String(c?.filial||'F1').toUpperCase();
+  const arr=reativacaoDestinatariosFilial(filial);
+  const k=hashStr(String(c?.cliente||'')+'|'+String(c?.nascimento||'')+'|'+filial);
+  return arr[Math.abs(k)%arr.length];
+}
+function aniversarioCurrentKey(){return reativacaoCurrentKey();}
+function isAniversarioEnviadoHoje(c){
+  const hoje=new Date().toISOString().slice(0,10);
+  const rowKey=aniversarioClienteKey(c);
+  const nome=normName(c?.cliente||'');
+  const filial=String(c?.filial||'').toUpperCase();
+  return (COB_LOGS||[]).some(x=>{
+    if(String(x.titulo||'').toUpperCase()!=='ANIVERSARIO') return false;
+    if(String(x.filial||'').toUpperCase()!==filial) return false;
+    if(String(x.server_time||x.data||x.created_at||x.criado_em||'').slice(0,10)!==hoje) return false;
+    const lk=String(x.cliente_key||x.cobranca_key||'');
+    if(lk && lk===rowKey) return true;
+    return nome && normName(x.cliente||'')===nome;
+  });
+}
+function aniversarioRowsPermitidas(){
+  let rows=(ANIVERSARIANTES||[]).map((r,i)=>({...r,_idx:i,_owner:aniversarioOwnerInfo(r)}));
+  const ck=aniversarioCurrentKey();
+  if(ck) rows=rows.filter(r=>String(r._owner?.key||'')===ck);
+  return rows;
+}
+function montarMensagemAniversario(c){
+  let msg=aniversarioTemplateAtual(c?.filial||'');
+  const vars={primeiro_nome:c?.primeiro_nome||firstNameFromFullName(c?.cliente||''),nome:c?.cliente||'',filial:c?.filial||'',cidade:c?.cidade||'',nascimento:c?.nascimento||''};
+  Object.entries(vars).forEach(([k,v])=>{msg=msg.replaceAll('{'+k+'}',String(v||''));});
+  return msg;
+}
+function abrirWhatsAniversario(idx,tel){
+  const c=(ANIVERSARIANTES||[])[idx]; if(!c) return;
+  const num=String(tel||((c.telefones||[])[0]||'')).replace(/\D/g,'');
+  const owner=aniversarioOwnerInfo(c)||{};
+  const key=aniversarioClienteKey(c);
+  const entRef={type:owner.tipo||'aniversario',filial:c.filial,nome:owner.nome||owner.label||usuarioAtual?.nome||'',login:owner.login||''};
+  registrarCobrancaOnline({cliente:c.cliente,titulo:'ANIVERSARIO',parcela:`ANIVERSARIO|${key}|${owner.key||''}`,cliente_key:key,cobranca_key:key,owner_key:owner.key||'',vencimento:c.nascimento||'',pendente:0,filial:c.filial,telefones:[num]}, entRef, num);
+  window.open(`https://wa.me/${num}?text=${encodeURIComponent(montarMensagemAniversario(c))}`,'_blank');
+  setTimeout(()=>carregarCobrancasOnline().then(()=>{ if(detailScreen && !detailScreen.classList.contains('hidden') && currentDetailRef){ openEntity(currentDetailRef); } else { renderAniversariantesTab(); renderInicioTab(); } }),800);
+}
+let anivBuscaState=''; let anivFilialState=''; let anivBuscaTimer=null;
+function anivBuscaChanged(v){anivBuscaState=String(v||''); clearTimeout(anivBuscaTimer); anivBuscaTimer=setTimeout(()=>renderAniversariantesTab(),350)}
+function anivFilialChanged(v){anivFilialState=String(v||''); renderAniversariantesTab();}
+async function salvarMensagemAniversarioGlobal(){const el=document.getElementById('anivMsgTemplate'); CONFIG_META.aniversario_msg_template=el?el.value:aniversarioTemplateAtual(); try{const resp=await fetch(API_CFG,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({global:CONFIG_META,individual:CONFIG_META_IND})}); const j=await resp.json(); toast(j.ok?'Mensagem global de aniversário salva.':'Não consegui salvar mensagem.',j.ok?'success':'warn')}catch(e){toast('Mensagem de aniversário salva localmente para teste.','success')}}
+async function salvarMensagemAniversarioFilial(){const f=String(document.getElementById('anivMsgFilial')?.value||'').toUpperCase(); const el=document.getElementById('anivMsgTemplateFilial'); CONFIG_META.aniversario_msg_template_filiais=CONFIG_META.aniversario_msg_template_filiais||{}; CONFIG_META.aniversario_msg_template_filiais[f]=el?el.value:''; try{const resp=await fetch(API_CFG,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({global:CONFIG_META,individual:CONFIG_META_IND})}); const j=await resp.json(); toast(j.ok?`Mensagem da ${f} salva.`:'Não consegui salvar mensagem por filial.',j.ok?'success':'warn')}catch(e){toast('Mensagem da filial salva localmente para teste.','success')}}
+function trocarMensagemAniversarioFilial(f){const el=document.getElementById('anivMsgTemplateFilial'); if(el) el.value=aniversarioTemplateAtual(f)}
+function renderAniversariantesTab(){
+  const box=aniversariantesSection; if(!box) return;
+  try{
+    const filial=String(anivFilialState||''); const q=String(anivBuscaState||'').toLowerCase();
+    let rows=aniversarioRowsPermitidas();
+    if(filial) rows=rows.filter(r=>String(r.filial||'')===filial);
+    if(q) rows=rows.filter(r=>`${r.cliente||''} ${r.cidade||''} ${r._owner?.label||''}`.toLowerCase().includes(q));
+    const filiais=ordenarFiliaisReativacao([...new Set((ANIVERSARIANTES||[]).map(r=>r.filial).filter(Boolean))]);
+    const enviados=rows.filter(isAniversarioEnviadoHoje).length;
+    const totalPermitido=aniversarioRowsPermitidas().length;
+    const titulo=(usuarioAtual?.tipo==='master'||usuarioAtual?.is_viewer)?'Lista geral / filtro':'Minha lista de aniversariantes';
+    const semBase=!(ANIVERSARIANTES||[]).length;
+    box.innerHTML=`<div class="section-head"><div><h2>🎂 Aniversariantes do dia</h2><div class="hint">Base do Sólidus para mensagem de aniversário. ${filiais.length?esc(filiais.map(f=>`${f}: ${(ANIVERSARIANTES||[]).filter(r=>r.filial===f).length}`).join(' · ')):'Nenhum XLS carregado ainda.'}</div></div></div>
+    ${semBase?'<div class="glass panel" style="border-color:rgba(245,158,11,.35);margin-bottom:14px"><strong>⚠️ Sem base de aniversariantes carregada</strong><div class="hint">Coloque aniversarios.xls/relatorio_aniversariantes*.xls nesta pasta ou rode com BAIXAR_ANIVERSARIANTES=1.</div></div>':''}
+    <div class="kpis" style="margin-bottom:14px">${makeKpi('Aniversariantes na base',String((ANIVERSARIANTES||[]).length),'var(--amber-400)','WhatsApp válido e cidade permitida')}${makeKpi(titulo,String(rows.length),'var(--blue)',usuarioAtual?.tipo==='master'?'Filtro atual':'Distribuída sem duplicar')}${makeKpi('Enviados hoje',String(enviados),'var(--green)','Da lista exibida')}${makeKpi('Minha base total',String(totalPermitido),'var(--orange)','Rateio automático por filial')}</div>
+    <div class="glass panel" style="margin-bottom:14px"><div class="search-row" style="grid-template-columns:1.5fr 220px minmax(420px,1fr);align-items:stretch"><div class="input-card"><label>Buscar</label><input id="anivBusca" value="${esc(anivBuscaState)}" oninput="anivBuscaChanged(this.value)" placeholder="Cliente, cidade, responsável"></div><div class="input-card"><label>Filial</label><select id="anivFilial" onchange="anivFilialChanged(this.value)"><option value="">Todas</option>${filiais.map(f=>`<option value="${esc(f)}" ${filial===f?'selected':''}>${esc(f)}</option>`).join('')}</select></div><div class="input-card" style="min-width:420px"><label>Mensagem padrão global</label><textarea id="anivMsgTemplate" rows="6" style="min-height:135px;width:100%;resize:vertical">${esc(aniversarioTemplateAtual())}</textarea><div class="hint">Variáveis: {primeiro_nome}, {nome}, {filial}, {cidade}, {nascimento}</div><button class="btn primary" style="margin-top:8px" onclick="salvarMensagemAniversarioGlobal()">Salvar mensagem global</button></div></div><div class="search-row" style="grid-template-columns:220px minmax(520px,1fr);align-items:stretch;margin-top:12px"><div class="input-card"><label>Mensagem por filial</label><select id="anivMsgFilial" onchange="trocarMensagemAniversarioFilial(this.value)">${filiais.map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join('')}</select></div><div class="input-card"><label>Texto específico da filial selecionada</label><textarea id="anivMsgTemplateFilial" rows="5" style="min-height:120px;width:100%;resize:vertical">${esc(aniversarioTemplateAtual(filiais[0]||''))}</textarea><div class="hint">Se vazio, usa a mensagem global.</div><button class="btn primary" style="margin-top:8px" onclick="salvarMensagemAniversarioFilial()">Salvar mensagem desta filial</button></div></div></div>
+    <div class="faixa-title atencao" style="margin-bottom:10px"><span>🎂 ${esc(titulo)}</span><span>${rows.length} cliente(s) · ${enviados} enviado(s) hoje</span></div><div class="logs-list">${rows.slice(0,700).map(r=>{const tels=(r.telefones||[]); const enviado=isAniversarioEnviadoHoje(r); return `<div class="log-row" style="grid-template-columns:1.45fr .85fr .9fr auto"><div><strong>${esc(r.cliente||'')}</strong><div class="small muted">${esc(r.filial||'')} · ${esc(r.cidade||'')} · nasc. ${esc(r.nascimento||'')}</div></div><div><strong>${esc(r._owner?.label||'')}</strong><div class="small muted">Responsável pelo envio</div></div><div><strong>${enviado?'✅ Enviado hoje':esc(tels.length+' WhatsApp(s)')}</strong><div class="small muted">${esc(tels.map(fmtTelBR).join(', '))}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap">${tels.map(t=>`<button class="btn wa" ${enviado?'disabled style="opacity:.45"':''} onclick="abrirWhatsAniversario(${r._idx},'${esc(t)}')">Whats ${esc(fmtTelBR(t))}</button>`).join('')}</div></div>`}).join('') || '<div class="empty">Nenhum aniversariante encontrado.</div>'}</div>`;
+  }catch(e){console.error('Erro renderAniversariantesTab',e); box.innerHTML=`<div class="glass panel" style="border-color:rgba(239,68,68,.35)"><strong>⚠️ Erro na aba Aniversariantes</strong><div class="hint">${esc(e.message||e)}</div></div>`;}
+}
+function aniversariantesRowsParaEnt(ent){
+  if(!ent) return [];
+  const filial=String(ent.filial||'').toUpperCase();
+  let rows=(ANIVERSARIANTES||[]).map((r,i)=>({...r,_idx:i,_owner:aniversarioOwnerInfo(r)}));
+  if(ent.type==='filial') return rows.filter(r=>String(r.filial||'').toUpperCase()===filial);
+  const key=reatUserKeyFromNome(ent.nome||ent.login||'',filial);
+  return rows.filter(r=>String(r._owner?.key||'')===key);
+}
+let anivPanelCounter=0;
+function showAnivPanel(id,mode){const p=document.getElementById(id+'_pend'), s=document.getElementById(id+'_sent'), bp=document.getElementById(id+'_btn_pend'), bs=document.getElementById(id+'_btn_sent'); if(!p||!s) return; p.style.display=mode==='sent'?'none':'block'; s.style.display=mode==='sent'?'block':'none'; if(bp)bp.classList.toggle('active',mode!=='sent'); if(bs)bs.classList.toggle('active',mode==='sent');}
+function renderAniversariantesEnt(ent){
+  const rows=aniversariantesRowsParaEnt(ent);
+  const enviadosRows=rows.filter(isAniversarioEnviadoHoje); const pendentesRows=rows.filter(r=>!isAniversarioEnviadoHoje(r)); const panelId='aniv_panel_'+(++anivPanelCounter);
+  const exportId='export_'+panelId;
+  mdlRegisterExport(exportId, 'Aniversariantes do dia - '+(ent?.nome||ent?.filial||'usuario'), [
+    ...pendentesRows.map(r=>mdlAnivExportRow(r,'Pendente')),
+    ...enviadosRows.map(r=>mdlAnivExportRow(r,'Enviado hoje'))
+  ]);
+  const rowHtml=(r,enviado=false)=>{const tels=(r.telefones||[]); return `<div class="log-row" style="grid-template-columns:1.5fr .7fr .8fr auto"><div><strong>${esc(r.cliente||'')}</strong><div class="small muted">${esc(r.filial||'')} · ${esc(r.cidade||'')} · nasc. ${esc(r.nascimento||'')}</div></div><div><strong>${esc(r._owner?.label||'')}</strong><div class="small muted">Responsável</div></div><div><strong>${enviado?'✅ Enviado hoje':esc(tels.length+' WhatsApp(s)')}</strong><div class="small muted">${esc(tels.map(fmtTelBR).join(', '))}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap">${tels.map(t=>`<button class="btn wa" ${enviado?'disabled style="opacity:.45"':''} onclick="abrirWhatsAniversario(${r._idx},'${esc(t)}')">Whats ${esc(fmtTelBR(t))}</button>`).join('')}</div></div>`};
+  return `<div class="accordion" data-anniv-panel="1"><div class="acc-head" onclick="toggleAcc(this)"><span>🎂 Aniversariantes do dia</span><span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${mdlExportButtons(exportId)}<span class="acc-hint">${rows.length} cliente(s) · ${enviadosRows.length} enviado(s) hoje · clique para abrir</span></span></div><div class="acc-body"><div class="faixa-title atencao" style="margin-bottom:10px"><span>Lista individual de aniversário</span><span>sem duplicar com outros usuários</span></div><div class="reat-tabs"><span id="${panelId}_btn_pend" class="reat-tab pending active" onclick="showAnivPanel('${panelId}','pend')">🎂 Pendentes: ${pendentesRows.length}</span><span id="${panelId}_btn_sent" class="reat-tab ok" onclick="showAnivPanel('${panelId}','sent')">✅ Enviados hoje: ${enviadosRows.length}</span></div><div id="${panelId}_pend" class="faixa-block"><div class="faixa-title alerta"><span>🎂 Para enviar hoje</span><span>${pendentesRows.length} cliente(s)</span></div><div class="logs-list">${pendentesRows.slice(0,500).map(r=>rowHtml(r,false)).join('') || '<div class="empty">Nenhum aniversariante pendente para este usuário/filial.</div>'}</div></div><div id="${panelId}_sent" class="faixa-block" style="display:none"><div class="faixa-title atencao"><span>✅ Enviados hoje</span><span>${enviadosRows.length} cliente(s)</span></div><div class="logs-list">${enviadosRows.slice(0,500).map(r=>rowHtml(r,true)).join('') || '<div class="empty">Nenhuma mensagem de aniversário enviada hoje.</div>'}</div></div></div></div>`;
+}
+
+// Mural de aniversariantes do dia no início, mesmo quando vazio
+function renderMuralAniversariantesDia(){
+  const rows=(ANIVERSARIANTES||[]).map((r,i)=>({...r,_idx:i,_owner:aniversarioOwnerInfo(r)}));
+  const items=rows.slice(0,80).map(r=>`${r.cliente||''} · ${r.filial||''} · resp. ${r._owner?.label||''}`);
+  return `<div class="glass panel full" style="border-color:rgba(249,168,50,.25)"><div class="section-head" style="margin-bottom:6px"><div><h2 style="font-size:18px">🎂 Aniversariantes do dia</h2><div class="hint">Clientes de aniversário para contato por WhatsApp.</div></div><span class="badge">${rows.length}</span></div>${items.length?renderTicker(items,'anivHoje'): '<div class="empty" style="padding:12px">Nenhum aniversariante carregado para hoje.</div>'}</div>`;
+}
+const _oldRenderInicioTabV42=typeof renderInicioTab==='function'?renderInicioTab:null;
+if(_oldRenderInicioTabV42){ renderInicioTab=function(){ _oldRenderInicioTabV42(); try{ const host=document.querySelector('#inicioSection .inicio-operacional-compact')||document.getElementById('inicioSection'); if(host && !host.querySelector('[data-mural-aniversariantes]')){ const wrap=document.createElement('div'); wrap.setAttribute('data-mural-aniversariantes','1'); wrap.innerHTML=renderMuralAniversariantesDia(); host.appendChild(wrap); } }catch(e){console.log(e)} } }
+
+// Injeta aba aniversariantes no detalhe individual depois do painel original renderizar
+const _oldOpenEntityV42=typeof openEntity==='function'?openEntity:null;
+if(_oldOpenEntityV42){ openEntity=function(ref){ const ret=_oldOpenEntityV42(ref); setTimeout(()=>{try{_setIndividualViewFlag(); const ent=findEntity(ref)||_entAtualUsuario(); const h=renderAniversariantesEnt(ent); if(detailScreen && !detailScreen.querySelector('[data-anniv-panel]')){ const firstAcc=detailScreen.querySelector('.accordion'); if(firstAcc) firstAcc.insertAdjacentHTML('beforebegin',h); else detailScreen.insertAdjacentHTML('beforeend',h); }}catch(e){console.log('aniv detail',e)}},120); return ret; } }
+
+// Botão de notificações aparece para usuário individual mesmo quando zerado
+updateGoalNotifications=function(){
+  const btn=document.getElementById('goalNotifBtn'), count=document.getElementById('goalNotifCount'); if(!btn||!count) return;
+  const ent=_entAtualUsuario(); const arr=_goalNotifsFor(ent);
+  if(!usuarioAtual || isAdminLike() || usuarioAtual.is_viewer){btn.classList.add('hidden'); count.textContent='0'; return;}
+  btn.classList.remove('hidden');
+  const readKey='mdl_goal_notifs_read_'+(usuarioAtual?.login||usuarioAtual?.nome||'user')+'_'+mesAtualComissao();
+  let read=[]; try{read=JSON.parse(localStorage.getItem(readKey)||'[]')}catch(e){}
+  const unread=arr.filter(n=>!read.includes(n.k)); count.textContent=String(unread.length); btn.classList.toggle('pulse-alert', unread.length>0);
+};
+openGoalNotifications=function(){
+  const ent=_entAtualUsuario(); const arr=_goalNotifsFor(ent);
+  const readKey='mdl_goal_notifs_read_'+(usuarioAtual?.login||usuarioAtual?.nome||'user')+'_'+mesAtualComissao();
+  try{localStorage.setItem(readKey, JSON.stringify(arr.map(n=>n.k)))}catch(e){}
+  updateGoalNotifications();
+  const html=`<div class="glass panel" style="max-width:760px;margin:40px auto"><div class="section-head"><div><h2>🎉 Notificações de metas</h2><div class="hint">Metas, bônus e avisos de desempenho do mês.</div></div><button class="btn soft" onclick="this.closest('.goal-modal')?.remove()">Fechar</button></div><div class="tableish">${arr.length?arr.map(n=>`<div class="row-item"><div class="row-top" style="grid-template-columns:72px 1fr"><img src="${LARANJITO}" style="width:58px;height:58px;object-fit:contain;border-radius:14px"><div><div class="name">${esc(n.t)}</div><div class="small muted">${esc(n.d)}</div></div></div></div>`).join(''):'<div class="empty">Nenhuma meta ou bônus atingido ainda.</div>'}</div></div>`;
+  const div=document.createElement('div'); div.className='goal-modal'; div.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:99999;padding:20px;overflow:auto'; div.innerHTML=html; document.body.appendChild(div);
+};
+
+// Histórico comissionamento: força render avançado na troca para aba e melhora os botões
+const _oldSetHistModeV42=typeof setHistMode==='function'?setHistMode:null;
+if(_oldSetHistModeV42){ setHistMode=function(mode){ _oldSetHistModeV42(mode); if(mode==='comissao'){setTimeout(()=>{try{renderHistoricoComissaoResults()}catch(e){console.log(e)}},150)} } }
+
+
+
+// ===== V4.3: estabiliza botão de notificações individuais e reforça aniversariantes Selenium =====
+try{
+  const st=document.createElement('style');
+  st.textContent=`body.individual-view #goalNotifBtn.hidden{display:inline-flex!important} #goalNotifBtn{min-width:142px;justify-content:center}`;
+  document.head.appendChild(st);
+}catch(e){}
+try{
+  setInterval(()=>{try{updateGoalNotifications()}catch(e){}}, 7000);
+  setTimeout(()=>{try{updateGoalNotifications()}catch(e){}}, 1200);
+}catch(e){}
+
+
+// ===== V4.5: WhatsApp sem emoji quebrado + mural de aniversariantes pendentes =====
+function safeWhatsTextMDL(s){
+  return String(s||'')
+    .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g,'')
+    .replace(/[\u2600-\u27BF]/g,'')
+    .replace(/\uFFFD/g,'')
+    .replace(/[“”]/g,'"')
+    .replace(/[‘’]/g,"'")
+    .replace(/[–—]/g,'-')
+    .replace(/[ \t]+\n/g,'\n')
+    .replace(/\n{3,}/g,'\n\n')
+    .trim();
+}
+function aniversarioTemplateAtual(filial){
+  filial=String(filial||'').toUpperCase();
+  const map=CONFIG_META.aniversario_msg_template_filiais||{};
+  const def=`Olá, {primeiro_nome}! Feliz aniversário!\n\nAqui é da Lojas MDL - Móveis do Lar. Desejamos muita saúde, paz e felicidades neste dia especial.\n\nPreparamos condições especiais para você comemorar com a gente.`;
+  return safeWhatsTextMDL((filial && map[filial]) ? map[filial] : (CONFIG_META.aniversario_msg_template||def));
+}
+function reativacaoTemplateAtual(filial=""){
+  filial=String(filial||"").toUpperCase();
+  const porFilial=CONFIG_META?.reativacao_msg_template_filiais||{};
+  const def=`Olá, {primeiro_nome}! Tudo bem?\n\nAqui é da Lojas MDL - Móveis do Lar. Estamos com saudades de você! Faz um tempinho que você não aparece na loja.\n\nVenha conhecer nossas novidades e aproveitar condições especiais que preparamos para nossos clientes.`;
+  if(filial && String(porFilial[filial]||"").trim()) return safeWhatsTextMDL(String(porFilial[filial]));
+  return safeWhatsTextMDL(String(CONFIG_META?.reativacao_msg_template||def));
+}
+function montarMensagemAniversario(c){
+  let msg=aniversarioTemplateAtual(c?.filial||'');
+  const vars={primeiro_nome:c?.primeiro_nome||firstNameFromFullName(c?.cliente||''),nome:c?.cliente||'',filial:c?.filial||'',cidade:c?.cidade||'',nascimento:c?.nascimento||''};
+  Object.entries(vars).forEach(([k,v])=>{msg=msg.replaceAll('{'+k+'}',String(v||''));});
+  return safeWhatsTextMDL(msg);
+}
+function montarMensagemReativacao(c){
+  let tpl=reativacaoTemplateAtual(c?.filial||"");
+  const dados={primeiro_nome:c.primeiro_nome||primeiroNomeClienteJs(c.cliente||''),nome:c.cliente||'',filial:c.filial||'',dias:String(c.dias_sem_movimento||''),ultimo_movimento:c.ultimo_movimento||''};
+  Object.entries(dados).forEach(([k,v])=>{tpl=tpl.replaceAll(`{${k}}`,v)});
+  return safeWhatsTextMDL(tpl);
+}
+function abrirWhatsReativacao(idx,tel){
+  const c=(CLIENTES_SEM_MOVIMENTO||[])[idx]; if(!c) return;
+  const num=String(tel||((c.telefones||[])[0]||'')).replace(/\D/g,'');
+  const msg=montarMensagemReativacao(c);
+  const owner=reativacaoOwnerInfo(c)||{};
+  const clienteKey=reativacaoClienteKey(c);
+  const entRef={type:owner.tipo||'reativacao',filial:c.filial,nome:owner.nome||owner.label||usuarioAtual?.nome||'',login:owner.login||''};
+  registrarCobrancaOnline({cliente:c.cliente,titulo:'REATIVACAO',parcela:`CLIENTE_SEM_MOVIMENTO|${clienteKey}|${owner.key||''}`,cliente_key:clienteKey,cobranca_key:clienteKey,owner_key:owner.key||'',vencimento:c.ultimo_movimento||'',pendente:0,filial:c.filial,telefones:[num]}, entRef, num);
+  window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,'_blank');
+  setTimeout(()=>carregarCobrancasOnline().then(()=>{ if(detailScreen && !detailScreen.classList.contains('hidden') && currentDetailRef){ openEntity(currentDetailRef); } else { renderReativacaoTab(); renderInicioTab(); } }),800);
+}
+function abrirWhatsAniversario(idx,tel){
+  const c=(ANIVERSARIANTES||[])[idx]; if(!c) return;
+  const num=String(tel||((c.telefones||[])[0]||'')).replace(/\D/g,'');
+  const owner=aniversarioOwnerInfo(c)||{};
+  const key=aniversarioClienteKey(c);
+  const entRef={type:owner.tipo||'aniversario',filial:c.filial,nome:owner.nome||owner.label||usuarioAtual?.nome||'',login:owner.login||''};
+  registrarCobrancaOnline({cliente:c.cliente,titulo:'ANIVERSARIO',parcela:`ANIVERSARIO|${key}|${owner.key||''}`,cliente_key:key,cobranca_key:key,owner_key:owner.key||'',vencimento:c.nascimento||'',pendente:0,filial:c.filial,telefones:[num]}, entRef, num);
+  window.open(`https://wa.me/${num}?text=${encodeURIComponent(montarMensagemAniversario(c))}`,'_blank');
+  setTimeout(()=>carregarCobrancasOnline().then(()=>{ if(detailScreen && !detailScreen.classList.contains('hidden') && currentDetailRef){ openEntity(currentDetailRef); } else { renderAniversariantesTab(); renderInicioTab(); } }),800);
+}
+function renderMuralAniversariantesDia(){
+  const rows=(ANIVERSARIANTES||[]).map((r,i)=>({...r,_idx:i,_owner:aniversarioOwnerInfo(r)}));
+  const pendentes=rows.filter(r=>!isAniversarioEnviadoHoje(r));
+  const items=pendentes.slice(0,100).map(r=>`${r.cliente||''} · ${r.filial||''} · responsável ${r._owner?.label||''}`);
+  return `<div class="glass panel full" style="border-color:rgba(249,168,50,.25)"><div class="section-head" style="margin-bottom:6px"><div><h2 style="font-size:18px">🎂 Aniversariantes do dia</h2><div class="hint">Clientes de aniversário pendentes para saudação por WhatsApp. Ao enviar, sai deste mural.</div></div><span class="badge">${pendentes.length}/${rows.length}</span></div>${items.length?renderTicker(items,'anivHoje'): '<div class="empty" style="padding:12px">Nenhum aniversariante pendente para hoje.</div>'}</div>`;
+}
+
+
+// ===== V4.6 HOTFIX: backups leves, aniversariantes no início, percentuais destacados e histórico/exportação =====
+(function(){
+  try{
+    document.documentElement.style.setProperty('--kpi-badge-bg','rgba(249,168,50,.13)');
+    const css = document.createElement('style');
+    css.textContent = `
+      .kpi .subline{padding-right:88px;line-height:1.35}
+      .kpi .kpi-pct-badge{position:absolute;right:16px;bottom:15px;min-width:64px;text-align:center;padding:6px 9px;border-radius:12px;background:var(--kpi-badge-bg);border:1px solid rgba(249,168,50,.32);color:#fbbf24;font-size:20px;font-weight:900;letter-spacing:-.03em;box-shadow:0 8px 25px rgba(249,168,50,.08)}
+      .kpi.card-venda-dia .subline,.kpi.card-financeiro .subline{padding-right:88px}
+      .inicio-compact .glass.panel.full{margin-bottom:14px;overflow:hidden;max-width:100%}
+      .mural-aniversariantes-dia{border-color:rgba(249,168,50,.35)!important}
+      .hist-freeze-screen{background:#0d0f14;color:#eef2ff;font-family:Inter,Arial,sans-serif;padding:22px;min-height:100vh}
+      .hist-freeze-header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin-bottom:18px;border-bottom:1px solid rgba(255,255,255,.12);padding-bottom:14px}
+      .hist-freeze-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0 18px}
+      .hist-freeze-card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:12px}
+      .hist-freeze-card .k{font-size:11px;text-transform:uppercase;color:#94a3b8;font-weight:800;letter-spacing:.08em}.hist-freeze-card .v{font-size:22px;font-weight:900;margin-top:6px}.hist-freeze-table{width:100%;border-collapse:collapse;margin-top:12px}.hist-freeze-table th,.hist-freeze-table td{border-bottom:1px solid rgba(255,255,255,.1);padding:9px;text-align:left}.hist-freeze-table th{color:#f59e0b;font-size:12px;text-transform:uppercase}
+      @media print{button{display:none!important}.hist-freeze-screen{background:#fff;color:#111}.hist-freeze-card{border:1px solid #ddd;background:#fafafa}.hist-freeze-table th,.hist-freeze-table td{border-bottom:1px solid #ddd}}
+    `;
+    document.head.appendChild(css);
+  }catch(e){}
+})();
+
+function _v46PctFromSub(sub){
+  const s=String(sub||'');
+  let m=s.match(/(?:Atingido|Projetado)\s+(\d+(?:[,.]\d+)?)%/i);
+  if(!m) m=s.match(/(\d+(?:[,.]\d+)?)%/);
+  return m?m[1].replace('.',',')+'%':'';
+}
+const _oldMakeKpiV46 = typeof makeKpi==='function' ? makeKpi : null;
+if(_oldMakeKpiV46){
+  makeKpi=function(label,val,accent,sub='',extraClass='',mascote='',iconHtml=''){
+    const html=_oldMakeKpiV46(label,val,accent,sub,extraClass,mascote,iconHtml);
+    const raw=String(label||'');
+    if(/Mercantil realizado|Mercantil projetado|Serviços realizado|Serviços projetado|Caminhão realizado|Caminhão projetado/i.test(raw)){
+      const p=_v46PctFromSub(sub);
+      if(p && !html.includes('kpi-pct-badge')) return html.replace('</div>', `<div class="kpi-pct-badge">${esc(p)}</div></div>`);
+    }
+    return html;
+  }
+}
+
+function renderMuralAniversariantesDia(){
+  try{
+    const rows=(ANIVERSARIANTES||[]).map((r,i)=>({...r,_idx:i,_owner:aniversarioOwnerInfo(r)}));
+    const pendentes=rows.filter(r=>!isAniversarioEnviadoHoje(r));
+    const items=pendentes.slice(0,120).map(r=>({nome:r.cliente||'',info:`${r.filial||''} · resp. ${r._owner?.label||''}`}));
+    return `<div class="glass panel full mural-aniversariantes-dia" data-mural-aniversariantes="1"><div class="section-head" style="margin-bottom:6px"><div><h2 style="font-size:18px">🎂 Aniversariantes do dia</h2><div class="hint">Clientes de aniversário pendentes para saudação por WhatsApp. Ao enviar, sai deste mural.</div></div><span class="badge">${pendentes.length}/${rows.length}</span></div>${items.length?renderAvisoTicker('Aniversariantes do dia','Cliente e responsável pela saudação.',items,{icon:'🎂',color:'rgba(249,168,50,.25)'}):'<div class="empty" style="padding:12px">Nenhum aniversariante pendente para hoje.</div>'}</div>`;
+  }catch(e){return `<div class="glass panel full mural-aniversariantes-dia"><strong>🎂 Aniversariantes do dia</strong><div class="hint">Erro ao montar mural: ${esc(e.message||e)}</div></div>`}
+}
+
+const _oldRenderHighlightsV46 = typeof renderHighlights==='function' ? renderHighlights : null;
+if(_oldRenderHighlightsV46){
+  renderHighlights=function(){
+    let html=_oldRenderHighlightsV46()||'';
+    if(!html.includes('data-mural-aniversariantes')){
+      html += `<div class="section-head" style="margin:20px 0 8px"><div><h2>🎂 Mural de aniversariantes</h2><div class="hint">Saudações de aniversário do dia.</div></div></div>` + renderMuralAniversariantesDia();
+    }
+    return html;
+  }
+}
+
+function _v46Num(v){return Number(String(v??0).replace(/\./g,'').replace(',','.'))||0}
+function _v46CsvMoney(v){return 'R$ '+_v46Num(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function _v46CsvPct(v){return (_v46Num(v)).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%'}
+function _v46CurrentCommissionRows(){
+  try{return currentEntities().map(e=>{const m=calcMeta(e); const s=summarizeSalesCard(e)||{}; const c=commissionSummaryForEntity?commissionSummaryForEntity(e):{}; return {tipo:e.type||'',nome:e.nome||filialLabel(e.filial)||'',filial:e.filial||'',login:e.login||'',pendente:e.pendente||0,recebido:e.pago||0,meta_cobranca:m.geral||0,venda_mercantil:s.venda_realizado_total||s.venda||s.valor||0,servicos:s.servico_realizado_total||s.servicos||0,caminhao:s.caminhao_realizado_total||0,comissao_vendas:c.comissao_vendas||0,comissao_cobranca:c.comissao_cobranca||0,bonus:c.bonus_meta||0,rentab48:c.rentab48||0,rentab52:c.rentab52||0,rentab55:c.rentab55||0,total_previsto:c.total_previsto||0}})}catch(e){console.warn(e);return []}
+}
+function exportarComissaoAtualExcel(){
+  const rows=_v46CurrentCommissionRows();
+  const head=['Tipo','Nome','Filial','Login','Pendente','Recebido','Meta cobrança %','Venda mercantil','Serviços','Caminhão','Comissão vendas','Comissão cobrança','Bônus meta','Rentab 48','Rentab 52','Rentab 55','Total previsto'];
+  const lines=[head.join(';')].concat(rows.map(r=>[r.tipo,r.nome,r.filial,r.login,_v46CsvMoney(r.pendente),_v46CsvMoney(r.recebido),_v46CsvPct(r.meta_cobranca),_v46CsvMoney(r.venda_mercantil),_v46CsvMoney(r.servicos),_v46CsvMoney(r.caminhao),_v46CsvMoney(r.comissao_vendas),_v46CsvMoney(r.comissao_cobranca),_v46CsvMoney(r.bonus),_v46CsvMoney(r.rentab48),_v46CsvMoney(r.rentab52),_v46CsvMoney(r.rentab55),_v46CsvMoney(r.total_previsto)].map(x=>'"'+String(x??'').replace(/"/g,'""')+'"').join(';')));
+  const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='comissionamento_atual_'+mesAtualComissao()+'.csv'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+function abrirTelaComissionamentoAtual(){
+  try{
+    const key=document.getElementById('histComCurrentEntity')?.value||'';
+    const ent=currentEntities().find(e=>_comKeyNow(e)===key) || currentEntities()[0];
+    const m=calcMeta(ent); const s=summarizeSalesCard(ent)||{}; const c=commissionSummaryForEntity?commissionSummaryForEntity(ent):{};
+    const rows=[['Pendente',_v46CsvMoney(ent.pendente)],['Recebido',_v46CsvMoney(ent.pago)],['Meta cobrança',_v46CsvPct(m.geral)],['Venda mercantil',_v46CsvMoney(s.venda_realizado_total||s.venda||0)],['Serviços',_v46CsvMoney(s.servico_realizado_total||s.servicos||0)],['Caminhão',_v46CsvMoney(s.caminhao_realizado_total||0)],['Comissão vendas',_v46CsvMoney(c.comissao_vendas)],['Comissão cobrança',_v46CsvMoney(c.comissao_cobranca)],['Bônus/meta',_v46CsvMoney(c.bonus_meta)],['Total previsto',_v46CsvMoney(c.total_previsto)]];
+    const html=`<html><head><title>Comissionamento ${esc(ent.nome||'')}</title></head><body><div class="hist-freeze-screen"><button onclick="window.print()">Salvar PDF / Imprimir</button><div class="hist-freeze-header"><div><h1>${esc(ent.nome||filialLabel(ent.filial)||'Entidade')}</h1><div>${esc(ent.type||'')} · ${esc(ent.filial||'')} · mês ${esc(mesAtualComissao())}</div></div><div><strong>Dashboard MDL V6.5</strong><br>${new Date().toLocaleString('pt-BR')}</div></div><div class="hist-freeze-grid">${rows.map(r=>`<div class="hist-freeze-card"><div class="k">${esc(r[0])}</div><div class="v">${esc(r[1])}</div></div>`).join('')}</div><h2>Resumo para folha</h2><table class="hist-freeze-table"><tbody>${rows.map(r=>`<tr><th>${esc(r[0])}</th><td>${esc(r[1])}</td></tr>`).join('')}</tbody></table></div></body></html>`;
+    const w=window.open('about:blank','_blank'); w.document.write(html); w.document.close();
+  }catch(e){console.error(e); toast('Não foi possível montar tela congelada: '+(e.message||e));}
+}
+
+// Mensagem de aniversário do Diretor Comercial para saudação opcional.
+function mensagemDiretorAniversario(c){
+  const nome=(c.primeiro_nome||c.cliente||'').split(' ')[0]||'cliente';
+  return `Olá, ${nome}! Tudo bem?\n\nSou o Diretor Comercial das Lojas MDL - Móveis do Lar. Estou passando para desejar um feliz aniversário, muita saúde, paz e felicidades.\n\nAgradecemos por fazer parte da nossa história. Será sempre um prazer atender você em nossas lojas.`;
+}
+function abrirWhatsAniversarioDiretor(idx,tel){
+  const c=(ANIVERSARIANTES||[])[idx]; if(!c) return;
+  const num=String(tel||((c.telefones||[])[0]||'')).replace(/\D/g,'');
+  const owner={key:'diretor_comercial',nome:'Diretor Comercial',label:'Diretor Comercial',filial:c.filial||'',login:'diretorcomercial'};
+  const key=aniversarioClienteKey(c)+'|DIRETOR';
+  registrarCobrancaOnline({cliente:c.cliente,titulo:'ANIVERSARIO_DIRETOR',parcela:`ANIVERSARIO_DIRETOR|${key}`,cliente_key:key,cobranca_key:key,owner_key:owner.key,vencimento:c.nascimento||'',pendente:0,filial:c.filial,telefones:[num]}, {type:'diretor',filial:c.filial,nome:'Diretor Comercial',login:'diretorcomercial'}, num);
+  window.open(`https://wa.me/${num}?text=${encodeURIComponent(mensagemDiretorAniversario(c))}`,'_blank');
+}
+const _oldRenderAniversariantesTabV46 = typeof renderAniversariantesTab==='function' ? renderAniversariantesTab : null;
+if(_oldRenderAniversariantesTabV46){
+  renderAniversariantesTab=function(){
+    _oldRenderAniversariantesTabV46();
+    try{
+      if(!isPrivilegedUser()) return;
+      const box=document.getElementById('aniversariantesSection'); if(!box || box.querySelector('[data-diretor-aniv]')) return;
+      const rows=(ANIVERSARIANTES||[]).map((r,i)=>({...r,_idx:i,_owner:aniversarioOwnerInfo(r)}));
+      const html=`<div class="glass panel" data-diretor-aniv="1" style="margin-top:14px;border-color:rgba(249,168,50,.25)"><div class="section-head"><div><h2 style="font-size:18px">👔 Saudação do Diretor</h2><div class="hint">Lista geral para o Diretor Comercial também poder enviar uma saudação especial de aniversário.</div></div></div><div class="logs-list">${rows.slice(0,100).map(r=>`<div class="log-row" style="grid-template-columns:1.4fr .7fr 1fr auto"><div><strong>${esc(r.cliente||'')}</strong><div class="small muted">${esc(r.filial||'')} · ${esc(r.cidade||'')} · nasc. ${esc(r.nascimento||'')}</div></div><div><strong>${esc(r._owner?.label||'')}</strong><div class="small muted">Responsável original</div></div><div>${esc((r.telefones||[]).map(fmtTelBR).join(', '))}</div><div>${(r.telefones||[]).map(t=>`<button class="btn wa" onclick="abrirWhatsAniversarioDiretor(${r._idx},'${esc(t)}')">Diretor Whats ${esc(fmtTelBR(t))}</button>`).join('')}</div></div>`).join('') || '<div class="empty">Nenhum aniversariante carregado.</div>'}</div></div>`;
+      box.insertAdjacentHTML('beforeend',html);
+    }catch(e){console.warn(e)}
+  }
+}
+
+
+
+// ===== V4.7 HOTFIX: murais sem corte + comissionamento/freeze + diretor aniversariantes =====
+try{
+  const st=document.createElement('style');
+  st.textContent=`
+  /* Murais rotativos: nome em cima, detalhes abaixo, sem cortar responsável */
+  .aviso-ticker{overflow:hidden!important;width:100%!important;max-width:100%!important}
+  .aviso-ticker-track{display:flex!important;align-items:stretch!important;gap:10px!important}
+  .aviso-pill{
+    display:inline-grid!important;grid-template-columns:10px minmax(160px,1fr)!important;grid-template-rows:auto auto!important;
+    align-items:center!important;column-gap:8px!important;row-gap:2px!important;
+    max-width:360px!important;min-width:230px!important;white-space:normal!important;line-height:1.15!important;
+    overflow:hidden!important;text-overflow:clip!important;padding:8px 12px!important;border-radius:16px!important;
+  }
+  .aviso-pill .red-dot{grid-row:1 / span 2!important;grid-column:1!important;align-self:center!important;flex:0 0 auto!important}
+  .aviso-pill small{display:block!important;grid-column:2!important;grid-row:2!important;margin-left:0!important;font-size:10.5px!important;line-height:1.2!important;color:#aeb7ca!important;white-space:normal!important;overflow:hidden!important;text-overflow:ellipsis!important}
+  .aviso-pill .ticker-main{grid-column:2!important;grid-row:1!important;font-size:12.5px!important;font-weight:950!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;color:#f4f7ff!important}
+  @media(max-width:900px){.aviso-pill{min-width:210px!important;max-width:300px!important}.aviso-pill .ticker-main{font-size:11.5px!important}.aviso-pill small{font-size:10px!important}}
+  /* Diretor não edita mensagem global/filial de aniversário; só mensagem própria */
+  body.diretor-view #anivMsgTemplate, body.diretor-view #anivMsgTemplateFilial, body.diretor-view #anivMsgFilial{ }
+  body.diretor-view .aniv-admin-only{display:none!important}
+  .director-msg-card{border-color:rgba(249,168,50,.35)!important;background:rgba(249,168,50,.06)!important}
+  `;
+  document.head.appendChild(st);
+}catch(e){}
+
+// Render ticker substituído para aceitar quebra de linha: cliente/nome em cima; responsável/detalhes embaixo.
+function renderAvisoTicker(title,hint,entries,opts={}){
+  const icon=opts.icon||'•';
+  const color=opts.color||'rgba(249,168,50,.25)';
+  const arr=(entries||[]).map(e=>typeof e==='string'?{nome:e,info:''}:e).filter(e=>(e.nome||e.label||'').trim());
+  const doubled=arr.concat(arr).concat(arr);
+  const safeId='ticker_'+Math.random().toString(36).slice(2);
+  if(!arr.length) return `<div class="empty">Nenhuma informação no momento.</div>`;
+  return `<div class="glass panel full aviso-rotativo" style="border-color:${color}"><div class="section-head" style="margin-bottom:6px"><div><h2 style="font-size:18px">${esc(icon)} ${esc(title||'Mural')}</h2><div class="hint">${esc(hint||'')}</div></div><div style="display:flex;gap:8px;align-items:center"><span class="badge">${arr.length}</span><button class="btn soft ticker-speed-btn" onclick="toggleTickerSpeed('${safeId}',this)">⚡ Acelerar</button></div></div><div id="${safeId}" class="aviso-ticker"><div class="aviso-ticker-track" style="animation-duration:1800s">${doubled.map(e=>`<span class="aviso-pill"><i class="red-dot"></i><span class="ticker-main">${esc(e.nome||e.label||'')}</span><small>${esc(e.info||'')}</small></span>`).join('')}</div></div></div>`;
+}
+
+// Fallback seguro para resumo de comissionamento. Evita erro commissionSummaryForEntity is not defined.
+function _v47CommissionSummarySafe(ent){
+  try{ if(typeof commissionSummaryForEntity==='function') return commissionSummaryForEntity(ent)||{}; }catch(e){}
+  try{ if(ent && ent._commission) return ent._commission; }catch(e){}
+  return {comissao_vendas:0,comissao_cobranca:0,bonus_meta:0,rentab48:0,rentab52:0,rentab55:0,total_previsto:0};
+}
+function _v47MoneyNum(v){
+  if(typeof v==='number' && isFinite(v)) return v;
+  let s=String(v??'').trim();
+  if(!s) return 0;
+  s=s.replace(/R\$/g,'').replace(/\s/g,'');
+  if(s.includes(',') && s.includes('.')) s=s.replace(/\./g,'').replace(',','.');
+  else if(s.includes(',')) s=s.replace(',','.');
+  const n=Number(s); return isFinite(n)?n:0;
+}
+function _v47FmtMoney(v){return _v47MoneyNum(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});}
+function _v47FmtPct(v){return _v47MoneyNum(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%';}
+function _v46CsvMoney(v){return _v47FmtMoney(v)}
+function _v46CsvPct(v){return _v47FmtPct(v)}
+function _v47SalesSafe(ent){try{return summarizeSalesCard(ent)||{}}catch(e){return {}}}
+function _v47MetaSafe(ent){try{return calcMeta(ent)||{}}catch(e){return {}}}
+function _v46CurrentCommissionRows(){
+  try{return currentEntities().map(e=>{const m=_v47MetaSafe(e); const s=_v47SalesSafe(e); const c=_v47CommissionSummarySafe(e); return {
+    tipo:e.type||'',nome:e.nome||filialLabel(e.filial)||'',filial:e.filial||'',login:e.login||'',
+    pendente:_v47MoneyNum(e.pendente),recebido:_v47MoneyNum(e.pago),meta_cobranca:_v47MoneyNum(m.geral),
+    venda_mercantil:_v47MoneyNum(s.venda_realizado_total??s.venda??s.valor??0),servicos:_v47MoneyNum(s.servico_realizado_total??s.servicos??0),caminhao:_v47MoneyNum(s.caminhao_realizado_total??0),
+    comissao_vendas:_v47MoneyNum(c.comissao_vendas),comissao_cobranca:_v47MoneyNum(c.comissao_cobranca),bonus:_v47MoneyNum(c.bonus_meta),rentab48:_v47MoneyNum(c.rentab48),rentab52:_v47MoneyNum(c.rentab52),rentab55:_v47MoneyNum(c.rentab55),total_previsto:_v47MoneyNum(c.total_previsto)
+  }})}catch(e){console.warn('export comissao rows',e);return []}
+}
+function exportarComissaoAtualExcel(){
+  const rows=_v46CurrentCommissionRows();
+  const head=['Tipo','Nome','Filial','Login','Pendente','Recebido','Meta cobrança %','Venda mercantil','Serviços','Caminhão','Comissão vendas','Comissão cobrança','Bônus meta','Rentab 48','Rentab 52','Rentab 55','Total previsto'];
+  const lines=[head.join(';')].concat(rows.map(r=>[r.tipo,r.nome,r.filial,r.login,_v47FmtMoney(r.pendente),_v47FmtMoney(r.recebido),_v47FmtPct(r.meta_cobranca),_v47FmtMoney(r.venda_mercantil),_v47FmtMoney(r.servicos),_v47FmtMoney(r.caminhao),_v47FmtMoney(r.comissao_vendas),_v47FmtMoney(r.comissao_cobranca),_v47FmtMoney(r.bonus),_v47FmtMoney(r.rentab48),_v47FmtMoney(r.rentab52),_v47FmtMoney(r.rentab55),_v47FmtMoney(r.total_previsto)].map(x=>'"'+String(x??'').replace(/"/g,'""')+'"').join(';')));
+  const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='comissionamento_atual_'+(typeof mesAtualComissao==='function'?mesAtualComissao():'mes')+'.csv'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  toast(`Excel/CSV de comissionamento gerado com ${rows.length} linha(s).`,'success');
+}
+function _v47ResumoRows(ent){
+  const m=_v47MetaSafe(ent); const s=_v47SalesSafe(ent); const c=_v47CommissionSummarySafe(ent);
+  return [
+    ['Pendente cobrança',_v47FmtMoney(ent?.pendente)],['Recebido cobrança',_v47FmtMoney(ent?.pago)],['Meta cobrança',_v47FmtPct(m.geral)],
+    ['Venda mercantil',_v47FmtMoney(s.venda_realizado_total??s.venda??0)],['Serviços',_v47FmtMoney(s.servico_realizado_total??s.servicos??0)],['Caminhão',_v47FmtMoney(s.caminhao_realizado_total??0)],
+    ['Comissão vendas',_v47FmtMoney(c.comissao_vendas)],['Comissão cobrança',_v47FmtMoney(c.comissao_cobranca)],['Bônus/meta',_v47FmtMoney(c.bonus_meta)],['Rentab 48',_v47FmtMoney(c.rentab48)],['Rentab 52',_v47FmtMoney(c.rentab52)],['Rentab 55',_v47FmtMoney(c.rentab55)],['Total previsto',_v47FmtMoney(c.total_previsto)]
+  ];
+}
+function abrirTelaComissionamentoAtual(){
+  try{
+    const key=document.getElementById('histComCurrentEntity')?.value||'';
+    const ents=currentEntities();
+    const ent=ents.find(e=>(typeof _comKeyNow==='function'?_comKeyNow(e):(e.nome+'_'+e.filial))===key) || ents[0];
+    if(!ent) throw new Error('Nenhum usuário/filial encontrado para congelar.');
+    const rows=_v47ResumoRows(ent);
+    const title=ent.nome||filialLabel(ent.filial)||'Entidade';
+    const html=`<!doctype html><html><head><meta charset="utf-8"><title>Comissionamento ${esc(title)}</title><style>body{font-family:Arial,Helvetica,sans-serif;background:#080b10;color:#f4f7ff;padding:24px}.hist-freeze-screen{max-width:1100px;margin:auto}.hist-freeze-header{display:flex;justify-content:space-between;gap:16px;border:1px solid #334155;border-radius:18px;padding:18px;margin-bottom:16px;background:#111827}.hist-freeze-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.hist-freeze-card{background:#111827;border:1px solid #334155;border-radius:16px;padding:14px}.k{font-size:11px;text-transform:uppercase;color:#9ca3af;font-weight:800}.v{font-size:20px;font-weight:900;margin-top:6px}.hist-freeze-table{width:100%;border-collapse:collapse;margin-top:18px}.hist-freeze-table th,.hist-freeze-table td{border:1px solid #334155;padding:10px;text-align:left}button{padding:10px 14px;border-radius:10px;border:0;font-weight:800}@media print{button{display:none}body{background:white;color:black}.hist-freeze-header,.hist-freeze-card{background:white;color:black;border-color:#ddd}}</style></head><body><div class="hist-freeze-screen"><button onclick="window.print()">Salvar PDF / Imprimir</button><div class="hist-freeze-header"><div><h1>${esc(title)}</h1><div>${esc(ent.type||'')} · ${esc(ent.filial||'')} · mês ${esc(typeof mesAtualComissao==='function'?mesAtualComissao():'')}</div></div><div><strong>Dashboard MDL V6.5</strong><br>${new Date().toLocaleString('pt-BR')}</div></div><div class="hist-freeze-grid">${rows.map(r=>`<div class="hist-freeze-card"><div class="k">${esc(r[0])}</div><div class="v">${esc(r[1])}</div></div>`).join('')}</div><h2>Resumo para folha</h2><table class="hist-freeze-table"><tbody>${rows.map(r=>`<tr><th>${esc(r[0])}</th><td>${esc(r[1])}</td></tr>`).join('')}</tbody></table></div></body></html>`;
+    const w=window.open('about:blank','_blank'); if(!w) throw new Error('Pop-up bloqueado pelo navegador.'); w.document.open(); w.document.write(html); w.document.close();
+  }catch(e){console.error(e); toast('Não foi possível montar tela congelada: '+(e.message||e),'warn');}
+}
+
+// Diretor: usa somente mensagem própria de aniversário.
+function diretorAnivTemplateAtual(){return CONFIG_META.aniversario_msg_template_diretor||`Olá, {primeiro_nome}! Tudo bem?\n\nSou o Diretor Comercial das Lojas MDL - Móveis do Lar. Estou passando para desejar um feliz aniversário, muita saúde, paz e felicidades.\n\nAgradecemos por fazer parte da nossa história. Será sempre um prazer atender você em nossas lojas.`}
+async function salvarMensagemAniversarioDiretor(){CONFIG_META.aniversario_msg_template_diretor=document.getElementById('anivMsgDiretorTemplate')?.value||diretorAnivTemplateAtual(); try{const resp=await fetch(API_CFG,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({global:CONFIG_META,individual:CONFIG_META_IND})}); const j=await resp.json(); toast(j.ok?'Mensagem do Diretor salva.':'Mensagem do Diretor salva localmente.',j.ok?'success':'warn')}catch(e){toast('Mensagem do Diretor salva localmente para teste.','success')}}
+function mensagemDiretorAniversario(c){
+  const vars={primeiro_nome:(c.primeiro_nome||c.cliente||'cliente').split(' ')[0],nome:c.cliente||'',filial:c.filial||'',cidade:c.cidade||'',nascimento:c.nascimento||''};
+  let msg=diretorAnivTemplateAtual(); Object.keys(vars).forEach(k=>{msg=msg.replaceAll('{'+k+'}', vars[k])}); return sanitizeWhatsText(msg);
+}
+function _v47ApplyDiretorAnivLayout(){
+  try{
+    if(!document.body.classList.contains('diretor-view')) return;
+    const box=aniversariantesSection; if(!box || box.querySelector('#anivMsgDiretorTemplate')) return;
+    box.querySelectorAll('.input-card').forEach(card=>{ if(card.querySelector('#anivMsgTemplate')||card.querySelector('#anivMsgTemplateFilial')||card.querySelector('#anivMsgFilial')) card.classList.add('aniv-admin-only'); });
+    const host=box.querySelector('.glass.panel');
+    if(host){host.insertAdjacentHTML('beforeend',`<div class="input-card director-msg-card" style="margin-top:12px"><label>Mensagem própria do Diretor</label><textarea id="anivMsgDiretorTemplate" rows="5" style="min-height:120px;width:100%;resize:vertical">${esc(diretorAnivTemplateAtual())}</textarea><div class="hint">Variáveis: {primeiro_nome}, {nome}, {filial}, {cidade}, {nascimento}</div><button class="btn primary" style="margin-top:8px" onclick="salvarMensagemAniversarioDiretor()">Salvar minha mensagem</button></div>`)}
+  }catch(e){console.log('diretor aniv layout',e)}
+}
+const _oldRenderAnivV47=typeof renderAniversariantesTab==='function'?renderAniversariantesTab:null;
+if(_oldRenderAnivV47){renderAniversariantesTab=function(){const r=_oldRenderAnivV47(); setTimeout(_v47ApplyDiretorAnivLayout,60); return r;}}
+
+
+
+// ===== V4.8 HOTFIX: acelerar, comissionamento completo e diretor aniversariantes enxuto =====
+(function(){
+  try{
+    const st=document.createElement('style');
+    st.textContent=`
+      .aviso-ticker{overflow:hidden!important;max-width:100%!important;position:relative}
+      .aviso-ticker-track{will-change:transform;display:flex;gap:10px;align-items:stretch;width:max-content;animation-name:tickerMove;animation-timing-function:linear;animation-iteration-count:infinite;animation-duration:1800s}
+      .aviso-ticker.fast .aviso-ticker-track{animation-duration:28s!important}
+      .aviso-pill{min-width:230px;max-width:360px;white-space:normal!important;line-height:1.22;align-items:flex-start!important;padding:10px 13px!important;display:inline-flex!important;flex-direction:column!important;gap:3px!important}
+      .aviso-pill .ticker-main{font-size:13px;font-weight:950;color:#f4f7ff;display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .aviso-pill small{font-size:11px!important;color:#9ca3af!important;display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .aniv-diretor-only-card{border-color:rgba(249,168,50,.35)!important}
+      body.diretor-view .aniv-admin-only{display:none!important}
+    `;
+    document.head.appendChild(st);
+  }catch(e){}
+})();
+
+// Aceita os dois formatos já usados no código: toggleTickerSpeed(this) e toggleTickerSpeed('id', this)
+function toggleTickerSpeed(arg1,arg2){
+  try{
+    let box=null, btn=null;
+    if(typeof arg1==='string'){
+      box=document.getElementById(arg1);
+      btn=arg2||null;
+    }else{
+      btn=arg1||null;
+      box=btn?.closest('.glass.panel,.aviso-rotativo')?.querySelector('.aviso-ticker');
+    }
+    if(!box) return;
+    const fast=!box.classList.contains('fast');
+    box.classList.toggle('fast',fast);
+    const track=box.querySelector('.aviso-ticker-track');
+    if(track) track.style.animationDuration=fast?'28s':'1800s';
+    if(btn){btn.textContent=fast?'🐢 Normal':'⚡ Acelerar'; btn.classList.toggle('primary',fast);}
+  }catch(e){console.warn('toggleTickerSpeed',e)}
+}
+
+function _v48AllComissaoEntities(){
+  const out=[]; const seen=new Set();
+  function add(e){if(!e) return; const k=_v48EntKey(e); if(seen.has(k)) return; seen.add(k); out.push(e);}
+  try{flattenVendedores().forEach(add)}catch(e){}
+  try{flattenFiliais().forEach(add)}catch(e){}
+  try{crediaristaEntities().forEach(add)}catch(e){}
+  try{add(thirdChargeEntity())}catch(e){}
+  return out;
+}
+function _v48EntKey(e){return `${e?.type||'ent'}::${e?.filial||''}::${String(e?.login||e?.nome||'').toLowerCase()}`}
+function _v48SelectedEnt(){
+  const key=document.getElementById('histComCurrentEntity')?.value||'';
+  const ents=_v48AllComissaoEntities();
+  return ents.find(e=>_v48EntKey(e)===key || (typeof _comKeyNow==='function' && _comKeyNow(e)===key)) || ents[0] || null;
+}
+function _v48MoneyTextToNum(v){
+  if(typeof v==='number') return v;
+  let s=String(v||'').replace(/R\$/g,'').replace(/%/g,'').trim();
+  if(!s) return 0;
+  s=s.replace(/\./g,'').replace(',', '.').replace(/[^0-9.-]/g,'');
+  const n=parseFloat(s); return Number.isFinite(n)?n:0;
+}
+function _v48RowVal(row, keys){try{return salesCell(row,keys)||''}catch(e){return ''}}
+function _v48SalesRow(ent,key){try{return (getSalesRows(ent,key)||[])[0]||null}catch(e){return null}}
+function _v48SalesBlock(ent,key){
+  const row=_v48SalesRow(ent,key);
+  if(!row) return {meta_total:0,real_total:0,ating_total:0,meta_periodo:0,real_periodo:0,ating_periodo:0,projetado:0};
+  return {
+    meta_total:_v48MoneyTextToNum(_v48RowVal(row,['Meta (R$) Total','Meta(R$) Total'])),
+    real_total:_v48MoneyTextToNum(_v48RowVal(row,['Realizado (R$) Total','Realizado(R$) Total'])),
+    ating_total:_v48MoneyTextToNum(_v48RowVal(row,['Atingido Total'])),
+    meta_periodo:_v48MoneyTextToNum(_v48RowVal(row,['Meta (R$) Período','Meta(R$) Período'])),
+    real_periodo:_v48MoneyTextToNum(_v48RowVal(row,['Realizado (R$) Período','Realizado(R$) Período'])),
+    ating_periodo:_v48MoneyTextToNum(_v48RowVal(row,['Atingido Período'])),
+    projetado:_v48MoneyTextToNum(_v48RowVal(row,['Projetado (R$)','Projetado(R$)']))
+  };
+}
+function _v48ServiceTotal(ent){try{return Number(servicosEntidadeTotal(ent)||0)}catch(e){return 0}}
+function _v48FmtMoney(v){try{return R(Number(v||0))}catch(e){return 'R$ 0,00'}}
+function _v48FmtPct(v){return (Number(v||0)).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%'}
+function _v48Commission(ent){try{return calcCommissionSummary(ent)||{}}catch(e){return {}}}
+function _v48CommissionRow(ent){
+  const meta=calcMeta(ent); const venda=_v48SalesBlock(ent, ent.type==='filial'?'venda_filial_meta':'venda_filial_vendedor_meta');
+  const serv=_v48SalesBlock(ent, ent.type==='filial'?'servico_filial_ouro_fob':'servico_filial_vendedor_ouro_fob');
+  const cam=_v48SalesBlock(ent, ent.type==='filial'?'venda_filial_subgrupo_20k':'venda_vendedor_subgrupo_20k');
+  const c=_v48Commission(ent);
+  const servReal=_v48ServiceTotal(ent)||serv.real_total||Number(c.servReal||0);
+  const vendaReal=venda.real_total||Number(c.vendaRealBruto||0)||Number(c.vendaReal||0);
+  const camReal=cam.real_total||Number(c.camReal||0);
+  return {
+    tipo:ent.type||'', nome:ent.nome||filialLabel(ent.filial)||'', filial:ent.filial||'', login:ent.login||'',
+    pendente:Number(ent.pendente||0), recebido:Number(ent.pago||0), meta_cobranca:Number(meta.geral||0),
+    grave_alvo:Number(meta.grave?.alvo||0), grave_rec:Number(meta.grave?.rec||0), alerta_alvo:Number(meta.alerta?.alvo||0), alerta_rec:Number(meta.alerta?.rec||0), atencao_alvo:Number(meta.atencao?.alvo||0), atencao_rec:Number(meta.atencao?.rec||0),
+    venda_meta_total:venda.meta_total, venda_real_total:vendaReal, venda_ating_total:venda.ating_total, venda_meta_periodo:venda.meta_periodo, venda_real_periodo:venda.real_periodo, venda_ating_periodo:venda.ating_periodo, venda_projetado:venda.projetado,
+    servico_meta_total:serv.meta_total, servico_real_total:servReal, servico_ating_total:serv.ating_total, servico_meta_periodo:serv.meta_periodo, servico_real_periodo:serv.real_periodo, servico_ating_periodo:serv.ating_periodo, servico_projetado:serv.projetado,
+    caminhao_meta_total:cam.meta_total, caminhao_real_total:camReal, caminhao_ating_total:cam.ating_total, caminhao_projetado:cam.projetado,
+    faixa:String(c.faixaTxt||''), comissao_mercantil:Number(c.vendasComissao||0), comissao_servicos:Number(c.servicosComissao||0), comissao_caminhao:Number(c.caminhaoComissao||0), bonus_meta:Number(c.bonusMeta||0), rentab48:Number(c.rent48||0), rentab52:Number(c.rent52||0), rentab55:Number(c.rent55||0), total_previsto:Number(c.totalPrevisto||0)
+  };
+}
+function _v48CSVCell(v){return '"'+String(v??'').replace(/"/g,'""')+'"'}
+function exportarComissaoAtualExcel(){
+  const rows=_v48AllComissaoEntities().map(_v48CommissionRow);
+  const head=['Tipo','Nome','Filial','Login','Pendente','Recebido','Meta cobrança %','Grave alvo','Grave recebido','Alerta alvo','Alerta recebido','Atenção alvo','Atenção recebido','Venda meta total','Venda realizado total','Venda atingido total %','Venda meta período','Venda realizado período','Venda atingido período %','Venda projetado','Serviço meta total','Serviço realizado total','Serviço atingido total %','Serviço meta período','Serviço realizado período','Serviço atingido período %','Serviço projetado','Caminhão meta total','Caminhão realizado total','Caminhão atingido %','Caminhão projetado','Faixa comissão','Comissão mercantil','Comissão serviços','Comissão caminhão','Bônus meta','Rentab 48','Rentab 52,15','Rentab 55,50','Total previsto'];
+  const moneyFields=new Set(['Pendente','Recebido','Grave alvo','Grave recebido','Alerta alvo','Alerta recebido','Atenção alvo','Atenção recebido','Venda meta total','Venda realizado total','Venda meta período','Venda realizado período','Venda projetado','Serviço meta total','Serviço realizado total','Serviço meta período','Serviço realizado período','Serviço projetado','Caminhão meta total','Caminhão realizado total','Caminhão projetado','Comissão mercantil','Comissão serviços','Comissão caminhão','Bônus meta','Rentab 48','Rentab 52,15','Rentab 55,50','Total previsto']);
+  const pctFields=new Set(['Meta cobrança %','Venda atingido total %','Venda atingido período %','Serviço atingido total %','Serviço atingido período %','Caminhão atingido %']);
+  const vals=r=>[r.tipo,r.nome,r.filial,r.login,r.pendente,r.recebido,r.meta_cobranca,r.grave_alvo,r.grave_rec,r.alerta_alvo,r.alerta_rec,r.atencao_alvo,r.atencao_rec,r.venda_meta_total,r.venda_real_total,r.venda_ating_total,r.venda_meta_periodo,r.venda_real_periodo,r.venda_ating_periodo,r.venda_projetado,r.servico_meta_total,r.servico_real_total,r.servico_ating_total,r.servico_meta_periodo,r.servico_real_periodo,r.servico_ating_periodo,r.servico_projetado,r.caminhao_meta_total,r.caminhao_real_total,r.caminhao_ating_total,r.caminhao_projetado,r.faixa,r.comissao_mercantil,r.comissao_servicos,r.comissao_caminhao,r.bonus_meta,r.rentab48,r.rentab52,r.rentab55,r.total_previsto];
+  const lines=[head.join(';')].concat(rows.map(r=>vals(r).map((v,i)=>moneyFields.has(head[i])?_v48CSVCell(_v48FmtMoney(v)):(pctFields.has(head[i])?_v48CSVCell(_v48FmtPct(v)):_v48CSVCell(v))).join(';')));
+  const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='comissionamento_completo_'+(typeof mesAtualComissao==='function'?mesAtualComissao():'mes')+'.csv'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1200);
+  toast(`Excel/CSV completo gerado com ${rows.length} linha(s).`,'success');
+}
+function _v48FreezeCard(t,v){return `<div class="hist-freeze-card"><div class="k">${esc(t)}</div><div class="v">${esc(v)}</div></div>`}
+function abrirTelaComissionamentoAtual(){
+  try{
+    const ent=_v48SelectedEnt(); if(!ent) throw new Error('Nenhum usuário/filial encontrado.');
+    const r=_v48CommissionRow(ent); const title=r.nome||'Entidade';
+    const cards=[['Pendente cobrança',_v48FmtMoney(r.pendente)],['Recebido cobrança',_v48FmtMoney(r.recebido)],['Meta cobrança',_v48FmtPct(r.meta_cobranca)],['Venda mercantil',_v48FmtMoney(r.venda_real_total)],['Venda atingido',_v48FmtPct(r.venda_ating_total)],['Venda projetado',_v48FmtMoney(r.venda_projetado)],['Serviços',_v48FmtMoney(r.servico_real_total)],['Serviço atingido',_v48FmtPct(r.servico_ating_total)],['Serviço projetado',_v48FmtMoney(r.servico_projetado)],['Caminhão',_v48FmtMoney(r.caminhao_real_total)],['Comissão mercantil',_v48FmtMoney(r.comissao_mercantil)],['Comissão serviços',_v48FmtMoney(r.comissao_servicos)],['Comissão caminhão',_v48FmtMoney(r.comissao_caminhao)],['Bônus/meta',_v48FmtMoney(r.bonus_meta)],['Rentab 48%',_v48FmtMoney(r.rentab48)],['Rentab 52,15%',_v48FmtMoney(r.rentab52)],['Rentab 55,50%',_v48FmtMoney(r.rentab55)],['Total previsto',_v48FmtMoney(r.total_previsto)]];
+    const html=`<!doctype html><html><head><meta charset="utf-8"><title>Comissionamento ${esc(title)}</title><style>body{font-family:Arial,Helvetica,sans-serif;background:#080b10;color:#f4f7ff;padding:24px}.hist-freeze-screen{max-width:1180px;margin:auto}.hist-freeze-header{display:flex;justify-content:space-between;gap:16px;border:1px solid #334155;border-radius:18px;padding:18px;margin-bottom:16px;background:#111827}.hist-freeze-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.hist-freeze-card{background:#111827;border:1px solid #334155;border-radius:16px;padding:14px}.k{font-size:11px;text-transform:uppercase;color:#9ca3af;font-weight:800}.v{font-size:20px;font-weight:900;margin-top:6px}.hist-freeze-table{width:100%;border-collapse:collapse;margin-top:18px}.hist-freeze-table th,.hist-freeze-table td{border:1px solid #334155;padding:10px;text-align:left}button{padding:10px 14px;border-radius:10px;border:0;font-weight:800}@media print{button{display:none}body{background:white;color:black}.hist-freeze-header,.hist-freeze-card{background:white;color:black;border-color:#ddd}}</style></head><body><div class="hist-freeze-screen"><button onclick="window.print()">Salvar PDF / Imprimir</button><div class="hist-freeze-header"><div><h1>${esc(title)}</h1><div>${esc(r.tipo)} · ${esc(r.filial)} · mês ${esc(typeof mesAtualComissao==='function'?mesAtualComissao():'')}</div></div><div><strong>Dashboard MDL V6.5</strong><br>${new Date().toLocaleString('pt-BR')}</div></div><div class="hist-freeze-grid">${cards.map(x=>_v48FreezeCard(x[0],x[1])).join('')}</div><h2>Resumo para folha</h2><table class="hist-freeze-table"><tbody>${cards.map(x=>`<tr><th>${esc(x[0])}</th><td>${esc(x[1])}</td></tr>`).join('')}</tbody></table></div></body></html>`;
+    const w=window.open('about:blank','_blank'); if(!w) throw new Error('Pop-up bloqueado pelo navegador.'); w.document.open(); w.document.write(html); w.document.close();
+  }catch(e){console.error(e); toast('Não foi possível montar tela congelada: '+(e.message||e),'warn');}
+}
+function renderHistoricoComissaoResults(){
+  const box=document.getElementById('histComResults'); if(!box) return;
+  const ents=_v48AllComissaoEntities();
+  const currentPanel=`<div class="glass panel" style="margin-bottom:14px"><div class="section-head"><div><h2 style="font-size:18px">🧊 Tela individual congelada atual</h2><div class="hint">Escolha usuário/filial/crediarista/terceiro. A tela e o Excel usam vendas, serviços, cobrança, bônus e comissões atuais.</div></div></div><div class="form-grid"><div class="input-card"><label>Usuário / filial</label><select id="histComCurrentEntity">${ents.map(e=>`<option value="${esc(_v48EntKey(e))}">${esc(e.nome||filialLabel(e.filial)||'Entidade')} · ${esc(e.filial||'')}</option>`).join('')}</select></div><div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap"><button class="btn primary" onclick="abrirTelaComissionamentoAtual()">Abrir tela congelada</button><button class="btn soft" onclick="exportarComissaoAtualExcel()">Exportar Excel completo</button></div></div></div>`;
+  const months=(typeof _histComMeses==='function'?_histComMeses():[]); const current=document.getElementById('histComMonth')?.value || months[0] || (typeof mesAtualComissao==='function'?mesAtualComissao():'');
+  const snap=HIST_COMISSAO?.months?.[current];
+  if(!snap){box.innerHTML=currentPanel+`<div class="empty">Nenhum histórico salvo para ${esc(current)}. Você já pode abrir a tela congelada atual ou exportar o Excel completo acima.</div>`; return;}
+  const rows=[...(snap.entidades||[])].sort((a,b)=>String(a.tipo).localeCompare(String(b.tipo),'pt-BR')||String(a.nome).localeCompare(String(b.nome),'pt-BR'));
+  box.innerHTML=currentPanel+`<div class="kpis">${makeKpi('Mês',esc(snap.month||current),'var(--blue)')}${makeKpi('Total previsto',R(snap.total_previsto||0),'var(--green)')}${makeKpi('Entidades',String(rows.length),'var(--orange)')}${makeKpi('Salvo em',esc((snap.atualizado_em_br||snap.gerado_em||'').replace('T',' ').slice(0,19)),'var(--blue)')}</div>`+(typeof renderComissionamentoHistoricoTable==='function'?renderComissionamentoHistoricoTable(rows):'');
+}
+function _v48IsDiretorView(){return !!(usuarioAtual && usuarioAtual.tipo==='master' && usuarioAtual.roleLabel==='Diretor Comercial')}
+function _v48ApplyAnivPermissions(){
+  try{
+    const box=aniversariantesSection; if(!box) return;
+    if(_v48IsDiretorView()){
+      // Diretor: só lista + mensagem própria. Remove config global/filial do master.
+      box.querySelectorAll('textarea#anivMsgTemplate, textarea#anivMsgTemplateFilial, select#anivMsgFilial').forEach(el=>{const card=el.closest('.input-card')||el.closest('.glass.panel'); if(card) card.style.display='none';});
+      box.querySelectorAll('button').forEach(b=>{const tx=(b.textContent||'').toLowerCase(); if(tx.includes('salvar mensagem global')||tx.includes('salvar mensagem desta filial')){const card=b.closest('.input-card')||b; card.style.display='none';}});
+      if(!box.querySelector('#anivMsgDiretorTemplate')){
+        const panel=box.querySelector('.glass.panel');
+        if(panel) panel.insertAdjacentHTML('beforeend',`<div class="input-card aniv-diretor-only-card" style="margin-top:12px"><label>Minha mensagem de aniversário como Diretor</label><textarea id="anivMsgDiretorTemplate" rows="5" style="min-height:120px;width:100%;resize:vertical">${esc(diretorAnivTemplateAtual())}</textarea><div class="hint">Esta mensagem é só para o envio do Diretor. O Master configura mensagens globais/filiais.</div><button class="btn primary" style="margin-top:8px" onclick="salvarMensagemAniversarioDiretor()">Salvar minha mensagem</button></div>`);
+      }
+    }else if(usuarioAtual?.tipo==='master'){
+      // Master: mantém global/filial e também configura mensagem individual do Diretor.
+      if(!box.querySelector('#anivMsgDiretorTemplateMaster')){
+        const panel=box.querySelector('.glass.panel');
+        if(panel) panel.insertAdjacentHTML('beforeend',`<div class="input-card aniv-diretor-only-card" style="margin-top:12px"><label>Mensagem individual do Diretor Comercial</label><textarea id="anivMsgDiretorTemplateMaster" rows="5" style="min-height:120px;width:100%;resize:vertical">${esc(diretorAnivTemplateAtual())}</textarea><div class="hint">Mensagem usada quando o Diretor enviar saudação de aniversário.</div><button class="btn primary" style="margin-top:8px" onclick="CONFIG_META.aniversario_msg_template_diretor=document.getElementById('anivMsgDiretorTemplateMaster').value; salvarMensagemAniversarioDiretor()">Salvar mensagem do Diretor</button></div>`);
+      }
+    }
+  }catch(e){console.warn('aniv permissions',e)}
+}
+const _v48RenderAnivBase = typeof renderAniversariantesTab==='function' ? renderAniversariantesTab : null;
+if(_v48RenderAnivBase){ renderAniversariantesTab=function(){ const r=_v48RenderAnivBase(); setTimeout(_v48ApplyAnivPermissions,80); return r; } }
+const _v48SetHistModeBase = typeof setHistMode==='function' ? setHistMode : null;
+if(_v48SetHistModeBase){ setHistMode=function(mode){ const r=_v48SetHistModeBase(mode); if(mode==='comissao') setTimeout(renderHistoricoComissaoResults,80); return r; } }
+try{setTimeout(()=>{if((typeof mainTab!=='undefined') && mainTab==='historico' && (window._histMode==='comissao')) renderHistoricoComissaoResults();},1200)}catch(e){}
+
+
+// ===== V4.9 HOTFIX: diretor aniversario somente leitura + mensagem correta + ticker funcional =====
+(function(){
+  try{
+    const css=document.createElement('style');
+    css.textContent=`
+      .aviso-ticker{overflow:hidden!important;max-width:100%!important;position:relative!important}
+      .aviso-ticker-track{display:flex!important;gap:10px!important;align-items:stretch!important;width:max-content!important;white-space:nowrap!important;will-change:transform!important;animation-name:mdlTicker!important;animation-timing-function:linear!important;animation-iteration-count:infinite!important;animation-duration:900s!important;animation-play-state:running!important}
+      .aviso-ticker.fast .aviso-ticker-track{animation-duration:26s!important}
+      .aviso-ticker .aviso-pill{display:inline-flex!important;flex-direction:column!important;align-items:flex-start!important;justify-content:center!important;min-width:210px!important;max-width:300px!important;white-space:normal!important;line-height:1.15!important;overflow:hidden!important}
+      .aviso-ticker .aviso-pill .ticker-main{display:block!important;max-width:100%!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;font-size:13px!important;font-weight:900!important}
+      .aviso-ticker .aviso-pill small{display:block!important;max-width:100%!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;font-size:11px!important;opacity:.78!important;margin-top:3px!important}
+      .ticker-speed-btn{min-width:106px!important;justify-content:center!important}
+      .aniv-diretor-readonly-card textarea{opacity:.92!important;background:rgba(255,255,255,.035)!important}
+    `;
+    document.head.appendChild(css);
+  }catch(e){}
+})();
+
+function toggleTickerSpeed(a,b){
+  try{
+    let box=null, btn=null;
+    if(typeof a==='string'){
+      box=document.getElementById(a);
+      btn=b || null;
+    }else{
+      btn=a || null;
+      box=btn?.closest('.glass.panel,.aviso-rotativo')?.querySelector('.aviso-ticker') || btn?.closest('.aviso-ticker');
+    }
+    if(!box) box=document.querySelector('.aviso-ticker');
+    if(!box) return false;
+    const fast=!box.classList.contains('fast');
+    box.classList.toggle('fast',fast);
+    const track=box.querySelector('.aviso-ticker-track');
+    if(track){
+      track.style.animationName='mdlTicker';
+      track.style.animationTimingFunction='linear';
+      track.style.animationIterationCount='infinite';
+      track.style.animationPlayState='running';
+      track.style.animationDuration=fast?'26s':'900s';
+    }
+    if(btn){
+      btn.textContent=fast?'🐢 Normal':'⚡ Acelerar';
+      btn.classList.toggle('primary',fast);
+    }
+    return false;
+  }catch(e){console.warn('toggleTickerSpeed V4.9',e); return false;}
+}
+
+function diretorAnivTemplateAtual(){
+  return safeWhatsTextMDL(CONFIG_META.aniversario_msg_template_diretor || `Olá, {primeiro_nome}! Tudo bem?\n\nSou o Diretor Comercial das Lojas MDL - Móveis do Lar. Estou passando para desejar um feliz aniversário, muita saúde, paz e felicidades.\n\nAgradecemos por fazer parte da nossa história. Será sempre um prazer atender você em nossas lojas.`);
+}
+function mensagemDiretorAniversario(c){
+  let msg=diretorAnivTemplateAtual();
+  const vars={primeiro_nome:c?.primeiro_nome||firstNameFromFullName(c?.cliente||''),nome:c?.cliente||'',filial:c?.filial||'',cidade:c?.cidade||'',nascimento:c?.nascimento||''};
+  Object.entries(vars).forEach(([k,v])=>{msg=msg.replaceAll('{'+k+'}',String(v||''));});
+  return safeWhatsTextMDL(msg);
+}
+
+const _v49AbrirWhatsAniversarioBase = typeof abrirWhatsAniversario==='function' ? abrirWhatsAniversario : null;
+abrirWhatsAniversario=function(idx,tel){
+  try{
+    if(typeof _v48IsDiretorView==='function' && _v48IsDiretorView()){
+      return abrirWhatsAniversarioDiretor(idx,tel);
+    }
+  }catch(e){}
+  return _v49AbrirWhatsAniversarioBase ? _v49AbrirWhatsAniversarioBase(idx,tel) : null;
+}
+
+function _v49ApplyDiretorAnivReadonly(){
+  try{
+    const box=aniversariantesSection; if(!box) return;
+    if(typeof _v48IsDiretorView==='function' && _v48IsDiretorView()){
+      // Remove qualquer configuração editável; Diretor só visualiza a mensagem configurada pelo Master.
+      box.querySelectorAll('textarea#anivMsgTemplate, textarea#anivMsgTemplateFilial, select#anivMsgFilial, #anivMsgDiretorTemplate').forEach(el=>{
+        const card=el.closest('.input-card')||el.closest('.glass.panel'); if(card) card.remove();
+      });
+      box.querySelectorAll('button').forEach(b=>{
+        const tx=(b.textContent||'').toLowerCase();
+        if(tx.includes('salvar mensagem')){ const card=b.closest('.input-card')||b; card.remove(); }
+      });
+      const panel=box.querySelector('.glass.panel');
+      if(panel && !box.querySelector('[data-diretor-msg-preview]')){
+        panel.insertAdjacentHTML('beforeend',`<div class="input-card aniv-diretor-readonly-card" data-diretor-msg-preview="1" style="margin-top:12px;border-color:rgba(249,168,50,.32)"><label>Mensagem do Diretor configurada pelo Master</label><textarea rows="5" readonly style="min-height:120px;width:100%;resize:vertical">${esc(diretorAnivTemplateAtual())}</textarea><div class="hint">Somente o Master altera esta mensagem. Ao clicar no WhatsApp como Diretor, esta será a mensagem enviada.</div></div>`);
+      }
+    }else if(usuarioAtual?.tipo==='master'){
+      // Master configura a mensagem individual do Diretor; mantém global/filial.
+      const panel=box.querySelector('.glass.panel');
+      if(panel && !box.querySelector('#anivMsgDiretorTemplateMaster')){
+        panel.insertAdjacentHTML('beforeend',`<div class="input-card aniv-diretor-only-card" style="margin-top:12px;border-color:rgba(249,168,50,.32)"><label>Mensagem individual do Diretor Comercial</label><textarea id="anivMsgDiretorTemplateMaster" rows="5" style="min-height:120px;width:100%;resize:vertical">${esc(diretorAnivTemplateAtual())}</textarea><div class="hint">Mensagem usada quando o Diretor enviar saudação de aniversário. Variáveis: {primeiro_nome}, {nome}, {filial}, {cidade}, {nascimento}</div><button class="btn primary" style="margin-top:8px" onclick="CONFIG_META.aniversario_msg_template_diretor=document.getElementById('anivMsgDiretorTemplateMaster').value; salvarMensagemAniversarioDiretor()">Salvar mensagem do Diretor</button></div>`);
+      }
+    }
+  }catch(e){console.warn('diretor readonly V4.9',e)}
+}
+
+const _v49RenderAniversariantesBase = typeof renderAniversariantesTab==='function' ? renderAniversariantesTab : null;
+if(_v49RenderAniversariantesBase){
+  renderAniversariantesTab=function(){
+    const r=_v49RenderAniversariantesBase();
+    setTimeout(_v49ApplyDiretorAnivReadonly,80);
+    setTimeout(()=>{try{document.querySelectorAll('.aviso-ticker-track').forEach(t=>{t.style.animationName='mdlTicker'; t.style.animationPlayState='running';});}catch(e){}},120);
+    return r;
+  }
+}
+try{setTimeout(_v49ApplyDiretorAnivReadonly,1200)}catch(e){}
+try{setInterval(()=>{try{document.querySelectorAll('.aviso-ticker-track').forEach(t=>{t.style.animationName='mdlTicker'; if(!t.style.animationDuration)t.style.animationDuration='900s';});}catch(e){}},5000)}catch(e){}
+
+
+// ===== V5.1: MURAIS ORGANIZADOS + CARD RESUMO NO TOPO =====
+(function(){
+  try{
+    const st=document.createElement('style');
+    st.textContent=`
+      .mdl-hero-mural-card{grid-column:span 2!important;min-height:112px!important;padding:14px 16px!important;border:1px solid rgba(249,168,50,.36)!important;background:radial-gradient(circle at 12% 12%,rgba(249,168,50,.18),transparent 34%),linear-gradient(135deg,rgba(17,24,39,.96),rgba(10,13,20,.94))!important;box-shadow:0 18px 42px rgba(0,0,0,.28), inset 0 0 0 1px rgba(255,255,255,.04)!important;position:relative;overflow:hidden!important;display:flex;flex-direction:column;justify-content:center}
+      .mdl-hero-mural-card:before{content:"";position:absolute;right:-26px;top:-30px;width:130px;height:130px;border-radius:999px;background:rgba(249,168,50,.12);filter:blur(2px)}
+      .mdl-hero-title{font-size:12px;font-weight:950;text-transform:uppercase;letter-spacing:.08em;color:#fbbf24;margin-bottom:7px;display:flex;align-items:center;gap:7px}
+      .mdl-hero-main{font-size:22px;font-weight:950;color:#fff;line-height:1.08;margin-bottom:6px;position:relative;z-index:1}
+      .mdl-hero-detail{font-size:12px;color:#aab4cb;font-weight:750;line-height:1.35;position:relative;z-index:1;max-width:86%}
+      .mdl-hero-count{position:absolute;right:18px;bottom:14px;border-radius:999px;padding:8px 12px;font-weight:950;color:#fff;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.13)}
+      .mdl-hero-dot{display:inline-block;width:9px;height:9px;border-radius:99px;background:#f59e0b;box-shadow:0 0 18px rgba(249,168,50,.65)}
+      .mdl-mural-zone{display:grid;gap:14px;margin-top:12px}.mdl-mural-group{border-radius:24px;padding:15px 16px;border:1px solid rgba(255,255,255,.09);background:linear-gradient(135deg,rgba(16,22,34,.72),rgba(10,12,18,.66));box-shadow:0 18px 42px rgba(0,0,0,.2)}
+      .mdl-mural-group.cobranca{border-color:rgba(239,68,68,.24);background:linear-gradient(135deg,rgba(127,29,29,.18),rgba(15,23,42,.66))}.mdl-mural-group.reativacao{border-color:rgba(245,158,11,.28);background:linear-gradient(135deg,rgba(120,53,15,.18),rgba(15,23,42,.66))}.mdl-mural-group.vendas{border-color:rgba(34,197,94,.28);background:linear-gradient(135deg,rgba(6,78,59,.18),rgba(15,23,42,.66))}.mdl-mural-group.aniversarios{border-color:rgba(236,72,153,.24);background:linear-gradient(135deg,rgba(131,24,67,.16),rgba(15,23,42,.66))}
+      .mdl-mural-group-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}.mdl-mural-group-head h2{font-size:18px!important;margin:0!important}.mdl-mural-group-head .hint{font-size:12px}.mdl-mural-group-grid{display:grid;grid-template-columns:1fr;gap:10px}.mdl-mural-group .glass.panel{margin-bottom:0!important;background:rgba(255,255,255,.035)!important}.mdl-mural-group.compact .glass.panel{padding:12px 14px!important}
+      .aviso-rotativo,.mdl-mural-group .glass.panel{overflow:hidden!important}.aviso-ticker{overflow:hidden!important;width:100%!important;max-width:100%!important;position:relative}.aviso-ticker-track{display:flex!important;gap:10px!important;align-items:stretch!important;width:max-content!important;animation-name:mdlTicker!important;animation-timing-function:linear!important;animation-iteration-count:infinite!important;animation-duration:900s!important;will-change:transform!important}.aviso-ticker.fast .aviso-ticker-track{animation-duration:22s!important}.aviso-pill{min-width:260px!important;max-width:330px!important;white-space:normal!important;display:inline-flex!important;flex-direction:column!important;align-items:flex-start!important;justify-content:center!important;gap:4px!important;padding:10px 13px!important;line-height:1.22!important;overflow:visible!important}.aviso-pill .ticker-main{display:block!important;white-space:normal!important;overflow:visible!important;text-overflow:clip!important;font-size:12.5px!important;line-height:1.22!important}.aviso-pill small{display:block!important;white-space:normal!important;overflow:visible!important;text-overflow:clip!important;font-size:10.8px!important;line-height:1.18!important;color:#aab4cb!important}.ticker-speed-btn{min-width:105px!important;justify-content:center!important}.ticker-speed-btn.primary{background:linear-gradient(135deg,#f59e0b,#f97316)!important;color:#111827!important}
+      .mdl-sales-line{display:flex;gap:10px;flex-wrap:wrap}.mdl-sales-line span{border:1px solid rgba(255,255,255,.09);border-radius:999px;background:rgba(255,255,255,.045);padding:8px 11px;font-weight:850;font-size:12px;color:#dbe4ff}.mdl-empty-mural{padding:12px 14px;border-radius:16px;border:1px dashed rgba(255,255,255,.12);background:rgba(255,255,255,.035);color:#aab4cb;font-weight:800}
+      @media(max-width:1180px){.mdl-hero-mural-card{grid-column:1/-1!important}.mdl-hero-detail{max-width:100%}}
+    `;
+    document.head.appendChild(st);
+  }catch(e){console.warn('v5.1 css',e)}
+})();
+
+function mdlV51CountFromHtml(html){try{const m=String(html||'').match(/class=["']badge["'][^>]*>(\d+)/i);return m?Number(m[1]||0):0}catch(e){return 0}}
+function mdlV51TextFromHtml(html){try{const tmp=document.createElement('div'); tmp.innerHTML=String(html||''); const pill=tmp.querySelector('.aviso-pill'); return (pill?.innerText||tmp.innerText||'').replace(/\s+/g,' ').trim().slice(0,130)}catch(e){return ''}}
+function mdlV51AnivPendentes(){try{return (ANIVERSARIANTES||[]).filter(c=>!(typeof isAniversarioEnviadoHoje==='function'&&isAniversarioEnviadoHoje(c)))}catch(e){return []}}
+function mdlV51MetaDiariaCount(){try{return mdlV51CountFromHtml(renderMetaDiariaBatidaAlerts())}catch(e){return 0}}
+function mdlV51HeroSlides(){
+  const noCobHtml=(()=>{try{return renderNoChargeAlerts()||''}catch(e){return ''}})();
+  const noReatHtml=(()=>{try{return renderNoReactivationAlerts()||''}catch(e){return ''}})();
+  const metaHtml=(()=>{try{return renderMetaDiariaBatidaAlerts()||''}catch(e){return ''}})();
+  const anivs=mdlV51AnivPendentes();
+  const slides=[];
+  slides.push({icon:'⏰',title:'Sem cobranças hoje',count:mdlV51CountFromHtml(noCobHtml),main:'Carteiras pendentes de ação',detail:mdlV51TextFromHtml(noCobHtml)||'Nenhum alerta crítico de cobrança agora.',dot:'#ef4444'});
+  slides.push({icon:'🧡',title:'Clientes sem movimento',count:mdlV51CountFromHtml(noReatHtml),main:'Usuários sem reativação hoje',detail:mdlV51TextFromHtml(noReatHtml)||'Todos os responsáveis acionaram ou não há lista pendente.',dot:'#f59e0b'});
+  slides.push({icon:'🎂',title:'Aniversariantes do dia',count:anivs.length,main:anivs.length?'Saudações pendentes':'Aniversariantes em dia',detail:anivs.slice(0,2).map(c=>`${c.cliente||''} · resp. ${(typeof aniversarioOwnerInfo==='function'?aniversarioOwnerInfo(c).label:'')||''}`).join('  |  ')||'Nenhum aniversariante pendente no momento.',dot:'#ec4899'});
+  slides.push({icon:'🎯',title:'Meta diária BATIDA',count:mdlV51MetaDiariaCount(),main:mdlV51MetaDiariaCount()?'Meta diária batida hoje':'Aguardando metas diárias',detail:mdlV51TextFromHtml(metaHtml)||'Quando vendedor ou filial bater, aparecerá aqui automaticamente.',dot:'#22c55e'});
+  return slides;
+}
+function mdlV51HeroHtml(){const slides=mdlV51HeroSlides();return `<div id="mdlHeroMural" class="glass kpi mdl-hero-mural-card" data-idx="0">${mdlV51HeroSlideHtml(slides[0]||{})}</div>`}
+function mdlV51HeroSlideHtml(s){return `<div class="mdl-hero-title"><span class="mdl-hero-dot" style="background:${esc(s.dot||'#f59e0b')}"></span>${esc(s.icon||'🔔')} ${esc(s.title||'Mural operacional')}</div><div class="mdl-hero-main">${esc(s.main||'Operação em andamento')}</div><div class="mdl-hero-detail">${esc(s.detail||'Resumo automático dos murais do dia.')}</div><div class="mdl-hero-count">${esc(String(s.count??0))}</div>`}
+function mdlV51StartHeroMural(){try{const el=document.getElementById('mdlHeroMural'); if(!el) return; const slides=mdlV51HeroSlides(); if(window._mdlHeroTimer) clearInterval(window._mdlHeroTimer); window._mdlHeroTimer=setInterval(()=>{try{const fresh=mdlV51HeroSlides(); const idx=(Number(el.dataset.idx||0)+1)%Math.max(fresh.length,1); el.dataset.idx=String(idx); el.innerHTML=mdlV51HeroSlideHtml(fresh[idx]||{});}catch(e){}},5200);}catch(e){}}
+function mdlV51InstallHeroMural(){try{const kpis=document.getElementById('kpis'); if(!kpis || document.getElementById('mdlHeroMural')) return; const allow=(usuarioAtual?.tipo==='master'||usuarioAtual?.is_viewer||usuarioAtual?.roleLabel==='Diretor Comercial'); if(!allow) return; const update=[...kpis.children].find(x=>String(x.textContent||'').includes('Última atualização do dashboard')); const holder=document.createElement('div'); holder.innerHTML=mdlV51HeroHtml(); const card=holder.firstElementChild; if(update) kpis.insertBefore(card,update); else kpis.appendChild(card); mdlV51StartHeroMural();}catch(e){console.warn('install hero mural',e)}}
+if(typeof renderKPIs==='function' && !window._renderKPIsV51Wrapped){window._renderKPIsV51Wrapped=true; const _oldRenderKPIsV51=renderKPIs; renderKPIs=function(){const r=_oldRenderKPIsV51.apply(this,arguments); setTimeout(mdlV51InstallHeroMural,80); return r;}}
+
+// Botão acelerar blindado: funciona por onclick antigo e por clique delegado.
+function toggleTickerSpeed(arg1,arg2){
+  try{
+    let box=null,btn=null;
+    if(typeof arg1==='string'){box=document.getElementById(arg1);btn=arg2||null}else{btn=arg1||null;box=btn?.closest('.glass.panel,.aviso-rotativo,.mdl-mural-group')?.querySelector('.aviso-ticker')}
+    if(!box && btn) box=btn.parentElement?.parentElement?.parentElement?.querySelector?.('.aviso-ticker');
+    if(!box) return;
+    const fast=!box.classList.contains('fast'); box.classList.toggle('fast',fast);
+    const track=box.querySelector('.aviso-ticker-track'); if(track){track.style.animationName='mdlTicker'; track.style.animationDuration=fast?'22s':'900s'; track.style.animationPlayState='running';}
+    if(btn){btn.textContent=fast?'🐢 Normal':'⚡ Acelerar'; btn.classList.toggle('primary',fast)}
+  }catch(e){console.warn('toggle ticker v51',e)}
+}
+document.addEventListener('click',function(ev){const btn=ev.target.closest?.('.ticker-speed-btn'); if(btn){ev.preventDefault();ev.stopPropagation();toggleTickerSpeed(btn);}},true);
+
+function renderAvisoTicker(title,hint,entries,opts={}){
+  const arr=(entries||[]).filter(Boolean); if(!arr.length) return '';
+  const icon=opts.icon||'🔔'; const color=opts.color||'rgba(245,158,11,.35)'; const safeId='ticker_'+Math.random().toString(36).slice(2);
+  const doubled=arr; const accel=(usuarioAtual?.tipo==='master'||usuarioAtual?.is_viewer||usuarioAtual?.roleLabel==='Diretor Comercial')?`<button class="btn soft btn-xs ticker-speed-btn" onclick="toggleTickerSpeed('${safeId}',this)">⚡ Acelerar</button>`:'';
+  return `<div class="glass panel aviso-rotativo" style="margin-bottom:12px;padding:13px 15px;border-color:${color}"><div class="section-head" style="margin:0 0 8px"><div><h2 style="margin:0;font-size:17px">${esc(icon)} ${esc(title)}</h2><div class="hint">${esc(hint||'')}</div></div><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><div class="badge">${arr.length}</div>${accel}</div></div><div id="${safeId}" class="aviso-ticker"><div class="aviso-ticker-track" style="animation-duration:900s">${doubled.map(e=>`<span class="aviso-pill"><i class="red-dot"></i><span class="ticker-main">${esc(e.nome||e.label||'')}</span><small>${esc(e.info||'')}</small></span>`).join('')}</div></div></div>`;
+}
+
+function mdlV51DestaquesCobranca(){
+  try{
+    const cobrarParts=[]; const filiais=flattenFiliais(); const vendedores=flattenVendedores().filter(e=>!e.access_disabled && e.participa_murais!==false);
+    const calcDelta=(e)=>{const delta=Number(e.var_pago_delta||0); const prev=Math.max(Math.abs(Number(e.pago||0)-delta),1); return {delta,perc:(Math.abs(delta)/prev)*100};};
+    const bestFil=filiais.filter(e=>Number(e.var_pago_delta||0)>0).sort((a,b)=>Number(b.var_pago_delta||0)-Number(a.var_pago_delta||0))[0];
+    const bestVend=vendedores.filter(e=>Number(e.var_pago_delta||0)>0).sort((a,b)=>Number(b.var_pago_delta||0)-Number(a.var_pago_delta||0))[0];
+    if(bestFil){const d=calcDelta(bestFil); cobrarParts.push(`<div class="glass panel highlight-pulse" style="padding:13px 15px"><div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:17px">🏆 Destaque · Filial</h2><div class="hint">${esc(filialLabel(bestFil.filial))} recebeu ${R(d.delta)} a mais que a referência anterior</div></div>${renderDeltaPill(d.delta,d.perc)}</div></div>`)}
+    else {cobrarParts.push(`<div class="glass panel" style="padding:13px 15px"><h2 style="margin:0;font-size:17px">🏆 Destaque · Filial</h2><div class="hint">Nenhuma filial com crescimento positivo de recebimento na referência atual.</div></div>`)}
+    if(bestVend){const d=calcDelta(bestVend); cobrarParts.push(`<div class="glass panel highlight-pulse" style="padding:13px 15px"><div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:17px">🥇 Destaque · Vendedor</h2><div class="hint">${esc(bestVend.nome)} recebeu ${R(d.delta)} a mais que a referência anterior</div></div>${renderDeltaPill(d.delta,d.perc)}</div></div>`)}
+    else {cobrarParts.push(`<div class="glass panel" style="padding:13px 15px"><h2 style="margin:0;font-size:17px">🥇 Destaque · Vendedor</h2><div class="hint">Nenhum vendedor com crescimento positivo de recebimento na referência atual.</div></div>`)}
+    try{cobrarParts.push(renderDuplicidadeCarteiraBanner())}catch(e){}
+    try{const no=renderNoChargeAlerts(); if(no)cobrarParts.push(no)}catch(e){}
+    return cobrarParts.join('') || `<div class="mdl-empty-mural">Sem alertas de cobrança no momento.</div>`;
+  }catch(e){return `<div class="mdl-empty-mural">Não foi possível montar mural de cobrança.</div>`}
+}
+function mdlV51VendasResumo(){
+  try{
+    const vendedores=flattenVendedores().filter(e=>!e.access_disabled && e.participa_murais!==false), filiais=flattenFiliais();
+    const topVendaVend=bestLiveSalesEntity(vendedores,'venda_filial_vendedor_meta'); const topServVend=bestLiveSalesEntity(vendedores,'servico_filial_vendedor_ouro_fob'); const topVendaFil=bestLiveSalesEntity(filiais,'venda_filial_meta'); const topServFil=bestLiveSalesEntity(filiais,'servico_filial_ouro_fob');
+    const meta=renderMetaDiariaBatidaAlerts();
+    const linha=`<div class="glass panel sales-panel" style="padding:14px 15px"><div class="section-head" style="margin:0 0 10px"><div><h2 style="margin:0;font-size:17px">💲 Vendas do mês</h2><div class="hint">Melhores resultados acumulados de venda e serviço do mês.</div></div></div><div class="mdl-sales-line">${topVendaVend?`<span>Venda vendedor: ${esc(topVendaVend.ent.nome)} ${R(topVendaVend.val||0)}</span>`:''}${topServVend?`<span>Serviço vendedor: ${esc(topServVend.ent.nome)} ${R(topServVend.val||0)}</span>`:''}${topVendaFil?`<span>Venda filial: ${esc(filialLabel(topVendaFil.ent.filial))} ${R(topVendaFil.val||0)}</span>`:''}${topServFil?`<span>Serviço filial: ${esc(filialLabel(topServFil.ent.filial))} ${R(topServFil.val||0)}</span>`:''}</div></div>`;
+    return (meta||'')+linha;
+  }catch(e){return `<div class="mdl-empty-mural">Sem resumo de vendas no momento.</div>`}
+}
+function mdlV51Group(cls,icon,title,hint,body){return `<div class="mdl-mural-group ${cls} compact"><div class="mdl-mural-group-head"><div><h2>${icon} ${title}</h2><div class="hint">${hint}</div></div></div><div class="mdl-mural-group-grid">${body||'<div class="mdl-empty-mural">Sem dados no momento.</div>'}</div></div>`}
+function renderInicioTab(){
+  if(!inicioSection) return;
+  const cobra=mdlV51DestaquesCobranca();
+  const reat=(()=>{try{return renderNoReactivationAlerts()||'<div class="mdl-empty-mural">Todos os responsáveis de reativação já acionaram ou não há pendência.</div>'}catch(e){return '<div class="mdl-empty-mural">Não foi possível montar reativação.</div>'}})();
+  const venda=mdlV51VendasResumo();
+  const aniv=(()=>{try{return renderMuralAniversariantesDia()||'<div class="mdl-empty-mural">Sem aniversariantes pendentes.</div>'}catch(e){return '<div class="mdl-empty-mural">Não foi possível montar aniversariantes.</div>'}})();
+  inicioSection.innerHTML=`<div class="inicio-compact"><div class="glass panel" style="padding:12px 16px;margin-bottom:10px"><div class="section-head" style="margin:0"><div><h2 style="font-size:17px;margin:0">🏠 Início</h2><div class="hint">Resumo visual da operação. O card acima dos botões alterna os alertas principais automaticamente.</div></div></div></div><div class="mdl-mural-zone">${mdlV51Group('cobranca','📌','Mural de cobrança','Destaques, duplicidade e usuários sem cobrança.',cobra)}${mdlV51Group('reativacao','🧡','Mural de reativação','Clientes sem movimento e responsáveis sem ação.',reat)}${mdlV51Group('vendas','💲','Mural de vendas','Meta diária e melhores resultados do mês.',venda)}${mdlV51Group('aniversarios','🎂','Mural de aniversariantes','Clientes aniversariantes e responsáveis pelo envio.',aniv)}</div></div>`;
+}
+try{setInterval(()=>{document.querySelectorAll('.aviso-ticker-track').forEach(t=>{t.style.animationName='mdlTicker'; if(!t.style.animationDuration)t.style.animationDuration='900s';});},4000)}catch(e){}
+
+
+
+// ===== V5.5: META DIARIA PRECALCULADA PELO PYTHON + FALLBACK ROBUSTO =====
+(function(){
+  try{
+    const st=document.createElement('style');
+    st.textContent=`
+      .mdl-hero-mural-card{grid-column:span 2!important;min-height:128px!important;padding:16px 18px!important;border-color:rgba(245,158,11,.42)!important;}
+      .mdl-hero-mural-card.v52-cobranca{border-color:rgba(239,68,68,.45)!important;background:linear-gradient(135deg,rgba(127,29,29,.28),rgba(15,23,42,.94))!important}
+      .mdl-hero-mural-card.v52-reativacao{border-color:rgba(245,158,11,.48)!important;background:linear-gradient(135deg,rgba(120,53,15,.30),rgba(15,23,42,.94))!important}
+      .mdl-hero-mural-card.v52-aniversario{border-color:rgba(236,72,153,.46)!important;background:linear-gradient(135deg,rgba(131,24,67,.26),rgba(15,23,42,.94))!important}
+      .mdl-hero-mural-card.v52-meta{border-color:rgba(34,197,94,.48)!important;background:linear-gradient(135deg,rgba(6,78,59,.28),rgba(15,23,42,.94))!important}
+      .mdl-hero-main{font-size:20px!important;line-height:1.12!important;max-width:78%;}
+      .mdl-hero-detail{font-size:12.5px!important;max-width:82%!important;display:block!important;}
+      .mdl-hero-mini-list{display:flex;gap:8px;margin-top:8px;max-width:88%;overflow:hidden;position:relative;z-index:2}
+      .mdl-hero-mini{border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.045);border-radius:999px;padding:6px 9px;font-size:10.5px;font-weight:850;color:#cbd5e1;white-space:nowrap;max-width:210px;overflow:hidden;text-overflow:ellipsis}
+      .mdl-mural-group.cobranca .glass.panel{border-color:rgba(239,68,68,.32)!important}.mdl-mural-group.reativacao .glass.panel{border-color:rgba(245,158,11,.34)!important}.mdl-mural-group.vendas .glass.panel{border-color:rgba(34,197,94,.32)!important}.mdl-mural-group.aniversarios .glass.panel{border-color:rgba(236,72,153,.32)!important}
+      .aviso-ticker{overflow-x:auto!important;overflow-y:hidden!important;scrollbar-width:thin;cursor:grab!important;user-select:none;scroll-behavior:auto!important;}
+      .aviso-ticker.dragging{cursor:grabbing!important}.aviso-ticker.dragging .aviso-ticker-track,.aviso-ticker:hover .aviso-ticker-track{animation-play-state:paused!important}
+      .aviso-ticker::-webkit-scrollbar{height:8px}.aviso-ticker::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:999px}.aviso-ticker::-webkit-scrollbar-track{background:rgba(255,255,255,.04);border-radius:999px}
+      .aviso-pill{min-width:230px!important;max-width:290px!important;padding:9px 12px!important;}
+      .aviso-pill .ticker-main{font-size:12px!important;font-weight:950!important;}
+      .aviso-pill small{font-size:10.5px!important;opacity:.92!important;}
+      .mdl-mural-zone{gap:18px!important}.mdl-mural-group{padding:16px 18px!important}.mdl-mural-group-head h2{letter-spacing:-.01em}.mdl-mural-group.cobranca{box-shadow:0 0 0 1px rgba(239,68,68,.10),0 20px 48px rgba(127,29,29,.13)}.mdl-mural-group.reativacao{box-shadow:0 0 0 1px rgba(245,158,11,.10),0 20px 48px rgba(120,53,15,.13)}.mdl-mural-group.vendas{box-shadow:0 0 0 1px rgba(34,197,94,.10),0 20px 48px rgba(6,78,59,.13)}.mdl-mural-group.aniversarios{box-shadow:0 0 0 1px rgba(236,72,153,.10),0 20px 48px rgba(131,24,67,.13)}
+      @media(max-width:1180px){.mdl-hero-main,.mdl-hero-detail,.mdl-hero-mini-list{max-width:100%!important}.mdl-hero-mural-card{grid-column:1/-1!important}}
+    `;
+    document.head.appendChild(st);
+  }catch(e){console.warn('v5.2 css',e)}
+})();
+
+function mdlV52EntriesFromTickerHtml(html){
+  try{
+    const tmp=document.createElement('div'); tmp.innerHTML=String(html||'');
+    return [...tmp.querySelectorAll('.aviso-pill')].map(p=>({nome:(p.querySelector('.ticker-main')?.textContent||p.textContent||'').trim(), info:(p.querySelector('small')?.textContent||'').trim()})).filter(x=>x.nome);
+  }catch(e){return []}
+}
+function mdlV52NumFromPctText(v){ return salesNum ? salesNum(v) : (parseFloat(String(v||'').replace('%','').replace(',','.'))||0); }
+function mdlV52MetaDiariaEntries(){
+  const arr=[];
+  const wrap=(METAS_VENDAS_DIA&&METAS_VENDAS_DIA.metas)?METAS_VENDAS_DIA:{metas:{}};
+  function rowAtingPeriodo(row){
+    let v=salesCell(row,['Atingido Período','Atingido Periodo','Atingido(R$) Período','Atingido(R$) Periodo']);
+    if(v==='' || v==null){
+      for(const k of Object.keys(row||{})){
+        const ku=String(k).toUpperCase();
+        if(ku.includes('ATINGIDO') && (ku.includes('PER')||ku.includes('PERÍODO')) && ku.endsWith('_FLOAT')) return Number(row[k]||0);
+      }
+    }
+    return mdlV52NumFromPctText(v);
+  }
+  function rowRealPeriodo(row){return salesCell(row,['Realizado (R$) Período','Realizado(R$) Período','Realizado (R$) Periodo','Realizado(R$) Periodo'])||'';}
+  function rowMetaPeriodo(row){return salesCell(row,['Meta (R$) Período','Meta(R$) Período','Meta (R$) Periodo','Meta(R$) Periodo'])||'';}
+  try{
+    const mf=wrap.metas?.venda_filial_meta?.linhas||[];
+    mf.forEach(row=>{
+      if(row?._is_total) return;
+      const ating=rowAtingPeriodo(row);
+      if(ating>=100){
+        const fil=_filialFromAny ? _filialFromAny(salesCell(row,['Filial','Nome','Vendedor'])||'') : '';
+        arr.push({nome:filialLabel(fil)||salesCell(row,['Filial'])||'Filial', info:`${fil||''} · ${ating.toFixed(2).replace('.',',')}% no dia · ${rowRealPeriodo(row)||'R$ 0,00'} / ${rowMetaPeriodo(row)||'R$ 0,00'}`, kind:'filial', ating});
+      }
+    });
+    const mv=wrap.metas?.venda_filial_vendedor_meta?.linhas||[];
+    mv.forEach(row=>{
+      if(row?._is_total) return;
+      const ating=rowAtingPeriodo(row);
+      if(ating>=100){
+        const nome=salesCell(row,['Vendedor_2','Nome_2','Vendedor','Nome'])||'Vendedor';
+        const fil=_filialFromAny ? _filialFromAny(salesCell(row,['Filial','Vendedor'])||'') : '';
+        arr.push({nome:nome, info:`${fil||''} · ${ating.toFixed(2).replace('.',',')}% no dia · ${rowRealPeriodo(row)||'R$ 0,00'} / ${rowMetaPeriodo(row)||'R$ 0,00'}`, kind:'vendedor', ating});
+      }
+    });
+  }catch(e){console.warn('mdlV52MetaDiariaEntries SGI dia',e)}
+  arr.sort((a,b)=>Number(b.ating||0)-Number(a.ating||0)||String(a.nome).localeCompare(String(b.nome),'pt-BR'));
+  return arr;
+}
+function renderMetaDiariaBatidaAlerts(){
+  try{
+    const arr=mdlV52MetaDiariaEntries();
+    if(!arr.length){
+      return `<div class="glass panel" style="margin-bottom:16px;padding:14px 18px;border-color:rgba(34,197,94,.22)"><div class="section-head" style="margin:0 0 8px"><div><h2 style="margin:0;font-size:18px">🎯 Meta diária BATIDA</h2><div class="hint">Mural ativo. Usa o Controle de Meta do Sólidus filtrado no dia atual: quem ficar com Atingido Período acima de 100% aparece aqui.</div></div><div class="badge">0</div></div><div class="meta-diaria-empty">Nenhuma meta diária batida até o momento.</div></div>`;
+    }
+    return renderAvisoTicker('Meta diária BATIDA','Controle de Meta Sólidus do dia atual: Atingido Período acima de 100%.', arr, {icon:'🎯',color:'rgba(34,197,94,.34)'});
+  }catch(e){console.warn('renderMetaDiariaBatidaAlerts v52',e); return '';}
+}
+function mdlV51MetaDiariaCount(){try{return mdlV52MetaDiariaEntries().length}catch(e){return 0}}
+
+function mdlV52SlideItemsFromHtml(title,icon,html,emptyMain,emptyDetail,dot,kind){
+  const items=mdlV52EntriesFromTickerHtml(html);
+  if(!items.length) return [{icon,title,count:0,main:emptyMain,detail:emptyDetail,dot,kind,mini:[]}];
+  return items.slice(0,12).map((it,idx)=>({icon,title,count:items.length,main:it.nome,detail:it.info,dot,kind,mini:items.slice(idx+1,idx+4).map(x=>x.nome)}));
+}
+function mdlV51HeroSlides(){
+  let slides=[];
+  const noCobHtml=(()=>{try{return renderNoChargeAlerts()||''}catch(e){return ''}})();
+  const noReatHtml=(()=>{try{return renderNoReactivationAlerts()||''}catch(e){return ''}})();
+  const metaHtml=(()=>{try{return renderMetaDiariaBatidaAlerts()||''}catch(e){return ''}})();
+  const anivHtml=(()=>{try{return renderMuralAniversariantesDia()||''}catch(e){return ''}})();
+  slides=slides.concat(mdlV52SlideItemsFromHtml('Sem cobranças hoje','⏰',noCobHtml,'Cobranças em dia','Nenhum alerta crítico de cobrança agora.','#ef4444','cobranca'));
+  slides=slides.concat(mdlV52SlideItemsFromHtml('Clientes sem movimento','🧡',noReatHtml,'Reativação em dia','Todos os responsáveis acionaram ou não há lista pendente.','#f59e0b','reativacao'));
+  slides=slides.concat(mdlV52SlideItemsFromHtml('Aniversariantes do dia','🎂',anivHtml,'Aniversariantes em dia','Nenhuma saudação pendente no momento.','#ec4899','aniversario'));
+  slides=slides.concat(mdlV52SlideItemsFromHtml('Meta diária BATIDA','🎯',metaHtml,'Aguardando metas diárias','Quem passar de 100% no período do Sólidus aparece aqui.','#22c55e','meta'));
+  return slides.length?slides:[{icon:'📌',title:'Mural operacional',count:0,main:'Operação em andamento',detail:'Resumo automático dos murais do dia.',dot:'#f59e0b',kind:'cobranca',mini:[]}];
+}
+function mdlV51HeroSlideHtml(s){
+  const mini=(s.mini||[]).slice(0,3).map(x=>`<span class="mdl-hero-mini">${esc(x)}</span>`).join('');
+  return `<div class="mdl-hero-title"><span class="mdl-hero-dot" style="background:${esc(s.dot||'#f59e0b')}"></span>${esc(s.icon||'🔔')} ${esc(s.title||'Mural operacional')}</div><div class="mdl-hero-main">${esc(s.main||'Operação em andamento')}</div><div class="mdl-hero-detail">${esc(s.detail||'Resumo automático dos murais do dia.')}</div>${mini?`<div class="mdl-hero-mini-list">${mini}</div>`:''}<div class="mdl-hero-count">${esc(String(s.count??0))}</div>`;
+}
+function mdlV51HeroHtml(){const slides=mdlV51HeroSlides(); const k=slides[0]?.kind||'cobranca'; return `<div id="mdlHeroMural" class="glass kpi mdl-hero-mural-card v52-${esc(k)}" data-idx="0">${mdlV51HeroSlideHtml(slides[0]||{})}</div>`}
+function mdlV51StartHeroMural(){
+  try{
+    const el=document.getElementById('mdlHeroMural'); if(!el) return;
+    if(window._mdlHeroTimer) clearInterval(window._mdlHeroTimer);
+    window._mdlHeroTimer=setInterval(()=>{try{const fresh=mdlV51HeroSlides(); const idx=(Number(el.dataset.idx||0)+1)%Math.max(fresh.length,1); const s=fresh[idx]||{}; el.dataset.idx=String(idx); el.className='glass kpi mdl-hero-mural-card v52-'+String(s.kind||'cobranca'); el.innerHTML=mdlV51HeroSlideHtml(s);}catch(e){}},3600);
+  }catch(e){}
+}
+
+function renderAvisoTicker(title,hint,entries,opts={}){
+  const arr=(entries||[]).filter(Boolean); if(!arr.length) return '';
+  const icon=opts.icon||'🔔'; const color=opts.color||'rgba(245,158,11,.35)'; const safeId='ticker_'+Math.random().toString(36).slice(2);
+  const doubled=arr; const accel=(usuarioAtual?.tipo==='master'||usuarioAtual?.is_viewer||usuarioAtual?.roleLabel==='Diretor Comercial')?`<button class="btn soft btn-xs ticker-speed-btn" onclick="toggleTickerSpeed('${safeId}',this)">⚡ Acelerar</button>`:'';
+  return `<div class="glass panel aviso-rotativo" style="margin-bottom:12px;padding:13px 15px;border-color:${color}"><div class="section-head" style="margin:0 0 8px"><div><h2 style="margin:0;font-size:17px">${esc(icon)} ${esc(title)}</h2><div class="hint">${esc(hint||'')}</div></div><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><div class="badge">${arr.length}</div>${accel}</div></div><div id="${safeId}" class="aviso-ticker"><div class="aviso-ticker-track" style="animation-duration:900s">${doubled.map(e=>`<span class="aviso-pill"><i class="red-dot"></i><span class="ticker-main">${esc(e.nome||e.label||'')}</span><small>${esc(e.info||'')}</small></span>`).join('')}</div></div></div>`;
+}
+function toggleTickerSpeed(arg1,arg2){
+  try{
+    let box=null,btn=null;
+    if(typeof arg1==='string'){box=document.getElementById(arg1);btn=arg2||null}else{btn=arg1||null;box=btn?.closest('.glass.panel,.aviso-rotativo,.mdl-mural-group')?.querySelector('.aviso-ticker')}
+    if(!box && btn) box=btn.closest?.('.glass.panel,.aviso-rotativo,.mdl-mural-group')?.querySelector?.('.aviso-ticker');
+    if(!box) return;
+    const fast=!box.classList.contains('fast'); box.classList.toggle('fast',fast);
+    const track=box.querySelector('.aviso-ticker-track'); if(track){track.style.animationName='mdlTicker'; track.style.animationDuration=fast?'18s':'900s'; track.style.animationPlayState='running';}
+    if(btn){btn.textContent=fast?'🐢 Normal':'⚡ Acelerar'; btn.classList.toggle('primary',fast)}
+  }catch(e){console.warn('toggle ticker v52',e)}
+}
+(function(){
+  let active=null,startX=0,startScroll=0;
+  document.addEventListener('mousedown',function(ev){const box=ev.target.closest?.('.aviso-ticker'); if(!box) return; active=box; startX=ev.clientX; startScroll=box.scrollLeft; box.classList.add('dragging'); const tr=box.querySelector('.aviso-ticker-track'); if(tr)tr.style.animationPlayState='paused';},true);
+  document.addEventListener('mousemove',function(ev){if(!active)return; active.scrollLeft=startScroll-(ev.clientX-startX);},true);
+  document.addEventListener('mouseup',function(){if(!active)return; const tr=active.querySelector('.aviso-ticker-track'); if(tr && !active.matches(':hover'))tr.style.animationPlayState='running'; active.classList.remove('dragging'); active=null;},true);
+  document.addEventListener('mouseleave',function(){if(!active)return; active.classList.remove('dragging'); active=null;},true);
+})();
+try{setInterval(()=>{document.querySelectorAll('.aviso-ticker-track').forEach(t=>{t.style.animationName='mdlTicker'; if(!t.style.animationDuration)t.style.animationDuration='900s'; if(!t.closest('.aviso-ticker')?.classList.contains('dragging')) t.style.animationPlayState='running';});},5000)}catch(e){}
+
+
+
+// ===== V5.5 HOTFIX: usa lista pré-calculada pelo Python para Meta diária BATIDA =====
+window.META_DIARIA_BATIDA_PRECALC = __JS_META_DIARIA_BATIDA_PRECALC__ || [];
+const _v54_oldMetaDiariaEntries = (typeof mdlV52MetaDiariaEntries === 'function') ? mdlV52MetaDiariaEntries : null;
+function _v54FormatPct(v){
+  const n=Number(v||0);
+  return Number.isFinite(n) ? n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%' : '0,00%';
+}
+function mdlV52MetaDiariaEntries(){
+  try{
+    const pre = Array.isArray(window.META_DIARIA_BATIDA_PRECALC) ? window.META_DIARIA_BATIDA_PRECALC : [];
+    if(pre.length){
+      return pre.map(x=>({
+        nome: String(x.nome||x.label||''),
+        info: String(x.info||`${x.filial||''} · ${_v54FormatPct(x.ating)} no dia`),
+        kind: x.kind||x.tipo||'',
+        filial: x.filial||'',
+        ating: Number(x.ating||0)
+      })).filter(x=>x.nome).sort((a,b)=>Number(b.ating||0)-Number(a.ating||0)||String(a.nome).localeCompare(String(b.nome),'pt-BR'));
+    }
+  }catch(e){console.warn('META_DIARIA_BATIDA_PRECALC falhou',e)}
+  try{return _v54_oldMetaDiariaEntries ? _v54_oldMetaDiariaEntries() : [];}catch(e){console.warn('fallback meta diaria',e); return []}
+}
+function mdlV51MetaDiariaCount(){try{return mdlV52MetaDiariaEntries().length}catch(e){return 0}}
+function renderMetaDiariaBatidaAlerts(){
+  try{
+    const arr=mdlV52MetaDiariaEntries();
+    if(!arr.length){
+      return `<div class="glass panel" style="margin-bottom:16px;padding:14px 18px;border-color:rgba(34,197,94,.22)"><div class="section-head" style="margin:0 0 8px"><div><h2 style="margin:0;font-size:18px">🎯 Meta diária BATIDA</h2><div class="hint">Mural ativo. Usa o Controle de Meta do Sólidus filtrado no dia atual: quem ficar com Atingido Período acima de 100% aparece aqui.</div></div><div class="badge">0</div></div><div class="meta-diaria-empty">Nenhuma meta diária batida até o momento.</div></div>`;
+    }
+    return renderAvisoTicker('Meta diária BATIDA','Controle de Meta Sólidus do dia atual: Atingido Período acima de 100%.', arr, {icon:'🎯',color:'rgba(34,197,94,.34)'});
+  }catch(e){console.warn('renderMetaDiariaBatidaAlerts v54',e); return ''}
+}
+
+// ===== V5.5 HOTFIX: notificações individuais usam a lista pré-calculada da meta diária =====
+const _v55_oldGoalNotifsFor = (typeof _goalNotifsFor === 'function') ? _goalNotifsFor : null;
+function _v55NormFilial(v){
+  const s=String(v||'').toUpperCase();
+  const m=s.match(/F(\d{1,2})/); if(m) return 'F'+String(Number(m[1]));
+  const m2=s.match(/FILIAL\s*0?(\d{1,2})/); if(m2) return 'F'+String(Number(m2[1]));
+  return s;
+}
+function _v55MetaDiariaMatchesEntity(ent){
+  try{
+    const pre = Array.isArray(window.META_DIARIA_BATIDA_PRECALC) ? window.META_DIARIA_BATIDA_PRECALC : [];
+    if(!ent || !pre.length) return [];
+    const entType=String(ent.type||'').toLowerCase();
+    const entFil=_v55NormFilial(ent.filial||'');
+    const entName=normName(ent.nome||ent.login||'');
+    return pre.filter(x=>{
+      const kind=String(x.kind||x.tipo||'').toLowerCase();
+      const xf=_v55NormFilial(x.filial||'');
+      const xn=normName(x.nome||x.label||'');
+      if(entType==='filial') return kind==='filial' && xf && xf===entFil;
+      if(entType==='vendedor') return kind==='vendedor' && ((xn && xn===entName) || (xn && entName && (xn.includes(entName)||entName.includes(xn))));
+      return false;
+    });
+  }catch(e){return []}
+}
+function _goalNotifsFor(ent){
+  let arr=[];
+  try{ arr = _v55_oldGoalNotifsFor ? (_v55_oldGoalNotifsFor(ent)||[]) : []; }catch(e){ arr=[]; }
+  try{
+    const hits=_v55MetaDiariaMatchesEntity(ent);
+    hits.forEach((b,idx)=>{
+      const key='meta_diaria_solidus_'+(b.kind||b.tipo||'')+'_'+(b.filial||'')+'_'+normName(b.nome||'')+'_'+idx;
+      if(!arr.some(n=>String(n.k||'')===key || String(n.k||'')==='meta_diaria')){
+        arr.push({k:key,t:'Meta diária BATIDA',d:`${b.nome||filialLabel(b.filial||'')} bateu a meta diária no Sólidus: ${_v54FormatPct(b.ating)} no período do dia. Realizado: ${b.realizado_periodo||''} / Meta: ${b.meta_periodo||''}.`});
+      }
+    });
+  }catch(e){}
+  return arr;
+}
+
+
+
+// ===== V6.4 HOTFIX: notificação vazia, aniversariantes sem duplicar, filtro filial e hora Brasília =====
+(function(){
+  try{
+    const st=document.createElement('style');
+    st.textContent=`
+      #laranjitoNotifyPanel:empty,#laranjitoNotifyPanel.show:empty{display:none!important;border:0!important;box-shadow:none!important;padding:0!important;height:0!important;min-height:0!important;max-height:0!important;overflow:hidden!important;opacity:0!important;pointer-events:none!important}
+      .ticker-row,.aviso-ticker,.ticker-track{max-width:100%!important;overflow:hidden!important}
+      .ticker-item{min-width:210px!important;max-width:340px!important;white-space:normal!important;line-height:1.15!important;align-items:flex-start!important;flex-direction:column!important;gap:3px!important}
+      .ticker-item .small,.ticker-item small{display:block!important;white-space:normal!important;overflow:visible!important;text-overflow:clip!important;font-size:11px!important;line-height:1.15!important;opacity:.82}
+    `;
+    document.head.appendChild(st);
+  }catch(e){}
+  function _hideEmptyNotifyPanel(){
+    try{
+      const p=document.getElementById('laranjitoNotifyPanel');
+      if(!p) return;
+      const hasText=(p.textContent||'').trim().length>0;
+      const hasChild=!!p.querySelector('*');
+      if(!hasText && !hasChild){
+        p.classList.remove('show');
+        p.style.display='none';
+        p.innerHTML='';
+      }
+    }catch(e){}
+  }
+  window.hideEmptyNotifyPanelMDL=_hideEmptyNotifyPanel;
+  setInterval(_hideEmptyNotifyPanel,900);
+  setTimeout(_hideEmptyNotifyPanel,200);
+  try{
+    const _oldUpdateGoal=typeof updateGoalNotifications==='function'?updateGoalNotifications:null;
+    if(_oldUpdateGoal){
+      updateGoalNotifications=function(){
+        const r=_oldUpdateGoal.apply(this,arguments);
+        setTimeout(_hideEmptyNotifyPanel,60);
+        return r;
+      }
+    }
+  }catch(e){}
+
+  // Filial/Vendedor: aniversário e reativação não podem duplicar no painel da filial e no vendedor.
+  // A filial/gerente fica somente com o que caiu no bucket GERENTE_Fx; vendedor fica somente com seu key.
+  function _ownerKeyForEntityV64(ent){
+    try{
+      if(!ent) return '';
+      const f=String(ent.filial||'').toUpperCase();
+      if(!f) return '';
+      if(ent.type==='filial' || ent.is_filial || String(ent.nome||'').toUpperCase().startsWith('FILIAL ')) return `GERENTE_${f}`;
+      if(ent.is_gerente || /GERENTE/i.test(String(ent.tipo||''))) return `GERENTE_${f}`;
+      return reatUserKeyFromNome(ent.nome||ent.login||'', f);
+    }catch(e){return ''}
+  }
+  window.ownerKeyForEntityV64=_ownerKeyForEntityV64;
+
+  if(typeof aniversariantesRowsParaEnt==='function'){
+    aniversariantesRowsParaEnt=function(ent){
+      const key=_ownerKeyForEntityV64(ent);
+      const rows=(ANIVERSARIANTES||[]).map((r,i)=>({...r,_idx:i,_owner:aniversarioOwnerInfo(r)}));
+      if(!key) return rows;
+      return rows.filter(r=>String(r._owner?.key||'')===key);
+    }
+  }
+  if(typeof reativacaoRowsParaEnt==='function'){
+    reativacaoRowsParaEnt=function(ent){
+      const key=_ownerKeyForEntityV64(ent);
+      const rows=(CLIENTES_SEM_MOVIMENTO||[]).map((r,i)=>({...r,_idx:i,_owner:reativacaoOwnerInfo(r)}));
+      if(!key) return rows;
+      return rows.filter(r=>String(r._owner?.key||'')===key);
+    }
+  }
+
+  // Filtro por filial: se selecionar F5, não trazer crediarista de outra filial nem cobrança terceiro.
+  if(typeof currentEntities==='function'){
+    const _oldCurrentEntitiesV64=currentEntities;
+    currentEntities=function(){
+      let arr=[];
+      try{arr=_oldCurrentEntitiesV64.apply(this,arguments)||[]}catch(e){arr=[]}
+      if(String(filtroFilial||'TODAS')==='TODAS') return arr;
+      const f=String(filtroFilial||'').toUpperCase();
+      return arr.filter(x=>{
+        if(!x) return false;
+        if(x.is_terceiro || x.type==='terceiro') return false;
+        return String(x.filial||'').toUpperCase()===f;
+      });
+    }
+  }
+
+  // Botão voltar só para master/diretor/painel; vendedor/filial/crediarista individual não precisa.
+  try{
+    const st2=document.createElement('style');
+    st2.textContent=`body.individual-view .back-row, body.individual-view .btn[onclick*="goBack"]{display:none!important}`;
+    document.head.appendChild(st2);
+  }catch(e){}
+
+  // Re-renderiza detalhes antigos após o hotfix, evitando painel duplicado aberto.
+  setTimeout(()=>{try{_hideEmptyNotifyPanel(); if(detailScreen && !detailScreen.classList.contains('hidden') && currentDetailRef){ openEntity(currentDetailRef); }}catch(e){}},800);
+})();
+
+
+// ===== V7.4: botão LISTA nos murais rotativos da tela inicial =====
+(function(){
+  try{
+    window.MDL_MURAL_LISTAS = window.MDL_MURAL_LISTAS || {};
+    const css=document.createElement('style');
+    css.textContent=`
+      .mdl-mural-actions{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+      .mdl-mural-list-btn{min-width:84px!important;justify-content:center!important;background:rgba(255,255,255,.055)!important;border:1px solid rgba(255,255,255,.13)!important;color:#dbeafe!important}
+      .mdl-mural-list-btn:hover{background:rgba(59,130,246,.16)!important;border-color:rgba(96,165,250,.28)!important;color:#fff!important}
+      .mdl-mural-modal-backdrop{position:fixed;inset:0;background:rgba(2,6,23,.72);backdrop-filter:blur(5px);z-index:99998;display:flex;align-items:center;justify-content:center;padding:18px}
+      .mdl-mural-modal{width:min(920px,96vw);max-height:86vh;overflow:hidden;border-radius:24px;background:linear-gradient(135deg,rgba(17,24,39,.98),rgba(10,12,18,.98));border:1px solid rgba(255,255,255,.12);box-shadow:0 30px 90px rgba(0,0,0,.55);display:flex;flex-direction:column}
+      .mdl-mural-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:18px 20px;border-bottom:1px solid rgba(255,255,255,.08)}
+      .mdl-mural-modal-head h2{margin:0;font-size:20px;color:#fff}.mdl-mural-modal-head .hint{font-size:12px;color:#9ca3af;margin-top:4px}
+      .mdl-mural-modal-tools{display:flex;gap:8px;align-items:center;padding:12px 18px;border-bottom:1px solid rgba(255,255,255,.07)}
+      .mdl-mural-modal-tools input{flex:1;min-width:180px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.10);color:#fff;border-radius:14px;padding:10px 12px;font-weight:750;outline:none}
+      .mdl-mural-modal-list{overflow:auto;padding:12px 18px 18px;display:grid;gap:8px}
+      .mdl-mural-modal-row{display:grid;grid-template-columns:40px minmax(180px,1.1fr) minmax(120px,.9fr);gap:12px;align-items:center;padding:11px 12px;border-radius:16px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.075)}
+      .mdl-mural-modal-row:hover{background:rgba(255,255,255,.065)}
+      .mdl-mural-modal-row .idx{width:28px;height:28px;border-radius:999px;display:flex;align-items:center;justify-content:center;background:rgba(249,168,50,.14);border:1px solid rgba(249,168,50,.25);color:#fbbf24;font-weight:950;font-size:12px}
+      .mdl-mural-modal-row .nome{font-weight:950;color:#f8fafc;line-height:1.25}.mdl-mural-modal-row .info{font-size:12px;color:#aab4cb;line-height:1.25;font-weight:750}
+      @media(max-width:720px){.mdl-mural-modal-row{grid-template-columns:34px 1fr}.mdl-mural-modal-row .info{grid-column:2}.mdl-mural-actions{justify-content:flex-start}.mdl-mural-modal{max-height:92vh}}
+    `;
+    document.head.appendChild(css);
+  }catch(e){console.warn('V7.4 css mural lista',e)}
+})();
+
+function mdlV74CleanMuralEntries(entries){
+  try{
+    const seen=new Set();
+    return (entries||[]).map(e=>typeof e==='string'?{nome:e,info:''}:e).filter(e=>(e.nome||e.label||'').trim()).map(e=>({
+      nome:String(e.nome||e.label||'').trim(),
+      info:String(e.info||e.detalhe||e.filial||'').trim()
+    })).filter(e=>{
+      const k=(e.nome+'|'+e.info).toLowerCase();
+      if(seen.has(k)) return false; seen.add(k); return true;
+    });
+  }catch(e){return []}
+}
+function mdlV74OpenMuralLista(id){
+  try{
+    const data=(window.MDL_MURAL_LISTAS||{})[id];
+    if(!data){toast('Lista não encontrada neste mural.','warn'); return;}
+    const arr=mdlV74CleanMuralEntries(data.entries||[]);
+    const old=document.getElementById('mdlMuralListaModal'); if(old) old.remove();
+    const html=`<div id="mdlMuralListaModal" class="mdl-mural-modal-backdrop" onclick="if(event.target.id==='mdlMuralListaModal')mdlV74CloseMuralLista()">
+      <div class="mdl-mural-modal">
+        <div class="mdl-mural-modal-head">
+          <div><h2>${esc(data.icon||'📋')} ${esc(data.title||'Lista do mural')}</h2><div class="hint">${arr.length} item(ns) encontrados. Use a busca para localizar rápido.</div></div>
+          <button class="btn soft" onclick="mdlV74CloseMuralLista()">Fechar</button>
+        </div>
+        <div class="mdl-mural-modal-tools"><input id="mdlMuralListaBusca" placeholder="Buscar nome, filial ou detalhe..." oninput="mdlV74FiltrarMuralLista(this.value)"><button class="btn soft" onclick="mdlV74CopiarMuralLista('${esc(id)}')">Copiar lista</button></div>
+        <div id="mdlMuralListaRows" class="mdl-mural-modal-list">${arr.map((e,i)=>`<div class="mdl-mural-modal-row" data-search="${esc((e.nome+' '+e.info).toLowerCase())}"><div class="idx">${i+1}</div><div class="nome">${esc(e.nome)}</div><div class="info">${esc(e.info||'')}</div></div>`).join('') || '<div class="empty">Nenhum item para listar.</div>'}</div>
+      </div>
+    </div>`;
+    document.body.insertAdjacentHTML('beforeend',html);
+    setTimeout(()=>document.getElementById('mdlMuralListaBusca')?.focus(),80);
+  }catch(e){console.warn('mdlV74OpenMuralLista',e); toast('Erro ao abrir lista do mural.','warn')}
+}
+function mdlV74CloseMuralLista(){try{document.getElementById('mdlMuralListaModal')?.remove()}catch(e){}}
+function mdlV74FiltrarMuralLista(q){
+  try{q=String(q||'').trim().toLowerCase(); document.querySelectorAll('#mdlMuralListaRows .mdl-mural-modal-row').forEach(r=>{r.style.display=(!q || String(r.dataset.search||'').includes(q))?'grid':'none'});}catch(e){}
+}
+async function mdlV74CopiarMuralLista(id){
+  try{
+    const data=(window.MDL_MURAL_LISTAS||{})[id]||{};
+    const arr=mdlV74CleanMuralEntries(data.entries||[]);
+    const txt=[`${data.title||'Lista do mural'} (${arr.length})`,...arr.map((e,i)=>`${i+1}. ${e.nome}${e.info?' - '+e.info:''}`)].join('\n');
+    await navigator.clipboard.writeText(txt);
+    toast('Lista copiada.','success');
+  }catch(e){toast('Não consegui copiar a lista.','warn')}
+}
+
+// Override final do ticker para incluir botão Lista ao lado do Acelerar.
+function renderAvisoTicker(title,hint,entries,opts={}){
+  const icon=opts.icon||'•';
+  const color=opts.color||'rgba(249,168,50,.25)';
+  const arr=mdlV74CleanMuralEntries(entries||[]);
+  if(!arr.length) return `<div class="empty">Nenhuma informação no momento.</div>`;
+  const doubled=arr.concat(arr).concat(arr);
+  const safeId='ticker_'+Math.random().toString(36).slice(2);
+  window.MDL_MURAL_LISTAS=window.MDL_MURAL_LISTAS||{};
+  window.MDL_MURAL_LISTAS[safeId]={title:title||'Mural',hint:hint||'',icon,entries:arr};
+  return `<div class="glass panel full aviso-rotativo" style="border-color:${color}"><div class="section-head" style="margin-bottom:6px"><div><h2 style="font-size:18px">${esc(icon)} ${esc(title||'Mural')}</h2><div class="hint">${esc(hint||'')}</div></div><div class="mdl-mural-actions"><span class="badge">${arr.length}</span><button class="btn soft mdl-mural-list-btn" onclick="mdlV74OpenMuralLista('${safeId}')">📋 Lista</button><button class="btn soft ticker-speed-btn" onclick="toggleTickerSpeed('${safeId}',this)">⚡ Acelerar</button></div></div><div id="${safeId}" class="aviso-ticker"><div class="aviso-ticker-track" style="animation-duration:900s">${doubled.map(e=>`<span class="aviso-pill"><i class="red-dot"></i><span class="ticker-main">${esc(e.nome||'')}</span><small>${esc(e.info||'')}</small></span>`).join('')}</div></div></div>`;
+}
+
 </script>
 </body>
 </html>
@@ -8847,6 +12402,8 @@ repls = {
     '__JS_RECEBIMENTOS_CREDIARISTA__': js_recebimentos_crediarista,
     '__JS_CREDIARISTAS_MAP__': js_crediaristas_map,
     '__JS_METAS_VENDAS__': js_metas_vendas,
+    '__JS_METAS_VENDAS_DIA__': js_metas_vendas_dia,
+    '__JS_META_DIARIA_BATIDA_PRECALC__': js_meta_diaria_batida_precalc,
     '__JS_MARGENS_BRUTAS__': js_margens_brutas,
     '__JS_SALES_EMPRESA__': js_sales_empresa,
     '__JS_RENT_EMPRESA__': js_rent_empresa,
@@ -8856,6 +12413,9 @@ repls = {
     '__JS_DESTAQUE__': js_destaque,
     '__JS_HIST_DASH__': js_hist_dash,
     '__JS_QUITADOS_180__': js_quitados_180,
+    '__JS_CLIENTES_SEM_MOVIMENTO__': js_clientes_sem_movimento,
+    '__JS_ANIVERSARIANTES__': js_aniversariantes,
+    '__JS_DUPLICIDADES_CARTEIRA__': js_duplicidades_carteira,
     '__LOGIN_MASTER__': json.dumps(LOGIN_MASTER, ensure_ascii=False),
     '__SENHA_MASTER__': json.dumps(SENHA_MASTER, ensure_ascii=False),
     '__LOGIN_DIRETOR__': json.dumps(LOGIN_DIRETOR, ensure_ascii=False),
@@ -8868,6 +12428,10 @@ repls = {
     '__LARANJITO__': _laranjito,
     '__LOGO__': _logo,
     '__PERIODO__': f"{data_inicio} a {data_fim}",
+    '__DASH_VERSION_LABEL__': DASHBOARD_BUILD_VERSION,
+    '__JS_DASHBOARD_BUILD_VERSION__': json.dumps(DASHBOARD_BUILD_VERSION, ensure_ascii=False),
+    '__JS_DASHBOARD_BUILD_TAG__': json.dumps(DASHBOARD_BUILD_TAG, ensure_ascii=False),
+    '__DASHBOARD_UPDATED_AT_LABEL__': json.dumps(now_brasilia().strftime('%d/%m/%Y %H:%M:%S'), ensure_ascii=False),
 }
 for k,v in repls.items():
     html = html.replace(k, v)
@@ -8929,12 +12493,32 @@ function write_json_atomic($path, $data){
   if (@file_put_contents($tmp, $json, LOCK_EX) === false) return false;
   return @rename($tmp, $path);
 }
+function cleanup_backups($backupDir){
+  // V4.6: evita estourar FTP. Mantém somente:
+  // - latest do dia
+  // - latest dos últimos 10 dias
+  // - append NDJSON dos últimos 10 dias
+  $keepDays = 10;
+  $limit = time() - ($keepDays * 86400);
+  foreach (glob($backupDir . '/cobrancas_log_*.json') ?: [] as $f) {
+    $base = basename($f);
+    if (preg_match('/_latest\.json$/', $base)) {
+      if (@filemtime($f) < $limit) @unlink($f);
+    } else {
+      // remove backups antigos por horário/segundo das versões anteriores
+      @unlink($f);
+    }
+  }
+  foreach (glob($backupDir . '/cobrancas_log_append_*.ndjson') ?: [] as $f) {
+    if (@filemtime($f) < $limit) @unlink($f);
+  }
+}
 function make_backup($file, $backupDir, $tag='before_write'){
   if (!file_exists($file)) return;
   $day = date('Y-m-d');
-  $stamp = date('His');
+  // V4.6: não cria 1 JSON a cada clique. Atualiza somente o latest do dia.
   @copy($file, $backupDir . "/cobrancas_log_{$day}_latest.json");
-  @copy($file, $backupDir . "/cobrancas_log_{$day}_{$stamp}_{$tag}.json");
+  cleanup_backups($backupDir);
 }
 function restore_latest_backup($file, $backupDir){
   if (file_exists($file) && filesize($file) > 2) return false;
@@ -9148,8 +12732,11 @@ function resolve_login_ref(&$data, $login){
   return null;
 }
 function mark_reset_resolved(&$data, $login){ foreach(($data['password_reset_requests'] ?? []) as &$req){ if (strtolower((string)($req['login'] ?? ''))===strtolower((string)$login) && (($req['status'] ?? 'pendente')==='pendente')) $req['status']='resolvido'; } }
+function norm_colab_key($s){ $s = strtoupper(trim((string)$s)); $s = iconv('UTF-8','ASCII//TRANSLIT//IGNORE',$s); $s = preg_replace('/[^A-Z0-9]+/', ' ', $s); return trim(preg_replace('/\s+/', ' ', $s)); }
+function colab_status_key($nome, $filial, $isGerente=false){ return norm_colab_key($nome).'|'.strtoupper(trim((string)$filial)).'|'.($isGerente ? 'GERENTE' : 'VENDEDOR'); }
+function ensure_colab_status(&$data){ if(!isset($data['colaborador_status']) || !is_array($data['colaborador_status'])) $data['colaborador_status'] = []; }
 
-if ($_SERVER['REQUEST_METHOD'] === 'GET') { echo json_encode(['ok'=>true,'data'=>$data], JSON_UNESCAPED_UNICODE); exit; }
+if ($_SERVER['REQUEST_METHOD'] === 'GET') { ensure_colab_status($data); echo json_encode(['ok'=>true,'data'=>$data], JSON_UNESCAPED_UNICODE); exit; }
 $action = $_POST['action'] ?? '';
 if ($action === 'admin_set_access_block') {
   $blocked = (($_POST['blocked'] ?? '0') === '1');
@@ -9191,6 +12778,38 @@ if ($action === 'change_password') {
   if ($ref['type'] === 'director') { if (($data['director']['password'] ?? '') !== $current) { echo json_encode(['ok'=>false,'error'=>'senha_atual_invalida']); exit; } $data['director']['password']=$new; $data['director']['must_change_password']=false; }
   else { if (($data['users'][$ref['key']]['password'] ?? '') !== $current) { echo json_encode(['ok'=>false,'error'=>'senha_atual_invalida']); exit; } $data['users'][$ref['key']]['password']=$new; $data['users'][$ref['key']]['must_change_password']=false; }
   mark_reset_resolved($data, $login); save_all($file, $data); echo json_encode(['ok'=>true], JSON_UNESCAPED_UNICODE); exit;
+}
+if ($action === 'admin_update_user_status') {
+  ensure_colab_status($data);
+  $login = strtolower(trim($_POST['login'] ?? ''));
+  $ref = resolve_login_ref($data, $login);
+  if (!$ref || $ref['type'] !== 'user') { echo json_encode(['ok'=>false,'error'=>'login_nao_encontrado']); exit; }
+  $key = $ref['key'];
+  $u =& $data['users'][$key];
+  $status = strtolower(trim($_POST['status'] ?? 'ativo'));
+  $status = in_array($status, ['inativo','desligado','bloqueado']) ? 'inativo' : 'ativo';
+  $flags = ['participa_cobrancas','participa_sem_movimento','participa_aniversariantes','participa_murais'];
+  $u['status_operacional'] = $status;
+  $u['access_disabled'] = ($status !== 'ativo');
+  foreach($flags as $fl){ $u[$fl] = (($_POST[$fl] ?? '1') === '1'); }
+  $u['data_entrada'] = trim((string)($_POST['data_entrada'] ?? ($u['data_entrada'] ?? '')));
+  $u['data_saida'] = trim((string)($_POST['data_saida'] ?? ''));
+  $u['substituto'] = trim((string)($_POST['substituto'] ?? ''));
+  $u['obs'] = trim((string)($_POST['obs'] ?? ''));
+  $sk = colab_status_key($u['nome'] ?? $login, $u['filial'] ?? '', !empty($u['is_gerente']));
+  $data['colaborador_status'][$sk] = [
+    'login'=>$key, 'nome'=>($u['nome'] ?? $login), 'filial'=>($u['filial'] ?? ''),
+    'tipo'=>!empty($u['is_gerente'])?'Gerente':(!empty($u['is_crediarista'])?'Crediarista':(!empty($u['is_terceiro'])?'Cobrança terceiro':(!empty($u['is_viewer'])?'Painel':'Vendedor'))),
+    'status'=>$status,
+    'participa_cobrancas'=>$u['participa_cobrancas'],
+    'participa_sem_movimento'=>$u['participa_sem_movimento'],
+    'participa_aniversariantes'=>$u['participa_aniversariantes'],
+    'participa_murais'=>$u['participa_murais'],
+    'data_entrada'=>$u['data_entrada'], 'data_saida'=>$u['data_saida'], 'substituto'=>$u['substituto'], 'obs'=>$u['obs'],
+    'updated_at'=>date('c')
+  ];
+  save_all($file, $data);
+  echo json_encode(['ok'=>true,'data'=>$data], JSON_UNESCAPED_UNICODE); exit;
 }
 if ($action === 'admin_set_password') {
   $login = strtolower(trim($_POST['login'] ?? '')); $new = strval($_POST['new_password'] ?? ''); $must = ($_POST['must_change_password'] ?? '0') === '1';
@@ -9266,7 +12885,11 @@ FTP_USER  = 'moveisdolar3'
 FTP_PASS  = 'Deg27ll02mdl2301#'
 FTP_DIR   = '/public_html/colaborador'
 
-if FTP_USER and FTP_PASS:
+MODO_TESTE_LOCAL = os.getenv('MODO_TESTE_LOCAL', '0') == '1'
+if MODO_TESTE_LOCAL:
+    print('🧪 MODO_TESTE_LOCAL=1 ativo: NÃO envia arquivos ao FTP de produção.')
+
+if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
     try:
         print('\n📤 Enviando arquivos para o servidor FTP...')
         ftp = ftplib.FTP()
@@ -9314,6 +12937,18 @@ if FTP_USER and FTP_PASS:
                 ftp.storbinary('STOR fechamentos_mensais.json', f_fech)
         except Exception:
             ftp.storbinary('STOR fechamentos_mensais.json', BytesIO(b'{"months":{}}'))
+        try:
+            _csm_path = os.path.join(pasta, 'clientes_sem_movimento.json')
+            if os.path.exists(_csm_path):
+                with open(_csm_path, 'rb') as f_csm:
+                    ftp.storbinary('STOR clientes_sem_movimento.json', f_csm)
+            _dup_path = os.path.join(pasta, 'relatorio_duplicidades_carteira.json')
+            if os.path.exists(_dup_path):
+                with open(_dup_path, 'rb') as f_dup:
+                    ftp.storbinary('STOR relatorio_duplicidades_carteira.json', f_dup)
+        except Exception as e_extra_ftp:
+            print(f'⚠️ Erro ao enviar extras dashboard 2.0 ao FTP: {e_extra_ftp}')
+
         try:
             if quitados_180_info.get('json_path') and os.path.exists(quitados_180_info['json_path']):
                 with open(quitados_180_info['json_path'], 'rb') as f_q_json:

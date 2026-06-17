@@ -1,4 +1,4 @@
-# VERSAO: RAILWAY_SCHEDULER_MDL_V17_MONITOR_LOGS_PERSISTENTES_FLUXO_ESTAVEL
+# VERSAO: RAILWAY_SCHEDULER_MDL_V30_TELEGRAM_TEMPLATE_COMPLETO_SEM_REAIS
 import json
 import os
 import sys
@@ -9,8 +9,19 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+# ===== UTF-8 LOGS WINDOWS/RAILWAY =====
+# Garante que subprocessos Python imprimam emojis/logs sem quebrar no cp1252.
+os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
+os.environ.setdefault('PYTHONUTF8', '1')
 try:
-    from telegram_monitor_mdl import telegram_send, build_daily_summary, tail_file, now_br
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
+
+try:
+    from telegram_monitor_mdl import telegram_send, build_daily_summary, tail_file, now_br, load_active_general_messages, build_general_message_alert, load_meta_diaria_batidas, build_meta_diaria_alert, load_meta_mercantil_100, build_meta_mercantil_100_alert
 except Exception as e:
     def telegram_send(text, *a, **k): return (False, f"telegram import erro: {e}")
     def build_daily_summary(base_dir, date_str=None): return f"Resumo indisponível: {e}"
@@ -19,6 +30,8 @@ except Exception as e:
             with open(path, 'r', encoding='utf-8', errors='ignore') as f: return f.read().splitlines()[-lines:]
         except Exception: return []
     def now_br(): return datetime.now(ZoneInfo('America/Sao_Paulo'))
+    def load_meta_mercantil_100(base_dir): return []
+    def build_meta_mercantil_100_alert(item): return 'Meta mercantil 100% indisponível'
 
 BR_TZ = ZoneInfo(os.getenv('APP_TZ', 'America/Sao_Paulo'))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -32,6 +45,9 @@ COBRANCA_MINUTE_MAX = int(os.getenv('COBRANCA_RUN_MINUTE_MAX', '9'))
 COBRANCA_MIN_GAP_MIN = int(os.getenv('COBRANCA_MIN_GAP_MIN', '90'))
 DAILY_SUMMARY_HOUR = int(os.getenv('TELEGRAM_DAILY_SUMMARY_HOUR', '19'))
 DAILY_SUMMARY_MINUTE_MAX = int(os.getenv('TELEGRAM_DAILY_SUMMARY_MINUTE_MAX', '9'))
+DAILY_LISTS_HOUR = int(os.getenv('RELATORIOS_DIARIOS_HOUR', '7'))
+DAILY_LISTS_MINUTE_MAX = int(os.getenv('RELATORIOS_DIARIOS_MINUTE_MAX', '20'))
+TELEGRAM_ALERTAS_ENABLED = os.getenv('TELEGRAM_ALERTAS_ENABLED', '1') != '0'
 TELEGRAM_ENABLED = os.getenv('TELEGRAM_ENABLED', '1') != '0'
 
 SCHED_LOG = os.path.join(LOG_DIR, 'scheduler.log')
@@ -52,12 +68,17 @@ _force_main_boot = True
 _force_sales_after_main = False
 
 STATE = {
-    'version': 'V17_MONITOR_LOGS_PERSISTENTES_FLUXO_ESTAVEL',
+    'version': 'V28_TELEGRAM_IGNORA_GERENTES_META_VENDEDOR',
     'started_at': None,
     'updated_at': None,
     'scheduler': 'starting',
     'telegram_enabled': TELEGRAM_ENABLED,
     'last_summary_date': None,
+    'last_daily_lists_date': None,
+    'telegram_sent_message_ids': [],
+    'telegram_sent_meta_keys': [],
+    'telegram_sent_meta100_keys': [],
+    'next_daily_lists_label': '',
     'next_sales_label': '',
     'next_cobranca_label': '',
     'jobs': {
@@ -66,6 +87,17 @@ STATE = {
     },
     'recent_events': []
 }
+
+# Carrega estado anterior para não reenviar alertas após restart.
+try:
+    if os.path.exists(STATUS_PATH):
+        with open(STATUS_PATH, 'r', encoding='utf-8') as _f:
+            _old_state = json.load(_f)
+        for _k in ['last_summary_date','last_daily_lists_date','telegram_sent_message_ids','telegram_sent_meta_keys','telegram_sent_meta100_keys']:
+            if _k in _old_state:
+                STATE[_k] = _old_state.get(_k)
+except Exception:
+    pass
 
 def br_now(): return datetime.now(BR_TZ)
 def iso_now(): return br_now().isoformat()
@@ -86,10 +118,13 @@ def log(msg):
     STATE['recent_events'] = STATE['recent_events'][-120:]
     _save_status()
 
-def notify(text):
+def notify(text, alert_type='erros'):
     if not TELEGRAM_ENABLED: return False
-    ok, resp = telegram_send(text)
-    log('📲 Telegram enviado' if ok else f'⚠️ Falha Telegram: {resp}')
+    try:
+        ok, resp = telegram_send(text, alert_type=alert_type, base_dir=BASE_DIR)
+    except TypeError:
+        ok, resp = telegram_send(text)
+    log(f'📲 Telegram enviado ({alert_type})' if ok else f'⚠️ Falha Telegram ({alert_type}): {resp}')
     return ok
 
 def is_running(proc): return proc is not None and proc.poll() is None
@@ -98,7 +133,7 @@ def _job_log_path(name): return MAIN_LOG if 'cobranca' in name or 'dashboard' in
 
 def _state_job_key(name): return 'dashboard_completo_cobranca' if 'cobranca' in name or 'dashboard' in name else 'vendas_unificadas'
 
-def start_job(name, cmd):
+def start_job(name, cmd, extra_env=None):
     key = _state_job_key(name)
     log_path = _job_log_path(name)
     log(f'▶ Iniciando job: {name}')
@@ -108,8 +143,16 @@ def start_job(name, cmd):
         lf.write('\n' + '='*90 + '\n')
         lf.write(f'INÍCIO {name} em {iso_now()}\n')
         lf.write('Comando: ' + ' '.join(cmd) + '\n')
+        if extra_env:
+            lf.write('Env extra: ' + json.dumps(extra_env, ensure_ascii=False) + '\n')
         lf.write('='*90 + '\n')
-    return subprocess.Popen(cmd, cwd=BASE_DIR, stdout=open(log_path, 'a', encoding='utf-8'), stderr=subprocess.STDOUT)
+    
+    env = os.environ.copy()
+    env['PYTHONIOENCODING'] = 'utf-8'
+    env['PYTHONUTF8'] = '1'
+    if extra_env:
+        env.update({str(k): str(v) for k, v in extra_env.items()})
+    return subprocess.Popen(cmd, cwd=BASE_DIR, env=env, stdout=open(log_path, 'a', encoding='utf-8'), stderr=subprocess.STDOUT)
 
 def finish_if_done(name, proc):
     global _last_cobranca_end
@@ -151,9 +194,27 @@ def next_cobranca_time(dt):
     for d in range(0, 4):
         base = (dt + timedelta(days=d)).date()
         for h in sorted(COBRANCA_HOURS):
-            cand = datetime(base.year, base.month, base.day, h, 0, 0, tzinfo=BR_TZ)
+            cand = datetime(base.year, base.month, base.day, h, 0, 0, 0, tzinfo=BR_TZ)
             if cand > dt: return cand
     return dt + timedelta(hours=2)
+
+def next_daily_lists_time(dt):
+    for d in range(0, 4):
+        base = (dt + timedelta(days=d)).date()
+        cand = datetime(base.year, base.month, base.day, DAILY_LISTS_HOUR, 0, 0, tzinfo=BR_TZ)
+        if cand > dt:
+            return cand
+    return dt + timedelta(days=1)
+
+def daily_lists_due(dt):
+    day = dt.strftime('%Y-%m-%d')
+    return (dt.hour == DAILY_LISTS_HOUR and 0 <= dt.minute <= DAILY_LISTS_MINUTE_MAX and STATE.get('last_daily_lists_date') != day)
+
+def main_job_env(with_daily_lists=False):
+    return {
+        'BAIXAR_CLIENTES_SEM_MOVIMENTO': '1' if with_daily_lists else '0',
+        'BAIXAR_ANIVERSARIANTES': '1' if with_daily_lists else '0',
+    }
 
 def fmt_delta(target):
     sec = max(0, int((target - br_now()).total_seconds()))
@@ -167,29 +228,98 @@ def maybe_send_daily_summary(now):
     day = now.strftime('%Y-%m-%d')
     if _last_summary_date == day or STATE.get('last_summary_date') == day: return
     try:
-        ok = notify(build_daily_summary(BASE_DIR, day))
+        ok = notify(build_daily_summary(BASE_DIR, day), 'resumo')
         if ok:
             _last_summary_date = day
             STATE['last_summary_date'] = day
             _save_status()
     except Exception as e:
-        notify(f'⚠️ Falha ao montar resumo diário COB+VENDAS: {e}')
+        notify(f'⚠️ Falha ao montar resumo diário COB+VENDAS: {e}', 'erros')
 
-def force_summary_now(): return telegram_send(build_daily_summary(BASE_DIR, br_now().strftime('%Y-%m-%d')))
+def maybe_send_general_message_alerts(now):
+    if not (TELEGRAM_ENABLED and TELEGRAM_ALERTAS_ENABLED): return
+    sent = set(STATE.get('telegram_sent_message_ids') or [])
+    try:
+        for m in load_active_general_messages(BASE_DIR):
+            mid = str(m.get('id') or '')
+            if not mid or mid in sent:
+                continue
+            # Evita disparar avisos antigos existentes antes da implantação do watcher.
+            ts = None
+            try:
+                from telegram_monitor_mdl import _parse_dt_any
+                ts = _parse_dt_any(m.get('server_time'))
+            except Exception:
+                ts = None
+            started = None
+            try:
+                started = datetime.fromisoformat(str(STATE.get('started_at'))).astimezone(BR_TZ)
+            except Exception:
+                started = now - timedelta(minutes=5)
+            if ts and ts < (started - timedelta(minutes=2)):
+                sent.add(mid)
+                continue
+            ok = notify(build_general_message_alert(m), 'avisos')
+            if ok:
+                sent.add(mid)
+        STATE['telegram_sent_message_ids'] = list(sent)[-500:]
+        _save_status()
+    except Exception as e:
+        log(f'⚠️ Falha watcher Telegram avisos gerais: {e}')
+
+def maybe_send_meta_diaria_alerts(now):
+    if not (TELEGRAM_ENABLED and TELEGRAM_ALERTAS_ENABLED): return
+    sent = set(STATE.get('telegram_sent_meta_keys') or [])
+    today_prefix = now.strftime('%Y-%m-%d')
+    try:
+        for item in load_meta_diaria_batidas(BASE_DIR):
+            key = today_prefix + '|' + str(item.get('key') or '')
+            if not key or key in sent:
+                continue
+            ok = notify(build_meta_diaria_alert(item), 'meta_diaria')
+            if ok:
+                sent.add(key)
+        # mantém somente chaves recentes/atuais para não crescer infinito
+        STATE['telegram_sent_meta_keys'] = [k for k in list(sent)[-800:] if k.startswith(today_prefix) or len(k) < 250]
+        _save_status()
+    except Exception as e:
+        log(f'⚠️ Falha watcher Telegram meta diária: {e}')
+
+
+def maybe_send_meta_mercantil_100_alerts(now):
+    """Telegram quando filial/vendedor bater 100% da meta mercantil mensal. Envia uma vez por mês por entidade."""
+    if not (TELEGRAM_ENABLED and TELEGRAM_ALERTAS_ENABLED): return
+    sent = set(STATE.get('telegram_sent_meta100_keys') or [])
+    month_prefix = now.strftime('%Y-%m')
+    try:
+        for item in load_meta_mercantil_100(BASE_DIR):
+            key = month_prefix + '|' + str(item.get('key') or '')
+            if not key or key in sent:
+                continue
+            ok = notify(build_meta_mercantil_100_alert(item), 'meta_mensal')
+            if ok:
+                sent.add(key)
+        # mantém chaves do mês atual e um limite para não crescer infinito
+        STATE['telegram_sent_meta100_keys'] = [k for k in list(sent)[-1000:] if k.startswith(month_prefix) or len(k) < 250]
+        _save_status()
+    except Exception as e:
+        log(f'⚠️ Falha watcher Telegram meta mercantil 100%: {e}')
+
+def force_summary_now(): return telegram_send(build_daily_summary(BASE_DIR, br_now().strftime('%Y-%m-%d')), alert_type='resumo', base_dir=BASE_DIR)
 
 def force_run(kind):
     global _sales_proc, _cobranca_proc, _force_sales_after_main
     if is_running(_sales_proc) or is_running(_cobranca_proc): return False, 'Já existe job rodando. Aguarde finalizar.'
     if kind == 'main':
         _force_sales_after_main = True
-        _cobranca_proc = start_job('dashboard_completo_cobranca_manual', COBRANCA_CMD)
+        _cobranca_proc = start_job('dashboard_completo_cobranca_manual', COBRANCA_CMD, main_job_env(False))
         return True, 'Cobrança/Main iniciado. Vendas rodará depois que ele terminar.'
     if kind == 'sales':
         _sales_proc = start_job('vendas_unificadas_manual', SALES_CMD)
         return True, 'Vendas iniciado manualmente.'
     return False, 'Tipo inválido.'
 
-HTML = r'''<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>COB+VENDAS Monitor Railway</title><style>:root{--bg:#070a10;--card:#111827;--line:#263244;--txt:#eef2ff;--mut:#94a3b8;--ok:#22c55e;--bad:#ef4444;--warn:#f59e0b}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#111827,#070a10 55%);font-family:Inter,Segoe UI,Arial,sans-serif;color:var(--txt);padding:24px}.wrap{max-width:1180px;margin:auto}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.brand h1{margin:0;font-size:28px}.brand p{margin:6px 0 0;color:var(--mut)}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:20px 0}.card{background:rgba(17,24,39,.86);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 18px 55px rgba(0,0,0,.25)}.k{font-size:12px;color:var(--mut);font-weight:900;text-transform:uppercase;letter-spacing:.08em}.v{font-size:24px;font-weight:900;margin-top:8px}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}button{border:0;border-radius:12px;padding:12px 16px;font-weight:900;cursor:pointer;color:#111827;background:#f59e0b}button.soft{background:#1f2937;color:var(--txt);border:1px solid var(--line)}button.blue{background:#2563eb;color:white}.jobs{display:grid;grid-template-columns:1fr 1fr;gap:14px}.row{display:grid;grid-template-columns:160px 1fr;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)}pre{white-space:pre-wrap;background:#030712;border:1px solid var(--line);border-radius:14px;padding:14px;color:#d1d5db;max-height:430px;overflow:auto}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}@media(max-width:850px){.grid,.jobs{grid-template-columns:1fr}.row{grid-template-columns:1fr}}</style></head><body><div class="wrap"><div class="top"><div class="brand"><h1>🚦 COB+VENDAS Monitor Railway</h1><p>Ordem: cobrança/recebimentos primeiro, vendas depois; vendas a cada 20min; cobrança a cada 2h.</p></div><div class="actions"><button onclick="run('main')">Rodar cobrança agora</button><button class="blue" onclick="run('sales')">Rodar vendas agora</button><button class="soft" onclick="sendSummary()">Enviar resumo Telegram</button><button class="soft" onclick="testTelegram()">Teste Telegram</button></div></div><div id="app">Carregando...</div></div><script>const R=v=>v==null?'-':String(v).replace('T',' ').slice(0,19);async function api(p,o){const r=await fetch(p,o);return await r.json()}async function refresh(){const s=await api('/api/status');const j=s.jobs||{};const ev=(s.recent_events||[]).slice(-18).reverse().join('\n');document.getElementById('app').innerHTML=`<div class="grid"><div class="card"><div class="k">Scheduler</div><div class="v ok">${s.scheduler||'-'}</div></div><div class="card"><div class="k">Próxima vendas</div><div class="v warn">${s.next_sales_label||'-'}</div></div><div class="card"><div class="k">Próxima cobrança</div><div class="v warn">${s.next_cobranca_label||'-'}</div></div><div class="card"><div class="k">Atualizado</div><div class="v" style="font-size:17px">${R(s.updated_at)}</div></div></div><div class="jobs">${Object.entries(j).map(([name,x])=>`<div class="card"><h2>${name}</h2><div class="row"><b>Status</b><span class="${x.running?'warn':'ok'}">${x.running?'Rodando':'Parado'}</span></div><div class="row"><b>Início</b><span>${R(x.last_start)}</span></div><div class="row"><b>Fim</b><span>${R(x.last_end)}</span></div><div class="row"><b>Exit</b><span class="${x.last_exit===0?'ok':(x.last_exit?'bad':'')}">${x.last_exit??'-'}</span></div>${x.last_error?`<h3 class="bad">Último erro</h3><pre>${x.last_error}</pre>`:''}</div>`).join('')}</div><div class="card" style="margin-top:14px"><h2>Eventos recentes</h2><pre>${ev}</pre></div><div class="card" style="margin-top:14px"><h2>Logs</h2><div class="actions"><button class="soft" onclick="loadLog('scheduler')">Scheduler</button><button class="soft" onclick="loadLog('main')">Cobrança/Main</button><button class="soft" onclick="loadLog('sales')">Vendas</button></div><pre id="logbox">Clique em um log.</pre></div>`}let selectedLog='';async function loadLog(f){selectedLog=f;const r=await fetch('/api/logs?file='+f+'&_='+Date.now());const box=document.getElementById('logbox');if(box) box.textContent=await r.text()}async function run(k){const r=await api('/run/'+k,{method:'POST'});alert(r.message||JSON.stringify(r));refresh()}async function sendSummary(){const r=await api('/telegram/summary',{method:'POST'});alert(r.message||JSON.stringify(r))}async function testTelegram(){const r=await api('/telegram/test',{method:'POST'});alert(r.message||JSON.stringify(r))}setInterval(()=>{refresh().then(()=>{if(selectedLog) loadLog(selectedLog)})},5000);refresh();</script></body></html>'''
+HTML = r'''<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>COB+VENDAS Monitor Railway</title><style>:root{--bg:#070a10;--card:#111827;--line:#263244;--txt:#eef2ff;--mut:#94a3b8;--ok:#22c55e;--bad:#ef4444;--warn:#f59e0b}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#111827,#070a10 55%);font-family:Inter,Segoe UI,Arial,sans-serif;color:var(--txt);padding:24px}.wrap{max-width:1180px;margin:auto}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.brand h1{margin:0;font-size:28px}.brand p{margin:6px 0 0;color:var(--mut)}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:20px 0}.card{background:rgba(17,24,39,.86);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 18px 55px rgba(0,0,0,.25)}.k{font-size:12px;color:var(--mut);font-weight:900;text-transform:uppercase;letter-spacing:.08em}.v{font-size:24px;font-weight:900;margin-top:8px}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}button{border:0;border-radius:12px;padding:12px 16px;font-weight:900;cursor:pointer;color:#111827;background:#f59e0b}button.soft{background:#1f2937;color:var(--txt);border:1px solid var(--line)}button.blue{background:#2563eb;color:white}.jobs{display:grid;grid-template-columns:1fr 1fr;gap:14px}.row{display:grid;grid-template-columns:160px 1fr;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)}pre{white-space:pre-wrap;background:#030712;border:1px solid var(--line);border-radius:14px;padding:14px;color:#d1d5db;max-height:430px;overflow:auto}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}@media(max-width:850px){.grid,.jobs{grid-template-columns:1fr}.row{grid-template-columns:1fr}}</style></head><body><div class="wrap"><div class="top"><div class="brand"><h1>🚦 COB+VENDAS Monitor Railway</h1><p>Ordem: cobrança/recebimentos primeiro, vendas depois; vendas a cada 20min; cobrança a cada 2h; clientes sem movimento/aniversariantes 1x ao dia às 07h.</p></div><div class="actions"><button onclick="run('main')">Rodar cobrança agora</button><button class="blue" onclick="run('sales')">Rodar vendas agora</button><button class="soft" onclick="sendSummary()">Enviar resumo Telegram</button><button class="soft" onclick="testTelegram()">Teste Telegram</button></div></div><div id="app">Carregando...</div></div><script>const R=v=>v==null?'-':String(v).replace('T',' ').slice(0,19);async function api(p,o){const r=await fetch(p,o);return await r.json()}async function refresh(){const s=await api('/api/status');const j=s.jobs||{};const ev=(s.recent_events||[]).slice(-18).reverse().join('\n');document.getElementById('app').innerHTML=`<div class="grid"><div class="card"><div class="k">Scheduler</div><div class="v ok">${s.scheduler||'-'}</div></div><div class="card"><div class="k">Próxima vendas</div><div class="v warn">${s.next_sales_label||'-'}</div></div><div class="card"><div class="k">Próxima cobrança</div><div class="v warn">${s.next_cobranca_label||'-'}</div></div><div class="card"><div class="k">Listas 07h</div><div class="v warn">${s.next_daily_lists_label||'-'}</div></div><div class="card"><div class="k">Atualizado</div><div class="v" style="font-size:17px">${R(s.updated_at)}</div></div></div><div class="jobs">${Object.entries(j).map(([name,x])=>`<div class="card"><h2>${name}</h2><div class="row"><b>Status</b><span class="${x.running?'warn':'ok'}">${x.running?'Rodando':'Parado'}</span></div><div class="row"><b>Início</b><span>${R(x.last_start)}</span></div><div class="row"><b>Fim</b><span>${R(x.last_end)}</span></div><div class="row"><b>Exit</b><span class="${x.last_exit===0?'ok':(x.last_exit?'bad':'')}">${x.last_exit??'-'}</span></div>${x.last_error?`<h3 class="bad">Último erro</h3><pre>${x.last_error}</pre>`:''}</div>`).join('')}</div><div class="card" style="margin-top:14px"><h2>Eventos recentes</h2><pre>${ev}</pre></div><div class="card" style="margin-top:14px"><h2>Logs</h2><div class="actions"><button class="soft" onclick="loadLog('scheduler')">Scheduler</button><button class="soft" onclick="loadLog('main')">Cobrança/Main</button><button class="soft" onclick="loadLog('sales')">Vendas</button></div><pre id="logbox">Clique em um log.</pre></div>`}let selectedLog='';async function loadLog(f){selectedLog=f;const r=await fetch('/api/logs?file='+f+'&_='+Date.now());const box=document.getElementById('logbox');if(box) box.textContent=await r.text()}async function run(k){const r=await api('/run/'+k,{method:'POST'});alert(r.message||JSON.stringify(r));refresh()}async function sendSummary(){const r=await api('/telegram/summary',{method:'POST'});alert(r.message||JSON.stringify(r))}async function testTelegram(){const r=await api('/telegram/test',{method:'POST'});alert(r.message||JSON.stringify(r))}setInterval(()=>{refresh().then(()=>{if(selectedLog) loadLog(selectedLog)})},5000);refresh();</script></body></html>'''
 
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code=200, body='', ctype='text/html; charset=utf-8'):
@@ -214,7 +344,7 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path.startswith('/run/sales'):
             ok,msg=force_run('sales'); self._send(200, {'ok':ok,'message':msg})
         elif self.path.startswith('/telegram/test'):
-            ok,resp=telegram_send('✅ Teste Telegram COB+VENDAS OK\n'+br_now().strftime('%d/%m/%Y %H:%M:%S')); self._send(200, {'ok':ok,'message':'Telegram enviado' if ok else resp})
+            ok,resp=telegram_send('✅ Teste Telegram COB+VENDAS OK\n'+br_now().strftime('%d/%m/%Y %H:%M:%S'), alert_type='teste', base_dir=BASE_DIR); self._send(200, {'ok':ok,'message':'Telegram enviado' if ok else resp})
         elif self.path.startswith('/telegram/summary'):
             ok,resp=force_summary_now(); self._send(200, {'ok':ok,'message':'Resumo enviado' if ok else resp})
         else: self._send(404, {'ok':False,'message':'not found'})
@@ -229,15 +359,16 @@ def start_http_panel():
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log('VERSAO V15: MAIN primeiro no boot; SALES logo após; SALES a cada 20min; MAIN a cada 2h com anti-conflito')
-log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min')
+log('VERSAO V30: Telegram template completo igual dashboard; ignora GERF, percentual e ZERO valores em reais')
+log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
     _sales_proc, sales_finished = finish_if_done('vendas_unificadas', _sales_proc)
     _cobranca_proc, cobranca_finished = finish_if_done('dashboard_completo_cobranca', _cobranca_proc)
     if cobranca_finished: _force_sales_after_main = True
 
-    now = br_now(); maybe_send_daily_summary(now)
+    now = br_now(); maybe_send_daily_summary(now); maybe_send_general_message_alerts(now); maybe_send_meta_diaria_alerts(now); maybe_send_meta_mercantil_100_alerts(now)
+    STATE['next_daily_lists_label'] = fmt_delta(next_daily_lists_time(now))
     STATE['next_sales_label'] = fmt_delta(next_sales_time(now))
     STATE['next_cobranca_label'] = fmt_delta(next_cobranca_time(now))
     _save_status()
@@ -249,10 +380,18 @@ while True:
 
     if _force_main_boot and not sales_running and not cobranca_running:
         _force_main_boot=False; _last_cobranca_slot=ckey
-        _cobranca_proc=start_job('dashboard_completo_cobranca_boot_publica_html', COBRANCA_CMD); cobranca_running=True
+        
+        _daily = daily_lists_due(now)
+        if _daily:
+            STATE['last_daily_lists_date'] = now.strftime('%Y-%m-%d')
+        _cobranca_proc=start_job('dashboard_completo_cobranca_boot_publica_html' + ('_com_listas_07h' if _daily else ''), COBRANCA_CMD, main_job_env(_daily)); cobranca_running=True
     elif cobranca_ok and not sales_running and not cobranca_running and _last_cobranca_slot != ckey:
         _last_cobranca_slot=ckey
-        _cobranca_proc=start_job('dashboard_completo_cobranca_prioridade', COBRANCA_CMD); cobranca_running=True
+        
+        _daily = daily_lists_due(now)
+        if _daily:
+            STATE['last_daily_lists_date'] = now.strftime('%Y-%m-%d')
+        _cobranca_proc=start_job('dashboard_completo_cobranca_prioridade' + ('_com_listas_07h' if _daily else ''), COBRANCA_CMD, main_job_env(_daily)); cobranca_running=True
     elif _force_sales_after_main and not sales_running and not cobranca_running:
         _force_sales_after_main=False; _last_sales_slot=skey
         _sales_proc=start_job('vendas_unificadas_pos_main', SALES_CMD); sales_running=True

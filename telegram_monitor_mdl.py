@@ -1,4 +1,4 @@
-# VERSAO: TELEGRAM_MONITOR_MDL_V3_RESUMO_VENDAS_RECEBIMENTOS_FAIXA
+# VERSAO: TELEGRAM_MONITOR_MDL_V15_TEMPLATE_COMPLETO_SEM_REAIS
 import json
 import os
 import re
@@ -98,14 +98,128 @@ def load_json_local_or_remote(base_dir, local_rel, remote_name, default):
     return _read_url_json(f"{PUBLIC_BASE}/{remote_name}", default)
 
 
-def telegram_send(text, parse_mode=None, disable_web_page_preview=True):
+def _load_telegram_global_config(base_dir=None):
+    """Carrega config_meta.json/global, incluindo contatos e templates Telegram."""
+    base_dir = base_dir or os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(base_dir, 'cache_historico', 'config_meta.json'),
+        os.path.join(base_dir, 'config_meta.json'),
+    ]
+    cfg = None
+    for p in candidates:
+        cfg = _read_json_file(p, None)
+        if isinstance(cfg, dict):
+            break
+    if not isinstance(cfg, dict):
+        cfg = _read_url_json(f"{PUBLIC_BASE}/config_meta.json", {}, timeout=10)
+    if not isinstance(cfg, dict):
+        return {}
+    return (cfg.get('global') if isinstance(cfg.get('global'), dict) else cfg) or {}
+
+
+def _load_telegram_contacts_from_config(base_dir=None):
+    """Carrega contatos configurados em config_meta.json/global.telegram_contacts.
+    Fallback: TELEGRAM_CHAT_ID do ambiente.
+    """
+    glob = _load_telegram_global_config(base_dir)
+    contacts = glob.get('telegram_contacts') or []
+    out = []
+    if isinstance(contacts, list):
+        for c in contacts:
+            if not isinstance(c, dict):
+                continue
+            chat_id = str(c.get('chat_id') or '').strip()
+            if not chat_id:
+                continue
+            def b(k, default=False):
+                v = c.get(k, default)
+                return v is True or str(v).lower() in {'1','true','sim','yes','on'}
+            out.append({
+                'nome': str(c.get('nome') or chat_id).strip(),
+                'chat_id': chat_id,
+                'ativo': b('ativo', True),
+                'erros': b('erros', True),
+                'meta_diaria': b('meta_diaria', True),
+                'meta_mensal': b('meta_mensal', True),
+                'avisos': b('avisos', True),
+                'resumo': b('resumo', True),
+            })
+    if not out:
+        env_chat = os.getenv('TELEGRAM_CHAT_ID', '').strip()
+        if env_chat:
+            out.append({'nome':'TELEGRAM_CHAT_ID','chat_id':env_chat,'ativo':True,'erros':True,'meta_diaria':True,'meta_mensal':True,'avisos':True,'resumo':True})
+    return out
+
+
+def _telegram_contacts_for_alert(alert_type='geral', base_dir=None):
+    alert_type = str(alert_type or 'geral').lower().strip()
+    key_map = {
+        'erro': 'erros', 'erros': 'erros', 'sistema': 'erros',
+        'meta_diaria': 'meta_diaria', 'diaria': 'meta_diaria',
+        'meta_mensal': 'meta_mensal', 'meta100': 'meta_mensal', 'mercantil100': 'meta_mensal',
+        'aviso': 'avisos', 'avisos': 'avisos', 'campanha': 'avisos', 'geral': 'avisos',
+        'resumo': 'resumo', 'daily_summary': 'resumo',
+        'teste': None, 'test': None,
+    }
+    flag = key_map.get(alert_type, None)
+    contacts = [c for c in _load_telegram_contacts_from_config(base_dir) if c.get('ativo')]
+    if flag is None:
+        return contacts
+    return [c for c in contacts if c.get(flag)]
+
+
+def _sanitize_meta_alert_text(text):
+    """Blindagem final dos alertas de META no Telegram.
+
+    Para META DIÁRIA / META MENSAL, o grupo pode receber somente:
+    - parabéns / título
+    - responsável/filial
+    - tipo / escopo / data / competência
+    - percentual atingido
+
+    Nunca enviar valores em reais nem comparativo Realizado / Meta.
+    """
+    raw = str(text or '')
+    clean_lines = []
+    # Não bloquear a palavra "meta" de forma genérica, pois isso remove
+    # títulos como "META DIÁRIA BATIDA" e rodapés como "Controle de Meta".
+    # A blindagem deve remover somente valores financeiros/comparativos.
+    bloqueios = (
+        'r$',
+        'realizado / meta',
+        'realizado/meta',
+        'realizado:',
+        'valor:',
+        'valor ',
+    )
+    for line in raw.splitlines():
+        low = line.lower().strip()
+        if any(b in low for b in bloqueios) and '%' not in line:
+            continue
+        if 'r$' in low:
+            continue
+        # remove linhas que são claramente dois valores financeiros sem R$, ex.: 2.401,00 / 1.000,00
+        if re.search(r'\d{1,3}(?:\.\d{3})*,\d{2}\s*/\s*\d{1,3}(?:\.\d{3})*,\d{2}', line):
+            continue
+        clean_lines.append(line)
+    out = '\n'.join(clean_lines)
+    # remove qualquer resquício de valor monetário com ou sem R$ dentro do texto
+    out = re.sub(r'R\$\s*[-+]?\d{1,3}(?:\.\d{3})*,\d{2}', '', out, flags=re.IGNORECASE)
+    out = re.sub(r'R\$\s*[-+]?\d+(?:[\.,]\d{2})?', '', out, flags=re.IGNORECASE)
+    # remove padrões comparativos que eventualmente sobraram
+    out = re.sub(r'Realizado\s*/\s*Meta\s*:\s*[^\n]+', '', out, flags=re.IGNORECASE)
+    out = re.sub(r'[ \t]+\n', '\n', out)
+    out = re.sub(r'\n{3,}', '\n\n', out).strip()
+    return out
+
+
+def _telegram_send_one(text, chat_id, parse_mode=None, disable_web_page_preview=True):
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-    chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
-    if not token or not chat_id:
-        return False, "TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado"
+    if not token or not str(chat_id or '').strip():
+        return False, "TELEGRAM_BOT_TOKEN ou chat_id não configurado"
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {
-        "chat_id": chat_id,
+        "chat_id": str(chat_id).strip(),
         "text": text[:3900],
         "disable_web_page_preview": "true" if disable_web_page_preview else "false",
     }
@@ -120,6 +234,24 @@ def telegram_send(text, parse_mode=None, disable_web_page_preview=True):
     except Exception as e:
         return False, str(e)
 
+
+def telegram_send(text, parse_mode=None, disable_web_page_preview=True, chat_id=None, alert_type='geral', base_dir=None):
+    """Envia Telegram para um chat específico ou para os contatos configurados por tipo de alerta."""
+    atype = str(alert_type or '').lower().strip()
+    if atype in {'meta_diaria', 'meta_mensal', 'meta100', 'mercantil100'}:
+        text = _sanitize_meta_alert_text(text)
+    if chat_id:
+        return _telegram_send_one(text, chat_id, parse_mode=parse_mode, disable_web_page_preview=disable_web_page_preview)
+    contacts = _telegram_contacts_for_alert(alert_type, base_dir=base_dir)
+    if not contacts:
+        return False, f"Nenhum contato Telegram ativo para alerta {alert_type}"
+    oks = []
+    resps = []
+    for c in contacts:
+        ok, resp = _telegram_send_one(text, c.get('chat_id'), parse_mode=parse_mode, disable_web_page_preview=disable_web_page_preview)
+        oks.append(ok)
+        resps.append(f"{c.get('nome') or c.get('chat_id')}: {'OK' if ok else resp}")
+    return any(oks), " | ".join(resps)
 
 def tail_file(path, lines=45):
     try:
@@ -406,6 +538,366 @@ def _recebimentos_dia_por_faixa(base_dir, date_str):
     return out
 
 
+
+def _date_only_br_from_any(v):
+    s = str(v or "").strip()
+    if not s:
+        return ""
+    if "/" in s[:10]:
+        try:
+            return datetime.strptime(s[:10], "%d/%m/%Y").strftime("%Y-%m-%d")
+        except Exception:
+            return ""
+    if len(s) >= 10 and re.match(r"\d{4}-\d{2}-\d{2}", s[:10]):
+        return s[:10]
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00").replace(" ", "T")).astimezone(BR_TZ).strftime("%Y-%m-%d")
+    except Exception:
+        return ""
+
+
+def _user_aliases(u):
+    aliases = set()
+    for k in ["login", "nome", "filial"]:
+        v = str((u or {}).get(k) or "").strip()
+        if v:
+            aliases.add(_norm(v))
+    nome = str((u or {}).get("nome") or "").strip()
+    filial = str((u or {}).get("filial") or "").strip()
+    login = str((u or {}).get("login") or "").strip()
+    if nome and filial:
+        aliases.add(_norm(f"{nome}_{filial}"))
+        aliases.add(_norm(f"{nome} ({filial})"))
+    if login and filial:
+        aliases.add(_norm(f"{login}_{filial}"))
+    return {a for a in aliases if a}
+
+
+def _log_aliases(x):
+    aliases = set()
+    for k in ["usuario", "user", "login", "destino_nome", "responsavel", "vendedor", "filial"]:
+        v = str((x or {}).get(k) or "").strip()
+        if v:
+            aliases.add(_norm(v))
+    destino = str((x or {}).get("destino_nome") or "").strip()
+    usuario = str((x or {}).get("usuario") or (x or {}).get("login") or "").strip()
+    filial = str((x or {}).get("filial") or "").strip()
+    if destino and filial:
+        aliases.add(_norm(f"{destino}_{filial}"))
+        aliases.add(_norm(f"{destino} ({filial})"))
+    if usuario and filial:
+        aliases.add(_norm(f"{usuario}_{filial}"))
+    return {a for a in aliases if a}
+
+
+
+# ===== V4: alertas instantâneos para Scheduler/Railway =====
+def _parse_dt_any(v):
+    s = str(v or '').strip()
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace('Z','+00:00')).astimezone(BR_TZ)
+    except Exception:
+        pass
+    for fmt in ('%Y-%m-%d %H:%M:%S','%Y-%m-%dT%H:%M:%S','%d/%m/%Y %H:%M:%S','%d/%m/%Y'):
+        try:
+            dt = datetime.strptime(s[:19], fmt)
+            return dt.replace(tzinfo=BR_TZ)
+        except Exception:
+            pass
+    return None
+
+def load_active_general_messages(base_dir):
+    """Mensagens/avisos/campanhas com destino Todos, para o Telegram notificar o grupo."""
+    msgs = _active_messages(base_dir)
+    out = []
+    for m in msgs:
+        if not isinstance(m, dict):
+            continue
+        target_type = str(m.get('target_type') or 'all').lower().strip()
+        target_id = str(m.get('target_id') or '').upper().strip()
+        if target_type == 'all' or target_id in {'ALL', 'TODOS'}:
+            out.append(m)
+    return out
+
+def build_general_message_alert(m):
+    kind = str(m.get('message_kind') or m.get('kind') or 'notice').lower()
+    icon = '🚀' if kind == 'campaign' else '🔔'
+    tipo = 'Campanha geral' if kind == 'campaign' else 'Aviso geral'
+    titulo = str(m.get('title') or 'Sem título').strip()
+    corpo = str(m.get('body') or '').strip()
+    exp = str(m.get('expires_at') or '').strip()
+    linhas = [f'{icon} {tipo} enviado no Dashboard MDL', '', f'Título: {titulo}']
+    if exp:
+        linhas.append(f'Válido até: {exp}')
+    if corpo:
+        linhas += ['', corpo[:1500]]
+    media = str(m.get('media_url') or '').strip()
+    if media:
+        linhas += ['', f'Anexo: {media}']
+    linhas += ['', f'Horário: {now_br().strftime("%d/%m/%Y %H:%M:%S")}']
+    return '\n'.join(linhas)
+
+
+def _is_gerente_meta_vendedor(nome):
+    """True para metas individuais de gerentes (GER/GERF) que não devem gerar Telegram.
+
+    A meta do gerente pode existir no SGI com valor simbólico. Para Telegram,
+    gerente deve ser avisado somente quando a FILIAL bater meta, não pela meta
+    individual de vendedor.
+    """
+    txt = str(nome or '').upper()
+    return bool(re.search(r'\(\s*GER\s*F?\d*\s*\)', txt) or re.search(r'\bGERF?\d*\b', txt))
+
+
+def _is_vendedor_operacional_meta(nome):
+    """Aceita somente vendedores com tag operacional explícita (F1, F2...)."""
+    txt = str(nome or '').upper()
+    if _is_gerente_meta_vendedor(txt):
+        return False
+    return bool(re.search(r'\(\s*F\d+\s*\)', txt))
+
+
+def _is_linha_meta_vendedor(chave, escopo):
+    cs = str(chave or '').lower()
+    es = str(escopo or '').lower()
+    return ('vendedor' in cs) or ('vendedor' in es)
+
+def _is_meta_venda_mercantil_diaria(chave, bloco):
+    """Retorna True somente para metas diárias do tipo Venda/Mercantil.
+
+    Importante: o dashboard pode coletar também metas de Serviço para cards,
+    mas Telegram de META DIÁRIA BATIDA deve disparar apenas para Venda.
+    """
+    spec = (bloco or {}).get('spec') or {}
+    tipo = str(spec.get('tipo') or '').strip().lower()
+    label = str(spec.get('label') or '').strip().lower()
+    chave_s = str(chave or '').strip().lower()
+
+    # Bloqueia qualquer meta de serviço/caminhão por segurança.
+    bloqueados = ('servico', 'serviço', 'caminhao', 'caminhão')
+    if any(x in chave_s or x in label or x in tipo for x in bloqueados):
+        return False
+
+    # Aceita somente tipo Venda ou chaves/labels claramente de venda.
+    if tipo == 'venda':
+        return True
+    if 'venda' in chave_s or 'venda' in label:
+        return True
+    return False
+
+
+def load_meta_diaria_batidas(base_dir):
+    """Lê metas_vendas_dia_atual.json e retorna somente Venda/Mercantil com Atingido Período >= 100%.
+
+    Regra Telegram:
+    - Meta diária: somente tipo Venda/Mercantil.
+    - Serviço não dispara Telegram.
+    - A trava de repetição diária fica no scheduler, via telegram_sent_meta_keys.
+    """
+    data = load_json_local_or_remote(base_dir, 'metas_vendas_dia_atual.json', 'metas_vendas_dia_atual.json', {})
+    if not isinstance(data, dict):
+        return []
+    metas = data.get('metas') or {}
+    out = []
+    for chave, bloco in metas.items():
+        if not isinstance(bloco, dict):
+            continue
+        if not _is_meta_venda_mercantil_diaria(chave, bloco):
+            continue
+        spec = bloco.get('spec') or {}
+        for row in bloco.get('linhas') or []:
+            if not isinstance(row, dict) or row.get('_is_total'):
+                continue
+            # Reforço: se a linha trouxer _meta_tipo Serviço, não dispara.
+            row_tipo = str(row.get('_meta_tipo') or spec.get('tipo') or '').strip().lower()
+            if row_tipo and row_tipo != 'venda':
+                continue
+            ating = _float(row.get('Atingido Período_float', row.get('Atingido Período')), 0.0)
+            if ating < 100:
+                continue
+            escopo = str(row.get('_meta_escopo') or spec.get('escopo') or '')
+            nome = str(row.get('Vendedor_2') or row.get('Vendedor') or row.get('Filial') or '').strip()
+            filial = str(row.get('Filial') or row.get('Vendedor') or '').strip()
+            # Se for meta no escopo vendedor, ignora gerentes GER/GERF e aceita
+            # somente vendedores operacionais com tag (F1), (F2), etc.
+            if _is_linha_meta_vendedor(chave, escopo) and not _is_vendedor_operacional_meta(nome):
+                continue
+            out.append({
+                'key': f"{data.get('data_consulta') or ''}|VENDA_MERCANTIL|{chave}|{nome}|{filial}|{row.get('Atingido Período')}",
+                'nome': nome,
+                'filial': filial,
+                'escopo': escopo,
+                'tipo': 'Venda/Mercantil',
+                'atingido': ating,
+                'atingido_txt': str(row.get('Atingido Período') or f'{ating:.2f}%'),
+                'data_consulta': data.get('data_consulta') or now_br().strftime('%d/%m/%Y'),
+            })
+    # remove duplicados preservando ordem
+    seen=set(); final=[]
+    for x in out:
+        k=x['key']
+        if k in seen: continue
+        seen.add(k); final.append(x)
+    return final
+
+
+def _telegram_template(kind, base_dir=None):
+    glob = _load_telegram_global_config(base_dir)
+    templates = glob.get('telegram_templates') if isinstance(glob.get('telegram_templates'), dict) else {}
+    txt = str(templates.get(kind) or '').strip()
+    return txt
+
+
+def _render_template(txt, data):
+    out = str(txt or '')
+    for k, v in (data or {}).items():
+        out = out.replace('{' + str(k) + '}', str(v if v is not None else ''))
+    return out
+
+
+def _force_pretty_meta_template(kind, text):
+    """Garante que template antigo salvo no servidor não perca título/rodapé.
+    Mantém a regra: só percentual, sem valores em R$.
+    """
+    out = str(text or '').strip()
+    if not out:
+        return out
+    k = str(kind or '').lower()
+    if k == 'meta_diaria':
+        title = '🎯🚀 PARABÉNS! META DIÁRIA BATIDA'
+        footer1 = '🔥 Excelente resultado no Controle de Meta do Sólidus!'
+        footer2 = '💪 MISSÃO DADA! MISSÃO CUMPRIDA!'
+    else:
+        title = '🏆🚀 PARABÉNS! META MENSAL BATIDA'
+        footer1 = '🔥 Excelente resultado no Controle de Meta do Sólidus!'
+        footer2 = '💪 Resultado de time forte!'
+    # Remove rodapés antigos conhecidos para padronizar.
+    lines = []
+    for ln in out.splitlines():
+        low = ln.lower()
+        if 'bora manter esse ritmo' in low:
+            continue
+        if 'resultado de time forte' in low and k == 'meta_diaria':
+            continue
+        lines.append(ln)
+    out = '\n'.join(lines).strip()
+    if 'PARABÉNS' not in out.upper() and 'PARABENS' not in out.upper():
+        out = title + '\n\n' + out
+    if 'Excelente resultado no Controle de Meta do Sólidus' not in out:
+        out = out.rstrip() + '\n\n' + footer1
+    if footer2 not in out:
+        out = out.rstrip() + '\n' + footer2
+    return out
+
+def build_meta_diaria_alert(item, base_dir=None):
+    """Mensagem bonita de meta diária, com emojis, editável no dashboard e SEM qualquer valor em R$."""
+    nome = item.get('nome') or item.get('filial') or 'Equipe MDL'
+    escopo = item.get('escopo') or ''
+    data = item.get('data_consulta') or now_br().strftime('%d/%m/%Y')
+    atingido = _sanitize_meta_alert_text(str(item.get('atingido_txt') or fmt_pct(item.get('atingido'))).strip())
+    tpl = _telegram_template('meta_diaria', base_dir)
+    if tpl:
+        rendered = _render_template(tpl, {
+            'nome': nome, 'filial': item.get('filial') or '', 'escopo': escopo,
+            'atingido': atingido, 'tipo': 'Venda mercantil', 'data': data,
+            'competencia': now_br().strftime('%Y-%m')
+        })
+        return _sanitize_meta_alert_text(_force_pretty_meta_template('meta_diaria', rendered))
+    linhas = ['🎯🚀 PARABÉNS! META DIÁRIA BATIDA','',f'👏 Destaque: {nome}']
+    if atingido:
+        linhas.append(f'📈 Meta atingida: {atingido}')
+    linhas += ['🛒 Tipo: Venda mercantil',f'📅 Data: {data}','','🔥 Excelente resultado no Controle de Meta do Sólidus!','💪 MISSÃO DADA! MISSÃO CUMPRIDA!']
+    return _sanitize_meta_alert_text('\n'.join(linhas))
+
+
+
+def _first_existing(row, names):
+    if not isinstance(row, dict):
+        return ''
+    for name in names:
+        if name in row and row.get(name) not in (None, ''):
+            return row.get(name)
+    # fallback por normalização parcial
+    wanted = [re.sub(r'[^a-z0-9]+', '', str(n).lower()) for n in names]
+    for k, v in row.items():
+        nk = re.sub(r'[^a-z0-9]+', '', str(k).lower())
+        if any(w and w in nk for w in wanted) and v not in (None, ''):
+            return v
+    return ''
+
+
+def load_meta_mercantil_100(base_dir):
+    """Lê metas_vendas_mes_atual.json e retorna filiais/vendedores com Atingido Total >= 100% em Venda Mercantil."""
+    data = load_json_local_or_remote(base_dir, 'metas_vendas_mes_atual.json', 'metas_vendas_mes_atual.json', {})
+    if not isinstance(data, dict):
+        return []
+    metas = data.get('metas') or {}
+    specs = [
+        ('venda_filial_meta', 'Filial'),
+        ('venda_filial_vendedor_meta', 'Vendedor'),
+    ]
+    out = []
+    mes = str(data.get('mes') or data.get('competencia') or now_br().strftime('%Y-%m'))[:7]
+    for chave, tipo in specs:
+        bloco = metas.get(chave) or {}
+        if not isinstance(bloco, dict):
+            continue
+        for row in bloco.get('linhas') or []:
+            if not isinstance(row, dict) or row.get('_is_total') or _is_total_row(row):
+                continue
+            ating = _float(row.get('Atingido Total_float', row.get('Atingido Total')), 0.0)
+            if ating < 100:
+                continue
+            nome = str(_first_existing(row, ['Vendedor_2','Vendedor','Nome_2','Nome','Filial']) or '').strip()
+            filial = str(_first_existing(row, ['Filial']) or '').strip()
+            if not nome:
+                continue
+            # Para metas individuais de vendedor, não dispara Telegram para gerentes
+            # com tag GER/GERF nem para linhas sem tag operacional (F1/F2...).
+            # Gerentes continuam recebendo o aviso pela meta da FILIAL quando a loja bater.
+            if tipo == 'Vendedor' and not _is_vendedor_operacional_meta(nome):
+                continue
+            out.append({
+                'key': f'{mes}|{chave}|{nome}|{filial}',
+                'tipo': tipo,
+                'nome': nome,
+                'filial': filial,
+                'atingido': ating,
+                'atingido_txt': str(row.get('Atingido Total') or f'{ating:.2f}%'),
+                'mes': mes,
+            })
+    seen=set(); final=[]
+    for x in out:
+        k=x['key']
+        if k in seen: continue
+        seen.add(k); final.append(x)
+    return final
+
+
+def build_meta_mercantil_100_alert(item, base_dir=None):
+    """Mensagem bonita de meta mensal, com emojis, editável no dashboard e SEM qualquer valor em R$."""
+    tipo = item.get('tipo') or 'Meta'
+    nome = item.get('nome') or 'Equipe MDL'
+    filial = item.get('filial') or ''
+    destino = f'{nome}' + (f' | {filial}' if filial and filial not in nome else '')
+    atingido = _sanitize_meta_alert_text(str(item.get('atingido_txt') or fmt_pct(item.get('atingido'))).strip())
+    competencia = item.get('mes') or now_br().strftime('%Y-%m')
+    tpl = _telegram_template('meta_mensal', base_dir)
+    if tpl:
+        rendered = _render_template(tpl, {
+            'nome': destino, 'filial': filial, 'escopo': tipo, 'atingido': atingido,
+            'tipo': tipo, 'data': now_br().strftime('%d/%m/%Y'), 'competencia': competencia
+        })
+        return _sanitize_meta_alert_text(_force_pretty_meta_template('meta_mensal', rendered))
+    linhas = ['🏆🚀 PARABÉNS! META MENSAL BATIDA','',f'👏 Destaque: {destino}']
+    if atingido:
+        linhas.append(f'📈 Meta atingida: {atingido}')
+    linhas += [f'🛒 Tipo: Venda mercantil / {tipo}',f'🗓️ Competência: {competencia}','','🔥 Excelente resultado no Controle de Meta do Sólidus!','💪 Resultado de time forte!']
+    return _sanitize_meta_alert_text('\n'.join(linhas))
+
+
 def build_daily_summary(base_dir, date_str=None):
     date_str = date_str or now_br().strftime("%Y-%m-%d")
     hist = load_json_local_or_remote(base_dir, os.path.join("cache_historico", "historico_dashboard.json"), "historico_dashboard.json", {"dates": {}, "sales_dates": {}})
@@ -420,18 +912,19 @@ def build_daily_summary(base_dir, date_str=None):
     receb_dia = _recebimentos_dia_por_faixa(base_dir, date_str)
 
     logs = _load_cobrancas(base_dir)
-    logs_day = [x for x in logs if _date_from_server_time(x.get("server_time") or x.get("data") or x.get("created_at")) == date_str]
+    logs_day = [x for x in logs if _date_only_br_from_any(x.get("server_time") or x.get("criado_em") or x.get("data") or x.get("created_at")) == date_str]
     counts = {}
+    active_user_keys = set()
     for x in logs_day:
-        user = str(x.get("usuario") or x.get("user") or x.get("login") or "Sem usuário").strip() or "Sem usuário"
+        user = str(x.get("usuario") or x.get("user") or x.get("login") or x.get("destino_nome") or "Sem usuário").strip() or "Sem usuário"
         counts[user] = counts.get(user, 0) + 1
+        active_user_keys.update(_log_aliases(x))
     top = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
 
     users = _load_users(base_dir)
-    active_user_keys = {_norm(u) for u, _qtd in top}
     sem = []
     for u in users:
-        keys = {_norm(u.get("login")), _norm(u.get("nome"))}
+        keys = _user_aliases(u)
         if not keys.intersection(active_user_keys):
             sem.append(u)
 
