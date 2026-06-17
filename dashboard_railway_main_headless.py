@@ -33,7 +33,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V7.8"
+DASHBOARD_BUILD_VERSION = "V8.0"
 DASHBOARD_BUILD_TAG = "DASH2_0_V7_6_TELEGRAM_TEMPLATE_BONITO"
 
 def now_brasilia():
@@ -5500,82 +5500,91 @@ for _cred_cfg in CREDIARISTAS_CONFIG:
 
 def aplicar_anti_duplicidade_operacional_carteiras():
     """
-    Remove duplicidade real entre listas OPERACIONAIS de cobrança.
-    Importante: clientes_js da filial continua sendo visão gerencial da carteira.
-    A trava vale para quem recebe lista para cobrar: terceiro, crediarista e vendedor.
-    Prioridade: Cobrança terceiro > crediarista > vendedor.
+    V7.9 HOTFIX: remove duplicidade sem zerar a lista dos vendedores.
+
+    Regra nova:
+    - Cobrança10 continua exclusiva: se o título caiu no lote do terceiro, sai das outras listas operacionais.
+    - Vendedor x vendedor: mantém somente um responsável vendedor para o mesmo título.
+    - Crediariasta x crediarista: mantém somente um responsável crediarista para o mesmo título.
+    - Vendedor x crediarista: NÃO remove do vendedor. As listas são tratadas como trilhas operacionais separadas,
+      porque a regra antiga estava fazendo os vendedores perderem Para cobrar / Novos / Aguardando.
+    - Filial/gerente continua sendo visão consolidada da carteira, não deve roubar lista individual do vendedor.
     """
-    prioridade = []
-    try:
-        for fx in ['grave','alerta','atencao']:
-            for idx, r in enumerate((clientes_terceiro_js or {}).get(fx, []) or []):
-                prioridade.append(('terceiro', 'Cobrança10', fx, idx, r, 0))
-    except Exception:
-        pass
-    try:
-        for login, data in list((clientes_crediarista_js or {}).items()):
-            for fx in ['grave','alerta','atencao']:
-                for idx, r in enumerate((data or {}).get(fx, []) or []):
-                    prioridade.append(('crediarista', login, fx, idx, r, 1))
-    except Exception:
-        pass
-    try:
-        for nome, data in list((clientes_por_vend_js or {}).items()):
-            for fx in ['grave','alerta','atencao']:
-                for idx, r in enumerate((data or {}).get(fx, []) or []):
-                    prioridade.append(('vendedor', nome, fx, idx, r, 2))
-    except Exception:
-        pass
-
-    prioridade.sort(key=lambda x: (x[5], cobranca_row_key_py(x[4]), str(x[1])))
-    keep = set()
     removidos = []
-    seen = {}
-    for tipo, dono, fx, idx, r, pr in prioridade:
-        k = cobranca_row_key_py(r)
-        if not k or k.count('|') < 2:
-            continue
-        ident = (tipo, dono, fx, idx)
-        if k not in seen:
-            seen[k] = {'tipo': tipo, 'dono': dono, 'faixa': fx}
-            keep.add(ident)
-        else:
-            removidos.append({'key': k, 'removido_de': f'{tipo}:{dono}', 'mantido_em': f"{seen[k]['tipo']}:{seen[k]['dono']}"})
 
-    def filtra_lista(tipo, dono, fx, arr):
-        novo = []
-        for idx, r in enumerate(arr or []):
-            if (tipo, dono, fx, idx) in keep:
-                novo.append(r)
-        return novo
+    def _key(r):
+        try:
+            return cobranca_row_key_py(r)
+        except Exception:
+            return ''
 
-    try:
-        for login, data in list((clientes_crediarista_js or {}).items()):
-            for fx in ['grave','alerta','atencao']:
-                data[fx] = filtra_lista('crediarista', login, fx, data.get(fx, []))
-    except Exception:
-        pass
-    try:
-        for nome, data in list((clientes_por_vend_js or {}).items()):
-            for fx in ['grave','alerta','atencao']:
-                data[fx] = filtra_lista('vendedor', nome, fx, data.get(fx, []))
-    except Exception:
-        pass
+    # 1) Títulos do terceiro têm prioridade/exclusividade.
+    terceiro_keys = set()
     try:
         for fx in ['grave','alerta','atencao']:
-            clientes_terceiro_js[fx] = filtra_lista('terceiro', 'Cobrança10', fx, clientes_terceiro_js.get(fx, []))
+            for r in (clientes_terceiro_js or {}).get(fx, []) or []:
+                k = _key(r)
+                if k and k.count('|') >= 2:
+                    terceiro_keys.add(k)
     except Exception:
         pass
+
+    def _remove_keys_de_map(map_obj, tipo, keys_to_remove):
+        total = 0
+        try:
+            for dono, data in list((map_obj or {}).items()):
+                for fx in ['grave','alerta','atencao']:
+                    nova = []
+                    for r in (data or {}).get(fx, []) or []:
+                        k = _key(r)
+                        if k in keys_to_remove:
+                            total += 1
+                            removidos.append({'key': k, 'removido_de': f'{tipo}:{dono}', 'mantido_em': 'terceiro:Cobrança10', 'motivo': 'cobranca10_exclusiva'})
+                        else:
+                            nova.append(r)
+                    data[fx] = nova
+        except Exception:
+            pass
+        return total
+
+    _remove_keys_de_map(clientes_crediarista_js, 'crediarista', terceiro_keys)
+    _remove_keys_de_map(clientes_por_vend_js, 'vendedor', terceiro_keys)
+
+    # 2) Deduplica dentro do próprio grupo de vendedores ou crediaristas, sem cruzar os dois grupos.
+    def _dedupe_interno(map_obj, tipo):
+        seen = {}
+        try:
+            donos = sorted(list((map_obj or {}).keys()), key=lambda x: str(x))
+            for dono in donos:
+                data = (map_obj or {}).get(dono) or {}
+                for fx in ['grave','alerta','atencao']:
+                    nova = []
+                    for r in data.get(fx, []) or []:
+                        k = _key(r)
+                        if not k or k.count('|') < 2:
+                            nova.append(r)
+                            continue
+                        if k not in seen:
+                            seen[k] = {'tipo': tipo, 'dono': dono, 'faixa': fx}
+                            nova.append(r)
+                        else:
+                            removidos.append({'key': k, 'removido_de': f'{tipo}:{dono}', 'mantido_em': f"{seen[k]['tipo']}:{seen[k]['dono']}", 'motivo': f'duplicado_interno_{tipo}'})
+                    data[fx] = nova
+        except Exception:
+            pass
+
+    _dedupe_interno(clientes_crediarista_js, 'crediarista')
+    _dedupe_interno(clientes_por_vend_js, 'vendedor')
 
     if removidos:
-        print(f"🧯 Anti-duplicidade operacional aplicado: {len(removidos)} título(s) removido(s) de listas duplicadas.")
+        print(f"🧯 Anti-duplicidade operacional V7.9 aplicado: {len(removidos)} título(s) removido(s). Vendedor x crediarista preservado.")
         try:
             with open(os.path.join(pasta, 'relatorio_duplicidades_resolvidas.json'), 'w', encoding='utf-8') as f:
-                json.dump({'gerado_em': now_brasilia().isoformat(), 'total_removidos': len(removidos), 'removidos': removidos[:1000]}, f, ensure_ascii=False, indent=2)
+                json.dump({'gerado_em': now_brasilia().isoformat(), 'versao': 'V7.9', 'regra': 'cobranca10 exclusiva; dedupe interno por grupo; vendedor x crediarista preservado', 'total_removidos': len(removidos), 'removidos': removidos[:1500]}, f, ensure_ascii=False, indent=2)
         except Exception:
             pass
     else:
-        print('✅ Anti-duplicidade operacional: nada para remover.')
+        print('✅ Anti-duplicidade operacional V7.9: nada para remover.')
 
 
 aplicar_anti_duplicidade_operacional_carteiras()
@@ -8354,46 +8363,85 @@ function renderMetaDiariaBatidaAlerts(){
   }catch(e){console.warn('renderMetaDiariaBatidaAlerts',e); return '';}
 }
 
-function renderNoChargeAlerts(){
+function normCobUserText(v){
+  try{
+    return String(v||'')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+      .toLowerCase()
+      .replace(/^\s*f\d+\s*[-–—:]\s*/,'')
+      .replace(/\s+/g,' ')
+      .trim();
+  }catch(e){return String(v||'').toLowerCase().trim()}
+}
+function logIsHojeCobrancaReal(x,hoje){
+  if(!isLogCobrancaReal(x)) return false;
+  return dateOnlyISO(x.server_time||x.criado_em||x.data||x.created_at||'')===hoje;
+}
+function logMatchesAnyOwner(x,keys,filial=''){
+  const filialNorm=String(filial||'').toUpperCase();
+  const rawFields=[x.usuario,x.destino_nome,x.login,x.nome,x.responsavel,x.vendedor,x.user_name].filter(Boolean).map(v=>String(v));
+  const rawJoined=rawFields.join(' | ');
+  const normFields=rawFields.map(normCobUserText);
+  const normJoined=normCobUserText(rawJoined);
+  const logFilial=String(x.filial||'').toUpperCase();
+  const destinoTipo=String(x.destino_tipo||x.tipo||'').toLowerCase();
+  const keyset=(keys||[]).map(k=>String(k||'')).filter(Boolean);
+
+  for(const k0 of keyset){
+    const kRaw=String(k0||'').trim();
+    const kLower=kRaw.toLowerCase();
+    const kNorm=normCobUserText(kRaw);
+    if(!kNorm) continue;
+
+    // Filial: considera qualquer cobrança registrada naquela filial como ação do painel/gerente.
+    if(/^f\d+$/i.test(kRaw) || kLower.startsWith('filial f')){
+      const fKey=(kRaw.match(/f\d+/i)||[''])[0].toUpperCase();
+      if(fKey && (logFilial===fKey || rawJoined.toUpperCase().includes(fKey+' -') || rawJoined.toUpperCase().includes('FILIAL '+fKey.replace('F','')))) return true;
+      continue;
+    }
+
+    // Login/nome exato ou nome com prefixo F3 - NOME, etc.
+    if(normFields.includes(kNorm)) return true;
+    if(kNorm.length>=4 && (normJoined.includes(kNorm) || kNorm.includes(normJoined))) return true;
+  }
+
+  // Fallback por filial quando a linha veio marcada como filial/gerente/crediarista.
+  if(filialNorm && logFilial===filialNorm && /filial|gerente|crediarista|cobran/i.test(destinoTipo)) return true;
+  return false;
+}
+function countCobrancasHojePorOwner(keys,filial=''){
   const hoje=dateOnlyISO(new Date());
+  return (COB_LOGS||[]).filter(x=>logIsHojeCobrancaReal(x,hoje) && logMatchesAnyOwner(x,keys,filial)).length;
+}
+function renderNoChargeAlerts(){
   const totalPend=(obj)=>((obj?.grave||[]).length+(obj?.alerta||[]).length+(obj?.atencao||[]).length);
-  const doneHoje=(keys,filial='')=>(COB_LOGS||[]).filter(x=>{
-    const u=String(x.usuario||'').toLowerCase();
-    const dn=String(x.destino_nome||'').toLowerCase();
-    const f=String(x.filial||'').toUpperCase();
-    const keyset=keys.map(k=>String(k||'').toLowerCase());
-    const filialOnly=keyset.some(k=>/^f\d+$/i.test(k)||String(k).startsWith('filial f'));
-    const userMatch=keyset.includes(u)||keyset.includes(dn)||keyset.includes(String(x.login||'').toLowerCase())||(filialOnly && filial && f===String(filial).toUpperCase());
-    return userMatch && dateOnlyISO(x.server_time||x.criado_em||x.data||'')===hoje;
-  }).length;
   const entries=[];
 
-  // Vendedores / colaboradores
+  // Vendedores / colaboradores: usa nome, login e filial do próprio usuário.
   flattenVendedores().forEach(v=>{
     const pending=totalPend(CLIENTES_VEND[v.nome]||{});
-    const done=doneHoje([v.nome, v.login], v.filial);
+    const done=countCobrancasHojePorOwner([v.nome, v.login], v.filial);
     if(pending>0 && done===0) entries.push({tipo:'Colaborador',nome:v.nome,filial:v.filial,pending,done});
   });
 
-  // Filiais / gerentes
+  // Filiais / gerentes: se qualquer cobrança daquela filial foi registrada hoje, não aparece no mural.
   flattenFiliais().forEach(f=>{
     const pending=totalPend(CLIENTES_FIL[f.filial]||{});
-    const done=doneHoje([f.nome, f.filial, filialLabel(f.filial)], f.filial);
+    const done=countCobrancasHojePorOwner([f.nome, f.filial, filialLabel(f.filial)], f.filial);
     if(pending>0 && done===0) entries.push({tipo:'Filial',nome:filialLabel(f.filial),filial:f.filial,pending,done});
   });
 
-  // Crediaristas
+  // Crediaristas: reconhece login, nome e logs com destino_tipo=crediarista da mesma filial.
   crediaristaEntities().forEach(c=>{
     const key=String(c.login||'').toLowerCase();
     const pending=totalPend(CLIENTES_CREDIARISTA[key]||{});
-    const done=doneHoje([c.nome, c.login], c.filial);
+    const done=countCobrancasHojePorOwner([c.nome, c.login], c.filial);
     if(pending>0 && done===0) entries.push({tipo:'Crediarista',nome:c.nome,filial:c.filial,pending,done});
   });
 
   // Cobrança terceiro / Cobrança10
-  const t=thirdChargeEntity();
   const pendingTer=totalPend(CLIENTES_TERCEIRO||{});
-  const doneTer=doneHoje([COBRANCA10_NOME, COBRANCA10_LOGIN, 'cobranca10'], 'FTER');
+  const doneTer=countCobrancasHojePorOwner([COBRANCA10_NOME, COBRANCA10_LOGIN, 'cobranca10', 'cobranca 10'], 'FTER');
   if(pendingTer>0 && doneTer===0) entries.push({tipo:'Cobrança',nome:COBRANCA10_NOME,filial:'FTER',pending:pendingTer,done:doneTer});
 
   const uniq=[];
@@ -8404,7 +8452,7 @@ function renderNoChargeAlerts(){
   });
   uniq.sort((a,b)=>String(a.tipo).localeCompare(String(b.tipo),'pt-BR') || Number(b.pending||0)-Number(a.pending||0));
   if(!uniq.length) return '';
-  return renderAvisoTicker('Sem cobranças hoje','Lista giratória de usuários/carteiras sem cobrança registrada hoje.', uniq.map(e=>({nome:e.nome, info:`${e.tipo}${e.filial?` · ${e.filial}`:''} · ${e.pending} clientes`})), {icon:'⏰',color:'rgba(239,68,68,.30)'});
+  return renderAvisoTicker('Sem cobranças hoje','Lista giratória de usuários/carteiras com cobrança pendente e sem registro de WhatsApp hoje.', uniq.map(e=>({nome:e.nome, info:`${e.tipo}${e.filial?` · ${e.filial}`:''} · ${e.pending} clientes`})), {icon:'⏰',color:'rgba(239,68,68,.30)'});
 }
 
 function renderNoReactivationAlerts(){

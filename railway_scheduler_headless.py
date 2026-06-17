@@ -1,4 +1,4 @@
-# VERSAO: RAILWAY_SCHEDULER_MDL_V30_TELEGRAM_TEMPLATE_COMPLETO_SEM_REAIS
+# VERSAO: RAILWAY_SCHEDULER_MDL_V31_LISTAS_PESADAS_BOOT_OPCIONAL
 import json
 import os
 import sys
@@ -49,6 +49,7 @@ DAILY_LISTS_HOUR = int(os.getenv('RELATORIOS_DIARIOS_HOUR', '7'))
 DAILY_LISTS_MINUTE_MAX = int(os.getenv('RELATORIOS_DIARIOS_MINUTE_MAX', '20'))
 TELEGRAM_ALERTAS_ENABLED = os.getenv('TELEGRAM_ALERTAS_ENABLED', '1') != '0'
 TELEGRAM_ENABLED = os.getenv('TELEGRAM_ENABLED', '1') != '0'
+FORCE_DAILY_LISTS_ON_BOOT = os.getenv('FORCE_DAILY_LISTS_ON_BOOT', os.getenv('FORCE_RUN_DAILY_LISTS_ON_BOOT', '0')) == '1'
 
 SCHED_LOG = os.path.join(LOG_DIR, 'scheduler.log')
 MAIN_LOG = os.path.join(LOG_DIR, 'dashboard_completo_cobranca.log')
@@ -68,7 +69,7 @@ _force_main_boot = True
 _force_sales_after_main = False
 
 STATE = {
-    'version': 'V28_TELEGRAM_IGNORA_GERENTES_META_VENDEDOR',
+    'version': 'V31_LISTAS_PESADAS_BOOT_OPCIONAL',
     'started_at': None,
     'updated_at': None,
     'scheduler': 'starting',
@@ -359,7 +360,7 @@ def start_http_panel():
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log('VERSAO V30: Telegram template completo igual dashboard; ignora GERF, percentual e ZERO valores em reais')
+log('VERSAO V31: anti-duplicidade V7.9 + listas pesadas no boot opcional por FORCE_DAILY_LISTS_ON_BOOT=1')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
@@ -381,10 +382,12 @@ while True:
     if _force_main_boot and not sales_running and not cobranca_running:
         _force_main_boot=False; _last_cobranca_slot=ckey
         
-        _daily = daily_lists_due(now)
+        # V31: permite forçar clientes sem movimento + aniversariantes no primeiro boot/deploy.
+        # Use FORCE_DAILY_LISTS_ON_BOOT=1 somente no primeiro deploy; depois remova/volte para 0 para manter a regra das 07h.
+        _daily = daily_lists_due(now) or FORCE_DAILY_LISTS_ON_BOOT
         if _daily:
             STATE['last_daily_lists_date'] = now.strftime('%Y-%m-%d')
-        _cobranca_proc=start_job('dashboard_completo_cobranca_boot_publica_html' + ('_com_listas_07h' if _daily else ''), COBRANCA_CMD, main_job_env(_daily)); cobranca_running=True
+        _cobranca_proc=start_job('dashboard_completo_cobranca_boot_publica_html' + ('_com_listas_pesadas' if _daily else ''), COBRANCA_CMD, main_job_env(_daily)); cobranca_running=True
     elif cobranca_ok and not sales_running and not cobranca_running and _last_cobranca_slot != ckey:
         _last_cobranca_slot=ckey
         
