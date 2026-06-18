@@ -33,7 +33,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V8.4"
+DASHBOARD_BUILD_VERSION = "V8.5"
 DASHBOARD_BUILD_TAG = "DASH2_0_V7_6_TELEGRAM_TEMPLATE_BONITO"
 
 def now_brasilia():
@@ -3446,6 +3446,8 @@ _config_meta_default_global = {
     "cobranca_global_rateio_pct": 20.0,
     "comissao_pagamento_texto": "A comissão reinicia a cada mês e o pagamento é previsto para o dia 10 do mês seguinte.",
     "telegram_contacts": [],
+    "aniversario_msg_template": "Olá, {primeiro_nome}! Feliz aniversário! 🎂🎉\n\nAqui é da Lojas MDL - Móveis do Lar. Desejamos muita saúde, paz e felicidades neste dia especial. 😍😍\n\nPreparamos condições especiais para você comemorar com a gente.\n🕺🎉🤩",
+    "reativacao_msg_template": "Olá, {primeiro_nome}! Tudo bem? 😊\n\nAqui é da Lojas MDL - Móveis do Lar. Estamos com saudades de você! Faz um tempinho que você não aparece na loja.  🥹\n\nVenha conhecer nossas novidades e aproveitar condições especiais que preparamos para nossos clientes. 👈👈😍😍",
     "crediaristas_config": [
         {"login": "crediaristaf02_01", "nome": "Crediarista F2 01", "filial": "F2", "pct": 100},
         {"login": "crediaristaf03_01", "nome": "Crediarista F3 01", "filial": "F3", "pct": 100},
@@ -6188,15 +6190,32 @@ def baixar_clientes_sem_movimento_selenium():
     print(f"🧡 Clientes sem movimento: {len(baixados)} arquivo(s) baixado(s)")
     return baixados
 
+
+def _filial_key_from_csm_filename(fn):
+    up = os.path.basename(str(fn)).upper()
+    if "FILIAL_90_99" in up or "FILIAL_90" in up:
+        return "F90_99"
+    m = re.search(r"FILIAL[_\s-]*(\d{1,2})", up)
+    if not m:
+        return None
+    n = int(m.group(1))
+    if n == 1: return "F1"
+    if n == 2: return "F2"
+    if n == 3: return "F3"
+    if n == 4: return "F4"
+    if n == 5: return "F5"
+    if n == 6: return "F6"
+    if n == 8: return "F8"
+    if n == 9: return "F9"
+    return f"F{n}"
+
 def carregar_clientes_sem_movimento_local():
     """
-    V2.4 - prioridade correta:
-    1) Se existir XLS FILIAL_*_relatorio_clientes_sem_movimento na pasta, SEMPRE lê os XLS e recria clientes_sem_movimento.json.
-    2) Só usa clientes_sem_movimento.json se não houver XLS disponível.
-    Isso evita ficar preso num JSON antigo/vazio gerado antes do download.
+    V8.5 - evita duplicar a base de clientes sem movimento.
+    Quando existem arquivos FILIAL_* baixados pelo robô, lê somente o XLS mais recente de cada filial.
+    Os downloads brutos do navegador (_relatorio_clientes_sem_movimento_*.xls) são ignorados para não dobrar a quantidade.
     """
     json_path = os.path.join(pasta, "clientes_sem_movimento.json")
-
     candidatos = []
     for base in list(dict.fromkeys([pasta, download_dir, "/mnt/data"])):
         try:
@@ -6204,35 +6223,41 @@ def carregar_clientes_sem_movimento_local():
                 low = fn.lower()
                 if low.startswith("~$"):
                     continue
-                if ("relatorio_clientes_sem_movimento" in low or "clientes_sem_movimento" in low) and (low.endswith(".xls") or low.endswith(".xlsx")):
+                if "relatorio_clientes_sem_movimento" in low and (low.endswith(".xls") or low.endswith(".xlsx")):
                     candidatos.append(os.path.join(base, fn))
         except Exception:
             pass
-
-    # remove duplicados de caminho e ordena por filial/nome
     candidatos = sorted(list(dict.fromkeys(candidatos)))
-
-    # Compatibilidade com arquivos baixados por versões antigas:
-    # no SGI, value 7 = FILIAL 08/F8 e value 8 = FILIAL 09/F9.
-    # Algumas versões antigas salvaram como FILIAL_07 e FILIAL_08.
-    nomes_up = [os.path.basename(x).upper() for x in candidatos]
-    esquema_antigo_7_8 = any("FILIAL_07" in n for n in nomes_up) and any("FILIAL_08" in n for n in nomes_up) and not any("FILIAL_09" in n for n in nomes_up)
-
+    por_filial = {}
+    for path in candidatos:
+        key = _filial_key_from_csm_filename(path)
+        if not key:
+            continue
+        try:
+            mt = os.path.getmtime(path)
+        except Exception:
+            mt = 0
+        old = por_filial.get(key)
+        if not old or mt > old[0]:
+            por_filial[key] = (mt, path)
+    if por_filial:
+        candidatos = [v[1] for k, v in sorted(por_filial.items())]
+        print(f"🧡 Clientes sem movimento: usando {len(candidatos)} XLS FILIAL_* mais recente(s), ignorando downloads brutos duplicados")
+    elif candidatos:
+        def _date_from_name(path):
+            m = re.search(r"(20\d{12}|20\d{6})", os.path.basename(path))
+            return m.group(1)[:8] if m else "00000000"
+        max_date = max(_date_from_name(x) for x in candidatos)
+        candidatos = [x for x in candidatos if _date_from_name(x) == max_date]
+        print(f"🧡 Clientes sem movimento: sem FILIAL_*. Usando {len(candidatos)} XLS bruto(s) da data {max_date}")
     rows = []
     if candidatos:
         print(f"🧡 Clientes sem movimento: {len(candidatos)} XLS encontrado(s) para leitura")
         for path in candidatos:
             try:
-                base_up = os.path.basename(path).upper()
-                filial_override = None
-                if esquema_antigo_7_8:
-                    if "FILIAL_07" in base_up:
-                        filial_override = "F8"
-                    elif "FILIAL_08" in base_up:
-                        filial_override = "F9"
-                parsed = parse_clientes_sem_movimento_xls(path, filial_override)
+                parsed = parse_clientes_sem_movimento_xls(path, None)
                 rows.extend(parsed)
-                print(f"   ✅ {os.path.basename(path)} → {len(parsed)} cliente(s) com telefone" + (f" | {filial_override}" if filial_override else ""))
+                print(f"   ✅ {os.path.basename(path)} → {len(parsed)} cliente(s) com telefone")
             except Exception as e:
                 print(f"   ⚠️ Erro lendo {os.path.basename(path)}: {e}")
     else:
@@ -6248,17 +6273,14 @@ def carregar_clientes_sem_movimento_local():
             except Exception as e:
                 print(f"⚠️ Não consegui ler clientes_sem_movimento.json: {e}")
         return []
-
-    # dedupe por filial + cliente + primeiro telefone
     seen = set(); final = []
     for r in rows:
         tels = r.get("telefones") or []
-        k = (r.get("filial"), normalizar_texto_match(r.get("cliente")), tels[0] if tels else "")
+        k = (r.get("filial"), normalizar_texto_match(r.get("cliente")), tels[0] if tels else "", r.get("ultimo_movimento"))
         if k in seen:
             continue
         seen.add(k)
         final.append(r)
-
     final.sort(key=lambda x: (str(x.get("filial","")), -int(x.get("dias_sem_movimento") or 0), str(x.get("cliente",""))))
     try:
         with open(json_path, "w", encoding="utf-8") as f:
@@ -6266,88 +6288,11 @@ def carregar_clientes_sem_movimento_local():
         print(f"💾 Clientes sem movimento JSON atualizado: {json_path} ({len(final)} cliente(s))")
     except Exception as e:
         print(f"⚠️ Não consegui salvar clientes_sem_movimento.json: {e}")
-
-    por_filial = {}
+    pf = {}
     for r in final:
-        por_filial[r.get("filial") or "?"] = por_filial.get(r.get("filial") or "?", 0) + 1
-    print("🧡 Clientes sem movimento carregados: " + (" · ".join(f"{k}: {v}" for k, v in sorted(por_filial.items())) or "0"))
+        pf[r.get("filial") or "?"] = pf.get(r.get("filial") or "?", 0) + 1
+    print("🧡 Clientes sem movimento carregados: " + (" · ".join(f"{k}: {v}" for k, v in sorted(pf.items())) or "0"))
     return final
-
-
-def relatorio_duplicidades_carteira_py():
-    buckets = []
-    try:
-        for vend_nome, data in (clientes_por_vend_js or {}).items():
-            for fx in ["grave", "alerta", "atencao"]:
-                for r in (data or {}).get(fx, []) or []:
-                    filial = str(r.get("filial") or "")
-                    buckets.append((cobranca_row_key_py(r), "vendedor", vend_nome, filial, fx, r))
-    except Exception:
-        pass
-    try:
-        for login, data in (clientes_crediarista_js or {}).items():
-            for fx in ["grave", "alerta", "atencao"]:
-                for r in (data or {}).get(fx, []) or []:
-                    buckets.append((cobranca_row_key_py(r), "crediarista", login, str(r.get("filial") or ""), fx, r))
-    except Exception:
-        pass
-    try:
-        for fx in ["grave", "alerta", "atencao"]:
-            for r in (clientes_terceiro_js or {}).get(fx, []) or []:
-                buckets.append((cobranca_row_key_py(r), "terceiro", "Cobrança10", str(r.get("filial") or "FTER"), fx, r))
-    except Exception:
-        pass
-    mp = {}
-    for k, tipo, nome, filial, fx, r in buckets:
-        if not k or k.count("|") < 2:
-            continue
-        mp.setdefault(k, []).append({"tipo": tipo, "responsavel": nome, "filial": filial, "faixa": fx, "cliente": r.get("cliente") or r.get("nome"), "titulo": r.get("titulo"), "parcela": r.get("parcela"), "vencimento": r.get("vencimento"), "pendente": r.get("pendente")})
-    conflitos = []
-
-    def _is_conflito_real_v81(arr):
-        """
-        V8.1: o dashboard preserva Vendedor x Crediarista para não zerar a lista dos vendedores.
-        Essa duplicidade é operacionalmente permitida e não deve aparecer como alerta vermelho.
-
-        Continua sendo conflito real:
-        - mesmo título em mais de um vendedor;
-        - mesmo título em mais de um crediarista;
-        - qualquer título que ainda duplicar com Cobrança10/terceiro;
-        - qualquer tipo desconhecido duplicado.
-        """
-        tipos = [str(a.get("tipo") or "").lower() for a in (arr or [])]
-        vend = {(a.get("responsavel"), a.get("filial")) for a in (arr or []) if str(a.get("tipo") or "").lower() == "vendedor"}
-        cred = {(a.get("responsavel"), a.get("filial")) for a in (arr or []) if str(a.get("tipo") or "").lower() == "crediarista"}
-        outros = {t for t in tipos if t not in {"vendedor", "crediarista"}}
-        if outros:
-            return True
-        if len(vend) > 1:
-            return True
-        if len(cred) > 1:
-            return True
-        # Um vendedor + um crediarista é permitido na V8.1.
-        return False
-
-    ignorados_vendedor_crediarista = 0
-    for k, arr in mp.items():
-        responsaveis = {(a.get("tipo"), a.get("responsavel"), a.get("filial")) for a in arr}
-        if len(responsaveis) > 1:
-            if _is_conflito_real_v81(arr):
-                conflitos.append({"key": k, "qtd": len(arr), "responsaveis": arr})
-            else:
-                ignorados_vendedor_crediarista += 1
-    conflitos.sort(key=lambda x: x.get("qtd",0), reverse=True)
-    out = {"gerado_em": now_brasilia().isoformat(), "versao": "V8.1", "regra": "Vendedor x crediarista preservado e ignorado no alerta; conflitos reais continuam sendo exibidos", "total_conflitos": len(conflitos), "ignorados_vendedor_crediarista": ignorados_vendedor_crediarista, "conflitos": conflitos[:300]}
-    try:
-        with open(os.path.join(pasta, "relatorio_duplicidades_carteira.json"), "w", encoding="utf-8") as f:
-            json.dump(out, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"⚠️ Não consegui salvar relatório de duplicidades: {e}")
-    if conflitos:
-        print(f"🚨 Duplicidades reais de carteira encontradas: {len(conflitos)}. Veja relatorio_duplicidades_carteira.json")
-    else:
-        print("✅ Check anti-duplicidade da carteira: nenhum conflito entre responsáveis.")
-    return out
 
 baixar_clientes_sem_movimento_selenium()
 baixar_aniversariantes_selenium()
@@ -7561,6 +7506,25 @@ Já tentamos contato sobre a parcela vencida em {vencimento}, no valor de {valor
 
 Para evitar novos encargos e restrições, pedimos que regularize o pagamento o quanto antes.
 Caso já tenha pago, por gentileza desconsidere esta mensagem.`,cobranca_msg_template:`Olá, {primeiro_nome} tudo bem?\nAqui é da Lojas MDL - Móveis do Lar.\nPassando para lembrar que tem uma parcelinha vencida na data de {vencimento}, no valor de {valor}.\nCaso o pagamento já tenha sido realizado, por gentileza, desconsidere esta mensagem.\nSe precisar do boleto, chave PIX ou tiver qualquer dúvida, fico à disposição para ajudar.`,...(__CONFIG_META__||{})};
+// V8.5: normaliza mensagens padrão se o servidor ainda estiver com versões antigas sem emojis.
+const DEFAULT_ANIVERSARIO_MSG_MDL=`Olá, {primeiro_nome}! Feliz aniversário! 🎂🎉
+
+Aqui é da Lojas MDL - Móveis do Lar. Desejamos muita saúde, paz e felicidades neste dia especial. 😍😍
+
+Preparamos condições especiais para você comemorar com a gente.
+🕺🎉🤩`;
+const DEFAULT_REATIVACAO_MSG_MDL=`Olá, {primeiro_nome}! Tudo bem? 😊
+
+Aqui é da Lojas MDL - Móveis do Lar. Estamos com saudades de você! Faz um tempinho que você não aparece na loja.  🥹
+
+Venha conhecer nossas novidades e aproveitar condições especiais que preparamos para nossos clientes. 👈👈😍😍`;
+try{
+  const anivRaw=String(CONFIG_META.aniversario_msg_template||'').trim();
+  if(!anivRaw || (anivRaw.includes('Feliz aniversário') && !anivRaw.includes('🎂'))){CONFIG_META.aniversario_msg_template=DEFAULT_ANIVERSARIO_MSG_MDL;}
+  const reatRaw=String(CONFIG_META.reativacao_msg_template||'').trim();
+  if(!reatRaw || (reatRaw.includes('Estamos com saudades') && !reatRaw.includes('🥹'))){CONFIG_META.reativacao_msg_template=DEFAULT_REATIVACAO_MSG_MDL;}
+}catch(e){}
+
 let CONFIG_META_IND=__CONFIG_META_IND__||{};
 const LOGIN_MASTER=String(__LOGIN_MASTER__);
 const SENHA_MASTER=String(__SENHA_MASTER__);
@@ -10854,12 +10818,7 @@ async function adminCriarUsuarioCobranca(){
 }
 
 
-function reativacaoTemplateAtual(filial=""){filial=String(filial||"").toUpperCase(); const porFilial=CONFIG_META?.reativacao_msg_template_filiais||{}; if(filial && String(porFilial[filial]||"").trim()) return String(porFilial[filial]); return String(CONFIG_META?.reativacao_msg_template||`Olá, {primeiro_nome}! Tudo bem? 😊
-
-Aqui é da Lojas MDL - Móveis do Lar.
-Estamos com saudades de você! Faz um tempinho que você não aparece na loja.
-
-Passando para te convidar a conhecer nossas novidades e aproveitar condições especiais que preparamos para nossos clientes. 🧡`)}
+function reativacaoTemplateAtual(filial=""){filial=String(filial||"").toUpperCase(); const porFilial=CONFIG_META?.reativacao_msg_template_filiais||{}; if(filial && String(porFilial[filial]||"").trim()) return String(porFilial[filial]); return String(CONFIG_META?.reativacao_msg_template||DEFAULT_REATIVACAO_MSG_MDL)}
 function primeiroNomeClienteJs(nome){return String(nome||'Cliente').trim().split(/\s+/)[0]||'Cliente'}
 function montarMensagemReativacao(c){let tpl=reativacaoTemplateAtual(c?.filial||""); const dados={primeiro_nome:c.primeiro_nome||primeiroNomeClienteJs(c.cliente||''),nome:c.cliente||'',filial:c.filial||'',dias:String(c.dias_sem_movimento||''),ultimo_movimento:c.ultimo_movimento||''}; Object.entries(dados).forEach(([k,v])=>{tpl=tpl.replaceAll(`{${k}}`,v)}); return tpl;}
 function reatUserKeyFromNome(nome,filial){return normName(nome)+'_'+String(filial||'').toUpperCase()}
@@ -10945,8 +10904,11 @@ function abrirWhatsReativacao(idx,tel){
 let reatBuscaState='';
 let reatBuscaTimer=null;
 let reatFilialState='';
-function reatBuscaChanged(v){reatBuscaState=String(v||''); clearTimeout(reatBuscaTimer); reatBuscaTimer=setTimeout(()=>renderReativacaoTab(),380)}
-function reatFilialChanged(v){reatFilialState=String(v||''); renderReativacaoTab()}
+let reatPageState=1;
+const REAT_PAGE_SIZE=20;
+function reatBuscaChanged(v){reatBuscaState=String(v||''); reatPageState=1; clearTimeout(reatBuscaTimer); reatBuscaTimer=setTimeout(()=>renderReativacaoTab(),380)}
+function reatFilialChanged(v){reatFilialState=String(v||''); reatPageState=1; renderReativacaoTab()}
+function reatSetPage(p){reatPageState=Math.max(1,Number(p)||1); renderReativacaoTab();}
 async function salvarMensagemReativacaoGlobal(){const el=document.getElementById('reatMsgTemplate'); CONFIG_META.reativacao_msg_template=el?el.value:reativacaoTemplateAtual(); try{const resp=await fetch(API_CFG,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({global:CONFIG_META,individual:CONFIG_META_IND})}); const j=await resp.json(); toast(j.ok?'Mensagem global de reativação salva.':'Não consegui salvar mensagem.',j.ok?'success':'warn')}catch(e){toast('Falha ao salvar mensagem.','warn')}}
 async function salvarMensagemReativacaoFilial(){const f=String(document.getElementById('reatMsgFilial')?.value||'').toUpperCase(); const el=document.getElementById('reatMsgTemplateFilial'); if(!f){toast('Selecione uma filial para salvar mensagem individual.','warn'); return} CONFIG_META.reativacao_msg_template_filiais=CONFIG_META.reativacao_msg_template_filiais||{}; CONFIG_META.reativacao_msg_template_filiais[f]=el?el.value:''; try{const resp=await fetch(API_CFG,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({global:CONFIG_META,individual:CONFIG_META_IND})}); const j=await resp.json(); toast(j.ok?`Mensagem da ${f} salva.`:'Não consegui salvar mensagem por filial.',j.ok?'success':'warn')}catch(e){toast('Falha ao salvar mensagem por filial.','warn')}}
 function trocarMensagemReativacaoFilial(f){const el=document.getElementById('reatMsgTemplateFilial'); if(el) el.value=reativacaoTemplateAtual(f)}
@@ -10984,7 +10946,7 @@ function renderReativacaoTab(){
       </div>
     </div>
     <div class="faixa-title atencao" style="margin-bottom:10px"><span>📋 ${esc(tituloLista)}</span><span>${rows.length} cliente(s) · ${enviadosHoje} enviado(s) hoje</span></div>
-    <div class="logs-list">${rows.slice(0,700).map(r=>{const tels=(r.telefones||[]); const enviado=isReativacaoEnviadaHoje(r); return `<div class="log-row" style="grid-template-columns:1.45fr .85fr .9fr auto"><div><strong>${esc(r.cliente||'')}</strong><div class="small muted">${esc(r.filial||'')} · ${esc(r.cidade||'')} · ${Number(r.dias_sem_movimento||0)} dias sem comprar · último ${esc(r.ultimo_movimento||'')}</div></div><div><strong>${esc(r._owner?.label||'')}</strong><div class="small muted">Responsável pelo envio</div></div><div><strong>${enviado?'✅ Enviado hoje':esc(tels.length+' WhatsApp(s)')}</strong><div class="small muted">${esc(tels.map(fmtTelBR).join(', '))}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap">${tels.map(t=>`<button class="btn wa" ${enviado?'disabled style="opacity:.45"':''} onclick="abrirWhatsReativacao(${r._idx},'${esc(t)}')">Whats ${esc(fmtTelBR(t))}</button>`).join('')}</div></div>`}).join('') || '<div class="empty">Nenhum cliente encontrado.</div>'}</div>`;
+    <div class="logs-list">${(()=>{const total=rows.length; const maxPage=Math.max(1,Math.ceil(total/REAT_PAGE_SIZE)); if(reatPageState>maxPage) reatPageState=maxPage; if(reatPageState<1) reatPageState=1; const ini=(reatPageState-1)*REAT_PAGE_SIZE; const pageRows=rows.slice(ini,ini+REAT_PAGE_SIZE); const pager=total>REAT_PAGE_SIZE?`<div class="log-pager"><div><strong>${total}</strong> cliente(s) · mostrando ${ini+1}-${Math.min(ini+REAT_PAGE_SIZE,total)} · página ${reatPageState}/${maxPage}</div><div style="display:flex;gap:8px"><button class="btn soft" ${reatPageState<=1?'disabled':''} onclick="reatSetPage(${reatPageState-1})">⬅️ Anterior</button><button class="btn soft" ${reatPageState>=maxPage?'disabled':''} onclick="reatSetPage(${reatPageState+1})">Próxima ➡️</button></div></div>`:''; return pager + pageRows.map(r=>{const tels=(r.telefones||[]); const enviado=isReativacaoEnviadaHoje(r); return `<div class="log-row" style="grid-template-columns:1.45fr .85fr .9fr auto"><div><strong>${esc(r.cliente||'')}</strong><div class="small muted">${esc(r.filial||'')} · ${esc(r.cidade||'')} · ${Number(r.dias_sem_movimento||0)} dias sem comprar · último ${esc(r.ultimo_movimento||'')}</div></div><div><strong>${esc(r._owner?.label||'')}</strong><div class="small muted">Responsável pelo envio</div></div><div><strong>${enviado?'✅ Enviado hoje':esc(tels.length+' WhatsApp(s)')}</strong><div class="small muted">${esc(tels.map(fmtTelBR).join(', '))}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap">${tels.map(t=>`<button class="btn wa" ${enviado?'disabled style="opacity:.45"':''} onclick="abrirWhatsReativacao(${r._idx},'${esc(t)}')">Whats ${esc(fmtTelBR(t))}</button>`).join('')}</div></div>`}).join('') + pager})() || '<div class="empty">Nenhum cliente encontrado.</div>'}</div>`;
   }catch(e){console.error('Erro renderReativacaoTab',e); box.innerHTML=`<div class="glass panel" style="border-color:rgba(239,68,68,.35)"><strong>⚠️ Erro na aba Clientes sem movimento</strong><div class="hint">${esc(e.message||e)}</div></div>`;}
 }
 
@@ -11021,8 +10983,8 @@ function renderReativacaoEnt(ent){
   return `<div class="accordion"><div class="acc-head" onclick="toggleAcc(this)"><span>🧡 Clientes sem movimento para reativação</span><span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${mdlExportButtons(exportId)}<span class="acc-hint">${rows.length} cliente(s) · ${enviadosRows.length} enviado(s) hoje · clique para abrir</span></span></div><div class="acc-body">
     <div class="faixa-title atencao" style="margin-bottom:10px"><span>Lista individual de ${esc(tipo)}</span><span>sem duplicar com outros usuários</span></div>
     <div class="reat-tabs"><span id="${panelId}_btn_pend" class="reat-tab pending active" onclick="showReatPanel('${panelId}','pend')">📋 Pendentes: ${pendentesRows.length}</span><span id="${panelId}_btn_sent" class="reat-tab ok" onclick="showReatPanel('${panelId}','sent')">✅ Enviados hoje: ${enviadosRows.length}</span></div>
-    <div id="${panelId}_pend" class="faixa-block"><div class="faixa-title alerta"><span>📋 Para enviar hoje</span><span>${pendentesRows.length} cliente(s)</span></div><div class="logs-list">${pendentesRows.slice(0,500).map(r=>rowHtml(r,false)).join('') || '<div class="empty">Nenhum cliente pendente para este usuário/filial.</div>'}</div></div>
-    <div id="${panelId}_sent" class="faixa-block" style="display:none"><div class="faixa-title atencao"><span>✅ Enviados hoje</span><span>${enviadosRows.length} cliente(s)</span></div><div class="logs-list">${enviadosRows.slice(0,500).map(r=>rowHtml(r,true)).join('') || '<div class="empty">Nenhuma mensagem de reativação enviada hoje.</div>'}</div></div>
+    <div id="${panelId}_pend" class="faixa-block"><div class="faixa-title alerta"><span>📋 Para enviar hoje</span><span>${pendentesRows.length} cliente(s)</span></div><div class="logs-list">${pendentesRows.slice(0,20).map(r=>rowHtml(r,false)).join('') || '<div class="empty">Nenhum cliente pendente para este usuário/filial.</div>'}</div></div>
+    <div id="${panelId}_sent" class="faixa-block" style="display:none"><div class="faixa-title atencao"><span>✅ Enviados hoje</span><span>${enviadosRows.length} cliente(s)</span></div><div class="logs-list">${enviadosRows.slice(0,20).map(r=>rowHtml(r,true)).join('') || '<div class="empty">Nenhuma mensagem de reativação enviada hoje.</div>'}</div></div>
   </div></div>`;
 }
 
@@ -11356,7 +11318,7 @@ function renderAniversariantesTab(){
     ${semBase?'<div class="glass panel" style="border-color:rgba(245,158,11,.35);margin-bottom:14px"><strong>⚠️ Sem base de aniversariantes carregada</strong><div class="hint">Coloque aniversarios.xls/relatorio_aniversariantes*.xls nesta pasta ou rode com BAIXAR_ANIVERSARIANTES=1.</div></div>':''}
     <div class="kpis" style="margin-bottom:14px">${makeKpi('Aniversariantes na base',String((ANIVERSARIANTES||[]).length),'var(--amber-400)','WhatsApp válido e cidade permitida')}${makeKpi(titulo,String(rows.length),'var(--blue)',usuarioAtual?.tipo==='master'?'Filtro atual':'Distribuída sem duplicar')}${makeKpi('Enviados hoje',String(enviados),'var(--green)','Da lista exibida')}${makeKpi('Minha base total',String(totalPermitido),'var(--orange)','Rateio automático por filial')}</div>
     <div class="glass panel" style="margin-bottom:14px"><div class="search-row" style="grid-template-columns:1.5fr 220px minmax(420px,1fr);align-items:stretch"><div class="input-card"><label>Buscar</label><input id="anivBusca" value="${esc(anivBuscaState)}" oninput="anivBuscaChanged(this.value)" placeholder="Cliente, cidade, responsável"></div><div class="input-card"><label>Filial</label><select id="anivFilial" onchange="anivFilialChanged(this.value)"><option value="">Todas</option>${filiais.map(f=>`<option value="${esc(f)}" ${filial===f?'selected':''}>${esc(f)}</option>`).join('')}</select></div><div class="input-card" style="min-width:420px"><label>Mensagem padrão global</label><textarea id="anivMsgTemplate" rows="6" style="min-height:135px;width:100%;resize:vertical">${esc(aniversarioTemplateAtual())}</textarea><div class="hint">Variáveis: {primeiro_nome}, {nome}, {filial}, {cidade}, {nascimento}</div><button class="btn primary" style="margin-top:8px" onclick="salvarMensagemAniversarioGlobal()">Salvar mensagem global</button></div></div><div class="search-row" style="grid-template-columns:220px minmax(520px,1fr);align-items:stretch;margin-top:12px"><div class="input-card"><label>Mensagem por filial</label><select id="anivMsgFilial" onchange="trocarMensagemAniversarioFilial(this.value)">${filiais.map(f=>`<option value="${esc(f)}">${esc(f)}</option>`).join('')}</select></div><div class="input-card"><label>Texto específico da filial selecionada</label><textarea id="anivMsgTemplateFilial" rows="5" style="min-height:120px;width:100%;resize:vertical">${esc(aniversarioTemplateAtual(filiais[0]||''))}</textarea><div class="hint">Se vazio, usa a mensagem global.</div><button class="btn primary" style="margin-top:8px" onclick="salvarMensagemAniversarioFilial()">Salvar mensagem desta filial</button></div></div></div>
-    <div class="faixa-title atencao" style="margin-bottom:10px"><span>🎂 ${esc(titulo)}</span><span>${rows.length} cliente(s) · ${enviados} enviado(s) hoje</span></div><div class="logs-list">${rows.slice(0,700).map(r=>{const tels=(r.telefones||[]); const enviado=isAniversarioEnviadoHoje(r); return `<div class="log-row" style="grid-template-columns:1.45fr .85fr .9fr auto"><div><strong>${esc(r.cliente||'')}</strong><div class="small muted">${esc(r.filial||'')} · ${esc(r.cidade||'')} · nasc. ${esc(r.nascimento||'')}</div></div><div><strong>${esc(r._owner?.label||'')}</strong><div class="small muted">Responsável pelo envio</div></div><div><strong>${enviado?'✅ Enviado hoje':esc(tels.length+' WhatsApp(s)')}</strong><div class="small muted">${esc(tels.map(fmtTelBR).join(', '))}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap">${tels.map(t=>`<button class="btn wa" ${enviado?'disabled style="opacity:.45"':''} onclick="abrirWhatsAniversario(${r._idx},'${esc(t)}')">Whats ${esc(fmtTelBR(t))}</button>`).join('')}</div></div>`}).join('') || '<div class="empty">Nenhum aniversariante encontrado.</div>'}</div>`;
+    <div class="faixa-title atencao" style="margin-bottom:10px"><span>🎂 ${esc(titulo)}</span><span>${rows.length} cliente(s) · ${enviados} enviado(s) hoje</span></div><div class="logs-list">${(()=>{const total=rows.length; const maxPage=Math.max(1,Math.ceil(total/REAT_PAGE_SIZE)); if(reatPageState>maxPage) reatPageState=maxPage; if(reatPageState<1) reatPageState=1; const ini=(reatPageState-1)*REAT_PAGE_SIZE; const pageRows=rows.slice(ini,ini+REAT_PAGE_SIZE); const pager=total>REAT_PAGE_SIZE?`<div class="log-pager"><div><strong>${total}</strong> cliente(s) · mostrando ${ini+1}-${Math.min(ini+REAT_PAGE_SIZE,total)} · página ${reatPageState}/${maxPage}</div><div style="display:flex;gap:8px"><button class="btn soft" ${reatPageState<=1?'disabled':''} onclick="reatSetPage(${reatPageState-1})">⬅️ Anterior</button><button class="btn soft" ${reatPageState>=maxPage?'disabled':''} onclick="reatSetPage(${reatPageState+1})">Próxima ➡️</button></div></div>`:''; return pager + pageRows.map(r=>{const tels=(r.telefones||[]); const enviado=isAniversarioEnviadoHoje(r); return `<div class="log-row" style="grid-template-columns:1.45fr .85fr .9fr auto"><div><strong>${esc(r.cliente||'')}</strong><div class="small muted">${esc(r.filial||'')} · ${esc(r.cidade||'')} · nasc. ${esc(r.nascimento||'')}</div></div><div><strong>${esc(r._owner?.label||'')}</strong><div class="small muted">Responsável pelo envio</div></div><div><strong>${enviado?'✅ Enviado hoje':esc(tels.length+' WhatsApp(s)')}</strong><div class="small muted">${esc(tels.map(fmtTelBR).join(', '))}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap">${tels.map(t=>`<button class="btn wa" ${enviado?'disabled style="opacity:.45"':''} onclick="abrirWhatsAniversario(${r._idx},'${esc(t)}')">Whats ${esc(fmtTelBR(t))}</button>`).join('')}</div></div>`}).join('') || '<div class="empty">Nenhum aniversariante encontrado.</div>'}</div>`;
   }catch(e){console.error('Erro renderAniversariantesTab',e); box.innerHTML=`<div class="glass panel" style="border-color:rgba(239,68,68,.35)"><strong>⚠️ Erro na aba Aniversariantes</strong><div class="hint">${esc(e.message||e)}</div></div>`;}
 }
 function aniversariantesRowsParaEnt(ent){
@@ -11378,7 +11340,7 @@ function renderAniversariantesEnt(ent){
     ...enviadosRows.map(r=>mdlAnivExportRow(r,'Enviado hoje'))
   ]);
   const rowHtml=(r,enviado=false)=>{const tels=(r.telefones||[]); return `<div class="log-row" style="grid-template-columns:1.5fr .7fr .8fr auto"><div><strong>${esc(r.cliente||'')}</strong><div class="small muted">${esc(r.filial||'')} · ${esc(r.cidade||'')} · nasc. ${esc(r.nascimento||'')}</div></div><div><strong>${esc(r._owner?.label||'')}</strong><div class="small muted">Responsável</div></div><div><strong>${enviado?'✅ Enviado hoje':esc(tels.length+' WhatsApp(s)')}</strong><div class="small muted">${esc(tels.map(fmtTelBR).join(', '))}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap">${tels.map(t=>`<button class="btn wa" ${enviado?'disabled style="opacity:.45"':''} onclick="abrirWhatsAniversario(${r._idx},'${esc(t)}')">Whats ${esc(fmtTelBR(t))}</button>`).join('')}</div></div>`};
-  return `<div class="accordion" data-anniv-panel="1"><div class="acc-head" onclick="toggleAcc(this)"><span>🎂 Aniversariantes do dia</span><span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${mdlExportButtons(exportId)}<span class="acc-hint">${rows.length} cliente(s) · ${enviadosRows.length} enviado(s) hoje · clique para abrir</span></span></div><div class="acc-body"><div class="faixa-title atencao" style="margin-bottom:10px"><span>Lista individual de aniversário</span><span>sem duplicar com outros usuários</span></div><div class="reat-tabs"><span id="${panelId}_btn_pend" class="reat-tab pending active" onclick="showAnivPanel('${panelId}','pend')">🎂 Pendentes: ${pendentesRows.length}</span><span id="${panelId}_btn_sent" class="reat-tab ok" onclick="showAnivPanel('${panelId}','sent')">✅ Enviados hoje: ${enviadosRows.length}</span></div><div id="${panelId}_pend" class="faixa-block"><div class="faixa-title alerta"><span>🎂 Para enviar hoje</span><span>${pendentesRows.length} cliente(s)</span></div><div class="logs-list">${pendentesRows.slice(0,500).map(r=>rowHtml(r,false)).join('') || '<div class="empty">Nenhum aniversariante pendente para este usuário/filial.</div>'}</div></div><div id="${panelId}_sent" class="faixa-block" style="display:none"><div class="faixa-title atencao"><span>✅ Enviados hoje</span><span>${enviadosRows.length} cliente(s)</span></div><div class="logs-list">${enviadosRows.slice(0,500).map(r=>rowHtml(r,true)).join('') || '<div class="empty">Nenhuma mensagem de aniversário enviada hoje.</div>'}</div></div></div></div>`;
+  return `<div class="accordion" data-anniv-panel="1"><div class="acc-head" onclick="toggleAcc(this)"><span>🎂 Aniversariantes do dia</span><span style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${mdlExportButtons(exportId)}<span class="acc-hint">${rows.length} cliente(s) · ${enviadosRows.length} enviado(s) hoje · clique para abrir</span></span></div><div class="acc-body"><div class="faixa-title atencao" style="margin-bottom:10px"><span>Lista individual de aniversário</span><span>sem duplicar com outros usuários</span></div><div class="reat-tabs"><span id="${panelId}_btn_pend" class="reat-tab pending active" onclick="showAnivPanel('${panelId}','pend')">🎂 Pendentes: ${pendentesRows.length}</span><span id="${panelId}_btn_sent" class="reat-tab ok" onclick="showAnivPanel('${panelId}','sent')">✅ Enviados hoje: ${enviadosRows.length}</span></div><div id="${panelId}_pend" class="faixa-block"><div class="faixa-title alerta"><span>🎂 Para enviar hoje</span><span>${pendentesRows.length} cliente(s)</span></div><div class="logs-list">${pendentesRows.slice(0,20).map(r=>rowHtml(r,false)).join('') || '<div class="empty">Nenhum aniversariante pendente para este usuário/filial.</div>'}</div></div><div id="${panelId}_sent" class="faixa-block" style="display:none"><div class="faixa-title atencao"><span>✅ Enviados hoje</span><span>${enviadosRows.length} cliente(s)</span></div><div class="logs-list">${enviadosRows.slice(0,20).map(r=>rowHtml(r,true)).join('') || '<div class="empty">Nenhuma mensagem de aniversário enviada hoje.</div>'}</div></div></div></div>`;
 }
 
 // Mural de aniversariantes do dia no início, mesmo quando vazio
@@ -13062,6 +13024,13 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
             if os.path.exists(_csm_path):
                 with open(_csm_path, 'rb') as f_csm:
                     ftp.storbinary('STOR clientes_sem_movimento.json', f_csm)
+            _ani_path = os.path.join(pasta, 'aniversariantes_dia.json')
+            if os.path.exists(_ani_path):
+                with open(_ani_path, 'rb') as f_ani:
+                    ftp.storbinary('STOR aniversariantes_dia.json', f_ani)
+                    print('✅ FTP: aniversariantes_dia.json enviado')
+            else:
+                print('⚠️ FTP: aniversariantes_dia.json não encontrado para envio')
             _dup_path = os.path.join(pasta, 'relatorio_duplicidades_carteira.json')
             if os.path.exists(_dup_path):
                 with open(_dup_path, 'rb') as f_dup:
