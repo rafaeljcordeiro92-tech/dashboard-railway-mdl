@@ -1,4 +1,4 @@
-# VERSAO: TELEGRAM_MONITOR_MDL_V15_TEMPLATE_COMPLETO_SEM_REAIS
+# VERSAO: TELEGRAM_MONITOR_MDL_V17_RESUMO_COMPLETO_WATCHERS_FIX
 import json
 import os
 import re
@@ -334,16 +334,28 @@ def _load_users(base_dir):
         for login, u in users.items():
             if not isinstance(u, dict):
                 continue
-            if u.get("is_viewer") or str(login).lower() in {"painel", "master"}:
+            login_s = str(login or u.get("login") or "").strip()
+            if u.get("is_viewer") or login_s.lower() in {"painel", "master", "diretorcomercial"}:
+                continue
+            status = str(u.get("status_operacional") or u.get("status") or "ativo").lower().strip()
+            if status and status not in {"ativo", "active", "true", "1"}:
+                continue
+            if u.get("access_disabled") is True:
                 continue
             out.append({
-                "login": str(login),
-                "nome": str(u.get("nome") or login),
+                "login": login_s,
+                "nome": str(u.get("nome") or login_s),
                 "filial": str(u.get("filial") or ""),
                 "tipo": "Crediarista" if u.get("is_crediarista") else ("Terceiro" if u.get("is_terceiro") else ("Gerente" if u.get("is_gerente") else "Vendedor")),
+                "is_crediarista": bool(u.get("is_crediarista")),
+                "is_terceiro": bool(u.get("is_terceiro")),
+                "is_gerente": bool(u.get("is_gerente")),
+                "participa_cobrancas": bool(u.get("participa_cobrancas", True)),
+                "participa_sem_movimento": bool(u.get("participa_sem_movimento", True)),
+                "participa_aniversariantes": bool(u.get("participa_aniversariantes", True)),
+                "participa_murais": bool(u.get("participa_murais", True)),
             })
     return out
-
 
 def _find_value_by_key(row, patterns):
     if not isinstance(row, dict):
@@ -556,58 +568,161 @@ def _date_only_br_from_any(v):
         return ""
 
 
+def _alias_norm(v):
+    return _norm(v).replace(" - ", " ")
+
+
+def _add_alias(aliases, v):
+    v = str(v or "").strip()
+    if not v:
+        return
+    aliases.add(_alias_norm(v))
+    aliases.add(_alias_norm(v.replace("_", " ")))
+    aliases.add(_alias_norm(v.replace("-", " ")))
+
+
 def _user_aliases(u):
     aliases = set()
-    for k in ["login", "nome", "filial"]:
-        v = str((u or {}).get(k) or "").strip()
-        if v:
-            aliases.add(_norm(v))
-    nome = str((u or {}).get("nome") or "").strip()
-    filial = str((u or {}).get("filial") or "").strip()
     login = str((u or {}).get("login") or "").strip()
+    nome = str((u or {}).get("nome") or "").strip()
+    filial = str((u or {}).get("filial") or "").strip().upper()
+    tipo = str((u or {}).get("tipo") or "").strip()
+    for v in [login, nome, filial, tipo]:
+        _add_alias(aliases, v)
     if nome and filial:
-        aliases.add(_norm(f"{nome}_{filial}"))
-        aliases.add(_norm(f"{nome} ({filial})"))
+        _add_alias(aliases, f"{nome}_{filial}")
+        _add_alias(aliases, f"{nome} ({filial})")
+        _add_alias(aliases, f"{filial} - {nome}")
+        _add_alias(aliases, f"{filial} {nome}")
     if login and filial:
-        aliases.add(_norm(f"{login}_{filial}"))
+        _add_alias(aliases, f"{login}_{filial}")
+        _add_alias(aliases, f"{filial} - {login}")
+    if (u or {}).get("is_crediarista") and filial:
+        # O log às vezes vem como crediaristaf06_01, Crediarista F6 01, ou só F6 - Crediarista.
+        _add_alias(aliases, f"Crediarista {filial} 01")
+        _add_alias(aliases, f"crediarista{filial.lower()}_01")
+    if (u or {}).get("is_terceiro"):
+        _add_alias(aliases, "Cobrança10")
+        _add_alias(aliases, "cobranca10")
+        _add_alias(aliases, "FTER")
     return {a for a in aliases if a}
 
 
 def _log_aliases(x):
     aliases = set()
-    for k in ["usuario", "user", "login", "destino_nome", "responsavel", "vendedor", "filial"]:
-        v = str((x or {}).get(k) or "").strip()
-        if v:
-            aliases.add(_norm(v))
-    destino = str((x or {}).get("destino_nome") or "").strip()
-    usuario = str((x or {}).get("usuario") or (x or {}).get("login") or "").strip()
-    filial = str((x or {}).get("filial") or "").strip()
-    if destino and filial:
-        aliases.add(_norm(f"{destino}_{filial}"))
-        aliases.add(_norm(f"{destino} ({filial})"))
-    if usuario and filial:
-        aliases.add(_norm(f"{usuario}_{filial}"))
+    if not isinstance(x, dict):
+        return aliases
+    for k in ["usuario", "user", "login", "destino_nome", "responsavel", "vendedor", "filial", "owner_key"]:
+        _add_alias(aliases, x.get(k))
+    destino = str(x.get("destino_nome") or "").strip()
+    usuario = str(x.get("usuario") or x.get("login") or "").strip()
+    login = str(x.get("login") or "").strip()
+    filial = str(x.get("filial") or "").strip().upper()
+    for val in [destino, usuario, login]:
+        if val and filial:
+            _add_alias(aliases, f"{val}_{filial}")
+            _add_alias(aliases, f"{val} ({filial})")
+            _add_alias(aliases, f"{filial} - {val}")
+            _add_alias(aliases, f"{filial} {val}")
+    # Se o usuário veio como "F3 - NOME", também adiciona só o nome.
+    for val in [usuario, destino, login]:
+        m = re.match(r"^\s*F\d{1,2}\s*[-–]\s*(.+)$", str(val or ""), flags=re.I)
+        if m:
+            _add_alias(aliases, m.group(1))
+            if filial:
+                _add_alias(aliases, f"{m.group(1)}_{filial}")
     return {a for a in aliases if a}
 
 
+def _log_date(x):
+    if not isinstance(x, dict):
+        return ""
+    for k in ("server_time", "criado_em", "created_at", "data", "timestamp", "hora"):
+        d = _date_only_br_from_any(x.get(k))
+        if d:
+            return d
+    return ""
 
-# ===== V4: alertas instantâneos para Scheduler/Railway =====
-def _parse_dt_any(v):
-    s = str(v or '').strip()
-    if not s:
-        return None
-    try:
-        return datetime.fromisoformat(s.replace('Z','+00:00')).astimezone(BR_TZ)
-    except Exception:
-        pass
-    for fmt in ('%Y-%m-%d %H:%M:%S','%Y-%m-%dT%H:%M:%S','%d/%m/%Y %H:%M:%S','%d/%m/%Y'):
-        try:
-            dt = datetime.strptime(s[:19], fmt)
-            return dt.replace(tzinfo=BR_TZ)
-        except Exception:
-            pass
-    return None
 
+def _titulo_upper(x):
+    return str((x or {}).get("titulo") or (x or {}).get("tipo") or "").strip().upper()
+
+
+def _is_reactivation_log(x):
+    t = _titulo_upper(x)
+    ck = str((x or {}).get("cliente_key") or (x or {}).get("cobranca_key") or "").upper()
+    return t == "REATIVACAO" or "REATIVACAO" in ck or "CLIENTE_SEM_MOVIMENTO" in ck
+
+
+def _is_birthday_log(x):
+    t = _titulo_upper(x)
+    ck = str((x or {}).get("cliente_key") or (x or {}).get("cobranca_key") or "").upper()
+    return t in {"ANIVERSARIO", "ANIVERSARIO_DIRETOR"} or "ANIVERSARIO" in ck or "ANIV" in ck
+
+
+def _is_real_collection_log(x):
+    if not isinstance(x, dict):
+        return False
+    if _is_reactivation_log(x) or _is_birthday_log(x):
+        return False
+    # cobrança real geralmente tem título/parcela/pendente ou destino_tipo de cobrança.
+    t = str(x.get("titulo") or "").strip().upper()
+    if t in {"", "NAN", "NONE", "NULL"} and not x.get("pendente"):
+        return False
+    return True
+
+
+def _log_owner_label(x):
+    if not isinstance(x, dict):
+        return "Sem usuário"
+    filial = str(x.get("filial") or "").strip().upper()
+    nome = str(x.get("destino_nome") or x.get("usuario") or x.get("user") or x.get("login") or x.get("responsavel") or "").strip()
+    if not nome:
+        nome = "Sem usuário"
+    # Normaliza "F3 - Nome" sem perder a filial.
+    m = re.match(r"^\s*(F\d{1,2})\s*[-–]\s*(.+)$", nome, flags=re.I)
+    if m:
+        filial = filial or m.group(1).upper()
+        nome = m.group(2).strip()
+    if filial and filial not in nome.upper() and nome.lower() not in {"sem usuário", "sem usuario"}:
+        return f"{nome} ({filial})"
+    return nome
+
+
+def _active_keys_for_logs(logs):
+    keys = set()
+    counts = {}
+    for x in logs:
+        label = _log_owner_label(x)
+        counts[label] = counts.get(label, 0) + 1
+        keys.update(_log_aliases(x))
+    return keys, sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
+
+
+def _users_missing_action(users, active_keys, flag_name):
+    arr = []
+    for u in users:
+        if not u.get(flag_name, True):
+            continue
+        if not u.get("participa_murais", True):
+            continue
+        if _user_aliases(u).intersection(active_keys):
+            continue
+        arr.append(u)
+    return arr
+
+
+def _format_user_list(users, limit=22):
+    if not users:
+        return "• Todos fizeram ✅"
+    nomes = [f"{u.get('nome')} ({u.get('filial')})" if u.get('filial') else str(u.get('nome')) for u in users[:limit]]
+    txt = "• " + "; ".join(nomes)
+    if len(users) > limit:
+        txt += f"\n• +{len(users)-limit} outros"
+    return txt
+
+
+# ===== V8.3: funções de watchers/alertas instantâneos restauradas =====
 def load_active_general_messages(base_dir):
     """Mensagens/avisos/campanhas com destino Todos, para o Telegram notificar o grupo."""
     msgs = _active_messages(base_dir)
@@ -899,7 +1014,17 @@ def build_meta_mercantil_100_alert(item, base_dir=None):
 
 
 def build_daily_summary(base_dir, date_str=None):
+    """Resumo final das 19h.
+
+    V16/V8.2:
+    - separa cobrança real de ANIVERSARIO e REATIVACAO;
+    - calcula corretamente quem cobrou, quem acionou reativação e quem enviou aniversário;
+    - inclui metas diárias e mensais batidas;
+    - mantém resumo comercial completo.
+    """
     date_str = date_str or now_br().strftime("%Y-%m-%d")
+    date_br = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y") if re.match(r"\d{4}-\d{2}-\d{2}", date_str) else date_str
+
     hist = load_json_local_or_remote(base_dir, os.path.join("cache_historico", "historico_dashboard.json"), "historico_dashboard.json", {"dates": {}, "sales_dates": {}})
     dates = hist.get("dates", {}) if isinstance(hist, dict) else {}
     sales_dates = hist.get("sales_dates", {}) if isinstance(hist, dict) else {}
@@ -912,21 +1037,19 @@ def build_daily_summary(base_dir, date_str=None):
     receb_dia = _recebimentos_dia_por_faixa(base_dir, date_str)
 
     logs = _load_cobrancas(base_dir)
-    logs_day = [x for x in logs if _date_only_br_from_any(x.get("server_time") or x.get("criado_em") or x.get("data") or x.get("created_at")) == date_str]
-    counts = {}
-    active_user_keys = set()
-    for x in logs_day:
-        user = str(x.get("usuario") or x.get("user") or x.get("login") or x.get("destino_nome") or "Sem usuário").strip() or "Sem usuário"
-        counts[user] = counts.get(user, 0) + 1
-        active_user_keys.update(_log_aliases(x))
-    top = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
+    logs_day_all = [x for x in logs if _log_date(x) == date_str]
+    logs_cob = [x for x in logs_day_all if _is_real_collection_log(x)]
+    logs_reat = [x for x in logs_day_all if _is_reactivation_log(x)]
+    logs_aniv = [x for x in logs_day_all if _is_birthday_log(x)]
+
+    cob_keys, cob_top = _active_keys_for_logs(logs_cob)
+    reat_keys, reat_top = _active_keys_for_logs(logs_reat)
+    aniv_keys, aniv_top = _active_keys_for_logs(logs_aniv)
 
     users = _load_users(base_dir)
-    sem = []
-    for u in users:
-        keys = _user_aliases(u)
-        if not keys.intersection(active_user_keys):
-            sem.append(u)
+    sem_cob = _users_missing_action(users, cob_keys, "participa_cobrancas")
+    sem_reat = _users_missing_action(users, reat_keys, "participa_sem_movimento")
+    sem_aniv = _users_missing_action(users, aniv_keys, "participa_aniversariantes")
 
     msgs = _active_messages(base_dir)
     campaigns = [m for m in msgs if str(m.get("message_kind") or m.get("kind") or "").lower() == "campaign"]
@@ -940,52 +1063,94 @@ def build_daily_summary(base_dir, date_str=None):
     rent = _float(sales_emp.get("margem_bruta_pct"), 0.0)
     markup = _float(sales_emp.get("markup_realizado"), 0.0)
 
+    try:
+        metas_dia = load_meta_diaria_batidas(base_dir)
+    except Exception:
+        metas_dia = []
+    try:
+        metas_mes = load_meta_mercantil_100(base_dir)
+    except Exception:
+        metas_mes = []
+
     linhas = []
-    linhas.append(f"📊 RESUMO FINAL DO DIA — {date_str}")
+    linhas.append(f"📊 RESUMO FINAL DO DIA — {date_br}")
+    linhas.append("Lojas MDL • COB+VENDAS")
     linhas.append("")
+
+    linhas.append("💰 COBRANÇA / CARTEIRA")
     if emp:
-        linhas.append("💰 Cobrança / carteira")
-        linhas.append(f"• Pendente: {fmt_money(emp.get('pendente'))}")
+        linhas.append(f"• Pendente geral: {fmt_money(emp.get('pendente'))}")
         linhas.append(f"• Recebido carteira: {fmt_money(emp.get('recebido'))}")
         if any(k in emp for k in ["grave", "alerta", "atencao"]):
-            linhas.append(f"• Carteira por faixa: Grave {fmt_money(emp.get('grave'))} | Alerta {fmt_money(emp.get('alerta'))} | Atenção {fmt_money(emp.get('atencao'))}")
-        linhas.append("• Recebimentos do dia por faixa:")
-        linhas.append(f"  - Grave: {receb_dia['grave']['qtd']} título(s) · {fmt_money(receb_dia['grave']['valor'])}")
-        linhas.append(f"  - Alerta: {receb_dia['alerta']['qtd']} título(s) · {fmt_money(receb_dia['alerta']['valor'])}")
-        linhas.append(f"  - Atenção: {receb_dia['atencao']['qtd']} título(s) · {fmt_money(receb_dia['atencao']['valor'])}")
+            linhas.append(f"• Carteira: Grave {fmt_money(emp.get('grave'))} | Alerta {fmt_money(emp.get('alerta'))} | Atenção {fmt_money(emp.get('atencao'))}")
         if emp.get("perc_meta") is not None:
             linhas.append(f"• Meta cobrança: {fmt_pct(emp.get('perc_meta'))}")
     else:
-        linhas.append("💰 Cobrança / carteira: sem histórico do dia ainda.")
+        linhas.append("• Sem histórico consolidado de cobrança no dia.")
+    linhas.append(f"• Recebimentos de hoje: Grave {receb_dia['grave']['qtd']} / {fmt_money(receb_dia['grave']['valor'])} | Alerta {receb_dia['alerta']['qtd']} / {fmt_money(receb_dia['alerta']['valor'])} | Atenção {receb_dia['atencao']['qtd']} / {fmt_money(receb_dia['atencao']['valor'])}")
 
     linhas.append("")
-    linhas.append("🧡 Vendas e serviços")
-    linhas.append(f"• Mercantil realizado: {fmt_money(merc)} | Atingido: {fmt_pct(sales_emp.get('venda_atingido_total'))}")
-    linhas.append(f"• Serviço realizado: {fmt_money(serv)} | Atingido: {fmt_pct(sales_emp.get('servico_atingido_total'))}")
-    linhas.append(f"• Caminhão realizado: {fmt_money(cam)} | Atingido: {fmt_pct(sales_emp.get('caminhao_atingido_total'))}")
-    linhas.append(f"• Faturamento total: {fmt_money(faturamento)}")
+    linhas.append("🧡 VENDAS / SERVIÇOS / RENTABILIDADE")
+    linhas.append(f"• Venda mercantil: {fmt_money(merc)} | Atingido mês: {fmt_pct(sales_emp.get('venda_atingido_total'))}")
+    linhas.append(f"• Serviços: {fmt_money(serv)} | Atingido mês: {fmt_pct(sales_emp.get('servico_atingido_total'))}")
+    linhas.append(f"• Caminhão: {fmt_money(cam)} | Atingido mês: {fmt_pct(sales_emp.get('caminhao_atingido_total'))}")
+    linhas.append(f"• Venda geral/faturamento: {fmt_money(faturamento)}")
     linhas.append(f"• Venda diária: {fmt_money(venda_diaria)}")
-    linhas.append(f"• Rentabilidade total: {fmt_pct(rent)}")
-    linhas.append(f"• Markup total: {str(f'{markup:.2f}').replace('.', ',')}")
+    linhas.append(f"• Rentabilidade geral: {fmt_pct(rent)}")
+    linhas.append(f"• Markup geral: {str(f'{markup:.2f}').replace('.', ',')}")
 
     linhas.append("")
-    linhas.append(f"📞 Cobranças feitas hoje: {len(logs_day)} registro(s)")
-    if top:
-        for nome, qtd in top[:12]:
+    linhas.append(f"📞 COBRANÇAS FEITAS HOJE: {len(logs_cob)} registro(s)")
+    if cob_top:
+        for nome, qtd in cob_top[:14]:
             linhas.append(f"• {nome}: {qtd}")
     else:
-        linhas.append("• Nenhuma cobrança registrada hoje.")
+        linhas.append("• Nenhuma cobrança real registrada hoje.")
+    linhas.append(f"🚫 Sem cobrança registrada: {len(sem_cob)} usuário(s)")
+    linhas.append(_format_user_list(sem_cob, 18))
 
     linhas.append("")
-    linhas.append(f"🚫 Sem cobrança registrada: {len(sem)} usuário(s)")
-    if sem:
-        nomes_sem = [f"{u['nome']} ({u['filial']})" for u in sem[:20]]
-        linhas.append("• " + "; ".join(nomes_sem))
-        if len(sem) > 20:
-            linhas.append(f"• +{len(sem)-20} outros")
+    linhas.append(f"🧡 CLIENTES SEM MOVIMENTO / REATIVAÇÃO: {len(logs_reat)} acionamento(s)")
+    if reat_top:
+        for nome, qtd in reat_top[:10]:
+            linhas.append(f"• {nome}: {qtd}")
+    else:
+        linhas.append("• Nenhuma reativação registrada hoje.")
+    linhas.append(f"🚫 Sem acionar clientes inativos: {len(sem_reat)} usuário(s)")
+    linhas.append(_format_user_list(sem_reat, 18))
 
     linhas.append("")
-    linhas.append(f"📣 Avisos ativos: {len(notices)} | Campanhas ativas: {len(campaigns)}")
+    linhas.append(f"🎂 ANIVERSARIANTES: {len(logs_aniv)} mensagem(ns) enviada(s)")
+    if aniv_top:
+        for nome, qtd in aniv_top[:10]:
+            linhas.append(f"• {nome}: {qtd}")
+    else:
+        linhas.append("• Nenhuma mensagem de aniversário registrada hoje.")
+    linhas.append(f"🚫 Sem enviar aniversariantes: {len(sem_aniv)} usuário(s)")
+    linhas.append(_format_user_list(sem_aniv, 18))
+
+    linhas.append("")
+    linhas.append(f"🎯 METAS DIÁRIAS BATIDAS: {len(metas_dia)}")
+    if metas_dia:
+        for m in metas_dia[:12]:
+            nome = m.get('nome') or m.get('filial') or 'Meta diária'
+            escopo = m.get('escopo') or ''
+            linhas.append(f"• {nome} — {m.get('atingido_txt') or fmt_pct(m.get('atingido'))}" + (f" ({escopo})" if escopo else ""))
+    else:
+        linhas.append("• Nenhuma meta diária batida registrada.")
+
+    linhas.append("")
+    linhas.append(f"🏆 METAS MENSAIS 100%+: {len(metas_mes)}")
+    if metas_mes:
+        for m in metas_mes[:12]:
+            nome = m.get('nome') or 'Meta mensal'
+            tipo = m.get('tipo') or ''
+            linhas.append(f"• {nome} — {m.get('atingido_txt') or fmt_pct(m.get('atingido'))}" + (f" ({tipo})" if tipo else ""))
+    else:
+        linhas.append("• Nenhuma nova meta mensal acima de 100% na leitura atual.")
+
+    linhas.append("")
+    linhas.append(f"📣 AVISOS ATIVOS: {len(notices)} | CAMPANHAS ATIVAS: {len(campaigns)}")
     for m in (campaigns + notices)[:6]:
         titulo = str(m.get("title") or "Sem título").strip()
         alvo = str(m.get("target_label") or m.get("target_type") or "Todos").strip()

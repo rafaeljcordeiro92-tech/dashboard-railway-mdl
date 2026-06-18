@@ -1,4 +1,4 @@
-# VERSAO: RAILWAY_SCHEDULER_MDL_V31_LISTAS_PESADAS_BOOT_OPCIONAL
+# VERSAO: RAILWAY_SCHEDULER_MDL_V33_RESUMO_TELEGRAM_WATCHERS_FIX
 import json
 import os
 import sys
@@ -30,8 +30,12 @@ except Exception as e:
             with open(path, 'r', encoding='utf-8', errors='ignore') as f: return f.read().splitlines()[-lines:]
         except Exception: return []
     def now_br(): return datetime.now(ZoneInfo('America/Sao_Paulo'))
+    def load_active_general_messages(base_dir): return []
+    def build_general_message_alert(m): return 'Aviso geral indisponível'
+    def load_meta_diaria_batidas(base_dir): return []
+    def build_meta_diaria_alert(item, base_dir=None): return 'Meta diária indisponível'
     def load_meta_mercantil_100(base_dir): return []
-    def build_meta_mercantil_100_alert(item): return 'Meta mercantil 100% indisponível'
+    def build_meta_mercantil_100_alert(item, base_dir=None): return 'Meta mercantil 100% indisponível'
 
 BR_TZ = ZoneInfo(os.getenv('APP_TZ', 'America/Sao_Paulo'))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -360,7 +364,7 @@ def start_http_panel():
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log('VERSAO V31: anti-duplicidade V7.9 + listas pesadas no boot opcional por FORCE_DAILY_LISTS_ON_BOOT=1')
+log('VERSAO V33: resumo diario completo + watchers Telegram corrigidos + listas pesadas no boot opcional')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
