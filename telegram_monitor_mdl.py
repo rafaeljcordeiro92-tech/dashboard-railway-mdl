@@ -1,4 +1,4 @@
-# VERSAO: TELEGRAM_MONITOR_MDL_V17_RESUMO_COMPLETO_WATCHERS_FIX
+# VERSAO: TELEGRAM_MONITOR_MDL_V18_RESUMO_PROJECAO_META_DIARIA_UNICA
 import json
 import os
 import re
@@ -840,7 +840,10 @@ def load_meta_diaria_batidas(base_dir):
             if _is_linha_meta_vendedor(chave, escopo) and not _is_vendedor_operacional_meta(nome):
                 continue
             out.append({
-                'key': f"{data.get('data_consulta') or ''}|VENDA_MERCANTIL|{chave}|{nome}|{filial}|{row.get('Atingido Período')}",
+                # V18: chave estável por dia + escopo + responsável.
+                # Não inclui percentual, para enviar só 1x quando passou de 100%,
+                # mesmo que depois suba de 106% para 112%.
+                'key': f"{data.get('data_consulta') or ''}|VENDA_MERCANTIL|{chave}|{nome}|{filial}",
                 'nome': nome,
                 'filial': filial,
                 'escopo': escopo,
@@ -1013,6 +1016,30 @@ def build_meta_mercantil_100_alert(item, base_dir=None):
     return _sanitize_meta_alert_text('\n'.join(linhas))
 
 
+
+
+def load_projecao_mercantil_filiais(base_dir):
+    """V18: dados do Controle de Meta Venda/Filial para o resumo final.
+    Retorna Atingido Total, Realizado Período e Projetado por filial.
+    """
+    data = load_json_local_or_remote(base_dir, 'metas_vendas_mes_atual.json', 'metas_vendas_mes_atual.json', {})
+    metas = data.get('metas') if isinstance(data, dict) else {}
+    bloco = (metas or {}).get('venda_filial_meta') or {}
+    out = []
+    for row in (bloco.get('linhas') or []):
+        if not isinstance(row, dict) or row.get('_is_total'):
+            continue
+        nome = str(row.get('Filial') or '').strip()
+        if not nome or nome.lower() == 'total':
+            continue
+        out.append({
+            'filial': nome,
+            'atingido_total': str(row.get('Atingido Total') or '').strip(),
+            'realizado_periodo': str(row.get('Realizado (R$) Período') or '').strip(),
+            'projetado': str(row.get('Projetado (R$)') or '').strip(),
+        })
+    return out
+
 def build_daily_summary(base_dir, date_str=None):
     """Resumo final das 19h.
 
@@ -1098,6 +1125,18 @@ def build_daily_summary(base_dir, date_str=None):
     linhas.append(f"• Venda diária: {fmt_money(venda_diaria)}")
     linhas.append(f"• Rentabilidade geral: {fmt_pct(rent)}")
     linhas.append(f"• Markup geral: {str(f'{markup:.2f}').replace('.', ',')}")
+
+    try:
+        proj_filiais = load_projecao_mercantil_filiais(base_dir)
+    except Exception:
+        proj_filiais = []
+    linhas.append("")
+    linhas.append("🏬 PROJEÇÃO MERCANTIL POR FILIAL")
+    if proj_filiais:
+        for p in proj_filiais[:12]:
+            linhas.append(f"• {p.get('filial')}: atingido total {p.get('atingido_total') or '-'} | realizado período R$ {p.get('realizado_periodo') or '0,00'} | projetado R$ {p.get('projetado') or '0,00'}")
+    else:
+        linhas.append("• Sem dados de projeção mercantil por filial.")
 
     linhas.append("")
     linhas.append(f"📞 COBRANÇAS FEITAS HOJE: {len(logs_cob)} registro(s)")

@@ -33,7 +33,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V8.6"
+DASHBOARD_BUILD_VERSION = "V8.7"
 DASHBOARD_BUILD_TAG = "DASH2_0_V7_6_TELEGRAM_TEMPLATE_BONITO"
 
 def now_brasilia():
@@ -6216,6 +6216,66 @@ def carregar_clientes_sem_movimento_local():
     Os downloads brutos do navegador (_relatorio_clientes_sem_movimento_*.xls) são ignorados para não dobrar a quantidade.
     """
     json_path = os.path.join(pasta, "clientes_sem_movimento.json")
+    seen_path = os.path.join(pasta, "clientes_sem_movimento_seen.json")
+
+    def _csm_key_row(r):
+        tels = r.get("telefones") or []
+        tel = ""
+        if isinstance(tels, list) and tels:
+            tel = re.sub(r"\D+", "", str(tels[0]))
+        return "|".join([
+            str(r.get("filial") or "").strip().upper(),
+            normalizar_texto_match(r.get("cliente")),
+            tel,
+        ])
+
+    def _load_seen_clientes_sem_movimento():
+        """V8.7: histórico de clientes já exibidos para o dashboard trabalhar só com NOVOS."""
+        seen = set()
+        fonte = None
+        # 1) Preferir arquivo seen local, se existir.
+        for path in [seen_path, json_path]:
+            try:
+                if os.path.exists(path):
+                    with open(path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    rows_old = data.get("clientes", data.get("seen", data)) if isinstance(data, dict) else data
+                    if isinstance(rows_old, list):
+                        for r0 in rows_old:
+                            if isinstance(r0, dict):
+                                k0 = r0.get("key") or _csm_key_row(r0)
+                                if k0:
+                                    seen.add(str(k0))
+                            elif r0:
+                                seen.add(str(r0))
+                        fonte = os.path.basename(path)
+                        break
+            except Exception as e:
+                print(f"⚠️ CSM seen: falha lendo {os.path.basename(path)}: {e}")
+        # 2) Em produção, se não existir local, baixa do FTP.
+        if not seen:
+            for remote_name in ["clientes_sem_movimento_seen.json", "clientes_sem_movimento.json"]:
+                try:
+                    data = _ftp_json(remote_name, None)
+                    rows_old = data.get("clientes", data.get("seen", data)) if isinstance(data, dict) else data
+                    if isinstance(rows_old, list):
+                        for r0 in rows_old:
+                            if isinstance(r0, dict):
+                                k0 = r0.get("key") or _csm_key_row(r0)
+                                if k0:
+                                    seen.add(str(k0))
+                            elif r0:
+                                seen.add(str(r0))
+                        fonte = f"FTP/{remote_name}"
+                        break
+                except Exception:
+                    pass
+        if fonte:
+            print(f"🧡 Clientes sem movimento V8.7: histórico seen carregado de {fonte} ({len(seen)} chave(s))")
+        else:
+            print("🧡 Clientes sem movimento V8.7: sem histórico seen; primeira carga pode entrar inteira")
+        return seen
+
     candidatos = []
     for base in list(dict.fromkeys([pasta, download_dir, "/mnt/data"])):
         try:
@@ -6282,17 +6342,43 @@ def carregar_clientes_sem_movimento_local():
         seen.add(k)
         final.append(r)
     final.sort(key=lambda x: (str(x.get("filial","")), -int(x.get("dias_sem_movimento") or 0), str(x.get("cliente",""))))
+
+    # V8.7: para não carregar 10 mil clientes todo dia, o dashboard passa a exibir
+    # somente clientes NOVOS ainda não vistos. Mantém um seen separado para comparação futura.
+    seen_antigo = _load_seen_clientes_sem_movimento()
+    final_com_key = []
+    for r in final:
+        try:
+            rr = dict(r)
+            rr["_csm_key"] = _csm_key_row(rr)
+            final_com_key.append(rr)
+        except Exception:
+            final_com_key.append(r)
+    if seen_antigo:
+        novos_final = [r for r in final_com_key if str(r.get("_csm_key") or _csm_key_row(r)) not in seen_antigo]
+        print(f"🧡 Clientes sem movimento V8.7: {len(novos_final)} novo(s) de {len(final_com_key)} baixado(s); antigos não entram no dashboard")
+    else:
+        novos_final = final_com_key
+        print(f"🧡 Clientes sem movimento V8.7: primeira carga sem histórico; exibindo {len(novos_final)} cliente(s)")
+    seen_union = sorted(set(list(seen_antigo) + [str(r.get("_csm_key") or _csm_key_row(r)) for r in final_com_key if (r.get("_csm_key") or _csm_key_row(r))]))
+    try:
+        with open(seen_path, "w", encoding="utf-8") as f_seen:
+            json.dump({"gerado_em": now_brasilia().isoformat(), "versao": DASHBOARD_BUILD_VERSION, "seen": seen_union}, f_seen, ensure_ascii=False, indent=2)
+        print(f"💾 Clientes sem movimento seen atualizado: {seen_path} ({len(seen_union)} chave(s))")
+    except Exception as e:
+        print(f"⚠️ Não consegui salvar clientes_sem_movimento_seen.json: {e}")
+
     try:
         with open(json_path, "w", encoding="utf-8") as f:
-            json.dump({"gerado_em": now_brasilia().isoformat(), "versao": DASHBOARD_BUILD_VERSION, "clientes": final}, f, ensure_ascii=False, indent=2)
-        print(f"💾 Clientes sem movimento JSON atualizado: {json_path} ({len(final)} cliente(s))")
+            json.dump({"gerado_em": now_brasilia().isoformat(), "versao": DASHBOARD_BUILD_VERSION, "modo": "somente_novos", "clientes": novos_final}, f, ensure_ascii=False, indent=2)
+        print(f"💾 Clientes sem movimento JSON atualizado: {json_path} ({len(novos_final)} cliente(s) novo(s))")
     except Exception as e:
         print(f"⚠️ Não consegui salvar clientes_sem_movimento.json: {e}")
     pf = {}
-    for r in final:
+    for r in novos_final:
         pf[r.get("filial") or "?"] = pf.get(r.get("filial") or "?", 0) + 1
-    print("🧡 Clientes sem movimento carregados: " + (" · ".join(f"{k}: {v}" for k, v in sorted(pf.items())) or "0"))
-    return final
+    print("🧡 Clientes sem movimento carregados no dashboard (somente novos): " + (" · ".join(f"{k}: {v}" for k, v in sorted(pf.items())) or "0"))
+    return novos_final
 
 def relatorio_duplicidades_carteira_py():
     buckets = []
@@ -13106,6 +13192,11 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
                     print('✅ FTP: aniversariantes_dia.json enviado')
             else:
                 print('⚠️ FTP: aniversariantes_dia.json não encontrado para envio')
+            _csm_seen_path = os.path.join(pasta, 'clientes_sem_movimento_seen.json')
+            if os.path.exists(_csm_seen_path):
+                with open(_csm_seen_path, 'rb') as f_csm_seen:
+                    ftp.storbinary('STOR clientes_sem_movimento_seen.json', f_csm_seen)
+                    print('✅ FTP: clientes_sem_movimento_seen.json enviado')
             _dup_path = os.path.join(pasta, 'relatorio_duplicidades_carteira.json')
             if os.path.exists(_dup_path):
                 with open(_dup_path, 'rb') as f_dup:
