@@ -33,7 +33,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V8.5"
+DASHBOARD_BUILD_VERSION = "V8.6"
 DASHBOARD_BUILD_TAG = "DASH2_0_V7_6_TELEGRAM_TEMPLATE_BONITO"
 
 def now_brasilia():
@@ -6293,6 +6293,81 @@ def carregar_clientes_sem_movimento_local():
         pf[r.get("filial") or "?"] = pf.get(r.get("filial") or "?", 0) + 1
     print("🧡 Clientes sem movimento carregados: " + (" · ".join(f"{k}: {v}" for k, v in sorted(pf.items())) or "0"))
     return final
+
+def relatorio_duplicidades_carteira_py():
+    buckets = []
+    try:
+        for vend_nome, data in (clientes_por_vend_js or {}).items():
+            for fx in ["grave", "alerta", "atencao"]:
+                for r in (data or {}).get(fx, []) or []:
+                    filial = str(r.get("filial") or "")
+                    buckets.append((cobranca_row_key_py(r), "vendedor", vend_nome, filial, fx, r))
+    except Exception:
+        pass
+    try:
+        for login, data in (clientes_crediarista_js or {}).items():
+            for fx in ["grave", "alerta", "atencao"]:
+                for r in (data or {}).get(fx, []) or []:
+                    buckets.append((cobranca_row_key_py(r), "crediarista", login, str(r.get("filial") or ""), fx, r))
+    except Exception:
+        pass
+    try:
+        for fx in ["grave", "alerta", "atencao"]:
+            for r in (clientes_terceiro_js or {}).get(fx, []) or []:
+                buckets.append((cobranca_row_key_py(r), "terceiro", "Cobrança10", str(r.get("filial") or "FTER"), fx, r))
+    except Exception:
+        pass
+    mp = {}
+    for k, tipo, nome, filial, fx, r in buckets:
+        if not k or k.count("|") < 2:
+            continue
+        mp.setdefault(k, []).append({"tipo": tipo, "responsavel": nome, "filial": filial, "faixa": fx, "cliente": r.get("cliente") or r.get("nome"), "titulo": r.get("titulo"), "parcela": r.get("parcela"), "vencimento": r.get("vencimento"), "pendente": r.get("pendente")})
+    conflitos = []
+
+    def _is_conflito_real_v81(arr):
+        """
+        V8.1: o dashboard preserva Vendedor x Crediarista para não zerar a lista dos vendedores.
+        Essa duplicidade é operacionalmente permitida e não deve aparecer como alerta vermelho.
+
+        Continua sendo conflito real:
+        - mesmo título em mais de um vendedor;
+        - mesmo título em mais de um crediarista;
+        - qualquer título que ainda duplicar com Cobrança10/terceiro;
+        - qualquer tipo desconhecido duplicado.
+        """
+        tipos = [str(a.get("tipo") or "").lower() for a in (arr or [])]
+        vend = {(a.get("responsavel"), a.get("filial")) for a in (arr or []) if str(a.get("tipo") or "").lower() == "vendedor"}
+        cred = {(a.get("responsavel"), a.get("filial")) for a in (arr or []) if str(a.get("tipo") or "").lower() == "crediarista"}
+        outros = {t for t in tipos if t not in {"vendedor", "crediarista"}}
+        if outros:
+            return True
+        if len(vend) > 1:
+            return True
+        if len(cred) > 1:
+            return True
+        # Um vendedor + um crediarista é permitido na V8.1.
+        return False
+
+    ignorados_vendedor_crediarista = 0
+    for k, arr in mp.items():
+        responsaveis = {(a.get("tipo"), a.get("responsavel"), a.get("filial")) for a in arr}
+        if len(responsaveis) > 1:
+            if _is_conflito_real_v81(arr):
+                conflitos.append({"key": k, "qtd": len(arr), "responsaveis": arr})
+            else:
+                ignorados_vendedor_crediarista += 1
+    conflitos.sort(key=lambda x: x.get("qtd",0), reverse=True)
+    out = {"gerado_em": now_brasilia().isoformat(), "versao": "V8.1", "regra": "Vendedor x crediarista preservado e ignorado no alerta; conflitos reais continuam sendo exibidos", "total_conflitos": len(conflitos), "ignorados_vendedor_crediarista": ignorados_vendedor_crediarista, "conflitos": conflitos[:300]}
+    try:
+        with open(os.path.join(pasta, "relatorio_duplicidades_carteira.json"), "w", encoding="utf-8") as f:
+            json.dump(out, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"⚠️ Não consegui salvar relatório de duplicidades: {e}")
+    if conflitos:
+        print(f"🚨 Duplicidades reais de carteira encontradas: {len(conflitos)}. Veja relatorio_duplicidades_carteira.json")
+    else:
+        print("✅ Check anti-duplicidade da carteira: nenhum conflito entre responsáveis.")
+    return out
 
 baixar_clientes_sem_movimento_selenium()
 baixar_aniversariantes_selenium()
