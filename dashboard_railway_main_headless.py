@@ -33,7 +33,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V8.8"
+DASHBOARD_BUILD_VERSION = "V8.9"
 DASHBOARD_BUILD_TAG = "DASH2_0_V7_6_TELEGRAM_TEMPLATE_BONITO"
 
 def now_brasilia():
@@ -6216,7 +6216,10 @@ def carregar_clientes_sem_movimento_local():
     Os downloads brutos do navegador (_relatorio_clientes_sem_movimento_*.xls) são ignorados para não dobrar a quantidade.
     """
     json_path = os.path.join(pasta, "clientes_sem_movimento.json")
+    base_path = os.path.join(pasta, "clientes_sem_movimento_base.json")
     seen_path = os.path.join(pasta, "clientes_sem_movimento_seen.json")
+    global clientes_sem_movimento_meta_py
+    clientes_sem_movimento_meta_py = {"modo":"somente_novos", "base_total":0, "novos_total":0, "seen_total":0}
 
     def _csm_key_row(r):
         tels = r.get("telefones") or []
@@ -6368,10 +6371,17 @@ def carregar_clientes_sem_movimento_local():
     except Exception as e:
         print(f"⚠️ Não consegui salvar clientes_sem_movimento_seen.json: {e}")
 
+    clientes_sem_movimento_meta_py = {"modo":"somente_novos", "base_total":len(final_com_key), "novos_total":len(novos_final), "seen_total":len(seen_union), "gerado_em":now_brasilia().isoformat()}
+    try:
+        with open(base_path, "w", encoding="utf-8") as fbase:
+            json.dump({"gerado_em": now_brasilia().isoformat(), "versao": DASHBOARD_BUILD_VERSION, "modo": "base_completa", "clientes": final_com_key}, fbase, ensure_ascii=False, indent=2)
+        print(f"💾 Clientes sem movimento BASE completa salva: {base_path} ({len(final_com_key)} cliente(s))")
+    except Exception as e:
+        print(f"⚠️ Não consegui salvar clientes_sem_movimento_base.json: {e}")
     try:
         with open(json_path, "w", encoding="utf-8") as f:
-            json.dump({"gerado_em": now_brasilia().isoformat(), "versao": DASHBOARD_BUILD_VERSION, "modo": "somente_novos", "clientes": novos_final}, f, ensure_ascii=False, indent=2)
-        print(f"💾 Clientes sem movimento JSON atualizado: {json_path} ({len(novos_final)} cliente(s) novo(s))")
+            json.dump({"gerado_em": now_brasilia().isoformat(), "versao": DASHBOARD_BUILD_VERSION, "modo": "somente_novos", "base_total": len(final_com_key), "novos_total": len(novos_final), "seen_total": len(seen_union), "clientes": novos_final}, f, ensure_ascii=False, indent=2)
+        print(f"💾 Clientes sem movimento JSON atualizado: {json_path} ({len(novos_final)} cliente(s) novo(s); base monitorada {len(final_com_key)}))")
     except Exception as e:
         print(f"⚠️ Não consegui salvar clientes_sem_movimento.json: {e}")
     pf = {}
@@ -6457,6 +6467,7 @@ def relatorio_duplicidades_carteira_py():
 
 baixar_clientes_sem_movimento_selenium()
 baixar_aniversariantes_selenium()
+clientes_sem_movimento_meta_py = {"modo":"somente_novos", "base_total":0, "novos_total":0, "seen_total":0}
 clientes_sem_movimento_js = carregar_clientes_sem_movimento_local()
 aniversariantes_js = carregar_aniversariantes_local()
 duplicidades_carteira_js = relatorio_duplicidades_carteira_py()
@@ -6480,6 +6491,7 @@ js_destaque = json.dumps(destaque_semana or {}, ensure_ascii=False)
 js_hist_dash = json.dumps(hist_dash, ensure_ascii=False)
 js_quitados_180 = json.dumps((quitados_180_info.get('dados') or {}).get('quitados', []), ensure_ascii=False)
 js_clientes_sem_movimento = json.dumps(clientes_sem_movimento_js, ensure_ascii=False)
+js_clientes_sem_movimento_meta = json.dumps(clientes_sem_movimento_meta_py, ensure_ascii=False)
 js_aniversariantes = json.dumps(aniversariantes_js, ensure_ascii=False)
 js_duplicidades_carteira = json.dumps(duplicidades_carteira_js, ensure_ascii=False)
 
@@ -7490,6 +7502,33 @@ body.inicio-view .kpi .value{font-size:21px!important}
 .aviso-ticker{width:100%!important;max-width:100%!important;overflow:hidden!important}.aviso-ticker-track{animation-duration:1800s!important}.aviso-ticker.fast .aviso-ticker-track{animation-duration:45s!important}.inicio-operacional-compact .aviso-ticker-track{animation-duration:1800s!important}.inicio-operacional-compact .aviso-ticker.fast .aviso-ticker-track{animation-duration:45s!important}.ticker-speed-btn{min-width:104px;justify-content:center}.mural-section-title{margin:14px 0 8px!important}.mural-section-title h2{font-size:18px!important}
 @media(max-width:1400px){.senhas-table th,.senhas-table td{font-size:11px!important;padding:7px 6px!important}.senha-view-row input,.senha-nova-row input{max-width:120px!important}.senhas-table .btn-xs{padding:6px 7px!important}}
 
+
+
+/* V8.9 HOTFIX MOBILE */
+@media (max-width: 760px){
+  body{overflow-x:hidden!important}
+  .container{padding:12px!important;max-width:100vw!important}
+  .hero,.glass.panel,.campaign-banner{border-radius:22px!important;padding:18px!important;margin-left:0!important;margin-right:0!important}
+  .hero{display:block!important;text-align:left!important}
+  .hero .section-head,.section-head{display:flex!important;flex-direction:column!important;align-items:flex-start!important;gap:10px!important}
+  .kpis{display:grid!important;grid-template-columns:1fr 1fr!important;gap:10px!important;overflow:visible!important}
+  .kpi-card,.metric,.input-card{min-width:0!important;width:auto!important;padding:14px!important;overflow:hidden!important}
+  .kpi-card .k,.metric .k{font-size:10px!important;letter-spacing:.08em!important;white-space:normal!important;word-break:break-word!important}
+  .kpi-card .v,.metric .v{font-size:20px!important;white-space:normal!important;line-height:1.12!important;word-break:break-word!important}
+  .kpi-card .sub,.metric .sub,.hint,.small{font-size:11px!important;line-height:1.3!important;white-space:normal!important}
+  .master-tabs{display:flex!important;gap:8px!important;overflow-x:auto!important;padding:10px!important;scroll-snap-type:x proximity!important}
+  .master-tabs .tab{flex:0 0 auto!important;white-space:nowrap!important;scroll-snap-align:start!important}
+  .detail-top,.grid-2,.form-grid,.filters-grid{display:grid!important;grid-template-columns:1fr!important;gap:12px!important}
+  .log-row,.row-top{grid-template-columns:1fr!important;gap:8px!important}
+  .accordion,.acc-body,.logs-list{overflow-x:hidden!important}
+  .btn{min-height:42px!important}
+}
+@media (max-width: 420px){
+  .kpis{grid-template-columns:1fr!important}
+  .hero h1,.hero h2{font-size:24px!important;line-height:1.15!important}
+  .kpi-card .v,.metric .v{font-size:18px!important}
+}
+
 </style>
 </head>
 <body>
@@ -7609,6 +7648,7 @@ function renderBackButton(){
   return isAdminLike()?'<button class="btn soft" onclick="backToMain()">↩️ Voltar</button>':'';
 }
 const CLIENTES_SEM_MOVIMENTO=__JS_CLIENTES_SEM_MOVIMENTO__||[];
+const CLIENTES_SEM_MOVIMENTO_META=__JS_CLIENTES_SEM_MOVIMENTO_META__||{modo:'somente_novos',base_total:CLIENTES_SEM_MOVIMENTO.length,novos_total:CLIENTES_SEM_MOVIMENTO.length,seen_total:0};
 const ANIVERSARIANTES=__JS_ANIVERSARIANTES__||[];
 const DUPLICIDADES_CARTEIRA=__JS_DUPLICIDADES_CARTEIRA__||{total_conflitos:0,conflitos:[]};
 let RECEBIMENTOS_CONCILIADOS={};
@@ -7884,10 +7924,18 @@ function showLaranjitoOncePerAccess(){
   }catch(e){}
 }
 
-function saveSession(){try{const data={usuarioAtual,exp:Date.now()+60*60*1000}; localStorage.setItem(SESSION_KEY, JSON.stringify(data));}catch(e){}}
+function saveSession(){try{const data={usuarioAtual,exp:Date.now()+30*24*60*60*1000,version:DASHBOARD_BUILD_VERSION}; localStorage.setItem(SESSION_KEY, JSON.stringify(data));}catch(e){}}
 function clearSession(){try{localStorage.removeItem(SESSION_KEY);}catch(e){}}
 function restoreSession(){try{const raw=localStorage.getItem(SESSION_KEY); if(!raw) return false; const data=JSON.parse(raw); if(!data || !data.usuarioAtual || !data.exp || Date.now()>data.exp){localStorage.removeItem(SESSION_KEY); return false;} usuarioAtual=data.usuarioAtual; return true;}catch(e){return false;}}
 function currentUserKey(){return usuarioAtual?.tipo==='master'?'MASTER':(usuarioAtual?.login || `${usuarioAtual?.nome||''}_${usuarioAtual?.filial||''}`)}
+function currentUserKeys(){
+  try{
+    const keys=[]; const add=k=>{k=String(k||'').trim(); if(k && !keys.includes(k)) keys.push(k);};
+    add(currentUserKey()); add(usuarioAtual?.login); add(usuarioAtual?.nome); add(`${usuarioAtual?.nome||''}_${usuarioAtual?.filial||''}`); add(`${usuarioAtual?.nome||''} (${usuarioAtual?.filial||''})`);
+    add(normName(usuarioAtual?.nome||'')); add(normName(`${usuarioAtual?.nome||''}_${usuarioAtual?.filial||''}`));
+    return keys.filter(Boolean);
+  }catch(e){return [currentUserKey()].filter(Boolean)}
+}
 
 const loginScreen=document.getElementById('loginScreen');
 const app=document.getElementById('app');
@@ -10170,8 +10218,9 @@ function isExpiredCampaign(m){
   return end < new Date();
 }
 function isReadMsg(m){
-  const readBy=Array.isArray(m.read_by)?m.read_by:[];
-  return readBy.includes(currentUserKey());
+  const readBy=Array.isArray(m.read_by)?m.read_by.map(String):[];
+  const readNorm=new Set(readBy.concat(readBy.map(x=>normName(x))));
+  return currentUserKeys().some(k=>readNorm.has(String(k)) || readNorm.has(normName(k)));
 }
 
 function localMsgsKey(){return 'mdl_msgs_local_cache_v40'}
@@ -10196,8 +10245,10 @@ function allMsgRecipientUsers(m){
   return users;
 }
 function naoLidosMsg(m){
-  const read=new Set(Array.isArray(m?.read_by)?m.read_by.map(String):[]);
-  return allMsgRecipientUsers(m).filter(u=>!read.has(String(u.key)) && !read.has(String(u.login||'')) && !read.has(`${u.nome}_${u.filial}`));
+  const raw=Array.isArray(m?.read_by)?m.read_by.map(String):[];
+  const read=new Set(raw.concat(raw.map(x=>normName(x))));
+  const aliasesFor=(u)=>[u.key,u.login,`${u.nome}_${u.filial}`,`${u.nome} (${u.filial})`,u.nome,normName(u.nome||''),normName(`${u.nome}_${u.filial}`)].filter(Boolean).map(String);
+  return allMsgRecipientUsers(m).filter(u=>!aliasesFor(u).some(k=>read.has(k)||read.has(normName(k))));
 }
 function mostrarNaoLidosAviso(id){
   const m=(MSGS||[]).find(x=>String(x.id)===String(id));
@@ -10231,7 +10282,7 @@ function renderMsgCard(m, showRemove=false, showClear=false, compact=false){
   const unreadList = (usuarioAtual?.tipo==='master') ? naoLidosMsg(m) : [];
   const masterRead = (usuarioAtual?.tipo==='master') ? (unreadList.length?`<span class="unread-chip">${unreadList.length} não lido(s)</span>`:`<span class="read-chip">Todos leram</span>`) : null;
   const status = masterRead || (isReadMsg(m) ? '<span class="read-chip">Lido</span>' : '<span class="unread-chip">Não lido</span>');
-  const markBtn = (!isReadMsg(m) && !isCampaign(m) && usuarioAtual?.tipo!=='master') ? `<button class="btn soft" onclick="marcarMsgLida('${m.id||''}')">✔️ Marcar como lido</button>` : '';
+  const markBtn = (!isReadMsg(m) && usuarioAtual?.tipo!=='master') ? `<button class="btn soft" onclick="marcarMsgLida('${m.id||''}')">✔️ Marcar como lido</button>` : '';
   const unreadBtn = (usuarioAtual?.tipo==='master') ? `<button class="btn soft" onclick="mostrarNaoLidosAviso('${m.id||''}')">👀 Não lido por</button>` : '';
   const removeBtn = showRemove ? `<button class="btn danger" onclick="removerMensagem('${m.id||''}')">Remover</button>` : '';
   const clearBtn = showClear ? `<button class="btn soft" onclick="limparMensagemTela('${m.id||''}')">Limpar</button>` : '';
@@ -10264,7 +10315,7 @@ function renderInboxBanner(){
   return pieces.join('');
 }
 async function marcarMsgLida(id){
-  const fd=new FormData(); fd.append('action','mark_read'); fd.append('id',id); fd.append('user_key',currentUserKey());
+  const fd=new FormData(); fd.append('action','mark_read'); fd.append('id',id); fd.append('user_key',currentUserKey()); fd.append('user_keys', JSON.stringify(currentUserKeys()));
   try{
     const r=await fetch(API_MSG,{method:'POST',body:fd}); const j=await r.json();
     if(j.ok){await carregarMsgsOnline(); if(!detailScreen.classList.contains('hidden')){const titleEl=detailScreen.querySelector('.back-row h2'); const subEl=detailScreen.querySelector('.back-row .sub'); if(titleEl && subEl){}} openBell(); if(usuarioAtual?.tipo!=='master'){const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); if(usuarioAtual?.is_terceiro){openThirdChargePanel()} else if(usuarioAtual?.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome});} }
@@ -11090,7 +11141,7 @@ function renderReativacaoTab(){
     box.innerHTML=`<div class="section-head"><div><h2>🧡 Clientes sem movimento +45 dias <span class="note" style="color:#f59e0b">${esc(DASHBOARD_BUILD_VERSION)}</span></h2><div class="hint">Base do Sólidus para reativação por WhatsApp. ${esc(porFilial||'Nenhum XLS carregado ainda.')}</div></div></div>
     ${semBase?'<div class="glass panel" style="border-color:rgba(245,158,11,.35);margin-bottom:14px"><strong>⚠️ Sem base de clientes carregada</strong><div class="hint">Coloque ou baixe os XLS de Clientes sem Movimento na pasta do dashboard e rode o script novamente.</div></div>':''}
     <div class="kpis" style="margin-bottom:14px">
-      ${makeKpi('Clientes na base',String(CLIENTES_SEM_MOVIMENTO.length),'var(--amber-400)','Com WhatsApp válido e cidade permitida')}
+      ${makeKpi('Novos hoje',String(CLIENTES_SEM_MOVIMENTO.length),'var(--amber-400)',`Base monitorada ${Number(CLIENTES_SEM_MOVIMENTO_META.base_total||0).toLocaleString('pt-BR')}`)}
       ${makeKpi(tituloLista,String(rows.length),'var(--blue)',usuarioAtual?.tipo==='master'?'Filtro atual':'Distribuída sem duplicar')}
       ${makeKpi('Enviados hoje',String(enviadosHoje),'var(--green)','Da lista exibida')}
       ${makeKpi('Minha base total',String(totalPermitido),'var(--orange)','Rateio automático por filial')}
@@ -12657,6 +12708,7 @@ repls = {
     '__JS_HIST_DASH__': js_hist_dash,
     '__JS_QUITADOS_180__': js_quitados_180,
     '__JS_CLIENTES_SEM_MOVIMENTO__': js_clientes_sem_movimento,
+    '__JS_CLIENTES_SEM_MOVIMENTO_META__': js_clientes_sem_movimento_meta,
     '__JS_ANIVERSARIANTES__': js_aniversariantes,
     '__JS_DUPLICIDADES_CARTEIRA__': js_duplicidades_carteira,
     '__LOGIN_MASTER__': json.dumps(LOGIN_MASTER, ensure_ascii=False),
@@ -12906,11 +12958,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   if ((($_POST['action'] ?? '') === 'mark_read')) {
     $id = $_POST['id'] ?? '';
     $userKey = $_POST['user_key'] ?? '';
-    if (!$id || !$userKey) { echo json_encode(['ok'=>false,'error'=>'parametros_obrigatorios']); exit; }
+    $userKeysRaw = $_POST['user_keys'] ?? '';
+    $keysToSave = [];
+    if ($userKey) $keysToSave[] = (string)$userKey;
+    if ($userKeysRaw) {
+      $tmpKeys = json_decode($userKeysRaw, true);
+      if (is_array($tmpKeys)) foreach($tmpKeys as $k) if ($k) $keysToSave[] = (string)$k;
+    }
+    $keysToSave = array_values(array_unique($keysToSave));
+    if (!$id || !count($keysToSave)) { echo json_encode(['ok'=>false,'error'=>'parametros_obrigatorios']); exit; }
     foreach($data as &$item){
       if ((string)($item['id'] ?? '') === (string)$id) {
         if (!isset($item['read_by']) || !is_array($item['read_by'])) $item['read_by'] = [];
-        if (!in_array($userKey, $item['read_by'])) $item['read_by'][] = $userKey;
+        foreach($keysToSave as $kSave){ if (!in_array($kSave, $item['read_by'])) $item['read_by'][] = $kSave; }
       }
     }
     file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE));
@@ -13197,6 +13257,11 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
                 with open(_csm_seen_path, 'rb') as f_csm_seen:
                     ftp.storbinary('STOR clientes_sem_movimento_seen.json', f_csm_seen)
                     print('✅ FTP: clientes_sem_movimento_seen.json enviado')
+            _csm_base_path = os.path.join(pasta, 'clientes_sem_movimento_base.json')
+            if os.path.exists(_csm_base_path):
+                with open(_csm_base_path, 'rb') as f_csm_base:
+                    ftp.storbinary('STOR clientes_sem_movimento_base.json', f_csm_base)
+                    print('✅ FTP: clientes_sem_movimento_base.json enviado')
             _dup_path = os.path.join(pasta, 'relatorio_duplicidades_carteira.json')
             if os.path.exists(_dup_path):
                 with open(_dup_path, 'rb') as f_dup:
