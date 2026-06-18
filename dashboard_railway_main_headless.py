@@ -33,7 +33,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V8.1"
+DASHBOARD_BUILD_VERSION = "V8.4"
 DASHBOARD_BUILD_TAG = "DASH2_0_V7_6_TELEGRAM_TEMPLATE_BONITO"
 
 def now_brasilia():
@@ -4561,6 +4561,10 @@ def _v54_meta_diaria_precalc(dados):
     out = []
     try:
         metas = (dados or {}).get("metas", {}) or {}
+        # V8.4: nunca exibe meta diária batida se o JSON não for da data atual.
+        # Evita mural mostrar metas batidas de outro dia quando a coleta falha ou fica stale.
+        if str((dados or {}).get("data_consulta") or "").strip() != hoje.strftime("%d/%m/%Y"):
+            return []
         if str((dados or {}).get("versao_coleta") or "") not in ("V5.9", "V6.0", "V6.2", "V6.3", "V6.4", "V6.5"):
             # Proteção: não renderiza metadados antigos da meta diária, pois algumas versões antigas
             # podiam exibir valores totais/mensais no mural.
@@ -7968,7 +7972,8 @@ function renderKPIs(){
   // vários dias acumulados quando o último snapshot era antigo e inflar o card.
   function _mdlBrNumber(v){
     if(typeof v === 'number' && isFinite(v)) return v;
-    let s=String(v??'').trim().replace(/R\$/g,'').replace(/%/g,'').replace(/\s+/g,'');
+    let raw=String(v??'').trim();
+    let s=raw.replace(/R\$/g,'').replace(/%/g,'').replace(/\s+/g,'');
     if(!s) return 0;
     // pt-BR: 1.234.567,89 -> 1234567.89
     if(s.includes(',') && s.includes('.')) s=s.replace(/\./g,'').replace(',', '.');
@@ -7976,23 +7981,51 @@ function renderKPIs(){
     const n=Number(s);
     return isFinite(n)?n:0;
   }
+  function _mdlFindField(row, nomesCampos){
+    try{
+      for(const campo of nomesCampos){
+        if(row[campo]!==undefined && row[campo]!==null && String(row[campo]).trim()!==''){
+          return {key:campo, raw:row[campo], value:_mdlBrNumber(row[campo])};
+        }
+        const semEspaco=campo.replace(/\s+/g,'');
+        for(const k of Object.keys(row||{})){
+          if(String(k).replace(/\s+/g,'')===semEspaco && row[k]!==undefined && row[k]!==null && String(row[k]).trim()!==''){
+            return {key:k, raw:row[k], value:_mdlBrNumber(row[k])};
+          }
+        }
+      }
+    }catch(e){}
+    return null;
+  }
   function _mdlDailyMetaTotalValue(chave, nomesCampos){
     try{
-      const linhas=((((METAS_VENDAS_DIA||{}).metas||{})[chave]||{}).linhas)||[];
+      const diaInfo=(METAS_VENDAS_DIA||{});
+      const hojeBr=new Date().toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo'});
+      if(String(diaInfo.data_consulta||'').trim() && String(diaInfo.data_consulta).trim()!==hojeBr){
+        console.warn('[MDL venda diaria V8.4] ignorado JSON stale', diaInfo.data_consulta, hojeBr);
+        return {ok:false, value:0};
+      }
+      const linhas=((((diaInfo||{}).metas||{})[chave]||{}).linhas)||[];
       if(!linhas.length) return {ok:false, value:0};
       const total=linhas.find(x=>x && x._is_total) || {};
       const rowsToTry=[total, ...linhas.filter(x=>x && !x._is_total)];
       for(const row of rowsToTry){
-        for(const campo of nomesCampos){
-          if(row[campo]!==undefined && row[campo]!==null && String(row[campo]).trim()!==''){
-            return {ok:true, value:_mdlBrNumber(row[campo])};
+        // V8.4: para valores em R$, prioriza campo visual bruto antes de _float.
+        // Alguns retornos do Sólidus/HTML podem vir como 5990 quando o visual é 59,90.
+        const rawNames=nomesCampos.filter(c=>!String(c).endsWith('_float'));
+        const floatNames=nomesCampos.filter(c=>String(c).endsWith('_float'));
+        let found=_mdlFindField(row, rawNames) || _mdlFindField(row, floatNames);
+        if(found){
+          let val=Number(found.value||0);
+          // Sanidade: compara com Meta Período × Atingido Período.
+          const metaObj=_mdlFindField(row,['Meta (R$) Período','Meta(R$) Período','Meta (R$) Periodo','Meta(R$) Periodo','Meta(R$) Período_float','Meta (R$) Período_float']);
+          const atingObj=_mdlFindField(row,['Atingido Período','Atingido Periodo','Atingido Período_float']);
+          const calc=(Number(metaObj?.value||0)*Number(atingObj?.value||0))/100;
+          if(calc>0 && val>calc*10){
+            console.warn('[MDL venda diaria V8.4] corrigindo valor inflado', {chave, bruto:val, calculado:calc, campo:found.key, raw:found.raw});
+            val=calc;
           }
-          const semEspaco=campo.replace(/\s+/g,'');
-          for(const k of Object.keys(row)){
-            if(String(k).replace(/\s+/g,'')===semEspaco && row[k]!==undefined && row[k]!==null && String(row[k]).trim()!==''){
-              return {ok:true, value:_mdlBrNumber(row[k])};
-            }
-          }
+          return {ok:true, value:Math.round(val*100)/100};
         }
       }
     }catch(e){ console.warn('Venda diária SGI total falhou', chave, e); }
@@ -12162,7 +12195,7 @@ function mdlV51HeroSlides(){
 }
 function mdlV51HeroSlideHtml(s){
   const mini=(s.mini||[]).slice(0,3).map(x=>`<span class="mdl-hero-mini">${esc(x)}</span>`).join('');
-  return `<div class="mdl-hero-title"><span class="mdl-hero-dot" style="background:${esc(s.dot||'#f59e0b')}"></span>${esc(s.icon||'🔔')} ${esc(s.title||'Mural operacional')}</div><div class="mdl-hero-main">${esc(s.main||'Operação em andamento')}</div><div class="mdl-hero-detail">${esc(s.detail||'Resumo automático dos murais do dia.')}</div>${mini?`<div class="mdl-hero-mini-list">${mini}</div>`:''}<div class="mdl-hero-count">${esc(String(s.count??0))}</div>`;
+  return `<div class="mdl-hero-title"><span class="mdl-hero-dot" style="background:${esc(s.dot||'#f59e0b')}"></span>${esc(s.icon||'🔔')} ${esc(s.title||'Mural operacional')}</div><div class="mdl-hero-main">${esc(s.main||'Operação em andamento')}</div><div class="mdl-hero-detail">${esc(s.detail||'Resumo automático dos murais do dia.')}</div>${mini?`<div class="mdl-hero-mini-list">${mini}</div>`:''}`;
 }
 function mdlV51HeroHtml(){const slides=mdlV51HeroSlides(); const k=slides[0]?.kind||'cobranca'; return `<div id="mdlHeroMural" class="glass kpi mdl-hero-mural-card v52-${esc(k)}" data-idx="0">${mdlV51HeroSlideHtml(slides[0]||{})}</div>`}
 function mdlV51StartHeroMural(){
@@ -12446,6 +12479,16 @@ async function mdlV74CopiarMuralLista(id){
   }catch(e){toast('Não consegui copiar a lista.','warn')}
 }
 
+
+// ===== V8.4: remove contadores numéricos dos murais/cards rotativos =====
+(function(){
+  try{
+    const st=document.createElement('style');
+    st.textContent=`.mdl-hero-count,.mdl-mural-actions .badge,.aviso-rotativo .section-head .badge{display:none!important}`;
+    document.head.appendChild(st);
+  }catch(e){}
+})();
+
 // Override final do ticker para incluir botão Lista ao lado do Acelerar.
 function renderAvisoTicker(title,hint,entries,opts={}){
   const icon=opts.icon||'•';
@@ -12456,7 +12499,7 @@ function renderAvisoTicker(title,hint,entries,opts={}){
   const safeId='ticker_'+Math.random().toString(36).slice(2);
   window.MDL_MURAL_LISTAS=window.MDL_MURAL_LISTAS||{};
   window.MDL_MURAL_LISTAS[safeId]={title:title||'Mural',hint:hint||'',icon,entries:arr};
-  return `<div class="glass panel full aviso-rotativo" style="border-color:${color}"><div class="section-head" style="margin-bottom:6px"><div><h2 style="font-size:18px">${esc(icon)} ${esc(title||'Mural')}</h2><div class="hint">${esc(hint||'')}</div></div><div class="mdl-mural-actions"><span class="badge">${arr.length}</span><button class="btn soft mdl-mural-list-btn" onclick="mdlV74OpenMuralLista('${safeId}')">📋 Lista</button><button class="btn soft ticker-speed-btn" onclick="toggleTickerSpeed('${safeId}',this)">⚡ Acelerar</button></div></div><div id="${safeId}" class="aviso-ticker"><div class="aviso-ticker-track" style="animation-duration:900s">${doubled.map(e=>`<span class="aviso-pill"><i class="red-dot"></i><span class="ticker-main">${esc(e.nome||'')}</span><small>${esc(e.info||'')}</small></span>`).join('')}</div></div></div>`;
+  return `<div class="glass panel full aviso-rotativo" style="border-color:${color}"><div class="section-head" style="margin-bottom:6px"><div><h2 style="font-size:18px">${esc(icon)} ${esc(title||'Mural')}</h2><div class="hint">${esc(hint||'')}</div></div><div class="mdl-mural-actions"><button class="btn soft mdl-mural-list-btn" onclick="mdlV74OpenMuralLista('${safeId}')">📋 Lista</button><button class="btn soft ticker-speed-btn" onclick="toggleTickerSpeed('${safeId}',this)">⚡ Acelerar</button></div></div><div id="${safeId}" class="aviso-ticker"><div class="aviso-ticker-track" style="animation-duration:900s">${doubled.map(e=>`<span class="aviso-pill"><i class="red-dot"></i><span class="ticker-main">${esc(e.nome||'')}</span><small>${esc(e.info||'')}</small></span>`).join('')}</div></div></div>`;
 }
 
 </script>
