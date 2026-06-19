@@ -33,7 +33,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V9.3"
+DASHBOARD_BUILD_VERSION = "V9.4"
 DASHBOARD_BUILD_TAG = "DASH2_0_V9_2_REATIVACAO_10D_EMOJI"
 
 def now_brasilia():
@@ -7651,7 +7651,7 @@ body.inicio-view .kpi .value{font-size:21px!important}
     <div class="login-form">
       <input id="loginUser" placeholder="Usuário">
       <input id="loginPass" type="password" placeholder="Senha">
-      <button class="btn primary" onclick="fazerLogin()">🔐 Entrar</button>
+      <button id="loginBtn" type="button" class="btn primary" data-login-btn="1" onclick="return fazerLogin()">🔐 Entrar</button>
       <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:8px">
         <button class="btn soft" type="button" onclick="openPrimeiroAcesso()">🔑 Primeiro acesso</button>
         <button class="btn soft" type="button" onclick="openRecuperarSenha()">📩 Recuperar senha</button>
@@ -13177,6 +13177,57 @@ function renderAvisoTicker(title,hint,entries,opts={}){
   window.MDL_MURAL_LISTAS[safeId]={title:title||'Mural',hint:hint||'',icon,entries:arr};
   return `<div class="glass panel full aviso-rotativo" style="border-color:${color}"><div class="section-head" style="margin-bottom:6px"><div><h2 style="font-size:18px">${esc(icon)} ${esc(title||'Mural')}</h2><div class="hint">${esc(hint||'')}</div></div><div class="mdl-mural-actions"><button class="btn soft mdl-mural-list-btn" onclick="mdlV74OpenMuralLista('${safeId}')">📋 Lista</button><button class="btn soft ticker-speed-btn" onclick="toggleTickerSpeed('${safeId}',this)">⚡ Acelerar</button></div></div><div id="${safeId}" class="aviso-ticker"><div class="aviso-ticker-track" style="animation-duration:900s">${doubled.map(e=>`<span class="aviso-pill"><i class="red-dot"></i><span class="ticker-main">${esc(e.nome||'')}</span><small>${esc(e.info||'')}</small></span>`).join('')}</div></div></div>`;
 }
+
+
+// ===== V9.4 HOTFIX: login robusto após atualização do pacote de vendas =====
+(function(){
+  function _loginMsg(txt){try{const m=document.getElementById('loginMsg'); if(m) m.textContent=txt||'';}catch(e){}}
+  function _val(id){return String((document.getElementById(id)||{}).value||'').trim();}
+  async function _loginStable(ev){
+    try{ if(ev && ev.preventDefault) ev.preventDefault(); }catch(_e){}
+    const u=_val('loginUser').toLowerCase();
+    const s=_val('loginPass');
+    _loginMsg('');
+    if(!u || !s){_loginMsg('Informe usuário e senha.'); return false;}
+    try{
+      if(typeof LOGIN_MASTER!=='undefined' && typeof SENHA_MASTER!=='undefined' && u===String(LOGIN_MASTER).toLowerCase() && s===String(SENHA_MASTER)){
+        usuarioAtual={tipo:'master',nome:'Master',roleLabel:'Master'};
+        try{saveSession();}catch(_e){}
+        try{await abrirApp();}catch(e){console.error('Erro abrirApp master',e); _loginMsg('Erro ao abrir dashboard. Atualize com Ctrl+F5 ou chame suporte.');}
+        return false;
+      }
+      try{ if(typeof carregarCredenciaisOnline==='function') await Promise.race([carregarCredenciaisOnline(), new Promise(resolve=>setTimeout(resolve,1800))]); }catch(e){console.warn('Credenciais online ignoradas no login estável',e);}
+      if(typeof acessoGeralBloqueado==='function' && acessoGeralBloqueado() && u!==String(LOGIN_DIRETOR||'').toLowerCase()){
+        _loginMsg('Acesso temporariamente bloqueado pelo Master.'); return false;
+      }
+      if(typeof LOGIN_DIRETOR!=='undefined' && u===String(LOGIN_DIRETOR).toLowerCase()){
+        const authDir=(typeof getAuthUser==='function')?getAuthUser(u):null;
+        const senhaDir=(authDir&&authDir.password) || (typeof SENHA_DIRETOR!=='undefined'?SENHA_DIRETOR:'');
+        if(String(senhaDir)===s){ usuarioAtual={tipo:'master',nome:'Diretor Comercial',roleLabel:'Diretor Comercial'}; try{saveSession();}catch(_e){}; try{await abrirApp();}catch(e){console.error(e); _loginMsg('Erro ao abrir dashboard.');} return false; }
+      }
+      const auth=(typeof getAuthUser==='function')?getAuthUser(u):null;
+      if(typeof CREDS!=='undefined' && CREDS[u] && auth && String(auth.password)===s){
+        if(auth.access_disabled || auth.status_operacional==='inativo' || CREDS[u]?.access_disabled || CREDS[u]?.status_operacional==='inativo'){
+          _loginMsg('Usuário inativo/bloqueado pelo Master.'); return false;
+        }
+        if(auth.must_change_password && typeof openPrimeiroAcesso==='function'){
+          _loginMsg('Primeiro acesso: defina sua nova senha.'); openPrimeiroAcesso(u); return false;
+        }
+        usuarioAtual={tipo:'user',login:u,...CREDS[u]}; try{saveSession();}catch(_e){}; try{await abrirApp();}catch(e){console.error(e); _loginMsg('Erro ao abrir dashboard.');} return false;
+      }
+      _loginMsg('Login ou senha inválidos.');
+      return false;
+    }catch(e){ console.error('Erro geral login V9.4',e); _loginMsg('Erro no login. Atualize com Ctrl+F5 e tente novamente.'); return false; }
+  }
+  window.fazerLogin=_loginStable;
+  window.mdlLoginV94=_loginStable;
+  document.addEventListener('DOMContentLoaded',()=>{
+    const b=document.getElementById('loginBtn') || document.querySelector('[data-login-btn]') || document.querySelector('#loginScreen .btn.primary');
+    if(b){ b.onclick=_loginStable; b.addEventListener('click',_loginStable,true); }
+    const p=document.getElementById('loginPass'); if(p){ p.addEventListener('keydown',e=>{if(e.key==='Enter'){_loginStable(e);}},true); }
+  });
+  window.addEventListener('error',e=>{try{ if(!document.getElementById('loginScreen')?.classList.contains('hidden')){console.error('Erro JS capturado V9.4',e.error||e.message);}}catch(_e){} });
+})();
 
 </script>
 </body>
