@@ -33,7 +33,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V9.2"
+DASHBOARD_BUILD_VERSION = "V9.3"
 DASHBOARD_BUILD_TAG = "DASH2_0_V9_2_REATIVACAO_10D_EMOJI"
 
 def now_brasilia():
@@ -12667,6 +12667,106 @@ window.salvarMensagemAniversarioFilial=async function(){
   setTimeout(()=>{try{mdlV91SyncMessageAreas();}catch(e){}},120);
 })();
 
+
+// ===== V9.3 HOTFIX: salvar mensagem por filial + emojis via base64 UTF-8 =====
+function mdlV93B64Utf8(str){
+  const bytes=new TextEncoder().encode(String(str||''));
+  let bin='';
+  bytes.forEach(b=>bin+=String.fromCharCode(b));
+  return btoa(bin);
+}
+function mdlV93FilialKey(v){
+  const m=String(v||'').toUpperCase().match(/F\d+/);
+  return m?m[0]:String(v||'').toUpperCase().trim();
+}
+function mdlV93GetMap(kind){
+  CONFIG_META=CONFIG_META||{};
+  const key=kind==='aniv'?'aniversario_msg_template_filiais':'reativacao_msg_template_filiais';
+  if(!CONFIG_META[key] || typeof CONFIG_META[key]!=='object' || Array.isArray(CONFIG_META[key])) CONFIG_META[key]={};
+  return CONFIG_META[key];
+}
+async function mdlV93SaveConfigB64(){
+  const payload=JSON.stringify({global:CONFIG_META,individual:CONFIG_META_IND});
+  const fd=new FormData();
+  fd.append('payload_b64', mdlV93B64Utf8(payload));
+  fd.append('v','9.3');
+  const resp=await fetch(API_CFG+'?v=9.3&_='+Date.now(),{method:'POST',cache:'no-store',body:fd});
+  const txt=await resp.text();
+  try{return JSON.parse(txt)}catch(e){return {ok:resp.ok,raw:txt}}
+}
+function mdlV93LocalBackup(kind, filial, text){
+  try{localStorage.setItem('mdl_msg_'+kind+'_'+mdlV93FilialKey(filial), String(text||''));}catch(e){}
+}
+function mdlV93LocalRead(kind, filial){
+  try{return localStorage.getItem('mdl_msg_'+kind+'_'+mdlV93FilialKey(filial))||''}catch(e){return ''}
+}
+const _v93ReatTplBase = typeof reativacaoTemplateAtual==='function' ? reativacaoTemplateAtual : null;
+reativacaoTemplateAtual=function(filial=''){
+  const f=mdlV93FilialKey(filial);
+  const map=mdlV93GetMap('reat');
+  if(f && String(map[f]||'').trim()) return String(map[f]);
+  const lb=mdlV93LocalRead('reat',f);
+  if(f && lb.trim()) return lb;
+  return _v93ReatTplBase ? _v93ReatTplBase(f) : (CONFIG_META.reativacao_msg_template||DEFAULT_REATIVACAO_MSG_V91||'');
+};
+const _v93AnivTplBase = typeof aniversarioTemplateAtual==='function' ? aniversarioTemplateAtual : null;
+aniversarioTemplateAtual=function(filial=''){
+  const f=mdlV93FilialKey(filial);
+  const map=mdlV93GetMap('aniv');
+  if(f && String(map[f]||'').trim()) return String(map[f]);
+  const lb=mdlV93LocalRead('aniv',f);
+  if(f && lb.trim()) return lb;
+  return _v93AnivTplBase ? _v93AnivTplBase(f) : (CONFIG_META.aniversario_msg_template||DEFAULT_ANIVERSARIO_MSG_V91||'');
+};
+window.salvarMensagemReativacaoGlobal=async function(){
+  const el=document.getElementById('reatMsgTemplate');
+  const val=el?el.value:(CONFIG_META.reativacao_msg_template||DEFAULT_REATIVACAO_MSG_V91||'');
+  CONFIG_META.reativacao_msg_template=val;
+  try{
+    const j=await mdlV93SaveConfigB64();
+    if(j.ok){await carregarConfigOnline(); CONFIG_META.reativacao_msg_template=val; if(el) el.value=val;}
+    toast(j.ok?'Mensagem global de reativação salva no servidor.':'Não consegui salvar mensagem global.',j.ok?'success':'warn');
+  }catch(e){console.warn(e); toast('Falha ao salvar mensagem global.','warn')}
+};
+window.salvarMensagemReativacaoFilial=async function(){
+  const f=mdlV93FilialKey(document.getElementById('reatMsgFilial')?.value||'');
+  const el=document.getElementById('reatMsgTemplateFilial');
+  if(!f){toast('Selecione uma filial para salvar mensagem individual.','warn');return}
+  const val=el?el.value:'';
+  const map=mdlV93GetMap('reat'); map[f]=val;
+  mdlV93LocalBackup('reat',f,val);
+  try{
+    const j=await mdlV93SaveConfigB64();
+    if(j.ok){await carregarConfigOnline(); mdlV93GetMap('reat')[f]=val; if(el) el.value=val;}
+    toast(j.ok?`Mensagem da ${f} salva no servidor.`:'Não consegui salvar mensagem por filial.',j.ok?'success':'warn');
+  }catch(e){console.warn(e); toast('Falha ao salvar mensagem por filial.','warn')}
+};
+window.salvarMensagemAniversarioGlobal=async function(){
+  const el=document.getElementById('anivMsgTemplate');
+  const val=el?el.value:(CONFIG_META.aniversario_msg_template||DEFAULT_ANIVERSARIO_MSG_V91||'');
+  CONFIG_META.aniversario_msg_template=val;
+  try{
+    const j=await mdlV93SaveConfigB64();
+    if(j.ok){await carregarConfigOnline(); CONFIG_META.aniversario_msg_template=val; if(el) el.value=val;}
+    toast(j.ok?'Mensagem global de aniversário salva no servidor.':'Não consegui salvar mensagem global.',j.ok?'success':'warn');
+  }catch(e){console.warn(e); toast('Falha ao salvar mensagem de aniversário.','warn')}
+};
+window.salvarMensagemAniversarioFilial=async function(){
+  const f=mdlV93FilialKey(document.getElementById('anivMsgFilial')?.value||'');
+  const el=document.getElementById('anivMsgTemplateFilial');
+  if(!f){toast('Selecione uma filial para salvar mensagem individual.','warn');return}
+  const val=el?el.value:'';
+  const map=mdlV93GetMap('aniv'); map[f]=val;
+  mdlV93LocalBackup('aniv',f,val);
+  try{
+    const j=await mdlV93SaveConfigB64();
+    if(j.ok){await carregarConfigOnline(); mdlV93GetMap('aniv')[f]=val; if(el) el.value=val;}
+    toast(j.ok?`Mensagem de aniversário da ${f} salva no servidor.`:'Não consegui salvar mensagem por filial.',j.ok?'success':'warn');
+  }catch(e){console.warn(e); toast('Falha ao salvar mensagem por filial.','warn')}
+};
+function trocarMensagemReativacaoFilial(f){const el=document.getElementById('reatMsgTemplateFilial'); if(el) el.value=reativacaoTemplateAtual(mdlV93FilialKey(f));}
+function trocarMensagemAniversarioFilial(f){const el=document.getElementById('anivMsgTemplateFilial'); if(el) el.value=aniversarioTemplateAtual(mdlV93FilialKey(f));}
+
 // ===== V5.5: META DIARIA PRECALCULADA PELO PYTHON + FALLBACK ROBUSTO =====
 (function(){
   try{
@@ -13319,13 +13419,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
   echo json_encode(['ok'=>true,'data'=>$data], JSON_UNESCAPED_UNICODE); exit;
 }
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-  $payload = json_decode(file_get_contents('php://input'), true);
-  if (!is_array($payload)) { echo json_encode(['ok'=>false,'error'=>'payload_invalido']); exit; }
+  // V9.3: aceita JSON normal e também payload_b64 via FormData.
+  // Isso evita perda de emoji em alguns navegadores/servidores quando o texto vem do teclado do Windows.
+  $raw = '';
+  if (isset($_POST['payload_b64']) && $_POST['payload_b64'] !== '') {
+    $raw = base64_decode((string)$_POST['payload_b64']);
+  } else if (isset($_POST['payload_json']) && $_POST['payload_json'] !== '') {
+    $raw = (string)$_POST['payload_json'];
+  } else {
+    $raw = file_get_contents('php://input');
+  }
+  if (!is_string($raw)) $raw = '';
+  if (function_exists('mb_check_encoding') && !mb_check_encoding($raw, 'UTF-8')) {
+    $raw = mb_convert_encoding($raw, 'UTF-8', 'auto');
+  }
+  $payload = json_decode($raw, true);
+  if (!is_array($payload)) { echo json_encode(['ok'=>false,'error'=>'payload_invalido','json_error'=>json_last_error_msg()], JSON_UNESCAPED_UNICODE); exit; }
   $global = isset($payload['global']) && is_array($payload['global']) ? $payload['global'] : [];
   $individual = isset($payload['individual']) && is_array($payload['individual']) ? $payload['individual'] : [];
-  $save = ['global'=>$global, 'individual'=>$individual];
-  file_put_contents($file, json_encode($save, JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES), LOCK_EX);
-  echo json_encode(['ok'=>true,'saved_keys'=>count($individual)], JSON_UNESCAPED_UNICODE); exit;
+  $save = ['global'=>$global, 'individual'=>$individual, 'updated_at'=>date('c')];
+  $json = json_encode($save, JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+  $ok = @file_put_contents($file, $json, LOCK_EX) !== false;
+  echo json_encode(['ok'=>$ok,'saved_keys'=>count($individual),'global_keys'=>count($global)], JSON_UNESCAPED_UNICODE); exit;
 }
 echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado'], JSON_UNESCAPED_UNICODE);
 ?>"""
