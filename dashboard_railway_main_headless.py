@@ -33,8 +33,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V9.1"
-DASHBOARD_BUILD_TAG = "DASH2_0_V7_6_TELEGRAM_TEMPLATE_BONITO"
+DASHBOARD_BUILD_VERSION = "V9.2"
+DASHBOARD_BUILD_TAG = "DASH2_0_V9_2_REATIVACAO_10D_EMOJI"
 
 def now_brasilia():
     return datetime.now(APP_TZ)
@@ -6218,8 +6218,9 @@ def carregar_clientes_sem_movimento_local():
     json_path = os.path.join(pasta, "clientes_sem_movimento.json")
     base_path = os.path.join(pasta, "clientes_sem_movimento_base.json")
     seen_path = os.path.join(pasta, "clientes_sem_movimento_seen.json")
-    global clientes_sem_movimento_meta_py
-    clientes_sem_movimento_meta_py = {"modo":"somente_novos", "base_total":0, "novos_total":0, "seen_total":0}
+    global clientes_sem_movimento_meta_py, clientes_sem_movimento_base_py
+    clientes_sem_movimento_meta_py = {"modo":"acionaveis_novos_pendentes_retorno_10d", "base_total":0, "acionaveis_total":0, "novos_total":0, "seen_total":0}
+    clientes_sem_movimento_base_py = []
 
     def _csm_key_row(r):
         tels = r.get("telefones") or []
@@ -6346,8 +6347,12 @@ def carregar_clientes_sem_movimento_local():
         final.append(r)
     final.sort(key=lambda x: (str(x.get("filial","")), -int(x.get("dias_sem_movimento") or 0), str(x.get("cliente",""))))
 
-    # V8.7: para não carregar 10 mil clientes todo dia, o dashboard passa a exibir
-    # somente clientes NOVOS ainda não vistos. Mantém um seen separado para comparação futura.
+    # V9.2: lista operacional inteligente de clientes sem movimento.
+    # Mantém base completa, memória de vistos e usa o histórico de envios:
+    # - cliente novo entra;
+    # - cliente antigo sem envio continua pendente;
+    # - cliente enviado volta após 10 dias se ainda estiver na base do Sólidus;
+    # - se comprou e não veio mais no relatório, sai automaticamente.
     seen_antigo = _load_seen_clientes_sem_movimento()
     final_com_key = []
     for r in final:
@@ -6357,13 +6362,107 @@ def carregar_clientes_sem_movimento_local():
             final_com_key.append(rr)
         except Exception:
             final_com_key.append(r)
-    if seen_antigo:
-        novos_final = [r for r in final_com_key if str(r.get("_csm_key") or _csm_key_row(r)) not in seen_antigo]
-        print(f"🧡 Clientes sem movimento V8.7: {len(novos_final)} novo(s) de {len(final_com_key)} baixado(s); antigos não entram no dashboard")
-    else:
-        novos_final = final_com_key
-        print(f"🧡 Clientes sem movimento V8.7: primeira carga sem histórico; exibindo {len(novos_final)} cliente(s)")
-    seen_union = sorted(set(list(seen_antigo) + [str(r.get("_csm_key") or _csm_key_row(r)) for r in final_com_key if (r.get("_csm_key") or _csm_key_row(r))]))
+
+    def _parse_dt_csm(v):
+        txt = str(v or "").strip()
+        if not txt:
+            return None
+        try:
+            if txt.endswith('Z'):
+                txt = txt[:-1] + '+00:00'
+            return datetime.fromisoformat(txt.replace(' ', 'T')[:19]).date()
+        except Exception:
+            pass
+        for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%Y-%m-%d %H:%M:%S", "%d/%m/%Y %H:%M:%S"]:
+            try:
+                return datetime.strptime(txt[:19], fmt).date()
+            except Exception:
+                continue
+        return None
+
+    def _load_reativacao_logs_csm():
+        logs = []
+        for src in [os.path.join(pasta, 'cobrancas_log.json')]:
+            try:
+                if os.path.exists(src):
+                    with open(src, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    if isinstance(data, list):
+                        logs.extend(data)
+            except Exception as e:
+                print(f"⚠️ CSM logs: falha lendo cobrancas_log local: {e}")
+        try:
+            data = _ftp_json('cobrancas_log.json', None)
+            if isinstance(data, list):
+                # FTP é a fonte mais completa; se veio, usa ela no lugar do local.
+                logs = data
+        except Exception:
+            pass
+        stats = {}
+        for x in logs or []:
+            try:
+                if str(x.get('titulo') or '').upper() != 'REATIVACAO':
+                    continue
+                k = str(x.get('cliente_key') or x.get('cobranca_key') or '').strip()
+                if not k:
+                    parc = str(x.get('parcela') or '')
+                    m = re.search(r'CLIENTE_SEM_MOVIMENTO\|([^|]+)', parc)
+                    if m:
+                        k = m.group(1).strip()
+                if not k:
+                    continue
+                d = _parse_dt_csm(x.get('server_time') or x.get('data') or x.get('created_at') or x.get('criado_em'))
+                if not d:
+                    continue
+                st = stats.setdefault(k, {'qtd':0, 'primeiro':d, 'ultimo':d})
+                st['qtd'] += 1
+                if d < st['primeiro']:
+                    st['primeiro'] = d
+                if d > st['ultimo']:
+                    st['ultimo'] = d
+            except Exception:
+                continue
+        print(f"🧡 Clientes sem movimento V9.2: histórico de envios REATIVACAO carregado ({len(stats)} cliente(s) com envio)")
+        return stats
+
+    clientes_sem_movimento_base_py = final_com_key
+    logs_stats = _load_reativacao_logs_csm()
+    hoje_csm = now_brasilia().date()
+    cooldown_dias = int(os.getenv('REATIVACAO_REENVIO_DIAS', '10') or '10')
+    actionable = []
+    novos_count = pendentes_count = retorno_count = aguardando_count = 0
+    for r in final_com_key:
+        rr = dict(r)
+        k = str(rr.get('_csm_key') or _csm_key_row(rr))
+        st = logs_stats.get(k)
+        is_novo = k not in seen_antigo
+        rr['_reat_novo'] = bool(is_novo)
+        rr['_reat_cooldown_dias'] = cooldown_dias
+        if st:
+            ultimo = st.get('ultimo')
+            primeiro = st.get('primeiro')
+            dias = (hoje_csm - ultimo).days if ultimo else 9999
+            rr['_reat_qtd_envios'] = int(st.get('qtd') or 0)
+            rr['_reat_primeiro_envio'] = primeiro.strftime('%d/%m/%Y') if primeiro else ''
+            rr['_reat_ultimo_envio'] = ultimo.strftime('%d/%m/%Y') if ultimo else ''
+            rr['_reat_dias_desde_envio'] = int(dias)
+            if dias >= cooldown_dias:
+                rr['_reat_motivo'] = 'retorno_10d'
+                retorno_count += 1
+                actionable.append(rr)
+            else:
+                aguardando_count += 1
+        else:
+            if is_novo:
+                rr['_reat_motivo'] = 'novo'
+                novos_count += 1
+            else:
+                rr['_reat_motivo'] = 'pendente_sem_envio'
+                pendentes_count += 1
+            actionable.append(rr)
+
+    print(f"🧡 Clientes sem movimento V9.2: {len(actionable)} acionável(is) de {len(final_com_key)} na base | novos={novos_count} pendentes_sem_envio={pendentes_count} retorno_{cooldown_dias}d={retorno_count} aguardando_reenvio={aguardando_count}")
+    seen_union = sorted(set(list(seen_antigo) + [str(r.get('_csm_key') or _csm_key_row(r)) for r in final_com_key if (r.get('_csm_key') or _csm_key_row(r))]))
     try:
         with open(seen_path, "w", encoding="utf-8") as f_seen:
             json.dump({"gerado_em": now_brasilia().isoformat(), "versao": DASHBOARD_BUILD_VERSION, "seen": seen_union}, f_seen, ensure_ascii=False, indent=2)
@@ -6371,7 +6470,18 @@ def carregar_clientes_sem_movimento_local():
     except Exception as e:
         print(f"⚠️ Não consegui salvar clientes_sem_movimento_seen.json: {e}")
 
-    clientes_sem_movimento_meta_py = {"modo":"somente_novos", "base_total":len(final_com_key), "novos_total":len(novos_final), "seen_total":len(seen_union), "gerado_em":now_brasilia().isoformat()}
+    clientes_sem_movimento_meta_py = {
+        "modo":"acionaveis_novos_pendentes_retorno_10d",
+        "base_total":len(final_com_key),
+        "acionaveis_total":len(actionable),
+        "novos_total":novos_count,
+        "pendentes_sem_envio_total":pendentes_count,
+        "retorno_10d_total":retorno_count,
+        "aguardando_reenvio_total":aguardando_count,
+        "seen_total":len(seen_union),
+        "cooldown_dias":cooldown_dias,
+        "gerado_em":now_brasilia().isoformat()
+    }
     try:
         with open(base_path, "w", encoding="utf-8") as fbase:
             json.dump({"gerado_em": now_brasilia().isoformat(), "versao": DASHBOARD_BUILD_VERSION, "modo": "base_completa", "clientes": final_com_key}, fbase, ensure_ascii=False, indent=2)
@@ -6380,15 +6490,15 @@ def carregar_clientes_sem_movimento_local():
         print(f"⚠️ Não consegui salvar clientes_sem_movimento_base.json: {e}")
     try:
         with open(json_path, "w", encoding="utf-8") as f:
-            json.dump({"gerado_em": now_brasilia().isoformat(), "versao": DASHBOARD_BUILD_VERSION, "modo": "somente_novos", "base_total": len(final_com_key), "novos_total": len(novos_final), "seen_total": len(seen_union), "clientes": novos_final}, f, ensure_ascii=False, indent=2)
-        print(f"💾 Clientes sem movimento JSON atualizado: {json_path} ({len(novos_final)} cliente(s) novo(s); base monitorada {len(final_com_key)}))")
+            json.dump({"gerado_em": now_brasilia().isoformat(), "versao": DASHBOARD_BUILD_VERSION, **clientes_sem_movimento_meta_py, "clientes": actionable}, f, ensure_ascii=False, indent=2)
+        print(f"💾 Clientes sem movimento JSON atualizado: {json_path} ({len(actionable)} acionável(is); base monitorada {len(final_com_key)}))")
     except Exception as e:
         print(f"⚠️ Não consegui salvar clientes_sem_movimento.json: {e}")
     pf = {}
-    for r in novos_final:
+    for r in actionable:
         pf[r.get("filial") or "?"] = pf.get(r.get("filial") or "?", 0) + 1
-    print("🧡 Clientes sem movimento carregados no dashboard (somente novos): " + (" · ".join(f"{k}: {v}" for k, v in sorted(pf.items())) or "0"))
-    return novos_final
+    print("🧡 Clientes sem movimento carregados no dashboard (acionáveis): " + (" · ".join(f"{k}: {v}" for k, v in sorted(pf.items())) or "0"))
+    return actionable
 
 def relatorio_duplicidades_carteira_py():
     buckets = []
@@ -7648,6 +7758,8 @@ function renderBackButton(){
   return isAdminLike()?'<button class="btn soft" onclick="backToMain()">↩️ Voltar</button>':'';
 }
 const CLIENTES_SEM_MOVIMENTO=__JS_CLIENTES_SEM_MOVIMENTO__||[];
+const CLIENTES_SEM_MOVIMENTO_BASE=__JS_CLIENTES_SEM_MOVIMENTO_BASE__||[];
+window.CLIENTES_SEM_MOVIMENTO_BASE=CLIENTES_SEM_MOVIMENTO_BASE;
 const CLIENTES_SEM_MOVIMENTO_META=__JS_CLIENTES_SEM_MOVIMENTO_META__||{modo:'somente_novos',base_total:CLIENTES_SEM_MOVIMENTO.length,novos_total:CLIENTES_SEM_MOVIMENTO.length,seen_total:0};
 const ANIVERSARIANTES=__JS_ANIVERSARIANTES__||[];
 const DUPLICIDADES_CARTEIRA=__JS_DUPLICIDADES_CARTEIRA__||{total_conflitos:0,conflitos:[]};
@@ -11124,6 +11236,18 @@ function reatSetPage(p){reatPageState=Math.max(1,Number(p)||1); renderReativacao
 async function salvarMensagemReativacaoGlobal(){const el=document.getElementById('reatMsgTemplate'); CONFIG_META.reativacao_msg_template=el?el.value:reativacaoTemplateAtual(); try{const resp=await fetch(API_CFG,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({global:CONFIG_META,individual:CONFIG_META_IND})}); const j=await resp.json(); toast(j.ok?'Mensagem global de reativação salva.':'Não consegui salvar mensagem.',j.ok?'success':'warn')}catch(e){toast('Falha ao salvar mensagem.','warn')}}
 async function salvarMensagemReativacaoFilial(){const f=String(document.getElementById('reatMsgFilial')?.value||'').toUpperCase(); const el=document.getElementById('reatMsgTemplateFilial'); if(!f){toast('Selecione uma filial para salvar mensagem individual.','warn'); return} CONFIG_META.reativacao_msg_template_filiais=CONFIG_META.reativacao_msg_template_filiais||{}; CONFIG_META.reativacao_msg_template_filiais[f]=el?el.value:''; try{const resp=await fetch(API_CFG,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({global:CONFIG_META,individual:CONFIG_META_IND})}); const j=await resp.json(); toast(j.ok?`Mensagem da ${f} salva.`:'Não consegui salvar mensagem por filial.',j.ok?'success':'warn')}catch(e){toast('Falha ao salvar mensagem por filial.','warn')}}
 function trocarMensagemReativacaoFilial(f){const el=document.getElementById('reatMsgTemplateFilial'); if(el) el.value=reativacaoTemplateAtual(f)}
+function reatInfoExtra(r){
+  const qtd=Number(r?._reat_qtd_envios||0);
+  const motivo=String(r?._reat_motivo||'');
+  if(qtd>0){
+    const ult=r._reat_ultimo_envio||''; const pri=r._reat_primeiro_envio||''; const dias=Number(r._reat_dias_desde_envio||0);
+    if(motivo==='retorno_10d') return ` · ${qtd} envio(s) · último ${esc(ult)} · voltou após ${dias} dias`;
+    return ` · ${qtd} envio(s) · último ${esc(ult)} · aguardar ${Number(r._reat_cooldown_dias||10)} dias`;
+  }
+  if(motivo==='pendente_sem_envio') return ' · pendente sem envio anterior';
+  if(motivo==='novo') return ' · novo na base';
+  return '';
+}
 function renderReativacaoTab(){
   const box=reativacaoSection; if(!box) return;
   try{
@@ -11132,7 +11256,7 @@ function renderReativacaoTab(){
     let rows=reativacaoRowsPermitidas();
     if(filial) rows=rows.filter(r=>String(r.filial||'')===filial);
     if(q) rows=rows.filter(r=>`${r.cliente||''} ${r.cidade||''} ${r.bairro||''} ${r._owner?.label||''}`.toLowerCase().includes(q));
-    const filiais=mdlV91FiliaisFromRows((window.CLIENTES_SEM_MOVIMENTO_BASE&&window.CLIENTES_SEM_MOVIMENTO_BASE.length)?window.CLIENTES_SEM_MOVIMENTO_BASE:(CLIENTES_SEM_MOVIMENTO||[]));
+    const filiais=mdlV91FiliaisFromRows((CLIENTES_SEM_MOVIMENTO_BASE&&CLIENTES_SEM_MOVIMENTO_BASE.length)?CLIENTES_SEM_MOVIMENTO_BASE:(CLIENTES_SEM_MOVIMENTO||[]));
     const enviadosHoje=rows.filter(isReativacaoEnviadaHoje).length;
     const totalPermitido=reativacaoRowsPermitidas().length;
     const porFilial=filiais.map(f=>`${f}: ${(CLIENTES_SEM_MOVIMENTO||[]).filter(r=>r.filial===f).length}`).join(' · ');
@@ -11141,7 +11265,7 @@ function renderReativacaoTab(){
     box.innerHTML=`<div class="section-head"><div><h2>🧡 Clientes sem movimento +45 dias <span class="note" style="color:#f59e0b">${esc(DASHBOARD_BUILD_VERSION)}</span></h2><div class="hint">Base do Sólidus para reativação por WhatsApp. ${esc(porFilial||'Nenhum XLS carregado ainda.')}</div></div></div>
     ${semBase?'<div class="glass panel" style="border-color:rgba(245,158,11,.35);margin-bottom:14px"><strong>⚠️ Sem base de clientes carregada</strong><div class="hint">Coloque ou baixe os XLS de Clientes sem Movimento na pasta do dashboard e rode o script novamente.</div></div>':''}
     <div class="kpis" style="margin-bottom:14px">
-      ${makeKpi('Novos hoje',String(CLIENTES_SEM_MOVIMENTO.length),'var(--amber-400)',`Base monitorada ${Number(CLIENTES_SEM_MOVIMENTO_META.base_total||0).toLocaleString('pt-BR')}`)}
+      ${makeKpi('Para acionar',String(CLIENTES_SEM_MOVIMENTO.length),'var(--amber-400)',`Novos ${Number(CLIENTES_SEM_MOVIMENTO_META.novos_total||0).toLocaleString('pt-BR')} · retorno 10d ${Number(CLIENTES_SEM_MOVIMENTO_META.retorno_10d_total||0).toLocaleString('pt-BR')} · base ${Number(CLIENTES_SEM_MOVIMENTO_META.base_total||0).toLocaleString('pt-BR')}`)}
       ${makeKpi(tituloLista,String(rows.length),'var(--blue)',usuarioAtual?.tipo==='master'?'Filtro atual':'Distribuída sem duplicar')}
       ${makeKpi('Enviados hoje',String(enviadosHoje),'var(--green)','Da lista exibida')}
       ${makeKpi('Minha base total',String(totalPermitido),'var(--orange)','Rateio automático por filial')}
@@ -11158,7 +11282,7 @@ function renderReativacaoTab(){
       </div>
     </div>
     <div class="faixa-title atencao" style="margin-bottom:10px"><span>📋 ${esc(tituloLista)}</span><span>${rows.length} cliente(s) · ${enviadosHoje} enviado(s) hoje</span></div>
-    <div class="logs-list">${(()=>{const total=rows.length; const maxPage=Math.max(1,Math.ceil(total/REAT_PAGE_SIZE)); if(reatPageState>maxPage) reatPageState=maxPage; if(reatPageState<1) reatPageState=1; const ini=(reatPageState-1)*REAT_PAGE_SIZE; const pageRows=rows.slice(ini,ini+REAT_PAGE_SIZE); const pager=total>REAT_PAGE_SIZE?`<div class="log-pager"><div><strong>${total}</strong> cliente(s) · mostrando ${ini+1}-${Math.min(ini+REAT_PAGE_SIZE,total)} · página ${reatPageState}/${maxPage}</div><div style="display:flex;gap:8px"><button class="btn soft" ${reatPageState<=1?'disabled':''} onclick="reatSetPage(${reatPageState-1})">⬅️ Anterior</button><button class="btn soft" ${reatPageState>=maxPage?'disabled':''} onclick="reatSetPage(${reatPageState+1})">Próxima ➡️</button></div></div>`:''; return pager + pageRows.map(r=>{const tels=(r.telefones||[]); const enviado=isReativacaoEnviadaHoje(r); return `<div class="log-row" style="grid-template-columns:1.45fr .85fr .9fr auto"><div><strong>${esc(r.cliente||'')}</strong><div class="small muted">${esc(r.filial||'')} · ${esc(r.cidade||'')} · ${Number(r.dias_sem_movimento||0)} dias sem comprar · último ${esc(r.ultimo_movimento||'')}</div></div><div><strong>${esc(r._owner?.label||'')}</strong><div class="small muted">Responsável pelo envio</div></div><div><strong>${enviado?'✅ Enviado hoje':esc(tels.length+' WhatsApp(s)')}</strong><div class="small muted">${esc(tels.map(fmtTelBR).join(', '))}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap">${tels.map(t=>`<button class="btn wa" ${enviado?'disabled style="opacity:.45"':''} onclick="abrirWhatsReativacao(${r._idx},'${esc(t)}')">Whats ${esc(fmtTelBR(t))}</button>`).join('')}</div></div>`}).join('') + pager})() || '<div class="empty">Nenhum cliente encontrado.</div>'}</div>`;
+    <div class="logs-list">${(()=>{const total=rows.length; const maxPage=Math.max(1,Math.ceil(total/REAT_PAGE_SIZE)); if(reatPageState>maxPage) reatPageState=maxPage; if(reatPageState<1) reatPageState=1; const ini=(reatPageState-1)*REAT_PAGE_SIZE; const pageRows=rows.slice(ini,ini+REAT_PAGE_SIZE); const pager=total>REAT_PAGE_SIZE?`<div class="log-pager"><div><strong>${total}</strong> cliente(s) · mostrando ${ini+1}-${Math.min(ini+REAT_PAGE_SIZE,total)} · página ${reatPageState}/${maxPage}</div><div style="display:flex;gap:8px"><button class="btn soft" ${reatPageState<=1?'disabled':''} onclick="reatSetPage(${reatPageState-1})">⬅️ Anterior</button><button class="btn soft" ${reatPageState>=maxPage?'disabled':''} onclick="reatSetPage(${reatPageState+1})">Próxima ➡️</button></div></div>`:''; return pager + pageRows.map(r=>{const tels=(r.telefones||[]); const enviado=isReativacaoEnviadaHoje(r); return `<div class="log-row" style="grid-template-columns:1.45fr .85fr .9fr auto"><div><strong>${esc(r.cliente||'')}</strong><div class="small muted">${esc(r.filial||'')} · ${esc(r.cidade||'')} · ${Number(r.dias_sem_movimento||0)} dias sem comprar · último ${esc(r.ultimo_movimento||'')}${reatInfoExtra(r)}</div></div><div><strong>${esc(r._owner?.label||'')}</strong><div class="small muted">Responsável pelo envio</div></div><div><strong>${enviado?'✅ Enviado hoje':esc(tels.length+' WhatsApp(s)')}</strong><div class="small muted">${esc(tels.map(fmtTelBR).join(', '))}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap">${tels.map(t=>`<button class="btn wa" ${enviado?'disabled style="opacity:.45"':''} onclick="abrirWhatsReativacao(${r._idx},'${esc(t)}')">Whats ${esc(fmtTelBR(t))}</button>`).join('')}</div></div>`}).join('') + pager})() || '<div class="empty">Nenhum cliente encontrado.</div>'}</div>`;
   }catch(e){console.error('Erro renderReativacaoTab',e); box.innerHTML=`<div class="glass panel" style="border-color:rgba(239,68,68,.35)"><strong>⚠️ Erro na aba Clientes sem movimento</strong><div class="hint">${esc(e.message||e)}</div></div>`;}
 }
 
@@ -12455,8 +12579,8 @@ async function mdlV91SaveConfigDireto(){
   return await resp.json();
 }
 function mdlV91SyncMessageAreas(){
-  const r=document.getElementById('reatMsgTemplate'); if(r && (!String(r.value||'').trim() || !String(r.value||'').includes('www.moveisdolar.com.br'))) r.value=CONFIG_META.reativacao_msg_template||DEFAULT_REATIVACAO_MSG_V91;
-  const a=document.getElementById('anivMsgTemplate'); if(a && (!String(a.value||'').trim() || !String(a.value||'').includes('www.moveisdolar.com.br'))) a.value=CONFIG_META.aniversario_msg_template||DEFAULT_ANIVERSARIO_MSG_V91;
+  const r=document.getElementById('reatMsgTemplate'); if(r && (!String(r.value||'').trim() || !String(r.value||'').includes('www.moveisdolar.com.br') || !mdlV91TemEmoji(r.value))) r.value=CONFIG_META.reativacao_msg_template||DEFAULT_REATIVACAO_MSG_V91;
+  const a=document.getElementById('anivMsgTemplate'); if(a && (!String(a.value||'').trim() || !String(a.value||'').includes('www.moveisdolar.com.br') || !mdlV91TemEmoji(a.value))) a.value=CONFIG_META.aniversario_msg_template||DEFAULT_ANIVERSARIO_MSG_V91;
 }
 window.salvarMensagemReativacaoGlobal=async function(){
   const el=document.getElementById('reatMsgTemplate');
@@ -12484,11 +12608,63 @@ window.salvarMensagemAniversarioFilial=async function(){
 (function(){
   mdlV91EnsureDefaults();
   const wrap=(name)=>{try{const fn=window[name]||eval(name); if(typeof fn==='function' && !fn._v91){const nw=function(){mdlV91EnsureDefaults(); const ret=fn.apply(this,arguments); setTimeout(()=>{try{
-      const rf=document.getElementById('reatMsgFilial'); if(rf && rf.options.length===0){rf.innerHTML=mdlV91FiliaisFromRows(window.CLIENTES_SEM_MOVIMENTO_BASE||window.CLIENTES_SEM_MOVIMENTO||[]).map(f=>`<option value="${f}">${f}</option>`).join(''); trocarMensagemReativacaoFilial(rf.value||'F1');}
+      const rf=document.getElementById('reatMsgFilial'); if(rf && rf.options.length===0){rf.innerHTML=mdlV91FiliaisFromRows(CLIENTES_SEM_MOVIMENTO_BASE||CLIENTES_SEM_MOVIMENTO||[]).map(f=>`<option value="${f}">${f}</option>`).join(''); trocarMensagemReativacaoFilial(rf.value||'F1');}
       const af=document.getElementById('anivMsgFilial'); if(af && af.options.length===0){af.innerHTML=mdlV91FiliaisFromRows(window.ANIVERSARIANTES||[]).map(f=>`<option value="${f}">${f}</option>`).join(''); trocarMensagemAniversarioFilial(af.value||'F1');}
       mdlV91SyncMessageAreas();
     }catch(e){}},60); return ret;}; nw._v91=true; window[name]=nw; try{eval(name+'=window["'+name+'"]')}catch(e){} }}catch(e){}};
   ['renderReativacaoTab','renderAniversariantesTab','renderInicioTab'].forEach(wrap);
+})();
+
+
+
+// ===== V9.2 HOTFIX: emojis persistentes + reativação com retorno 10 dias =====
+(function(){
+  try{
+    const st=document.createElement('style'); st.id='mdl-v92-mobile-css';
+    st.textContent=`@media(max-width:760px){.mobile .kpis,.kpis{grid-template-columns:1fr!important}.mobile .kpi,.kpi{min-width:0!important;max-width:100%!important}.search-row{grid-template-columns:1fr!important}.input-card textarea{min-height:130px!important}.topbar,.hero,.header-actions{max-width:100vw!important}.nav-tabs,.tabs{overflow-x:auto!important;white-space:nowrap!important}}`;
+    document.head.appendChild(st);
+  }catch(e){}
+})();
+function mdlV92MaybeForceDefaultMessages(){
+  try{
+    // Só troca textos antigos do sistema sem emoji/site; não sobrescreve texto manual que o usuário digitou com emoji.
+    const r=String(CONFIG_META.reativacao_msg_template||'');
+    const a=String(CONFIG_META.aniversario_msg_template||'');
+    if(!r.trim() || (!mdlV91TemEmoji(r) && r.includes('Estamos com saudades'))) CONFIG_META.reativacao_msg_template=DEFAULT_REATIVACAO_MSG_V91;
+    if(!a.trim() || (!mdlV91TemEmoji(a) && a.includes('Feliz aniversário'))) CONFIG_META.aniversario_msg_template=DEFAULT_ANIVERSARIO_MSG_V91;
+  }catch(e){}
+}
+async function mdlV92SaveConfigComEmoji(){
+  const payload=JSON.stringify({global:CONFIG_META,individual:CONFIG_META_IND});
+  const resp=await fetch(API_CFG+'?utf8=1&_=' + Date.now(),{method:'POST',cache:'no-store',headers:{'Content-Type':'application/json;charset=UTF-8','Accept':'application/json, text/plain, */*'},body:payload});
+  const txt=await resp.text();
+  try{return JSON.parse(txt)}catch(e){return {ok:resp.ok,raw:txt}}
+}
+window.salvarMensagemReativacaoGlobal=async function(){
+  const el=document.getElementById('reatMsgTemplate');
+  CONFIG_META.reativacao_msg_template=el?el.value:DEFAULT_REATIVACAO_MSG_V91;
+  try{const j=await mdlV92SaveConfigComEmoji(); toast(j.ok?'Mensagem global de reativação salva com emojis.':'Não consegui salvar mensagem.',j.ok?'success':'warn'); if(el) el.value=CONFIG_META.reativacao_msg_template;}catch(e){toast('Falha ao salvar mensagem.','warn')}
+};
+window.salvarMensagemReativacaoFilial=async function(){
+  const f=String(document.getElementById('reatMsgFilial')?.value||'').toUpperCase(); const el=document.getElementById('reatMsgTemplateFilial');
+  if(!f){toast('Selecione uma filial para salvar mensagem individual.','warn');return}
+  CONFIG_META.reativacao_msg_template_filiais=CONFIG_META.reativacao_msg_template_filiais||{}; CONFIG_META.reativacao_msg_template_filiais[f]=el?el.value:'';
+  try{const j=await mdlV92SaveConfigComEmoji(); toast(j.ok?`Mensagem da ${f} salva com emojis.`:'Não consegui salvar mensagem por filial.',j.ok?'success':'warn');}catch(e){toast('Falha ao salvar mensagem por filial.','warn')}
+};
+window.salvarMensagemAniversarioGlobal=async function(){
+  const el=document.getElementById('anivMsgTemplate');
+  CONFIG_META.aniversario_msg_template=el?el.value:DEFAULT_ANIVERSARIO_MSG_V91;
+  try{const j=await mdlV92SaveConfigComEmoji(); toast(j.ok?'Mensagem global de aniversário salva com emojis.':'Não consegui salvar mensagem.',j.ok?'success':'warn'); if(el) el.value=CONFIG_META.aniversario_msg_template;}catch(e){toast('Falha ao salvar mensagem de aniversário.','warn')}
+};
+window.salvarMensagemAniversarioFilial=async function(){
+  const f=String(document.getElementById('anivMsgFilial')?.value||'').toUpperCase(); const el=document.getElementById('anivMsgTemplateFilial');
+  if(!f){toast('Selecione uma filial para salvar mensagem individual.','warn');return}
+  CONFIG_META.aniversario_msg_template_filiais=CONFIG_META.aniversario_msg_template_filiais||{}; CONFIG_META.aniversario_msg_template_filiais[f]=el?el.value:'';
+  try{const j=await mdlV92SaveConfigComEmoji(); toast(j.ok?`Mensagem de aniversário da ${f} salva com emojis.`:'Não consegui salvar mensagem por filial.',j.ok?'success':'warn');}catch(e){toast('Falha ao salvar mensagem por filial.','warn')}
+};
+(function(){
+  mdlV92MaybeForceDefaultMessages();
+  setTimeout(()=>{try{mdlV91SyncMessageAreas();}catch(e){}},120);
 })();
 
 // ===== V5.5: META DIARIA PRECALCULADA PELO PYTHON + FALLBACK ROBUSTO =====
@@ -12934,6 +13110,7 @@ repls = {
     '__JS_HIST_DASH__': js_hist_dash,
     '__JS_QUITADOS_180__': js_quitados_180,
     '__JS_CLIENTES_SEM_MOVIMENTO__': js_clientes_sem_movimento,
+    '__JS_CLIENTES_SEM_MOVIMENTO_BASE__': json.dumps(clientes_sem_movimento_base_py if 'clientes_sem_movimento_base_py' in globals() else [], ensure_ascii=False),
     '__JS_CLIENTES_SEM_MOVIMENTO_META__': js_clientes_sem_movimento_meta,
     '__JS_ANIVERSARIANTES__': js_aniversariantes,
     '__JS_DUPLICIDADES_CARTEIRA__': js_duplicidades_carteira,
@@ -13076,8 +13253,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-  $payload = json_decode(file_get_contents('php://input'), true);
-  if (!is_array($payload)) { echo json_encode(['ok'=>false,'error'=>'payload_invalido']); exit; }
+  $raw = file_get_contents('php://input');
+  if (!mb_check_encoding($raw, 'UTF-8')) { $raw = mb_convert_encoding($raw, 'UTF-8', 'auto'); }
+  $payload = json_decode($raw, true);
+  if (!is_array($payload)) { echo json_encode(['ok'=>false,'error'=>'payload_invalido','json_error'=>json_last_error_msg()]); exit; }
 
   if (($payload['action'] ?? '') === 'delete') {
     make_backup($file, $backupDir, 'before_delete');
@@ -13145,7 +13324,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $global = isset($payload['global']) && is_array($payload['global']) ? $payload['global'] : [];
   $individual = isset($payload['individual']) && is_array($payload['individual']) ? $payload['individual'] : [];
   $save = ['global'=>$global, 'individual'=>$individual];
-  file_put_contents($file, json_encode($save, JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE));
+  file_put_contents($file, json_encode($save, JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES), LOCK_EX);
   echo json_encode(['ok'=>true,'saved_keys'=>count($individual)], JSON_UNESCAPED_UNICODE); exit;
 }
 echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado'], JSON_UNESCAPED_UNICODE);
