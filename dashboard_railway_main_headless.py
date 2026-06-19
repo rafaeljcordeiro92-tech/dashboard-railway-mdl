@@ -33,7 +33,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V9.4"
+DASHBOARD_BUILD_VERSION = "V9.5"
 DASHBOARD_BUILD_TAG = "DASH2_0_V9_2_REATIVACAO_10D_EMOJI"
 
 def now_brasilia():
@@ -3381,6 +3381,8 @@ mes_str  = now_brasilia().strftime("%Y-%m")
 # Estrutura: config_meta.json tem "global" (padrão) e "individual" (por vendedor/filial)
 
 _config_meta_path = os.path.join(CACHE_DIR, "config_meta.json")
+_config_meta_existed_before = os.path.exists(_config_meta_path)
+_config_meta_loaded_from_remote = False
 REMOTE_PUBLIC_BASE = "https://moveisdolar.com.br/colaborador"
 REMOTE_CONFIG_URL = REMOTE_PUBLIC_BASE + "/config_meta.json"
 _hist_dash_path = os.path.join(CACHE_DIR, 'historico_dashboard.json')
@@ -3411,6 +3413,7 @@ try:
     if _remote_cfg and _remote_cfg.startswith("{"):
         with open(_config_meta_path, "w", encoding="utf-8") as _f_cfg_local:
             _f_cfg_local.write(_remote_cfg)
+        _config_meta_loaded_from_remote = True
         print("🌐 Config meta sincronizada do servidor")
 except Exception:
     pass
@@ -5873,6 +5876,52 @@ def parse_aniversariantes_xls(path):
         })
     return out
 
+
+
+def _remote_json_colaborador_v95(remote_name, default=None):
+    """V9.5: lê JSON já publicado no FTP/URL pública para não sobrescrever listas/configs com vazio em deploy comum."""
+    try:
+        data = _ftp_json(remote_name, None)
+        if data is not None:
+            return data
+    except Exception:
+        pass
+    try:
+        url = REMOTE_PUBLIC_BASE + '/' + remote_name
+        req = urllib.request.Request(url, headers={'Cache-Control': 'no-cache', 'Pragma': 'no-cache'})
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            raw = resp.read().decode('utf-8', errors='ignore').strip()
+        if raw:
+            return json.loads(raw)
+    except Exception:
+        pass
+    return default
+
+def _json_has_items_v95(path, list_keys=('clientes','dados','seen')):
+    try:
+        if not os.path.exists(path):
+            return False
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            return len(data) > 0
+        if isinstance(data, dict):
+            for k in list_keys:
+                v = data.get(k)
+                if isinstance(v, list) and len(v) > 0:
+                    return True
+            # config_meta.json: global/individual contam como conteúdo persistente
+            if isinstance(data.get('global'), dict) and data.get('global'):
+                return True
+            if isinstance(data.get('individual'), dict) and data.get('individual'):
+                return True
+    except Exception:
+        return False
+    return False
+
+def _baixou_listas_pesadas_v95():
+    return os.getenv('BAIXAR_CLIENTES_SEM_MOVIMENTO','0') == '1' or os.getenv('BAIXAR_ANIVERSARIANTES','0') == '1' or os.getenv('FORCE_DAILY_LISTS_ON_BOOT','0') == '1'
+
 def carregar_aniversariantes_local():
     arquivos=[]
     for fname in os.listdir(pasta):
@@ -5881,7 +5930,19 @@ def carregar_aniversariantes_local():
     arquivos=sorted(arquivos, key=lambda x: os.path.getmtime(x), reverse=True)
     print(f"🎂 Aniversariantes: {len(arquivos)} XLS encontrado(s) para leitura")
     if not arquivos:
-        print("ℹ️ Para testar sem Selenium, coloque aniversarios.xls ou relatorio_aniversariantes*.xls nesta pasta. Para baixar pelo Sólidus, rode com BAIXAR_ANIVERSARIANTES=1.")
+        remote = _remote_json_colaborador_v95('aniversariantes_dia.json', None)
+        if isinstance(remote, dict):
+            dados = remote.get('dados') or remote.get('clientes') or []
+            if isinstance(dados, list) and dados:
+                print(f"🎂 Aniversariantes V9.5: sem XLS local; mantendo JSON do FTP com {len(dados)} cliente(s).")
+                try:
+                    with open(os.path.join(pasta, 'aniversariantes_dia.json'), 'w', encoding='utf-8') as f:
+                        json.dump(remote, f, ensure_ascii=False, indent=2)
+                except Exception:
+                    pass
+                return dados
+        print("ℹ️ Para testar sem Selenium, coloque aniversarios.xls ou relatorio_aniversariantes*.xls nesta pasta. Para baixar pelo Sólidus, rode com BAIXAR_ANIVERSARIANTES=1. V9.5: não vou sobrescrever o FTP com lista vazia.")
+        return []
     todos=[]; seen=set()
     for arq in arquivos:
         for row in parse_aniversariantes_xls(arq):
@@ -6325,17 +6386,32 @@ def carregar_clientes_sem_movimento_local():
             except Exception as e:
                 print(f"   ⚠️ Erro lendo {os.path.basename(path)}: {e}")
     else:
-        print("⚠️ Clientes sem movimento: nenhum XLS encontrado na pasta. Tentando JSON anterior...")
-        if os.path.exists(json_path):
-            try:
-                with open(json_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                old_rows = data.get("clientes", data) if isinstance(data, dict) else data
-                if isinstance(old_rows, list):
-                    print(f"ℹ️ Clientes sem movimento: usando JSON existente com {len(old_rows)} registro(s)")
+        print("⚠️ Clientes sem movimento: nenhum XLS encontrado na pasta. Tentando JSON anterior/FTP...")
+        for local_path in [json_path, base_path]:
+            if os.path.exists(local_path):
+                try:
+                    with open(local_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    old_rows = data.get("clientes", data) if isinstance(data, dict) else data
+                    if isinstance(old_rows, list) and old_rows:
+                        print(f"ℹ️ Clientes sem movimento V9.5: usando JSON local {os.path.basename(local_path)} com {len(old_rows)} registro(s)")
+                        return old_rows
+                except Exception as e:
+                    print(f"⚠️ Não consegui ler {os.path.basename(local_path)}: {e}")
+        for remote_name in ['clientes_sem_movimento.json', 'clientes_sem_movimento_base.json']:
+            remote = _remote_json_colaborador_v95(remote_name, None)
+            if isinstance(remote, dict):
+                old_rows = remote.get('clientes') or remote.get('dados') or []
+                if isinstance(old_rows, list) and old_rows:
+                    print(f"🧡 Clientes sem movimento V9.5: sem XLS local; mantendo {remote_name} do FTP com {len(old_rows)} cliente(s).")
+                    try:
+                        local_dest = json_path if remote_name == 'clientes_sem_movimento.json' else base_path
+                        with open(local_dest, 'w', encoding='utf-8') as f:
+                            json.dump(remote, f, ensure_ascii=False, indent=2)
+                    except Exception:
+                        pass
                     return old_rows
-            except Exception as e:
-                print(f"⚠️ Não consegui ler clientes_sem_movimento.json: {e}")
+        print("🧡 Clientes sem movimento V9.5: sem XLS e sem JSON remoto com dados; não vou sobrescrever FTP com vazio.")
         return []
     seen = set(); final = []
     for r in rows:
@@ -13787,10 +13863,16 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
         ftp.storbinary('STOR historico_api.php', BytesIO(HISTORICO_API_PHP.encode('utf-8')))
         ftp.storbinary('STOR historico_comissionamento_api.php', BytesIO(HISTORICO_COMISSIONAMENTO_API_PHP.encode('utf-8')))
         try:
-            with open(_config_meta_path, 'rb') as f_cfg:
-                ftp.storbinary('STOR config_meta.json', f_cfg)
-        except Exception:
-            ftp.storbinary('STOR config_meta.json', BytesIO(b'{"global":{},"individual":{}}'))
+            # V9.5: config_meta.json salvo pelo dashboard/API é fonte de verdade no FTP.
+            # Se o main não conseguiu sincronizar do servidor, NÃO sobe default/local vazio por cima.
+            if _config_meta_loaded_from_remote or _config_meta_existed_before or _json_has_items_v95(_config_meta_path, ('global','individual')):
+                with open(_config_meta_path, 'rb') as f_cfg:
+                    ftp.storbinary('STOR config_meta.json', f_cfg)
+                    print('✅ FTP: config_meta.json preservado/enviado')
+            else:
+                print('🛡️ V9.5: config_meta.json não sincronizado; pulando upload para não resetar metas do FTP.')
+        except Exception as e_cfg_upload:
+            print(f'⚠️ V9.5: não enviei config_meta.json para evitar reset indevido: {e_cfg_upload}')
         try:
             with open(cred_state_path, 'rb') as f_credstate:
                 ftp.storbinary('STOR credenciais_dashboard.json', f_credstate)
@@ -13813,26 +13895,39 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
             ftp.storbinary('STOR fechamentos_mensais.json', BytesIO(b'{"months":{}}'))
         try:
             _csm_path = os.path.join(pasta, 'clientes_sem_movimento.json')
-            if os.path.exists(_csm_path):
+            _ani_path = os.path.join(pasta, 'aniversariantes_dia.json')
+            _csm_seen_path = os.path.join(pasta, 'clientes_sem_movimento_seen.json')
+            _csm_base_path = os.path.join(pasta, 'clientes_sem_movimento_base.json')
+            _listas_forcadas = _baixou_listas_pesadas_v95()
+
+            # V9.5: em deploy comum, não sobrescreve listas remotas com JSON vazio/local incompleto.
+            if os.path.exists(_csm_path) and (_listas_forcadas or _json_has_items_v95(_csm_path, ('clientes',))):
                 with open(_csm_path, 'rb') as f_csm:
                     ftp.storbinary('STOR clientes_sem_movimento.json', f_csm)
-            _ani_path = os.path.join(pasta, 'aniversariantes_dia.json')
-            if os.path.exists(_ani_path):
+                    print('✅ FTP: clientes_sem_movimento.json enviado')
+            else:
+                print('🛡️ V9.5: pulando clientes_sem_movimento.json para não zerar lista do FTP')
+
+            if os.path.exists(_ani_path) and (_listas_forcadas or _json_has_items_v95(_ani_path, ('dados','clientes'))):
                 with open(_ani_path, 'rb') as f_ani:
                     ftp.storbinary('STOR aniversariantes_dia.json', f_ani)
                     print('✅ FTP: aniversariantes_dia.json enviado')
             else:
-                print('⚠️ FTP: aniversariantes_dia.json não encontrado para envio')
-            _csm_seen_path = os.path.join(pasta, 'clientes_sem_movimento_seen.json')
-            if os.path.exists(_csm_seen_path):
+                print('🛡️ V9.5: pulando aniversariantes_dia.json para não zerar lista do FTP')
+
+            if os.path.exists(_csm_seen_path) and (_listas_forcadas or _json_has_items_v95(_csm_seen_path, ('seen',))):
                 with open(_csm_seen_path, 'rb') as f_csm_seen:
                     ftp.storbinary('STOR clientes_sem_movimento_seen.json', f_csm_seen)
                     print('✅ FTP: clientes_sem_movimento_seen.json enviado')
-            _csm_base_path = os.path.join(pasta, 'clientes_sem_movimento_base.json')
-            if os.path.exists(_csm_base_path):
+            else:
+                print('🛡️ V9.5: pulando clientes_sem_movimento_seen.json vazio/local')
+
+            if os.path.exists(_csm_base_path) and (_listas_forcadas or _json_has_items_v95(_csm_base_path, ('clientes',))):
                 with open(_csm_base_path, 'rb') as f_csm_base:
                     ftp.storbinary('STOR clientes_sem_movimento_base.json', f_csm_base)
                     print('✅ FTP: clientes_sem_movimento_base.json enviado')
+            else:
+                print('🛡️ V9.5: pulando clientes_sem_movimento_base.json para não zerar base do FTP')
             _dup_path = os.path.join(pasta, 'relatorio_duplicidades_carteira.json')
             if os.path.exists(_dup_path):
                 with open(_dup_path, 'rb') as f_dup:
