@@ -33,7 +33,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V8.9"
+DASHBOARD_BUILD_VERSION = "V9.0"
 DASHBOARD_BUILD_TAG = "DASH2_0_V7_6_TELEGRAM_TEMPLATE_BONITO"
 
 def now_brasilia():
@@ -12263,6 +12263,114 @@ function renderInicioTab(){
 }
 try{setInterval(()=>{document.querySelectorAll('.aviso-ticker-track').forEach(t=>{t.style.animationName='mdlTicker'; if(!t.style.animationDuration)t.style.animationDuration='900s';});},4000)}catch(e){}
 
+
+
+
+
+// ===== V9.0: mobile início + salvamento de emojis nas mensagens =====
+(function(){
+  try{
+    const st=document.createElement('style');
+    st.id='mdl-v90-mobile-css';
+    st.textContent=`
+@media(max-width:760px){
+  html,body{max-width:100%!important;overflow-x:hidden!important;}
+  body{font-size:14px!important;}
+  .app-shell{width:100%!important;max-width:100vw!important;padding:8px 8px 86px!important;overflow-x:hidden!important;box-sizing:border-box!important;}
+  .glass.header{display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:12px!important;padding:16px 14px!important;border-radius:24px!important;margin:6px 0 12px!important;}
+  .brand{display:grid!important;grid-template-columns:62px minmax(0,1fr)!important;gap:12px!important;align-items:center!important;width:100%!important;}
+  .brand img{width:58px!important;height:58px!important;min-width:58px!important;}
+  .brand h1{font-size:23px!important;line-height:1.05!important;margin:0 0 4px!important;word-break:normal!important;}
+  .brand .sub{font-size:12.5px!important;line-height:1.35!important;white-space:normal!important;word-break:normal!important;}
+  .header-actions{display:flex!important;flex-wrap:wrap!important;gap:8px!important;justify-content:flex-start!important;width:100%!important;}
+  .header-actions .btn,.header-actions .badge{min-height:42px!important;border-radius:16px!important;font-size:13px!important;padding:10px 12px!important;}
+  #userBadge{max-width:100%!important;overflow:hidden!important;text-overflow:ellipsis!important;white-space:nowrap!important;}
+  #topMural,.campaign-feature,.glass.panel{max-width:100%!important;box-sizing:border-box!important;}
+  body.inicio-view .kpis,.kpis,#kpis{display:grid!important;grid-template-columns:1fr!important;gap:10px!important;width:100%!important;max-width:100%!important;margin-bottom:12px!important;overflow:visible!important;}
+  body.inicio-view .kpi,.kpi{width:100%!important;min-width:0!important;max-width:100%!important;min-height:auto!important;padding:15px 16px!important;border-radius:20px!important;overflow:hidden!important;box-sizing:border-box!important;}
+  .kpi .label{font-size:11px!important;letter-spacing:.12em!important;line-height:1.15!important;display:flex!important;align-items:center!important;gap:7px!important;white-space:normal!important;}
+  .kpi .value{font-size:25px!important;line-height:1.1!important;white-space:normal!important;word-break:break-word!important;letter-spacing:-.03em!important;}
+  .kpi .subline{font-size:12.5px!important;line-height:1.35!important;padding-right:0!important;white-space:normal!important;word-break:normal!important;}
+  .kpi .kpi-pct-badge{position:static!important;display:inline-flex!important;margin-top:10px!important;min-width:76px!important;justify-content:center!important;font-size:18px!important;}
+  .kpi .laranjito-card{position:absolute!important;right:12px!important;bottom:12px!important;width:58px!important;height:58px!important;opacity:.92!important;}
+  .kpi.kpi-laranjito .subline{padding-right:70px!important;}
+  .tabs,#masterTabs{display:flex!important;flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden!important;gap:8px!important;padding:8px!important;margin-bottom:12px!important;-webkit-overflow-scrolling:touch!important;scroll-snap-type:x proximity!important;}
+  .tabs .tab,#masterTabs .tab{flex:0 0 auto!important;white-space:nowrap!important;padding:10px 12px!important;font-size:13px!important;border-radius:16px!important;scroll-snap-align:start!important;}
+  .inicio-compact,.mdl-mural-zone{width:100%!important;max-width:100%!important;overflow:hidden!important;}
+  .mdl-mural-group{padding:12px!important;border-radius:22px!important;margin-bottom:12px!important;overflow:hidden!important;}
+  .mdl-mural-group-head h2{font-size:18px!important;line-height:1.15!important;}
+  .mdl-mural-group-grid{display:block!important;width:100%!important;overflow:hidden!important;}
+  .aviso-rotativo,.aviso-ticker{max-width:100%!important;overflow:hidden!important;}
+  .aviso-pill{min-width:220px!important;max-width:250px!important;padding:9px 10px!important;}
+  .mdl-sales-line{display:flex!important;overflow-x:auto!important;flex-wrap:nowrap!important;padding-bottom:6px!important;-webkit-overflow-scrolling:touch!important;}
+  .mdl-sales-line span{flex:0 0 auto!important;max-width:280px!important;white-space:normal!important;}
+  .section-head{display:flex!important;flex-direction:column!important;align-items:flex-start!important;gap:8px!important;}
+  .search-row,.form-grid,.campaign-grid,.meta-layout,.detail-top,.row-top,.log-row{grid-template-columns:1fr!important;display:grid!important;}
+  .input-card{min-width:0!important;width:100%!important;box-sizing:border-box!important;}
+  .input-card textarea{min-height:120px!important;font-size:14px!important;}
+  .logs-list,.acc-body,.accordion{max-width:100%!important;overflow-x:hidden!important;}
+}
+@media(max-width:390px){.brand h1{font-size:21px!important}.kpi .value{font-size:22px!important}.header-actions .btn,.header-actions .badge{font-size:12px!important;padding:9px 10px!important}.kpi .laranjito-card{width:50px!important;height:50px!important}}
+    `;
+    document.head.appendChild(st);
+  }catch(e){console.warn('V9.0 mobile css',e)}
+})();
+
+const DEFAULT_REATIVACAO_MSG_V90=`Olá, {primeiro_nome}! Tudo bem? 😊
+
+Aqui é da Lojas MDL - Móveis do Lar. Estamos com saudades de você! Faz um tempinho que você não aparece na loja.  🥹
+
+Venha conhecer nossas novidades e aproveitar condições especiais que preparamos para nossos clientes. 👈👈😍😍`;
+const DEFAULT_ANIVERSARIO_MSG_V90=`Olá, {primeiro_nome}! Feliz aniversário! 🎂🎉
+
+Aqui é da Lojas MDL - Móveis do Lar. Desejamos muita saúde, paz e felicidades neste dia especial. 😍😍
+
+Preparamos condições especiais para você comemorar com a gente.
+🕺🎉🤩`;
+function mdlV90IsOldReatMsg(s){s=String(s||'');return s.includes('Estamos com saudades de você') && !/[😊🥹😍👈]/u.test(s)}
+function mdlV90IsOldAnivMsg(s){s=String(s||'');return s.includes('Feliz aniversário') && !/[🎂🎉😍🕺🤩]/u.test(s)}
+function mdlV90NormalizeMessageDefaults(){
+  try{
+    CONFIG_META=CONFIG_META||{};
+    if(!String(CONFIG_META.reativacao_msg_template||'').trim() || mdlV90IsOldReatMsg(CONFIG_META.reativacao_msg_template)) CONFIG_META.reativacao_msg_template=DEFAULT_REATIVACAO_MSG_V90;
+    if(!String(CONFIG_META.aniversario_msg_template||'').trim() || mdlV90IsOldAnivMsg(CONFIG_META.aniversario_msg_template)) CONFIG_META.aniversario_msg_template=DEFAULT_ANIVERSARIO_MSG_V90;
+    const maps=['reativacao_msg_template_filiais','aniversario_msg_template_filiais'];
+    maps.forEach(k=>{const isAniv=k.includes('aniversario'); const m=CONFIG_META[k]||{}; Object.keys(m).forEach(f=>{if(isAniv && mdlV90IsOldAnivMsg(m[f])) m[f]=DEFAULT_ANIVERSARIO_MSG_V90; if(!isAniv && mdlV90IsOldReatMsg(m[f])) m[f]=DEFAULT_REATIVACAO_MSG_V90;}); CONFIG_META[k]=m;});
+  }catch(e){console.warn('normalize messages v90',e)}
+}
+async function mdlV90SaveConfigMeta(){
+  mdlV90NormalizeMessageDefaults();
+  const resp=await fetch(API_CFG,{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8','Accept':'application/json'},body:JSON.stringify({global:CONFIG_META,individual:CONFIG_META_IND})});
+  return await resp.json();
+}
+try{mdlV90NormalizeMessageDefaults();}catch(e){}
+window.salvarMensagemReativacaoGlobal=async function(){
+  const el=document.getElementById('reatMsgTemplate');
+  CONFIG_META.reativacao_msg_template=el?el.value:reativacaoTemplateAtual();
+  try{const j=await mdlV90SaveConfigMeta(); toast(j.ok?'Mensagem global de reativação salva com emojis.':'Não consegui salvar mensagem.',j.ok?'success':'warn'); if(el) el.value=CONFIG_META.reativacao_msg_template;}catch(e){toast('Falha ao salvar mensagem.','warn')}
+};
+window.salvarMensagemReativacaoFilial=async function(){
+  const f=String(document.getElementById('reatMsgFilial')?.value||'').toUpperCase(); const el=document.getElementById('reatMsgTemplateFilial');
+  if(!f){toast('Selecione uma filial para salvar mensagem individual.','warn');return}
+  CONFIG_META.reativacao_msg_template_filiais=CONFIG_META.reativacao_msg_template_filiais||{}; CONFIG_META.reativacao_msg_template_filiais[f]=el?el.value:'';
+  try{const j=await mdlV90SaveConfigMeta(); toast(j.ok?`Mensagem da ${f} salva com emojis.`:'Não consegui salvar mensagem por filial.',j.ok?'success':'warn'); if(el) el.value=CONFIG_META.reativacao_msg_template_filiais[f]||'';}catch(e){toast('Falha ao salvar mensagem por filial.','warn')}
+};
+window.salvarMensagemAniversarioGlobal=async function(){
+  const el=document.getElementById('anivMsgTemplate');
+  CONFIG_META.aniversario_msg_template=el?el.value:aniversarioTemplateAtual();
+  try{const j=await mdlV90SaveConfigMeta(); toast(j.ok?'Mensagem global de aniversário salva com emojis.':'Não consegui salvar mensagem.',j.ok?'success':'warn'); if(el) el.value=CONFIG_META.aniversario_msg_template;}catch(e){toast('Falha ao salvar mensagem de aniversário.','warn')}
+};
+window.salvarMensagemAniversarioFilial=async function(){
+  const f=String(document.getElementById('anivMsgFilial')?.value||'').toUpperCase(); const el=document.getElementById('anivMsgTemplateFilial');
+  if(!f){toast('Selecione uma filial para salvar mensagem individual.','warn');return}
+  CONFIG_META.aniversario_msg_template_filiais=CONFIG_META.aniversario_msg_template_filiais||{}; CONFIG_META.aniversario_msg_template_filiais[f]=el?el.value:'';
+  try{const j=await mdlV90SaveConfigMeta(); toast(j.ok?`Mensagem de aniversário da ${f} salva com emojis.`:'Não consegui salvar mensagem por filial.',j.ok?'success':'warn'); if(el) el.value=CONFIG_META.aniversario_msg_template_filiais[f]||'';}catch(e){toast('Falha ao salvar mensagem por filial.','warn')}
+};
+// Ao renderizar as abas, se vierem mensagens antigas do servidor, atualiza visualmente para os padrões com emoji.
+(function(){
+  const wrap=(name)=>{try{const fn=window[name]||eval(name); if(typeof fn==='function' && !fn._v90){const nw=function(){mdlV90NormalizeMessageDefaults(); return fn.apply(this,arguments)}; nw._v90=true; window[name]=nw; try{eval(name+'=window["'+name+'"]')}catch(e){} }}catch(e){}};
+  ['renderReativacaoTab','renderAniversariantesTab'].forEach(wrap);
+})();
 
 
 // ===== V5.5: META DIARIA PRECALCULADA PELO PYTHON + FALLBACK ROBUSTO =====
