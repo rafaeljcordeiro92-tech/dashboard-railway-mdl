@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V4_0
+# VERSAO: DASH2_0_V9_6_HOTFIX_LIVE_SALES_LAZY_REATIVACAO
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -33,7 +33,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V9.5"
+DASHBOARD_BUILD_VERSION = "V9.6"
 DASHBOARD_BUILD_TAG = "DASH2_0_V9_2_REATIVACAO_10D_EMOJI"
 
 def now_brasilia():
@@ -8400,15 +8400,41 @@ function renderKPIs(){
     'Realizado (R$) Período_float','Realizado(R$) Período_float','Realizado (R$) Periodo_float','Realizado(R$) Periodo_float',
     'Realizado (R$) Período','Realizado(R$) Período','Realizado (R$) Periodo','Realizado(R$) Periodo'
   ]);
-  const vendaDiaria = (_diaVenda.ok || _diaServico.ok)
-    ? Math.max(0, Number(_diaVenda.value||0)) + Math.max(0, Number(_diaServico.value||0))
-    : 0;
+  // V9.6: o card Venda diária deve priorizar o relatório oficial do worker
+  // (venda_diaria_mes_atual.json anexado em metas_vendas_mes_atual.json).
+  // O Controle de Meta diário fica apenas como fallback, porque ele pode representar
+  // período/projeção diferente do relatório oficial de venda do dia.
+  const _diaOficial = (()=>{
+    try{
+      const vd=(METAS_VENDAS && METAS_VENDAS.venda_diaria) ? METAS_VENDAS.venda_diaria : {};
+      const data=String(vd.data||'').trim();
+      const hojeBr=new Date().toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo'});
+      if(data && data!==hojeBr){
+        console.warn('[MDL venda diaria V9.6] relatório oficial stale ignorado', data, hojeBr);
+        return {ok:false,value:0,fonte:'oficial_stale'};
+      }
+      const emp=vd.empresa||{};
+      let val=_mdlBrNumber(emp.venda_diaria_total);
+      if(!val){
+        val=_mdlBrNumber(emp.total_vendido)+_mdlBrNumber(emp.valor_servico)+_mdlBrNumber(emp.valor_acrescimo_servico);
+      }
+      if(val>0) return {ok:true,value:Math.round(val*100)/100,fonte:'relatorio_venda_diaria_oficial'};
+    }catch(e){console.warn('[MDL venda diaria V9.6] falha leitura oficial',e)}
+    return {ok:false,value:0,fonte:'fallback_meta_diaria'};
+  })();
+  const vendaDiaria = _diaOficial.ok
+    ? Number(_diaOficial.value||0)
+    : ((_diaVenda.ok || _diaServico.ok)
+      ? Math.max(0, Number(_diaVenda.value||0)) + Math.max(0, Number(_diaServico.value||0))
+      : 0);
   try{
-    console.log('[MDL venda diaria V6.5]', {
-      venda_dia_sgi: _diaVenda.value,
-      servico_dia_sgi: _diaServico.value,
+    console.log('[MDL venda diaria V9.6]', {
+      fonte: _diaOficial.fonte,
+      venda_dia_oficial: _diaOficial.value,
+      venda_dia_sgi_fallback: _diaVenda.value,
+      servico_dia_sgi_fallback: _diaServico.value,
       total_card: vendaDiaria,
-      regra: 'metas_vendas_dia_atual.json hoje-hoje; sem snapshot'
+      regra: 'prioriza relatório oficial do worker; meta diária só fallback'
     });
   }catch(e){}
   try{
@@ -13305,6 +13331,140 @@ function renderAvisoTicker(title,hint,entries,opts={}){
   window.addEventListener('error',e=>{try{ if(!document.getElementById('loginScreen')?.classList.contains('hidden')){console.error('Erro JS capturado V9.4',e.error||e.message);}}catch(_e){} });
 })();
 
+
+
+// ===== V9.6 HOTFIX: venda diária live + murais consistentes + clientes sem movimento lazy-load =====
+(function(){
+  try{
+    window.MDL_V96_HOTFIX = true;
+
+    window._mdlCsmLoadedV96 = Array.isArray(CLIENTES_SEM_MOVIMENTO) && CLIENTES_SEM_MOVIMENTO.length>0;
+    window._mdlCsmLoadingV96 = false;
+    async function mdlV96LoadClientesSemMovimento(force=false){
+      if(window._mdlCsmLoadedV96 && !force) return true;
+      if(window._mdlCsmLoadingV96) return false;
+      window._mdlCsmLoadingV96 = true;
+      try{
+        const payload = await fetchJsonNoCache('clientes_sem_movimento.json');
+        const rows = Array.isArray(payload) ? payload : (Array.isArray(payload?.clientes) ? payload.clientes : []);
+        if(Array.isArray(CLIENTES_SEM_MOVIMENTO)){
+          CLIENTES_SEM_MOVIMENTO.splice(0, CLIENTES_SEM_MOVIMENTO.length, ...rows);
+        }
+        if(payload && typeof payload === 'object' && !Array.isArray(payload) && typeof CLIENTES_SEM_MOVIMENTO_META === 'object'){
+          Object.assign(CLIENTES_SEM_MOVIMENTO_META, payload);
+          delete CLIENTES_SEM_MOVIMENTO_META.clientes;
+        }
+        window._mdlCsmLoadedV96 = true;
+        window._mdlCsmLoadingV96 = false;
+        console.log('[MDL V9.6] clientes sem movimento carregados sob demanda:', rows.length);
+        return true;
+      }catch(e){
+        console.warn('[MDL V9.6] falha ao carregar clientes_sem_movimento.json', e);
+        window._mdlCsmLoadingV96 = false;
+        return false;
+      }
+    }
+    window.mdlV96LoadClientesSemMovimento = mdlV96LoadClientesSemMovimento;
+
+    if(typeof renderReativacaoTab === 'function' && !window._renderReativacaoV96Wrapped){
+      window._renderReativacaoV96Wrapped = true;
+      const _oldRenderReat = renderReativacaoTab;
+      renderReativacaoTab = function(){
+        try{
+          const semDados = !(Array.isArray(CLIENTES_SEM_MOVIMENTO) && CLIENTES_SEM_MOVIMENTO.length);
+          if(semDados && !window._mdlCsmLoadedV96){
+            if(reativacaoSection){
+              reativacaoSection.innerHTML = `<div class="section-head"><div><h2>🧡 Clientes sem movimento +45 dias <span class="note" style="color:#f59e0b">${esc(DASHBOARD_BUILD_VERSION)}</span></h2><div class="hint">Carregando lista do FTP somente agora para deixar o dashboard mais leve.</div></div></div><div class="glass panel" style="padding:18px"><strong>⏳ Carregando clientes sem movimento...</strong><div class="hint">Aguarde alguns segundos. A lista grande não fica mais embutida na tela inicial.</div></div>`;
+            }
+            mdlV96LoadClientesSemMovimento().then(()=>{try{_oldRenderReat.apply(this,arguments)}catch(e){console.warn(e)}});
+            return;
+          }
+        }catch(e){console.warn('[MDL V9.6] wrapper reativação',e)}
+        return _oldRenderReat.apply(this,arguments);
+      };
+    }
+
+    if(typeof renderNoReactivationAlerts === 'function' && !window._renderNoReactivationV96Wrapped){
+      const _oldNoReat = renderNoReactivationAlerts;
+      renderNoReactivationAlerts = function(){
+        try{
+          if(!(Array.isArray(CLIENTES_SEM_MOVIMENTO) && CLIENTES_SEM_MOVIMENTO.length) && !window._mdlCsmLoadedV96){
+            const total = Number(CLIENTES_SEM_MOVIMENTO_META?.acionaveis_total || CLIENTES_SEM_MOVIMENTO_META?.base_total || 0);
+            if(total>0){
+              return `<div class="glass panel aviso-rotativo" style="margin-bottom:12px;padding:13px 15px;border-color:rgba(245,158,11,.30)"><div class="section-head" style="margin:0"><div><h2 style="margin:0;font-size:17px">🧡 Clientes sem movimento</h2><div class="hint">${total.toLocaleString('pt-BR')} cliente(s) monitorado(s). Abra a aba Clientes sem movimento para carregar a lista completa.</div></div><button class="btn soft btn-xs" onclick="setMainTab('reativacao')">📋 Abrir lista</button></div></div>`;
+            }
+          }
+        }catch(e){}
+        return _oldNoReat.apply(this,arguments);
+      };
+    }
+
+    function mdlV96EntriesFromTickerHtml(html){
+      try{
+        const tmp=document.createElement('div'); tmp.innerHTML=String(html||'');
+        return Array.from(tmp.querySelectorAll('.aviso-pill')).map(p=>({
+          nome:(p.querySelector('.ticker-main')?.textContent||p.childNodes?.[1]?.textContent||p.textContent||'').trim(),
+          info:(p.querySelector('small')?.textContent||'').trim()
+        })).filter(x=>x.nome);
+      }catch(e){return []}
+    }
+    window.mdlV96EntriesFromTickerHtml = mdlV96EntriesFromTickerHtml;
+
+    if(!window._mdlHeroV96Wrapped){
+      window._mdlHeroV96Wrapped = true;
+      window.mdlV51HeroSlides = function(){
+        const groups = [
+          {title:'Sem cobranças hoje', icon:'⏰', kind:'cobranca', dot:'#ef4444', html:(()=>{try{return renderNoChargeAlerts()||''}catch(e){return ''}})(), emptyMain:'Cobranças em dia', emptyDetail:'Nenhum alerta crítico de cobrança agora.'},
+          {title:'Clientes sem movimento', icon:'🧡', kind:'reativacao', dot:'#f59e0b', html:(()=>{try{return renderNoReactivationAlerts()||''}catch(e){return ''}})(), emptyMain:'Reativação', emptyDetail:'Abra a aba Clientes sem movimento para ver a lista.'},
+          {title:'Aniversariantes do dia', icon:'🎂', kind:'aniversario', dot:'#ec4899', html:(()=>{try{return renderMuralAniversariantesDia()||''}catch(e){return ''}})(), emptyMain:'Aniversariantes', emptyDetail:'Nenhum aniversariante pendente no momento.'},
+          {title:'Meta diária BATIDA', icon:'🎯', kind:'meta', dot:'#22c55e', html:(()=>{try{return renderMetaDiariaBatidaAlerts()||''}catch(e){return ''}})(), emptyMain:'Aguardando metas diárias', emptyDetail:'Quem passar de 100% no período aparece aqui.'}
+        ];
+        let slides=[];
+        groups.forEach(g=>{
+          const items=mdlV96EntriesFromTickerHtml(g.html);
+          if(items.length){
+            slides = slides.concat(items.slice(0,12).map((it,idx)=>({icon:g.icon,title:g.title,count:items.length,main:it.nome,detail:it.info,dot:g.dot,kind:g.kind,mini:items.slice(idx+1,idx+4).map(x=>x.nome)})));
+          }else{
+            slides.push({icon:g.icon,title:g.title,count:0,main:g.emptyMain,detail:g.emptyDetail,dot:g.dot,kind:g.kind,mini:[]});
+          }
+        });
+        return slides;
+      };
+      window.mdlV51HeroSlideHtml = function(s){
+        const mini=(s.mini||[]).slice(0,3).map(x=>`<span class="mdl-hero-mini">${esc(x)}</span>`).join('');
+        return `<div class="mdl-hero-title"><span class="mdl-hero-dot" style="background:${esc(s.dot||'#f59e0b')}"></span>${esc(s.icon||'🔔')} ${esc(s.title||'Mural operacional')}</div><div class="mdl-hero-main">${esc(s.main||'Operação em andamento')}</div><div class="mdl-hero-detail">${esc(s.detail||'Resumo automático dos murais do dia.')}</div>${mini?`<div class="mdl-hero-mini-list">${mini}</div>`:''}`;
+      };
+    }
+
+    if(typeof pollSalesLive === 'function' && !window._pollSalesLiveV96Wrapped){
+      const _oldPollSalesLive = pollSalesLive;
+      pollSalesLive = async function(){
+        const r = await _oldPollSalesLive.apply(this,arguments);
+        try{
+          if(mainTab==='inicio'){
+            renderInicioTab();
+            const hero=document.getElementById('mdlHeroMural');
+            if(hero){ hero.dataset.idx='0'; const s=mdlV51HeroSlides()[0]||{}; hero.className='glass kpi mdl-hero-mural-card v52-'+String(s.kind||'cobranca'); hero.innerHTML=mdlV51HeroSlideHtml(s); }
+          }
+        }catch(e){console.warn('[MDL V9.6] refresh mural pós vendas',e)}
+        return r;
+      };
+    }
+
+    try{
+      const st=document.createElement('style');
+      st.id='mdl-v96-lazy-light-css';
+      st.textContent=`
+        .mdl-hero-mini-list{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;position:relative;z-index:1}
+        .mdl-hero-mini{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.055);border-radius:999px;padding:5px 8px;font-size:11px;color:#dbe4ff;font-weight:800;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        @media(max-width:760px){.mdl-hero-mini-list{display:none!important}.mdl-hero-detail{max-width:100%!important}.mdl-hero-main{font-size:17px!important}}
+      `;
+      document.head.appendChild(st);
+    }catch(e){}
+
+    console.log('[MDL V9.6] hotfix ativo: venda diária oficial + CSM lazy-load + murais sincronizados');
+  }catch(e){console.warn('MDL V9.6 hotfix falhou',e)}
+})();
 </script>
 </body>
 </html>
@@ -13336,8 +13496,8 @@ repls = {
     '__JS_DESTAQUE__': js_destaque,
     '__JS_HIST_DASH__': js_hist_dash,
     '__JS_QUITADOS_180__': js_quitados_180,
-    '__JS_CLIENTES_SEM_MOVIMENTO__': js_clientes_sem_movimento,
-    '__JS_CLIENTES_SEM_MOVIMENTO_BASE__': json.dumps(clientes_sem_movimento_base_py if 'clientes_sem_movimento_base_py' in globals() else [], ensure_ascii=False),
+    '__JS_CLIENTES_SEM_MOVIMENTO__': '[]',  # V9.6: lazy-load do JSON no navegador para não pesar o HTML
+    '__JS_CLIENTES_SEM_MOVIMENTO_BASE__': '[]',  # V9.6: base completa fica no FTP, não embutida no HTML
     '__JS_CLIENTES_SEM_MOVIMENTO_META__': js_clientes_sem_movimento_meta,
     '__JS_ANIVERSARIANTES__': js_aniversariantes,
     '__JS_DUPLICIDADES_CARTEIRA__': js_duplicidades_carteira,
