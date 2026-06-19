@@ -33,7 +33,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V9.0"
+DASHBOARD_BUILD_VERSION = "V9.1"
 DASHBOARD_BUILD_TAG = "DASH2_0_V7_6_TELEGRAM_TEMPLATE_BONITO"
 
 def now_brasilia():
@@ -11132,7 +11132,7 @@ function renderReativacaoTab(){
     let rows=reativacaoRowsPermitidas();
     if(filial) rows=rows.filter(r=>String(r.filial||'')===filial);
     if(q) rows=rows.filter(r=>`${r.cliente||''} ${r.cidade||''} ${r.bairro||''} ${r._owner?.label||''}`.toLowerCase().includes(q));
-    const filiais=ordenarFiliaisReativacao([...new Set((CLIENTES_SEM_MOVIMENTO||[]).map(r=>r.filial).filter(Boolean))]);
+    const filiais=mdlV91FiliaisFromRows((window.CLIENTES_SEM_MOVIMENTO_BASE&&window.CLIENTES_SEM_MOVIMENTO_BASE.length)?window.CLIENTES_SEM_MOVIMENTO_BASE:(CLIENTES_SEM_MOVIMENTO||[]));
     const enviadosHoje=rows.filter(isReativacaoEnviadaHoje).length;
     const totalPermitido=reativacaoRowsPermitidas().length;
     const porFilial=filiais.map(f=>`${f}: ${(CLIENTES_SEM_MOVIMENTO||[]).filter(r=>r.filial===f).length}`).join(' · ');
@@ -11521,7 +11521,7 @@ function renderAniversariantesTab(){
     let rows=aniversarioRowsPermitidas();
     if(filial) rows=rows.filter(r=>String(r.filial||'')===filial);
     if(q) rows=rows.filter(r=>`${r.cliente||''} ${r.cidade||''} ${r._owner?.label||''}`.toLowerCase().includes(q));
-    const filiais=ordenarFiliaisReativacao([...new Set((ANIVERSARIANTES||[]).map(r=>r.filial).filter(Boolean))]);
+    const filiais=mdlV91FiliaisFromRows(ANIVERSARIANTES||[]);
     const enviados=rows.filter(isAniversarioEnviadoHoje).length;
     const totalPermitido=aniversarioRowsPermitidas().length;
     const titulo=(usuarioAtual?.tipo==='master'||usuarioAtual?.is_viewer)?'Lista geral / filtro':'Minha lista de aniversariantes';
@@ -12318,17 +12318,22 @@ try{setInterval(()=>{document.querySelectorAll('.aviso-ticker-track').forEach(t=
 
 const DEFAULT_REATIVACAO_MSG_V90=`Olá, {primeiro_nome}! Tudo bem? 😊
 
-Aqui é da Lojas MDL - Móveis do Lar. Estamos com saudades de você! Faz um tempinho que você não aparece na loja.  🥹
+Aqui é da Lojas MDL - Móveis do Lar. Estamos com saudades de você! Faz um tempinho que você não aparece na loja. 🥹🧡
 
-Venha conhecer nossas novidades e aproveitar condições especiais que preparamos para nossos clientes. 👈👈😍😍`;
-const DEFAULT_ANIVERSARIO_MSG_V90=`Olá, {primeiro_nome}! Feliz aniversário! 🎂🎉
+Venha conhecer nossas novidades e aproveitar condições especiais que preparamos para nossos clientes. 👈😍
 
-Aqui é da Lojas MDL - Móveis do Lar. Desejamos muita saúde, paz e felicidades neste dia especial. 😍😍
+Acesse nosso site e confira nossas ofertas:
+www.moveisdolar.com.br`;
+const DEFAULT_ANIVERSARIO_MSG_V90=`Olá, {primeiro_nome}! Feliz aniversário! 🎂🎉🥳
 
-Preparamos condições especiais para você comemorar com a gente.
-🕺🎉🤩`;
-function mdlV90IsOldReatMsg(s){s=String(s||'');return s.includes('Estamos com saudades de você') && !/[😊🥹😍👈]/u.test(s)}
-function mdlV90IsOldAnivMsg(s){s=String(s||'');return s.includes('Feliz aniversário') && !/[🎂🎉😍🕺🤩]/u.test(s)}
+Aqui é da Lojas MDL - Móveis do Lar. Desejamos muita saúde, paz e felicidades neste dia especial. 😍🙏
+
+Preparamos condições especiais para você comemorar com a gente. Acesse nosso site e confira nossas ofertas:
+www.moveisdolar.com.br
+
+🕺🎁🎉🤩`;
+function mdlV90IsOldReatMsg(s){s=String(s||'');return s.includes('Estamos com saudades de você') && (!s.includes('www.moveisdolar.com.br') || !/[😊🥹😍👈🧡]/u.test(s))}
+function mdlV90IsOldAnivMsg(s){s=String(s||'');return s.includes('Feliz aniversário') && (!s.includes('www.moveisdolar.com.br') || !/[🎂🎉😍🕺🤩🥳🎁]/u.test(s))}
 function mdlV90NormalizeMessageDefaults(){
   try{
     CONFIG_META=CONFIG_META||{};
@@ -12372,6 +12377,119 @@ window.salvarMensagemAniversarioFilial=async function(){
   ['renderReativacaoTab','renderAniversariantesTab'].forEach(wrap);
 })();
 
+
+
+// ===== V9.1: mobile reforçado + mensagens WhatsApp com emoji/site + filiais fallback + salvar UTF-8 direto =====
+(function mdlV91Patch(){
+  try{
+    const st=document.createElement('style');
+    st.id='mdl-v91-mobile-css';
+    st.textContent=`
+@media(max-width:760px){
+  html,body{max-width:100%!important;overflow-x:hidden!important;}
+  body{font-size:14px!important;}
+  .app,.wrap,.container,.main,.content,#app{max-width:100%!important;width:100%!important;overflow-x:hidden!important;padding-left:8px!important;padding-right:8px!important;box-sizing:border-box!important;}
+  .hero,.topbar,.brand-card,.header,.dash-header,.glass,.panel{max-width:100%!important;width:100%!important;box-sizing:border-box!important;border-radius:18px!important;}
+  .brand,.brand-row,.header-inner{display:flex!important;flex-direction:column!important;align-items:flex-start!important;gap:10px!important;}
+  .brand h1,.hero h1{font-size:24px!important;line-height:1.1!important;white-space:normal!important;}
+  .header-actions,.top-actions,.actions{width:100%!important;display:flex!important;flex-wrap:wrap!important;justify-content:flex-start!important;gap:8px!important;}
+  .tabs,.nav-tabs,.menu-tabs{display:flex!important;overflow-x:auto!important;white-space:nowrap!important;gap:8px!important;padding-bottom:8px!important;}
+  .tabs .tab,.nav-tabs .tab,.menu-tabs .tab{flex:0 0 auto!important;}
+  .kpis,.cards-grid,.grid-cards,.dashboard-grid{display:grid!important;grid-template-columns:1fr!important;gap:12px!important;width:100%!important;}
+  .kpi,.card,.metric-card{width:100%!important;min-width:0!important;max-width:100%!important;box-sizing:border-box!important;min-height:auto!important;padding:16px!important;}
+  .kpi .value,.metric-card .value{font-size:28px!important;line-height:1.15!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+  .kpi .label,.metric-card .label{font-size:12px!important;letter-spacing:.08em!important;white-space:normal!important;}
+  .kpi .hint,.metric-card .hint,.small,.muted{font-size:12px!important;white-space:normal!important;overflow-wrap:anywhere!important;}
+  .laranjito-card,.mascot,.kpi img{max-width:58px!important;max-height:58px!important;right:10px!important;bottom:10px!important;}
+  .search-row,.form-grid,.meta-layout,.split,.row-grid{display:grid!important;grid-template-columns:1fr!important;gap:12px!important;width:100%!important;}
+  .input-card{min-width:0!important;width:100%!important;max-width:100%!important;box-sizing:border-box!important;}
+  .input-card textarea,.input-card input,.input-card select{width:100%!important;max-width:100%!important;box-sizing:border-box!important;font-size:14px!important;}
+  .log-row,.list-row{display:grid!important;grid-template-columns:1fr!important;gap:8px!important;}
+  .section-head{display:flex!important;flex-direction:column!important;align-items:flex-start!important;gap:8px!important;}
+  .faixa-title{display:flex!important;flex-direction:column!important;align-items:flex-start!important;gap:6px!important;}
+  .modal,.modal-content,.dialog{max-width:96vw!important;width:96vw!important;}
+}
+@media(min-width:761px) and (max-width:1180px){.kpis,.cards-grid,.grid-cards,.dashboard-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important;}.search-row{grid-template-columns:1fr 220px!important;}}
+    `;
+    document.head.appendChild(st);
+  }catch(e){console.warn('mdl v91 css',e)}
+})();
+
+const MDL_FILIAIS_PADRAO_V91=['F1','F2','F3','F4','F5','F6','F8','F9'];
+const DEFAULT_REATIVACAO_MSG_V91=`Olá, {primeiro_nome}! Tudo bem? 😊
+
+Aqui é da Lojas MDL - Móveis do Lar. Estamos com saudades de você! Faz um tempinho que você não aparece na loja. 🥹🧡
+
+Venha conhecer nossas novidades e aproveitar condições especiais que preparamos para nossos clientes. 👈😍
+
+Acesse nosso site e confira nossas ofertas:
+www.moveisdolar.com.br`;
+const DEFAULT_ANIVERSARIO_MSG_V91=`Olá, {primeiro_nome}! Feliz aniversário! 🎂🎉🥳
+
+Aqui é da Lojas MDL - Móveis do Lar. Desejamos muita saúde, paz e felicidades neste dia especial. 😍🙏
+
+Preparamos condições especiais para você comemorar com a gente. Acesse nosso site e confira nossas ofertas:
+www.moveisdolar.com.br
+
+🕺🎁🎉🤩`;
+function mdlV91TemEmoji(s){try{return /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(String(s||''));}catch(e){return false}}
+function mdlV91EnsureDefaults(){
+  try{
+    CONFIG_META=CONFIG_META||{};
+    const rg=String(CONFIG_META.reativacao_msg_template||'').trim();
+    const ag=String(CONFIG_META.aniversario_msg_template||'').trim();
+    if(!rg || (rg.includes('Estamos com saudades') && (!rg.includes('www.moveisdolar.com.br') || !mdlV91TemEmoji(rg)))) CONFIG_META.reativacao_msg_template=DEFAULT_REATIVACAO_MSG_V91;
+    if(!ag || (ag.includes('Feliz aniversário') && (!ag.includes('www.moveisdolar.com.br') || !mdlV91TemEmoji(ag)))) CONFIG_META.aniversario_msg_template=DEFAULT_ANIVERSARIO_MSG_V91;
+  }catch(e){console.warn('mdl v91 defaults',e)}
+}
+function mdlV91FiliaisFromRows(rows){
+  const s=new Set();
+  try{(rows||[]).forEach(r=>{const f=String(r?.filial||'').toUpperCase(); if(/^F\d+$/.test(f)) s.add(f);});}catch(e){}
+  try{Object.keys(CONFIG_META?.reativacao_msg_template_filiais||{}).forEach(f=>/^F\d+$/.test(String(f).toUpperCase())&&s.add(String(f).toUpperCase()));}catch(e){}
+  try{Object.keys(CONFIG_META?.aniversario_msg_template_filiais||{}).forEach(f=>/^F\d+$/.test(String(f).toUpperCase())&&s.add(String(f).toUpperCase()));}catch(e){}
+  MDL_FILIAIS_PADRAO_V91.forEach(f=>s.add(f));
+  return ordenarFiliaisReativacao([...s]);
+}
+async function mdlV91SaveConfigDireto(){
+  const resp=await fetch(API_CFG,{method:'POST',headers:{'Content-Type':'application/json; charset=utf-8','Accept':'application/json'},body:JSON.stringify({global:CONFIG_META,individual:CONFIG_META_IND})});
+  return await resp.json();
+}
+function mdlV91SyncMessageAreas(){
+  const r=document.getElementById('reatMsgTemplate'); if(r && (!String(r.value||'').trim() || !String(r.value||'').includes('www.moveisdolar.com.br'))) r.value=CONFIG_META.reativacao_msg_template||DEFAULT_REATIVACAO_MSG_V91;
+  const a=document.getElementById('anivMsgTemplate'); if(a && (!String(a.value||'').trim() || !String(a.value||'').includes('www.moveisdolar.com.br'))) a.value=CONFIG_META.aniversario_msg_template||DEFAULT_ANIVERSARIO_MSG_V91;
+}
+window.salvarMensagemReativacaoGlobal=async function(){
+  const el=document.getElementById('reatMsgTemplate');
+  CONFIG_META.reativacao_msg_template=el?el.value:DEFAULT_REATIVACAO_MSG_V91;
+  try{const j=await mdlV91SaveConfigDireto(); toast(j.ok?'Mensagem global de reativação salva com emojis.':'Não consegui salvar mensagem.',j.ok?'success':'warn');}catch(e){toast('Falha ao salvar mensagem.','warn')}
+};
+window.salvarMensagemReativacaoFilial=async function(){
+  const f=String(document.getElementById('reatMsgFilial')?.value||'').toUpperCase(); const el=document.getElementById('reatMsgTemplateFilial');
+  if(!f){toast('Selecione uma filial para salvar mensagem individual.','warn');return}
+  CONFIG_META.reativacao_msg_template_filiais=CONFIG_META.reativacao_msg_template_filiais||{}; CONFIG_META.reativacao_msg_template_filiais[f]=el?el.value:'';
+  try{const j=await mdlV91SaveConfigDireto(); toast(j.ok?`Mensagem da ${f} salva com emojis.`:'Não consegui salvar mensagem por filial.',j.ok?'success':'warn');}catch(e){toast('Falha ao salvar mensagem por filial.','warn')}
+};
+window.salvarMensagemAniversarioGlobal=async function(){
+  const el=document.getElementById('anivMsgTemplate');
+  CONFIG_META.aniversario_msg_template=el?el.value:DEFAULT_ANIVERSARIO_MSG_V91;
+  try{const j=await mdlV91SaveConfigDireto(); toast(j.ok?'Mensagem global de aniversário salva com emojis.':'Não consegui salvar mensagem.',j.ok?'success':'warn');}catch(e){toast('Falha ao salvar mensagem de aniversário.','warn')}
+};
+window.salvarMensagemAniversarioFilial=async function(){
+  const f=String(document.getElementById('anivMsgFilial')?.value||'').toUpperCase(); const el=document.getElementById('anivMsgTemplateFilial');
+  if(!f){toast('Selecione uma filial para salvar mensagem individual.','warn');return}
+  CONFIG_META.aniversario_msg_template_filiais=CONFIG_META.aniversario_msg_template_filiais||{}; CONFIG_META.aniversario_msg_template_filiais[f]=el?el.value:'';
+  try{const j=await mdlV91SaveConfigDireto(); toast(j.ok?`Mensagem de aniversário da ${f} salva com emojis.`:'Não consegui salvar mensagem por filial.',j.ok?'success':'warn');}catch(e){toast('Falha ao salvar mensagem por filial.','warn')}
+};
+// Corrige selects de filiais quando a lista "novos do dia" vier vazia.
+(function(){
+  mdlV91EnsureDefaults();
+  const wrap=(name)=>{try{const fn=window[name]||eval(name); if(typeof fn==='function' && !fn._v91){const nw=function(){mdlV91EnsureDefaults(); const ret=fn.apply(this,arguments); setTimeout(()=>{try{
+      const rf=document.getElementById('reatMsgFilial'); if(rf && rf.options.length===0){rf.innerHTML=mdlV91FiliaisFromRows(window.CLIENTES_SEM_MOVIMENTO_BASE||window.CLIENTES_SEM_MOVIMENTO||[]).map(f=>`<option value="${f}">${f}</option>`).join(''); trocarMensagemReativacaoFilial(rf.value||'F1');}
+      const af=document.getElementById('anivMsgFilial'); if(af && af.options.length===0){af.innerHTML=mdlV91FiliaisFromRows(window.ANIVERSARIANTES||[]).map(f=>`<option value="${f}">${f}</option>`).join(''); trocarMensagemAniversarioFilial(af.value||'F1');}
+      mdlV91SyncMessageAreas();
+    }catch(e){}},60); return ret;}; nw._v91=true; window[name]=nw; try{eval(name+'=window["'+name+'"]')}catch(e){} }}catch(e){}};
+  ['renderReativacaoTab','renderAniversariantesTab','renderInicioTab'].forEach(wrap);
+})();
 
 // ===== V5.5: META DIARIA PRECALCULADA PELO PYTHON + FALLBACK ROBUSTO =====
 (function(){
