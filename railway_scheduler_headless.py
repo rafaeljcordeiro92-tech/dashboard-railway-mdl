@@ -1,4 +1,4 @@
-# VERSAO: RAILWAY_SCHEDULER_MDL_V35_V89_META_DIARIA_UNICA_RESUMO_PROJECAO
+# VERSAO: RAILWAY_SCHEDULER_MDL_V37_V97_META_DIARIA_UNICA_STALE_FIX
 import json
 import os
 import sys
@@ -364,7 +364,7 @@ def start_http_panel():
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log('VERSAO V34: meta diaria 1x por dia + resumo com projecao mercantil + listas pesadas no boot opcional')
+log('VERSAO V37: meta diaria 1x por dia com trava contra dados antigos + resumo nomes curtos')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:

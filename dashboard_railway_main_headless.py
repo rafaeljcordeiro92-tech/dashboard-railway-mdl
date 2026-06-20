@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V9_6_HOTFIX_LIVE_SALES_LAZY_REATIVACAO
+# VERSAO: DASH2_0_V9_7_CONFIG_META_PRESERVADA_DIRETOR_ABAS_EMOJIS_MOBILE
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -33,8 +33,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V9.6"
-DASHBOARD_BUILD_TAG = "DASH2_0_V9_2_REATIVACAO_10D_EMOJI"
+DASHBOARD_BUILD_VERSION = "V9.7"
+DASHBOARD_BUILD_TAG = "DASH2_0_V9_7_CONFIG_META_PRESERVADA_DIRETOR_ABAS_EMOJIS_MOBILE"
 
 def now_brasilia():
     return datetime.now(APP_TZ)
@@ -13465,6 +13465,70 @@ function renderAvisoTicker(title,hint,entries,opts={}){
     console.log('[MDL V9.6] hotfix ativo: venda diária oficial + CSM lazy-load + murais sincronizados');
   }catch(e){console.warn('MDL V9.6 hotfix falhou',e)}
 })();
+
+// ===== V9.7: config preservada, diretor com abas configuráveis, emojis WhatsApp e mobile reforçado =====
+(function(){
+  try{
+    window.MDL_V97_HOTFIX = true;
+    const DEFAULT_REATIVACAO_MSG_V97 = `Olá, {primeiro_nome}! Tudo bem? 😊
+
+Aqui é da Lojas MDL - Móveis do Lar. Estamos com saudades de você! Faz um tempinho que você não aparece na loja. 🥹
+
+Venha conhecer nossas novidades e aproveitar condições especiais que preparamos para nossos clientes. 👉👉😍😍`;
+    const DEFAULT_ANIVERSARIO_MSG_V97 = `Olá, {primeiro_nome}! Feliz aniversário! 🎂🎉
+
+Aqui é da Lojas MDL - Móveis do Lar. Desejamos muita saúde, paz e felicidades neste dia especial. 😍😍
+
+Preparamos condições especiais para você comemorar com a gente.
+🕺🎉🤩`;
+    function mdlV97HasEmoji(s){ return /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(String(s||'')); }
+    function mdlV97EnsureMsgDefaults(){
+      try{
+        CONFIG_META = CONFIG_META || {};
+        if(!String(CONFIG_META.reativacao_msg_template||'').trim() || !mdlV97HasEmoji(CONFIG_META.reativacao_msg_template)){ CONFIG_META.reativacao_msg_template = DEFAULT_REATIVACAO_MSG_V97; }
+        if(!String(CONFIG_META.aniversario_msg_template||'').trim() || !mdlV97HasEmoji(CONFIG_META.aniversario_msg_template)){ CONFIG_META.aniversario_msg_template = DEFAULT_ANIVERSARIO_MSG_V97; }
+        const r=document.getElementById('reatMsgTemplate'); if(r && (!String(r.value||'').trim() || !mdlV97HasEmoji(r.value))) r.value=CONFIG_META.reativacao_msg_template;
+        const a=document.getElementById('anivMsgTemplate'); if(a && (!String(a.value||'').trim() || !mdlV97HasEmoji(a.value))) a.value=CONFIG_META.aniversario_msg_template;
+      }catch(e){console.warn('[MDL V9.7] ensure msg defaults', e)}
+    }
+    window.mdlV97EnsureMsgDefaults = mdlV97EnsureMsgDefaults;
+    function mdlV97FilialKey(v){ return String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,'').replace(/^FILIAL/,'F'); }
+    const _oldReatTplV97 = typeof reativacaoTemplateAtual==='function' ? reativacaoTemplateAtual : null;
+    reativacaoTemplateAtual = function(filial=''){
+      try{ const f=mdlV97FilialKey(filial), map=CONFIG_META?.reativacao_msg_template_filiais||{}; if(f && String(map[f]||'').trim()) return String(map[f]); const base=_oldReatTplV97?_oldReatTplV97(filial):(CONFIG_META?.reativacao_msg_template||''); return (String(base||'').trim() && mdlV97HasEmoji(base)) ? base : DEFAULT_REATIVACAO_MSG_V97; }catch(e){return DEFAULT_REATIVACAO_MSG_V97}
+    };
+    const _oldAnivTplV97 = typeof aniversarioTemplateAtual==='function' ? aniversarioTemplateAtual : null;
+    aniversarioTemplateAtual = function(filial=''){
+      try{ const f=mdlV97FilialKey(filial), map=CONFIG_META?.aniversario_msg_template_filiais||{}; if(f && String(map[f]||'').trim()) return String(map[f]); const base=_oldAnivTplV97?_oldAnivTplV97(filial):(CONFIG_META?.aniversario_msg_template||''); return (String(base||'').trim() && mdlV97HasEmoji(base)) ? base : DEFAULT_ANIVERSARIO_MSG_V97; }catch(e){return DEFAULT_ANIVERSARIO_MSG_V97}
+    };
+    async function mdlV97SaveConfig(){
+      if(typeof mdlV93SaveConfigB64 === 'function') return await mdlV93SaveConfigB64();
+      const fd=new FormData(); fd.append('payload_json', JSON.stringify({global:CONFIG_META,individual:CONFIG_META_IND||{}}));
+      const r=await fetch(API_CFG+'?_='+Date.now(),{method:'POST',body:fd,cache:'no-store'}); return await r.json();
+    }
+    window.salvarMensagemReativacaoGlobal = async function(){ const el=document.getElementById('reatMsgTemplate'); const val=String(el?.value||DEFAULT_REATIVACAO_MSG_V97); CONFIG_META.reativacao_msg_template=val; try{ const j=await mdlV97SaveConfig(); if(j.ok){ if(el) el.value=val; toast('Mensagem global de reativação salva com emojis.','success'); } else toast('Não consegui salvar mensagem global.','warn'); }catch(e){console.warn(e); toast('Falha ao salvar mensagem global.','warn')} };
+    window.salvarMensagemReativacaoFilial = async function(){ const f=mdlV97FilialKey(document.getElementById('reatMsgFilial')?.value||''), el=document.getElementById('reatMsgTemplateFilial'); if(!f){toast('Selecione uma filial para salvar mensagem individual.','warn');return} CONFIG_META.reativacao_msg_template_filiais=CONFIG_META.reativacao_msg_template_filiais||{}; CONFIG_META.reativacao_msg_template_filiais[f]=String(el?.value||''); try{ const j=await mdlV97SaveConfig(); toast(j.ok?`Mensagem da ${f} salva com emojis.`:'Não consegui salvar mensagem por filial.',j.ok?'success':'warn'); }catch(e){console.warn(e); toast('Falha ao salvar mensagem por filial.','warn')} };
+    window.salvarMensagemAniversarioGlobal = async function(){ const el=document.getElementById('anivMsgTemplate'); const val=String(el?.value||DEFAULT_ANIVERSARIO_MSG_V97); CONFIG_META.aniversario_msg_template=val; try{ const j=await mdlV97SaveConfig(); if(j.ok){ if(el) el.value=val; toast('Mensagem global de aniversário salva com emojis.','success'); } else toast('Não consegui salvar mensagem global.','warn'); }catch(e){console.warn(e); toast('Falha ao salvar mensagem de aniversário.','warn')} };
+    window.salvarMensagemAniversarioFilial = async function(){ const f=mdlV97FilialKey(document.getElementById('anivMsgFilial')?.value||''), el=document.getElementById('anivMsgTemplateFilial'); if(!f){toast('Selecione uma filial para salvar mensagem individual.','warn');return} CONFIG_META.aniversario_msg_template_filiais=CONFIG_META.aniversario_msg_template_filiais||{}; CONFIG_META.aniversario_msg_template_filiais[f]=String(el?.value||''); try{ const j=await mdlV97SaveConfig(); toast(j.ok?`Mensagem de aniversário da ${f} salva com emojis.`:'Não consegui salvar mensagem por filial.',j.ok?'success':'warn'); }catch(e){console.warn(e); toast('Falha ao salvar mensagem por filial.','warn')} };
+    window.saveSession = function(){ try{ const data={usuarioAtual,exp:Date.now()+45*24*60*60*1000,version:DASHBOARD_BUILD_VERSION}; localStorage.setItem(SESSION_KEY, JSON.stringify(data)); sessionStorage.setItem(SESSION_KEY, JSON.stringify(data)); }catch(e){} };
+    window.restoreSession = function(){ try{ const raw=localStorage.getItem(SESSION_KEY)||sessionStorage.getItem(SESSION_KEY); if(!raw) return false; const data=JSON.parse(raw); if(!data||!data.usuarioAtual||!data.exp||Date.now()>Number(data.exp)){localStorage.removeItem(SESSION_KEY);sessionStorage.removeItem(SESSION_KEY);return false;} usuarioAtual=data.usuarioAtual; return true; }catch(e){return false} };
+    const DEFAULT_DIRECTOR_TABS_V97=['inicio','vendedores','filiais','servicos','cobrancas','avisos','historico'];
+    const ALL_TABS_V97=[['inicio','Início'],['vendedores','Por Colaborador'],['filiais','Por Filial'],['metas','Metas'],['servicos','Serviços'],['cobrancas','Cobranças'],['reativacao','Clientes sem movimento'],['aniversariantes','Aniversariantes'],['avisos','Avisos'],['telegram','Telegram'],['senhas','Senhas'],['historico','Histórico']];
+    function isDiretorV97(){ return String(usuarioAtual?.roleLabel||'').toLowerCase().includes('diretor') || String(usuarioAtual?.login||'').toLowerCase()==='diretorcomercial' || String(usuarioAtual?.tipo||'').toLowerCase()==='diretor'; }
+    function diretorTabsV97(){ const arr=Array.isArray(CONFIG_META?.director_visible_tabs)?CONFIG_META.director_visible_tabs:[]; return (arr.length?arr:DEFAULT_DIRECTOR_TABS_V97).map(String); }
+    function applyDirectorTabsV97(){ try{ if(!isDiretorV97()) return; const allowed=new Set(diretorTabsV97()); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{ const t=String(btn.dataset.tab||''); btn.classList.toggle('hidden', !allowed.has(t)); }); if(!allowed.has(String(window.mainTab||'inicio')) && typeof setMainTab==='function') setMainTab('inicio'); }catch(e){console.warn('[MDL V9.7] apply tabs',e)} }
+    window.applyDirectorTabsV97=applyDirectorTabsV97;
+    const _oldAbrirV97=typeof abrirApp==='function'?abrirApp:null; if(_oldAbrirV97){ abrirApp=async function(){ const r=await _oldAbrirV97.apply(this,arguments); setTimeout(()=>{applyDirectorTabsV97();mdlV97EnsureMsgDefaults();},80); return r; }; }
+    const _oldSetMainTabV97=typeof setMainTab==='function'?setMainTab:null; if(_oldSetMainTabV97){ setMainTab=function(tab){ if(isDiretorV97()&&!diretorTabsV97().includes(String(tab||''))) tab='inicio'; const r=_oldSetMainTabV97.apply(this,[tab]); setTimeout(()=>{applyDirectorTabsV97();mdlV97EnsureMsgDefaults();},30); return r; }; }
+    function renderDirectorTabsConfigV97(){ try{ if(String(usuarioAtual?.tipo||'').toLowerCase()!=='master') return; const host=document.getElementById('senhasSection'); if(!host||document.getElementById('directorTabsConfigV97')) return; const allowed=new Set(diretorTabsV97()); const html=`<div id="directorTabsConfigV97" class="glass panel" style="margin:14px 0;border-color:rgba(96,165,250,.35)"><div class="section-head" style="margin-bottom:8px"><div><h2 style="font-size:18px;margin:0">👑 Visualização do Diretor Comercial</h2><div class="hint">Escolha quais abas o Diretor Comercial pode visualizar. Padrão leve: sem Metas, Clientes sem movimento e Aniversariantes.</div></div></div><div style="display:flex;gap:8px;flex-wrap:wrap">${ALL_TABS_V97.map(([k,n])=>`<label class="pill" style="cursor:pointer"><input type="checkbox" class="dir-tab-v97" value="${esc(k)}" ${allowed.has(k)?'checked':''}> ${esc(n)}</label>`).join('')}</div><button class="btn primary" style="margin-top:12px" onclick="salvarDirectorTabsV97()">💾 Salvar visualização do Diretor</button></div>`; const firstPanel=host.querySelector('.glass.panel'); if(firstPanel) firstPanel.insertAdjacentHTML('beforebegin',html); else host.insertAdjacentHTML('afterbegin',html); }catch(e){console.warn('[MDL V9.7] render director config',e)} }
+    window.salvarDirectorTabsV97=async function(){ try{ const vals=[...document.querySelectorAll('.dir-tab-v97:checked')].map(x=>x.value); CONFIG_META.director_visible_tabs=vals.length?vals:DEFAULT_DIRECTOR_TABS_V97; const j=await mdlV97SaveConfig(); toast(j.ok?'Visualização do Diretor salva.':'Não consegui salvar visualização do Diretor.',j.ok?'success':'warn'); }catch(e){console.warn(e); toast('Falha ao salvar visualização do Diretor.','warn')} };
+    const _oldRenderSenhasV97=typeof renderSenhasTab==='function'?renderSenhasTab:null; if(_oldRenderSenhasV97){ renderSenhasTab=function(){ const r=_oldRenderSenhasV97.apply(this,arguments); setTimeout(renderDirectorTabsConfigV97,30); return r; }; }
+    try{ const st=document.createElement('style'); st.id='mdl-v97-mobile-home-css'; st.textContent=`@media(max-width:760px){html,body{max-width:100vw!important;overflow-x:hidden!important}.app-shell,.container{width:100%!important;max-width:100vw!important;padding:10px!important;box-sizing:border-box!important}.hero,.header-card{display:block!important;padding:16px!important;border-radius:22px!important}.brand{display:flex!important;align-items:center!important;gap:12px!important;flex-wrap:wrap!important}.brand h1{font-size:22px!important;line-height:1.05!important}.brand p,.hero .sub,.hint{font-size:12px!important;line-height:1.35!important}.header-actions{display:flex!important;flex-wrap:wrap!important;gap:8px!important;margin-top:12px!important;width:100%!important}.header-actions .btn,.header-actions .badge{font-size:13px!important;padding:10px 12px!important;min-height:42px!important}.kpis{display:grid!important;grid-template-columns:1fr!important;gap:10px!important;width:100%!important;overflow:visible!important}.kpi{min-width:0!important;width:100%!important;max-width:100%!important;min-height:0!important;padding:14px 16px!important;border-radius:18px!important;box-sizing:border-box!important}.kpi .label{font-size:10px!important;white-space:normal!important;letter-spacing:.08em!important}.kpi .value{font-size:22px!important;line-height:1.12!important;white-space:normal!important;word-break:break-word!important}.kpi .subline{font-size:12px!important;line-height:1.3!important;white-space:normal!important}.kpi img,.kpi .mascote{max-width:56px!important;max-height:56px!important;right:10px!important;bottom:10px!important}.tabs{display:flex!important;overflow-x:auto!important;flex-wrap:nowrap!important;gap:8px!important;padding:8px!important;margin:10px 0!important}.tabs .tab{flex:0 0 auto!important;white-space:nowrap!important;padding:10px 12px!important;font-size:12px!important}.inicio-murais-grid,.inicio-operacional-compact,.grid-cards,.form-grid,.meta-grid{grid-template-columns:1fr!important}.glass.panel,.campaign-banner{padding:14px!important;border-radius:18px!important;max-width:100%!important;overflow:hidden!important}.section-head{display:flex!important;flex-direction:column!important;align-items:flex-start!important;gap:8px!important}.mdl-hero-mural-card{grid-column:1/-1!important;min-height:0!important}}`; document.head.appendChild(st); }catch(e){}
+    setTimeout(()=>{mdlV97EnsureMsgDefaults();applyDirectorTabsV97();},300);
+    console.log('[MDL V9.7] hotfix ativo: config preservada, diretor abas configuráveis, emojis WhatsApp e mobile reforçado');
+  }catch(e){console.warn('[MDL V9.7] hotfix falhou', e)}
+})();
+
 </script>
 </body>
 </html>
@@ -14025,14 +14089,14 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
         try:
             # V9.5: config_meta.json salvo pelo dashboard/API é fonte de verdade no FTP.
             # Se o main não conseguiu sincronizar do servidor, NÃO sobe default/local vazio por cima.
-            if _config_meta_loaded_from_remote or _config_meta_existed_before or _json_has_items_v95(_config_meta_path, ('global','individual')):
+            if _config_meta_loaded_from_remote or os.getenv('FORCE_UPLOAD_CONFIG_META','0') == '1':
                 with open(_config_meta_path, 'rb') as f_cfg:
                     ftp.storbinary('STOR config_meta.json', f_cfg)
-                    print('✅ FTP: config_meta.json preservado/enviado')
+                    print('✅ FTP: config_meta.json remoto preservado/enviado')
             else:
-                print('🛡️ V9.5: config_meta.json não sincronizado; pulando upload para não resetar metas do FTP.')
+                print('🛡️ V9.7: config_meta.json do FTP não foi sobrescrito pelo main; configurações salvas no dashboard permanecem.')
         except Exception as e_cfg_upload:
-            print(f'⚠️ V9.5: não enviei config_meta.json para evitar reset indevido: {e_cfg_upload}')
+            print(f'⚠️ V9.7: não enviei config_meta.json para evitar reset indevido: {e_cfg_upload}')
         try:
             with open(cred_state_path, 'rb') as f_credstate:
                 ftp.storbinary('STOR credenciais_dashboard.json', f_credstate)

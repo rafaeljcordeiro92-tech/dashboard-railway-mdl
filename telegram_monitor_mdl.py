@@ -1,4 +1,20 @@
-# VERSAO: TELEGRAM_MONITOR_MDL_V19_V89_MSGS_LEITURA_RESUMO_PROJECAO
+def _extract_list_payload(data):
+    # Aceita logs/listas vindos como lista direta ou como objeto {ok,data/logs/items/clientes...}.
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        for key in ("data", "logs", "items", "clientes", "registros", "rows"):
+            val = data.get(key)
+            if isinstance(val, list):
+                return val
+        for val in data.values():
+            if isinstance(val, dict):
+                nested = _extract_list_payload(val)
+                if nested:
+                    return nested
+    return []
+
+# VERSAO: TELEGRAM_MONITOR_MDL_V21_V97_META_DIARIA_UNICA_RESUMO_NOMES_CURTOS
 import json
 import os
 import re
@@ -323,7 +339,7 @@ def _load_cobrancas(base_dir):
     data = load_json_local_or_remote(base_dir, "cobrancas_log.json", "cobrancas_log.json", None)
     if data is None:
         data = _read_url_json(f"{PUBLIC_BASE}/cobrancas_api.php", [])
-    return data if isinstance(data, list) else []
+    return _extract_list_payload(data)
 
 
 def _load_users(base_dir):
@@ -715,7 +731,11 @@ def _users_missing_action(users, active_keys, flag_name):
 def _format_user_list(users, limit=22):
     if not users:
         return "• Todos fizeram ✅"
-    nomes = [f"{u.get('nome')} ({u.get('filial')})" if u.get('filial') else str(u.get('nome')) for u in users[:limit]]
+    nomes = []
+    for u in users[:limit]:
+        nome = _first_name_v97(u.get('nome') or u.get('login') or '')
+        if nome:
+            nomes.append(nome)
     txt = "• " + "; ".join(nomes)
     if len(users) > limit:
         txt += f"\n• +{len(users)-limit} outros"
@@ -803,6 +823,28 @@ def _is_meta_venda_mercantil_diaria(chave, bloco):
     return False
 
 
+def _date_to_iso_v97(v):
+    s = str(v or "").strip()
+    if not s:
+        return ""
+    m = re.match(r"^(\d{2})/(\d{2})/(\d{4})", s)
+    if m:
+        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+    m = re.match(r"^(\d{4})-(\d{2})-(\d{2})", s)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    return ""
+
+def _first_name_v97(nome):
+    s = str(nome or "").strip()
+    if not s:
+        return ""
+    s = re.sub(r"^\s*F\d+\s*[-–]\s*", "", s, flags=re.I)
+    s = re.sub(r"\s*\([^)]+\)\s*$", "", s).strip()
+    if s.upper().startswith("GERENTE"):
+        return s.title()
+    return (s.split()[0] if s.split() else s).title()
+
 def load_meta_diaria_batidas(base_dir):
     """Lê metas_vendas_dia_atual.json e retorna somente Venda/Mercantil com Atingido Período >= 100%.
 
@@ -813,6 +855,11 @@ def load_meta_diaria_batidas(base_dir):
     """
     data = load_json_local_or_remote(base_dir, 'metas_vendas_dia_atual.json', 'metas_vendas_dia_atual.json', {})
     if not isinstance(data, dict):
+        return []
+    # V9.7: não dispara meta diária velha após meia-noite/deploy.
+    data_iso = _date_to_iso_v97(data.get('data_consulta') or data.get('data') or data.get('gerado_em'))
+    today_iso = now_br().strftime('%Y-%m-%d')
+    if data_iso and data_iso != today_iso:
         return []
     metas = data.get('metas') or {}
     out = []
@@ -843,7 +890,7 @@ def load_meta_diaria_batidas(base_dir):
                 # V18: chave estável por dia + escopo + responsável.
                 # Não inclui percentual, para enviar só 1x quando passou de 100%,
                 # mesmo que depois suba de 106% para 112%.
-                'key': f"{data.get('data_consulta') or ''}|VENDA_MERCANTIL|{chave}|{nome}|{filial}",
+                'key': f"{today_iso}|VENDA_MERCANTIL|{chave}|{nome}|{filial}",
                 'nome': nome,
                 'filial': filial,
                 'escopo': escopo,
@@ -950,6 +997,11 @@ def load_meta_mercantil_100(base_dir):
     """Lê metas_vendas_mes_atual.json e retorna filiais/vendedores com Atingido Total >= 100% em Venda Mercantil."""
     data = load_json_local_or_remote(base_dir, 'metas_vendas_mes_atual.json', 'metas_vendas_mes_atual.json', {})
     if not isinstance(data, dict):
+        return []
+    # V9.7: não dispara meta diária velha após meia-noite/deploy.
+    data_iso = _date_to_iso_v97(data.get('data_consulta') or data.get('data') or data.get('gerado_em'))
+    today_iso = now_br().strftime('%Y-%m-%d')
+    if data_iso and data_iso != today_iso:
         return []
     metas = data.get('metas') or {}
     specs = [
@@ -1146,7 +1198,7 @@ def build_daily_summary(base_dir, date_str=None):
     else:
         linhas.append("• Nenhuma cobrança real registrada hoje.")
     linhas.append(f"🚫 Sem cobrança registrada: {len(sem_cob)} usuário(s)")
-    linhas.append(_format_user_list(sem_cob, 18))
+    linhas.append(_format_user_list(sem_cob, 24))
 
     linhas.append("")
     linhas.append(f"🧡 CLIENTES SEM MOVIMENTO / REATIVAÇÃO: {len(logs_reat)} acionamento(s)")
@@ -1156,7 +1208,7 @@ def build_daily_summary(base_dir, date_str=None):
     else:
         linhas.append("• Nenhuma reativação registrada hoje.")
     linhas.append(f"🚫 Sem acionar clientes inativos: {len(sem_reat)} usuário(s)")
-    linhas.append(_format_user_list(sem_reat, 18))
+    linhas.append(_format_user_list(sem_reat, 24))
 
     linhas.append("")
     linhas.append(f"🎂 ANIVERSARIANTES: {len(logs_aniv)} mensagem(ns) enviada(s)")
@@ -1166,7 +1218,7 @@ def build_daily_summary(base_dir, date_str=None):
     else:
         linhas.append("• Nenhuma mensagem de aniversário registrada hoje.")
     linhas.append(f"🚫 Sem enviar aniversariantes: {len(sem_aniv)} usuário(s)")
-    linhas.append(_format_user_list(sem_aniv, 18))
+    linhas.append(_format_user_list(sem_aniv, 24))
 
     linhas.append("")
     linhas.append(f"🎯 METAS DIÁRIAS BATIDAS: {len(metas_dia)}")
