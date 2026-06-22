@@ -33,7 +33,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V9.7"
+DASHBOARD_BUILD_VERSION = "V9.8"
 DASHBOARD_BUILD_TAG = "DASH2_0_V9_7_CONFIG_META_PRESERVADA_DIRETOR_ABAS_EMOJIS_MOBILE"
 
 def now_brasilia():
@@ -13527,6 +13527,124 @@ Preparamos condições especiais para você comemorar com a gente.
     setTimeout(()=>{mdlV97EnsureMsgDefaults();applyDirectorTabsV97();},300);
     console.log('[MDL V9.7] hotfix ativo: config preservada, diretor abas configuráveis, emojis WhatsApp e mobile reforçado');
   }catch(e){console.warn('[MDL V9.7] hotfix falhou', e)}
+})();
+
+
+
+// ===== V9.8 HOTFIX: clientes sem movimento visíveis no acesso individual =====
+(function(){
+  try{
+    window.MDL_V98_REAT_INDIVIDUAL_FIX = true;
+
+    function mdlV98FilialNorm(v){
+      v=String(v||'').trim().toUpperCase();
+      if(!v) return '';
+      if(/^\d+$/.test(v)) return 'F'+Number(v);
+      if(/^F0\d+$/.test(v)) return 'F'+Number(v.replace(/^F0*/,''));
+      return v;
+    }
+    function mdlV98Norm(v){
+      try{return normName(v||'')}catch(e){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,' ').trim().toLowerCase()}
+    }
+    function mdlV98Key(nome,filial){return mdlV98Norm(nome)+'_'+mdlV98FilialNorm(filial)}
+    function mdlV98FindVendByLoginNome(login,nome,filial){
+      const fil=mdlV98FilialNorm(filial);
+      const log=String(login||'').toLowerCase().trim();
+      const nn=mdlV98Norm(nome);
+      let arr=[];
+      try{arr=flattenVendedores()||[]}catch(e){arr=[]}
+      return arr.find(v=>{
+        const vf=mdlV98FilialNorm(v.filial);
+        if(fil && vf!==fil) return false;
+        const vlogin=String(v.login||'').toLowerCase().trim();
+        const vn=mdlV98Norm(v.nome);
+        return (log && vlogin && vlogin===log) || (nn && vn===nn) || (nn && (vn.includes(nn)||nn.includes(vn)));
+      }) || null;
+    }
+    function mdlV98CandidateKeysFrom(ent){
+      const filial=mdlV98FilialNorm(ent?.filial || usuarioAtual?.filial || '');
+      const names=[];
+      function add(v){v=String(v||'').trim(); if(v && !names.includes(v)) names.push(v)}
+      add(ent?.nome); add(ent?.login); add(usuarioAtual?.nome); add(usuarioAtual?.login);
+      const found=mdlV98FindVendByLoginNome(ent?.login||usuarioAtual?.login, ent?.nome||usuarioAtual?.nome, filial);
+      add(found?.nome); add(found?.login);
+      const keys=[];
+      names.forEach(n=>{const k=mdlV98Key(n,filial); if(k!=='_'+filial && !keys.includes(k)) keys.push(k)});
+      return keys;
+    }
+    function mdlV98RowsWithOwners(){
+      let base=[];
+      try{base=(CLIENTES_SEM_MOVIMENTO||[])}catch(e){base=[]}
+      return base.map((r,i)=>({...r,_idx:(r._idx!=null?r._idx:i),_owner:reativacaoOwnerInfo(r)}));
+    }
+
+    // Corrige a chave do usuário logado: usa o vendedor real da carteira quando existir.
+    window.reativacaoCurrentKey = function(){
+      if(!usuarioAtual || usuarioAtual.tipo==='master' || usuarioAtual.is_viewer) return '';
+      const filial=mdlV98FilialNorm(usuarioAtual.filial||'');
+      if(usuarioAtual.is_gerente) return `GERENTE_${filial}`;
+      const found=mdlV98FindVendByLoginNome(usuarioAtual.login, usuarioAtual.nome, filial);
+      return mdlV98Key(found?.nome || usuarioAtual.nome || usuarioAtual.login || '', filial);
+    };
+
+    // Corrige a aba individual do usuário, aceitando nome/login/entidade encontrada.
+    window.reativacaoRowsPermitidas = function(){
+      let rows=mdlV98RowsWithOwners();
+      if(!usuarioAtual || usuarioAtual.tipo==='master' || usuarioAtual.is_viewer) return rows;
+      const filial=mdlV98FilialNorm(usuarioAtual.filial||'');
+      if(usuarioAtual.is_gerente) return rows.filter(r=>mdlV98FilialNorm(r.filial)===filial && String(r._owner?.key||'')===`GERENTE_${filial}`);
+      const keys=mdlV98CandidateKeysFrom(usuarioAtual);
+      let filtered=rows.filter(r=>keys.includes(String(r._owner?.key||'')));
+      // Fallback seguro: se o login/nome salvo vier abreviado, compara label/nome do responsável.
+      if(!filtered.length){
+        const nomes=keys.map(k=>mdlV98Norm(k.split('_')[0])).filter(Boolean);
+        filtered=rows.filter(r=>mdlV98FilialNorm(r.filial)===filial && nomes.some(n=>{
+          const o=mdlV98Norm(r._owner?.nome||r._owner?.label||'');
+          return o && n && (o===n || o.includes(n) || n.includes(o));
+        }));
+      }
+      return filtered;
+    };
+
+    // Corrige o painel individual aberto pelo Master e também pelo próprio usuário.
+    window.reativacaoRowsParaEnt = function(ent){
+      if(!ent) return [];
+      const filial=mdlV98FilialNorm(ent.filial||'');
+      let rows=mdlV98RowsWithOwners();
+      if(ent.type==='filial') return rows.filter(r=>mdlV98FilialNorm(r.filial)===filial);
+      const keys=mdlV98CandidateKeysFrom(ent);
+      let filtered=rows.filter(r=>keys.includes(String(r._owner?.key||'')));
+      if(!filtered.length){
+        const nomes=keys.map(k=>mdlV98Norm(k.split('_')[0])).filter(Boolean);
+        filtered=rows.filter(r=>mdlV98FilialNorm(r.filial)===filial && nomes.some(n=>{
+          const o=mdlV98Norm(r._owner?.nome||r._owner?.label||'');
+          return o && n && (o===n || o.includes(n) || n.includes(o));
+        }));
+      }
+      return filtered;
+    };
+
+    // Se a lista grande ainda não foi carregada no login individual, carrega e redesenha a tela do usuário.
+    if(typeof renderReativacaoEnt === 'function' && !window._renderReatEntV98Wrapped){
+      window._renderReatEntV98Wrapped = true;
+      const _oldRenderReatEnt = renderReativacaoEnt;
+      window.renderReativacaoEnt = renderReativacaoEnt = function(ent){
+        try{
+          const semDados = !(Array.isArray(CLIENTES_SEM_MOVIMENTO) && CLIENTES_SEM_MOVIMENTO.length);
+          if(semDados && !window._mdlCsmLoadedV96 && typeof mdlV96LoadClientesSemMovimento==='function'){
+            mdlV96LoadClientesSemMovimento().then(()=>{
+              try{
+                if(detailScreen && !detailScreen.classList.contains('hidden') && currentDetailRef){openEntity(currentDetailRef)}
+                else if(typeof renderReativacaoTab==='function'){renderReativacaoTab()}
+              }catch(e){console.warn('[MDL V9.8] redraw reativacao individual',e)}
+            });
+            return `<div class="accordion open"><div class="acc-head"><span>🧡 Clientes sem movimento para reativação</span><span class="acc-hint">carregando lista...</span></div><div class="acc-body"><div class="glass panel"><strong>⏳ Carregando clientes sem movimento</strong><div class="hint">A lista fica no FTP para deixar o dashboard leve. Aguarde alguns segundos.</div></div></div></div>`;
+          }
+        }catch(e){console.warn('[MDL V9.8] wrapper renderReativacaoEnt',e)}
+        return _oldRenderReatEnt.apply(this,arguments);
+      };
+    }
+  }catch(e){console.warn('[MDL V9.8] hotfix reativacao individual falhou',e)}
 })();
 
 </script>
