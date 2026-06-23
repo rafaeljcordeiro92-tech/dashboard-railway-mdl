@@ -33,8 +33,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.1"
-DASHBOARD_BUILD_TAG = "DASH2_0_V10_0_REATIVACAO_INDIVIDUAL_LAZY_BASE"
+DASHBOARD_BUILD_VERSION = "V10.2"
+DASHBOARD_BUILD_TAG = "DASH2_0_V10_2_META_DIARIA_JS_STRICT"
 
 def now_brasilia():
     return datetime.now(APP_TZ)
@@ -4602,6 +4602,18 @@ def _v101_meta_diaria_validada(row):
         return False, 0.0, meta_txt or "R$ 0,00", real_txt or "R$ 0,00"
 
     ating_calc = round((real_n / meta_n) * 100.0, 2)
+
+    # V10.2: blindagem contra leitura desalinhada do Sólidus.
+    # Quando a tabela muda/arrasta coluna, às vezes Realizado Período vira Projetado/Total
+    # e aparecem absurdos como 1297% no mural. Meta diária só aceita valores plausíveis.
+    ating_txt = _v54_cell(row, "Atingido Período", "Atingido Periodo", "Atingido Período_float", "Atingido Periodo_float")
+    ating_sgi = _v54_num_pct_meta_diaria(ating_txt)
+    if ating_sgi > 0 and abs(ating_sgi - ating_calc) > max(2.0, ating_calc * 0.05):
+        return False, 0.0, meta_txt or "R$ 0,00", real_txt or "R$ 0,00"
+    # Nenhuma loja/vendedor deve disparar alerta diário acima de 500%; isso indica coluna errada.
+    if ating_calc > 500:
+        return False, 0.0, meta_txt or "R$ 0,00", real_txt or "R$ 0,00"
+
     return ating_calc >= 100.0, ating_calc, meta_txt or "R$ 0,00", real_txt or "R$ 0,00"
 
 def _v54_meta_diaria_precalc(dados):
@@ -13872,6 +13884,97 @@ Preparamos condições especiais para você comemorar com a gente.
   }catch(e){console.warn('[MDL V10.0] hotfix reativação individual falhou',e)}
 })();
 
+
+// ===== V10.2 HOTFIX: meta diária apenas por Realizado Período validado no navegador =====
+(function(){
+  try{
+    const V102_TAG='MDL_V102_META_DIARIA_JS_STRICT';
+    function brMoney(v){
+      if(typeof v==='number') return Number.isFinite(v)?v:0;
+      let s=String(v??'').trim();
+      if(!s || /^(nan|null|none)$/i.test(s)) return 0;
+      s=s.replace(/R\$/ig,'').replace(/%/g,'').replace(/\s/g,'');
+      if(s.includes(',')) s=s.replace(/\./g,'').replace(',','.');
+      const n=Number(s); return Number.isFinite(n)?n:0;
+    }
+    function brPct(v){return brMoney(v)}
+    function cell(row, keys){
+      row=row||{};
+      for(const k of keys){ if(Object.prototype.hasOwnProperty.call(row,k) && row[k]!==null && row[k]!==undefined && String(row[k]).trim()!=='') return row[k]; }
+      const norm=k=>String(k||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+      const wanted=keys.map(norm);
+      for(const [k,v] of Object.entries(row)){
+        const nk=norm(k);
+        if(wanted.includes(nk) && v!==null && v!==undefined && String(v).trim()!=='') return v;
+      }
+      return '';
+    }
+    function todayBR(){const d=new Date(); return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();}
+    function filFromText(v){
+      const s=String(v||'').toUpperCase();
+      let m=s.match(/F(?:ILIAL)?\s*0?(\d{1,2})/); if(m) return 'F'+String(Number(m[1]));
+      m=s.match(/\bF\s*0?(\d{1,2})\b/); if(m) return 'F'+String(Number(m[1]));
+      return '';
+    }
+    function isGerMeta(nome){return /\(\s*GER\s*F?\d*\s*\)|\bGERF?\d*\b/i.test(String(nome||''));}
+    function validateMetaRow(row){
+      const metaTxt=cell(row,['Meta (R$) Período','Meta (R$) Periodo','Meta(R$) Período','Meta(R$) Periodo']);
+      const realTxt=cell(row,['Realizado (R$) Período','Realizado (R$) Periodo','Realizado(R$) Período','Realizado(R$) Periodo']);
+      const totalTxt=cell(row,['Realizado (R$) Total','Realizado(R$) Total']);
+      const atingTxt=cell(row,['Atingido Período','Atingido Periodo','Atingido Período_float','Atingido Periodo_float']);
+      const meta=brMoney(metaTxt), real=brMoney(realTxt), total=brMoney(totalTxt);
+      if(!(meta>0) || !(real>0)) return null;
+      if(total>0 && real>total+0.01) return null;
+      const calc=Number(((real/meta)*100).toFixed(2));
+      if(!(calc>=100)) return null;
+      if(calc>500) return null; // coluna errada/projetado/total lido como realizado período
+      const atingSgi=brPct(atingTxt);
+      if(atingSgi>0 && Math.abs(atingSgi-calc)>Math.max(2,calc*0.05)) return null;
+      return {ating:calc, real, meta, realTxt:String(realTxt||real), metaTxt:String(metaTxt||meta)};
+    }
+    function getWrap(){return (typeof METAS_VENDAS_DIA==='object' && METAS_VENDAS_DIA) ? METAS_VENDAS_DIA : {metas:{}};}
+    window.mdlV102MetaDiariaEntries=function(){
+      const wrap=getWrap();
+      if(String(wrap.data_consulta||'').trim() && String(wrap.data_consulta||'').trim()!==todayBR()) return [];
+      const metas=wrap.metas||{};
+      const arr=[]; const seen=new Set();
+      function add(item){ const k=[item.kind,item.filial||'',item.nome||''].join('|').toUpperCase(); if(seen.has(k)) return; seen.add(k); arr.push(item); }
+      try{
+        const mf=(metas.venda_filial_meta&&Array.isArray(metas.venda_filial_meta.linhas))?metas.venda_filial_meta.linhas:[];
+        mf.forEach(row=>{
+          if(!row || row._is_total) return;
+          const v=validateMetaRow(row); if(!v) return;
+          const raw=String(cell(row,['Filial','Nome'])||'Filial').trim();
+          const filial=filFromText(raw);
+          add({nome:raw, filial, kind:'filial', tipo:'filial', ating:v.ating, info:`${filial||raw} · ${v.ating.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}% no dia · ${v.realTxt} / ${v.metaTxt}`, realizado_periodo:v.realTxt, meta_periodo:v.metaTxt});
+        });
+        const mv=(metas.venda_filial_vendedor_meta&&Array.isArray(metas.venda_filial_vendedor_meta.linhas))?metas.venda_filial_vendedor_meta.linhas:[];
+        mv.forEach(row=>{
+          if(!row || row._is_total) return;
+          const nome=String(cell(row,['Vendedor_2','Nome_2','Nome','Vendedor'])||'Vendedor').trim();
+          if(isGerMeta(nome)) return;
+          const v=validateMetaRow(row); if(!v) return;
+          const filial=filFromText(cell(row,['Vendedor','Filial'])||nome);
+          add({nome, filial, kind:'vendedor', tipo:'vendedor', ating:v.ating, info:`${filial||''} · ${v.ating.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}% no dia · ${v.realTxt} / ${v.metaTxt}`, realizado_periodo:v.realTxt, meta_periodo:v.metaTxt});
+        });
+      }catch(e){console.warn('[V10.2] meta diária strict falhou',e)}
+      arr.sort((a,b)=>Number(b.ating||0)-Number(a.ating||0)||String(a.nome).localeCompare(String(b.nome),'pt-BR'));
+      return arr;
+    };
+    window.mdlV52MetaDiariaEntries = function(){ return window.mdlV102MetaDiariaEntries(); };
+    window.mdlV51MetaDiariaCount = function(){ try{return window.mdlV102MetaDiariaEntries().length}catch(e){return 0} };
+    window.renderMetaDiariaBatidaAlerts = function(){
+      const arr=window.mdlV102MetaDiariaEntries();
+      if(!arr.length){
+        return `<div class="glass panel" style="margin-bottom:16px;padding:14px 18px;border-color:rgba(34,197,94,.22)"><div class="section-head" style="margin:0 0 8px"><div><h2 style="margin:0;font-size:18px">🎯 Meta diária BATIDA</h2><div class="hint">Mural ativo. Usa somente Realizado Período / Meta Período do Sólidus no dia atual.</div></div><div class="badge">0</div></div><div class="meta-diaria-empty">Nenhuma meta diária batida até o momento.</div></div>`;
+      }
+      return renderAvisoTicker('Meta diária BATIDA','Controle de Meta Sólidus do dia atual: somente Realizado Período acima de 100%.', arr, {icon:'🎯',color:'rgba(34,197,94,.34)'});
+    };
+    setTimeout(()=>{try{ if(typeof renderTopMural==='function') renderTopMural(); if(mainTab==='inicio' && typeof renderInicioTab==='function') renderInicioTab(); }catch(e){}},400);
+    console.log('[V10.2] hotfix ativo: meta diária strict por Realizado Período', V102_TAG);
+  }catch(e){console.warn('[V10.2] falha meta diária strict',e)}
+})();
+
 </script>
 </body>
 </html>
@@ -14545,3 +14648,4 @@ driver.quit()
 # MDL_V99_RESUMO_TELEGRAM_LOGS_FIX: dashboard mantido com hotfix de resumo Telegram via telegram_monitor_mdl_v23.
 
 # MDL_V101_META_DIARIA_VALIDACAO_PERIODO: usa somente Realizado Período / Meta Período e bloqueia Projetado/Total.
+# MDL_V102_META_DIARIA_JS_STRICT: renderização do mural ignora precalc antigo e valida no navegador.

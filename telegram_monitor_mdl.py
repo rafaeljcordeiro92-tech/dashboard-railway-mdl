@@ -34,7 +34,7 @@ def _extract_list_payload(data):
     return []
 
 
-# VERSAO: TELEGRAM_MONITOR_MDL_V25_V101_META_DIARIA_VALIDADA
+# VERSAO: TELEGRAM_MONITOR_MDL_V26_META_DIARIA_STRICT
 import json
 import os
 import re
@@ -982,6 +982,13 @@ def _v101_meta_diaria_validada(row):
     if total_n > 0 and real_n > (total_n + 0.01):
         return False, 0.0
     ating = round((real_n / meta_n) * 100.0, 2)
+    # V10.2/V26: blindagem contra coluna desalinhada/projetado lido como realizado período.
+    ating_txt = str(row.get('Atingido Período') or row.get('Atingido Periodo') or row.get('Atingido Período_float') or row.get('Atingido Periodo_float') or '').strip()
+    ating_sgi = _v101_money_float(ating_txt)
+    if ating_sgi > 0 and abs(ating_sgi - ating) > max(2.0, ating * 0.05):
+        return False, 0.0
+    if ating > 500:
+        return False, 0.0
     return ating >= 100.0, ating
 
 def load_meta_diaria_batidas(base_dir):
@@ -1396,3 +1403,4 @@ def build_daily_summary(base_dir, date_str=None):
 # MDL_V99_RESUMO_LOGS_REMOTE_AVISOS: le cobrancas_log/cobrancas_api/mensagens_api remotos e locais, com deduplicacao.
 
 # MDL_V101_META_DIARIA_VALIDADA: alertas somente por Realizado Período / Meta Período.
+# MDL_V102_META_DIARIA_STRICT: bloqueia discrepância de Atingido Período e qualquer leitura acima de 500%.
