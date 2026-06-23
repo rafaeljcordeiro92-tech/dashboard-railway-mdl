@@ -1,4 +1,4 @@
-# VERSAO: RAILWAY_SCHEDULER_MDL_V37_V97_META_DIARIA_UNICA_STALE_FIX
+# VERSAO: RAILWAY_SCHEDULER_MDL_V40_V100_REAT_INDIVIDUAL
 import json
 import os
 import sys
@@ -364,7 +364,7 @@ def start_http_panel():
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log('VERSAO V37: meta diaria 1x por dia com trava contra dados antigos + resumo nomes curtos')
+log('VERSAO V39: resumo diario le logs/avisos remotos corretamente + meta diaria unica')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
@@ -408,3 +408,5 @@ while True:
 
     log(f'tick | sales={sales_running} | cobranca={cobranca_running} | sales_slot={_last_sales_slot} | cobranca_slot={_last_cobranca_slot} | force_sales_after_main={_force_sales_after_main}')
     time.sleep(TICK_SECONDS)
+
+# MDL_V99_RESUMO_LOGS_REMOTE_AVISOS

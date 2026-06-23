@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V9_7_CONFIG_META_PRESERVADA_DIRETOR_ABAS_EMOJIS_MOBILE
+# VERSAO: DASH2_0_V10_0_REATIVACAO_INDIVIDUAL_LAZY_BASE
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -33,8 +33,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V9.8"
-DASHBOARD_BUILD_TAG = "DASH2_0_V9_7_CONFIG_META_PRESERVADA_DIRETOR_ABAS_EMOJIS_MOBILE"
+DASHBOARD_BUILD_VERSION = "V10.0"
+DASHBOARD_BUILD_TAG = "DASH2_0_V10_0_REATIVACAO_INDIVIDUAL_LAZY_BASE"
 
 def now_brasilia():
     return datetime.now(APP_TZ)
@@ -13534,7 +13534,7 @@ Preparamos condições especiais para você comemorar com a gente.
 // ===== V9.8 HOTFIX: clientes sem movimento visíveis no acesso individual =====
 (function(){
   try{
-    window.MDL_V98_REAT_INDIVIDUAL_FIX = true;
+    window.MDL_V99_RESUMO_TELEGRAM_LOGS_FIX = true;
 
     function mdlV98FilialNorm(v){
       v=String(v||'').trim().toUpperCase();
@@ -13645,6 +13645,192 @@ Preparamos condições especiais para você comemorar com a gente.
       };
     }
   }catch(e){console.warn('[MDL V9.8] hotfix reativacao individual falhou',e)}
+})();
+
+
+
+// ===== V10.0 HOTFIX: reativação abre no acesso individual sem travar =====
+(function(){
+  try{
+    window.MDL_V100_REAT_INDIVIDUAL_LAZY_BASE = true;
+
+    function mdlV100Norm(v){
+      try{return normName(v||'')}catch(e){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,' ').trim().toLowerCase()}
+    }
+    function mdlV100Filial(v){
+      v=String(v||'').trim().toUpperCase();
+      if(/^0?\d+$/.test(v)) return 'F'+Number(v);
+      if(/^F0\d+$/.test(v)) return 'F'+Number(v.replace(/^F0*/,''));
+      return v;
+    }
+    function mdlV100ExtractRows(payload){
+      if(Array.isArray(payload)) return payload;
+      if(payload && typeof payload==='object'){
+        for(const k of ['clientes','data','rows','items','lista']){
+          if(Array.isArray(payload[k])) return payload[k];
+        }
+      }
+      return [];
+    }
+    async function mdlV100FetchJson(name){
+      if(typeof fetchJsonNoCache==='function') return await fetchJsonNoCache(name);
+      const sep=String(name).includes('?')?'&':'?';
+      const r=await fetch(name+sep+'_='+Date.now(),{cache:'no-store'});
+      if(!r.ok) throw new Error(name+' HTTP '+r.status);
+      return await r.json();
+    }
+    function mdlV100SpliceArray(target, rows){
+      if(!Array.isArray(target)) return;
+      target.splice(0, target.length, ...(Array.isArray(rows)?rows:[]));
+    }
+    window._mdlV100CsmLoadingPromise = null;
+    async function mdlV100LoadClientesSemMovimento(force=false){
+      const hasAction = Array.isArray(CLIENTES_SEM_MOVIMENTO) && CLIENTES_SEM_MOVIMENTO.length>0;
+      const hasBase = Array.isArray(CLIENTES_SEM_MOVIMENTO_BASE) && CLIENTES_SEM_MOVIMENTO_BASE.length>0;
+      if(!force && (hasAction || hasBase)) return true;
+      if(window._mdlV100CsmLoadingPromise) return window._mdlV100CsmLoadingPromise;
+      window._mdlCsmLoadingV96 = true;
+      window._mdlV100CsmLoadingPromise = (async()=>{
+        let actionRows=[];
+        let baseRows=[];
+        try{ actionRows = mdlV100ExtractRows(await mdlV100FetchJson('clientes_sem_movimento.json')); }catch(e){ console.warn('[MDL V10.0] falha clientes_sem_movimento.json',e); }
+        try{ baseRows = mdlV100ExtractRows(await mdlV100FetchJson('clientes_sem_movimento_base.json')); }catch(e){ console.warn('[MDL V10.0] falha clientes_sem_movimento_base.json',e); }
+        // Para o usuário individual, o principal é não ficar travado. Se a lista acionável estiver vazia,
+        // usa a base completa como fallback visual, mantendo o histórico de enviados no cobrancas_log.json.
+        if(Array.isArray(CLIENTES_SEM_MOVIMENTO)){
+          mdlV100SpliceArray(CLIENTES_SEM_MOVIMENTO, actionRows.length ? actionRows : baseRows);
+        }
+        try{ mdlV100SpliceArray(CLIENTES_SEM_MOVIMENTO_BASE, baseRows.length ? baseRows : actionRows); }catch(e){}
+        try{ window.CLIENTES_SEM_MOVIMENTO_BASE = CLIENTES_SEM_MOVIMENTO_BASE; }catch(e){}
+        if((actionRows.length || baseRows.length) && typeof CLIENTES_SEM_MOVIMENTO_META==='object'){
+          CLIENTES_SEM_MOVIMENTO_META.base_total = Number(CLIENTES_SEM_MOVIMENTO_META.base_total || baseRows.length || actionRows.length || 0);
+          CLIENTES_SEM_MOVIMENTO_META.acionaveis_total = Number(CLIENTES_SEM_MOVIMENTO_META.acionaveis_total || actionRows.length || baseRows.length || 0);
+          CLIENTES_SEM_MOVIMENTO_META._loaded_frontend_v100 = true;
+        }
+        window._mdlCsmLoadedV96 = true;
+        window._mdlCsmLoadingV96 = false;
+        window._mdlV100CsmLoadingPromise = null;
+        console.log('[MDL V10.0] clientes sem movimento carregados no acesso individual:', {acionaveis:actionRows.length, base:baseRows.length});
+        return true;
+      })().catch(e=>{
+        console.warn('[MDL V10.0] falha geral ao carregar reativação',e);
+        window._mdlCsmLoadingV96 = false;
+        window._mdlV100CsmLoadingPromise = null;
+        return false;
+      });
+      return window._mdlV100CsmLoadingPromise;
+    }
+    window.mdlV100LoadClientesSemMovimento = mdlV100LoadClientesSemMovimento;
+
+    function mdlV100FindVend(login,nome,filial){
+      const fil=mdlV100Filial(filial);
+      const log=String(login||'').toLowerCase().trim();
+      const nn=mdlV100Norm(nome);
+      let arr=[]; try{arr=flattenVendedores()||[]}catch(e){}
+      return arr.find(v=>{
+        const vf=mdlV100Filial(v.filial);
+        if(fil && vf!==fil) return false;
+        const vl=String(v.login||'').toLowerCase().trim();
+        const vn=mdlV100Norm(v.nome);
+        return (log && vl && vl===log) || (nn && vn && (vn===nn || vn.includes(nn) || nn.includes(vn)));
+      }) || null;
+    }
+    function mdlV100CandidateKeys(ent){
+      const filial=mdlV100Filial(ent?.filial || usuarioAtual?.filial || '');
+      const names=[];
+      const add=v=>{v=String(v||'').trim(); if(v && !names.includes(v)) names.push(v)};
+      add(ent?.nome); add(ent?.login); add(usuarioAtual?.nome); add(usuarioAtual?.login);
+      const found=mdlV100FindVend(ent?.login||usuarioAtual?.login, ent?.nome||usuarioAtual?.nome, filial);
+      add(found?.nome); add(found?.login);
+      return names.map(n=>mdlV100Norm(n)+'_'+filial).filter(k=>k && k!=='_'+filial);
+    }
+    function mdlV100RowsFromSource(src){
+      const arr=Array.isArray(src)?src:[];
+      return arr.map((r,i)=>{
+        let idx=Number.isInteger(r._idx)?r._idx:-1;
+        if(idx<0 && Array.isArray(CLIENTES_SEM_MOVIMENTO)){
+          idx=CLIENTES_SEM_MOVIMENTO.indexOf(r);
+          if(idx<0){ CLIENTES_SEM_MOVIMENTO.push(r); idx=CLIENTES_SEM_MOVIMENTO.length-1; }
+        }
+        return {...r,_idx:idx>=0?idx:i,_owner:reativacaoOwnerInfo(r)};
+      });
+    }
+    function mdlV100FilterRowsForEnt(ent, src){
+      if(!ent) return [];
+      const filial=mdlV100Filial(ent.filial||usuarioAtual?.filial||'');
+      let rows=mdlV100RowsFromSource(src);
+      if(ent.type==='filial' || ent.is_gerente){
+        return rows.filter(r=>mdlV100Filial(r.filial)===filial && (ent.type==='filial' || String(r._owner?.key||'')===`GERENTE_${filial}` || String(r._owner?.tipo||'')==='filial'));
+      }
+      const keys=mdlV100CandidateKeys(ent);
+      let out=rows.filter(r=>keys.includes(String(r._owner?.key||'')));
+      if(!out.length){
+        const nomes=keys.map(k=>mdlV100Norm(String(k).split('_')[0])).filter(Boolean);
+        out=rows.filter(r=>mdlV100Filial(r.filial)===filial && nomes.some(n=>{
+          const o=mdlV100Norm(r._owner?.nome||r._owner?.label||r.responsavel||'');
+          return o && n && (o===n || o.includes(n) || n.includes(o));
+        }));
+      }
+      return out;
+    }
+
+    // Recria a regra de visibilidade usando lista acionável e, se necessário, a base completa do FTP.
+    window.reativacaoRowsParaEnt = function(ent){
+      let out=mdlV100FilterRowsForEnt(ent, CLIENTES_SEM_MOVIMENTO||[]);
+      if(!out.length && Array.isArray(CLIENTES_SEM_MOVIMENTO_BASE) && CLIENTES_SEM_MOVIMENTO_BASE.length){
+        out=mdlV100FilterRowsForEnt(ent, CLIENTES_SEM_MOVIMENTO_BASE);
+      }
+      return out;
+    };
+    window.reativacaoRowsPermitidas = function(){
+      if(!usuarioAtual || usuarioAtual.tipo==='master' || usuarioAtual.is_viewer){
+        const src=(Array.isArray(CLIENTES_SEM_MOVIMENTO)&&CLIENTES_SEM_MOVIMENTO.length)?CLIENTES_SEM_MOVIMENTO:(CLIENTES_SEM_MOVIMENTO_BASE||[]);
+        return mdlV100RowsFromSource(src);
+      }
+      const ent={type:usuarioAtual.is_gerente?'filial':'vendedor', filial:usuarioAtual.filial, nome:usuarioAtual.nome, login:usuarioAtual.login, is_gerente:usuarioAtual.is_gerente};
+      return window.reativacaoRowsParaEnt(ent);
+    };
+
+    if(typeof renderReativacaoEnt==='function' && !window._renderReatEntV100Wrapped){
+      window._renderReatEntV100Wrapped=true;
+      const oldRender=renderReativacaoEnt;
+      window.renderReativacaoEnt = renderReativacaoEnt = function(ent){
+        try{
+          const hasAction=Array.isArray(CLIENTES_SEM_MOVIMENTO) && CLIENTES_SEM_MOVIMENTO.length>0;
+          const hasBase=Array.isArray(CLIENTES_SEM_MOVIMENTO_BASE) && CLIENTES_SEM_MOVIMENTO_BASE.length>0;
+          if(!hasAction && !hasBase){
+            mdlV100LoadClientesSemMovimento(false).then(()=>{
+              try{
+                if(detailScreen && !detailScreen.classList.contains('hidden') && currentDetailRef){openEntity(currentDetailRef)}
+                else if(typeof renderReativacaoTab==='function'){renderReativacaoTab()}
+              }catch(e){console.warn('[MDL V10.0] redraw individual',e)}
+            });
+            return `<div class="accordion open"><div class="acc-head"><span>🧡 Clientes sem movimento para reativação</span><span class="acc-hint">carregando lista...</span></div><div class="acc-body"><div class="glass panel"><strong>⏳ Carregando clientes sem movimento</strong><div class="hint">A lista fica no FTP para deixar o dashboard leve. Aguarde alguns segundos. Se demorar, atualize a página uma vez.</div></div></div></div>`;
+          }
+        }catch(e){console.warn('[MDL V10.0] wrapper renderReativacaoEnt',e)}
+        return oldRender.apply(this,arguments);
+      };
+    }
+
+    // Se o usuário comum entrar direto no painel, dispara o pré-carregamento logo após abrir a tela.
+    if(typeof abrirApp==='function' && !window._abrirAppV100Wrapped){
+      window._abrirAppV100Wrapped=true;
+      const oldAbrirApp=abrirApp;
+      window.abrirApp = abrirApp = async function(){
+        const r=await oldAbrirApp.apply(this,arguments);
+        try{
+          if(usuarioAtual && usuarioAtual.tipo!=='master' && !usuarioAtual.is_viewer){
+            setTimeout(()=>mdlV100LoadClientesSemMovimento(false).then(()=>{
+              try{ if(detailScreen && !detailScreen.classList.contains('hidden') && currentDetailRef) openEntity(currentDetailRef); }catch(e){}
+            }), 350);
+          }
+        }catch(e){}
+        return r;
+      };
+    }
+
+    console.log('[MDL V10.0] hotfix ativo: reativação individual carrega do FTP com fallback para base completa');
+  }catch(e){console.warn('[MDL V10.0] hotfix reativação individual falhou',e)}
 })();
 
 </script>
@@ -14315,3 +14501,6 @@ else:
 print('\n🔥 FINALIZADO!')
 print("🔎 Fechamento automático em ambiente Railway")
 driver.quit()
+
+
+# MDL_V99_RESUMO_TELEGRAM_LOGS_FIX: dashboard mantido com hotfix de resumo Telegram via telegram_monitor_mdl_v23.

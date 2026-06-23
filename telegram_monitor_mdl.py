@@ -1,20 +1,40 @@
 def _extract_list_payload(data):
-    # Aceita logs/listas vindos como lista direta ou como objeto {ok,data/logs/items/clientes...}.
+    """Aceita listas vindas em vários formatos de API/JSON.
+
+    O FTP/API pode devolver lista direta, {ok:true,data:[...]},
+    {ok:true,logs:[...]}, {ok:true,mensagens:[...]}, {result:[...]},
+    ou objetos aninhados com lista dentro.
+    """
     if isinstance(data, list):
         return data
     if isinstance(data, dict):
-        for key in ("data", "logs", "items", "clientes", "registros", "rows"):
+        preferred = (
+            "data", "logs", "items", "clientes", "registros", "rows",
+            "mensagens", "messages", "avisos", "campanhas", "result", "results", "payload"
+        )
+        for key in preferred:
             val = data.get(key)
             if isinstance(val, list):
                 return val
-        for val in data.values():
             if isinstance(val, dict):
                 nested = _extract_list_payload(val)
                 if nested:
                     return nested
+        listas = []
+        for val in data.values():
+            if isinstance(val, list):
+                listas.append(val)
+            elif isinstance(val, dict):
+                nested = _extract_list_payload(val)
+                if nested:
+                    listas.append(nested)
+        if listas:
+            listas.sort(key=len, reverse=True)
+            return listas[0]
     return []
 
-# VERSAO: TELEGRAM_MONITOR_MDL_V21_V97_META_DIARIA_UNICA_RESUMO_NOMES_CURTOS
+
+# VERSAO: TELEGRAM_MONITOR_MDL_V24_V100_REAT_INDIVIDUAL
 import json
 import os
 import re
@@ -98,6 +118,18 @@ def _read_url_json(url, default, timeout=12):
     raw = _read_url_text(url, "", timeout=timeout).strip()
     if not raw:
         return default
+    try:
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            extracted = _extract_list_payload(data)
+            if extracted:
+                return extracted
+            if data.get("ok") and "data" in data:
+                return data.get("data")
+        return data
+    except Exception:
+        return default
+
     try:
         data = json.loads(raw)
         if isinstance(data, dict) and data.get("ok") and "data" in data:
@@ -310,20 +342,42 @@ def _norm(s):
     return re.sub(r"\s+", " ", str(s or "").strip()).lower()
 
 
+def _dedup_dicts_by_id(items):
+    out = []
+    seen = set()
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get('id') or item.get('message_id') or item.get('server_time') or '')
+        if not key:
+            key = json.dumps(item, ensure_ascii=False, sort_keys=True)[:300]
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+    return out
+
+
 def _active_messages(base_dir):
-    msgs = _read_url_json(f"{PUBLIC_BASE}/mensagens_api.php", [])
-    if not isinstance(msgs, list):
-        msgs = []
+    """Carrega avisos/campanhas ativos do FTP/API de forma robusta."""
+    candidatos = []
+    candidatos += _extract_list_payload(_read_json_file(os.path.join(base_dir, "mensagens_log.json"), []))
+    candidatos += _extract_list_payload(_read_url_json(f"{PUBLIC_BASE}/mensagens_api.php", [], timeout=12))
+    candidatos += _extract_list_payload(_read_url_json(f"{PUBLIC_BASE}/mensagens_log.json", [], timeout=12))
+    msgs = _dedup_dicts_by_id(candidatos)
+
     hoje = now_br().date()
     active = []
     for m in msgs:
         if not isinstance(m, dict):
             continue
-        exp = str(m.get("expires_at") or "").strip()
+        if m.get('deleted') is True or str(m.get('status') or '').lower() in {'deleted','removido','removida','cancelado','cancelada'}:
+            continue
+        exp = str(m.get("expires_at") or m.get("valid_until") or m.get("ate") or "").strip()
         expired = False
         if exp:
             try:
-                if "/" in exp:
+                if "/" in exp[:10]:
                     d = datetime.strptime(exp[:10], "%d/%m/%Y").date()
                 else:
                     d = datetime.strptime(exp[:10], "%Y-%m-%d").date()
@@ -335,11 +389,45 @@ def _active_messages(base_dir):
     return active
 
 
+def _log_dedup_key(x):
+    if not isinstance(x, dict):
+        return ""
+    for k in ("id", "log_id", "uuid"):
+        if x.get(k):
+            return f"id:{x.get(k)}"
+    parts = [
+        x.get("titulo") or x.get("tipo") or "",
+        x.get("cliente") or x.get("nome") or "",
+        x.get("parcela") or "",
+        x.get("telefone") or "",
+        x.get("server_time") or x.get("criado_em") or x.get("created_at") or x.get("data") or "",
+        x.get("usuario") or x.get("destino_nome") or x.get("login") or "",
+    ]
+    return "|".join(str(p) for p in parts)
+
+
+def _merge_log_sources(*sources):
+    out = []
+    seen = set()
+    for src in sources:
+        for x in _extract_list_payload(src):
+            if not isinstance(x, dict):
+                continue
+            key = _log_dedup_key(x)
+            if key and key in seen:
+                continue
+            if key:
+                seen.add(key)
+            out.append(x)
+    return out
+
+
 def _load_cobrancas(base_dir):
-    data = load_json_local_or_remote(base_dir, "cobrancas_log.json", "cobrancas_log.json", None)
-    if data is None:
-        data = _read_url_json(f"{PUBLIC_BASE}/cobrancas_api.php", [])
-    return _extract_list_payload(data)
+    """Carrega logs do FTP/API público e local, mesclando sem duplicar."""
+    local = _read_json_file(os.path.join(base_dir, "cobrancas_log.json"), [])
+    remote_file = _read_url_json(f"{PUBLIC_BASE}/cobrancas_log.json", [], timeout=18)
+    remote_api = _read_url_json(f"{PUBLIC_BASE}/cobrancas_api.php", [], timeout=18)
+    return _merge_log_sources(remote_api, remote_file, local)
 
 
 def _load_users(base_dir):
@@ -571,6 +659,15 @@ def _date_only_br_from_any(v):
     s = str(v or "").strip()
     if not s:
         return ""
+    if "T" in s or re.search(r"[+-]\d{2}:?\d{2}$", s) or s.endswith("Z"):
+        try:
+            ss = s.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(ss)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=BR_TZ)
+            return dt.astimezone(BR_TZ).strftime("%Y-%m-%d")
+        except Exception:
+            pass
     if "/" in s[:10]:
         try:
             return datetime.strptime(s[:10], "%d/%m/%Y").strftime("%Y-%m-%d")
@@ -653,7 +750,7 @@ def _log_aliases(x):
 def _log_date(x):
     if not isinstance(x, dict):
         return ""
-    for k in ("server_time", "criado_em", "created_at", "data", "timestamp", "hora"):
+    for k in ("server_time", "criado_em", "created_at", "data", "timestamp", "hora", "enviado_em", "sent_at", "updated_at", "created", "date"):
         d = _date_only_br_from_any(x.get(k))
         if d:
             return d
@@ -661,19 +758,26 @@ def _log_date(x):
 
 
 def _titulo_upper(x):
-    return str((x or {}).get("titulo") or (x or {}).get("tipo") or "").strip().upper()
+    return str((x or {}).get("titulo") or (x or {}).get("tipo") or (x or {}).get("tipo_log") or "").strip().upper()
+
+
+def _log_blob_upper(x):
+    if not isinstance(x, dict):
+        return ""
+    vals = []
+    for k in ("titulo", "tipo", "tipo_log", "parcela", "cliente_key", "cobranca_key", "owner_key", "origem", "categoria"):
+        vals.append(str(x.get(k) or ""))
+    return " | ".join(vals).upper()
 
 
 def _is_reactivation_log(x):
-    t = _titulo_upper(x)
-    ck = str((x or {}).get("cliente_key") or (x or {}).get("cobranca_key") or "").upper()
-    return t == "REATIVACAO" or "REATIVACAO" in ck or "CLIENTE_SEM_MOVIMENTO" in ck
+    blob = _log_blob_upper(x)
+    return ("REATIVACAO" in blob) or ("REATIVAÇÃO" in blob) or ("CLIENTE_SEM_MOVIMENTO" in blob) or ("SEM_MOVIMENTO" in blob)
 
 
 def _is_birthday_log(x):
-    t = _titulo_upper(x)
-    ck = str((x or {}).get("cliente_key") or (x or {}).get("cobranca_key") or "").upper()
-    return t in {"ANIVERSARIO", "ANIVERSARIO_DIRETOR"} or "ANIVERSARIO" in ck or "ANIV" in ck
+    blob = _log_blob_upper(x)
+    return ("ANIVERSARIO" in blob) or ("ANIVERSÁRIO" in blob) or ("ANIV" in blob)
 
 
 def _is_real_collection_log(x):
@@ -681,11 +785,13 @@ def _is_real_collection_log(x):
         return False
     if _is_reactivation_log(x) or _is_birthday_log(x):
         return False
-    # cobrança real geralmente tem título/parcela/pendente ou destino_tipo de cobrança.
     t = str(x.get("titulo") or "").strip().upper()
-    if t in {"", "NAN", "NONE", "NULL"} and not x.get("pendente"):
+    if t in {"REATIVACAO", "ANIVERSARIO", "ANIVERSARIO_DIRETOR"}:
         return False
-    return True
+    if x.get("cliente") or x.get("nome"):
+        if x.get("telefone") or x.get("pendente") is not None or x.get("parcela") or x.get("titulo"):
+            return True
+    return False
 
 
 def _log_owner_label(x):
@@ -1095,7 +1201,7 @@ def load_projecao_mercantil_filiais(base_dir):
 def build_daily_summary(base_dir, date_str=None):
     """Resumo final das 19h.
 
-    V16/V8.2:
+    V23/V9.9:
     - separa cobrança real de ANIVERSARIO e REATIVACAO;
     - calcula corretamente quem cobrou, quem acionou reativação e quem enviou aniversário;
     - inclui metas diárias e mensais batidas;
@@ -1252,3 +1358,6 @@ def build_daily_summary(base_dir, date_str=None):
     linhas.append("")
     linhas.append(f"🕒 Gerado em {now_br().strftime('%d/%m/%Y %H:%M:%S')}")
     return "\n".join(linhas)
+
+
+# MDL_V99_RESUMO_LOGS_REMOTE_AVISOS: le cobrancas_log/cobrancas_api/mensagens_api remotos e locais, com deduplicacao.
