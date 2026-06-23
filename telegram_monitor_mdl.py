@@ -34,7 +34,7 @@ def _extract_list_payload(data):
     return []
 
 
-# VERSAO: TELEGRAM_MONITOR_MDL_V24_V100_REAT_INDIVIDUAL
+# VERSAO: TELEGRAM_MONITOR_MDL_V25_V101_META_DIARIA_VALIDADA
 import json
 import os
 import re
@@ -951,6 +951,39 @@ def _first_name_v97(nome):
         return s.title()
     return (s.split()[0] if s.split() else s).title()
 
+
+def _v101_money_float(v):
+    try:
+        if isinstance(v, (int, float)):
+            return float(v)
+        s = str(v or "").strip()
+        if not s or s.lower() in {"nan", "none", "null"}:
+            return 0.0
+        s = s.replace("R$", "").replace("%", "").replace(" ", "")
+        if "," in s:
+            s = s.replace(".", "").replace(",", ".")
+        return float(s)
+    except Exception:
+        return 0.0
+
+
+def _v101_meta_diaria_validada(row):
+    """Valida meta diária pelo cálculo Realizado Período / Meta Período.
+    Não aceita Projetado/Realizado Total como base do alerta.
+    """
+    meta_txt = str(row.get('Meta (R$) Período') or row.get('Meta(R$) Período') or row.get('Meta (R$) Periodo') or row.get('Meta(R$) Periodo') or '').strip()
+    real_txt = str(row.get('Realizado (R$) Período') or row.get('Realizado(R$) Período') or row.get('Realizado (R$) Periodo') or row.get('Realizado(R$) Periodo') or '').strip()
+    total_txt = str(row.get('Realizado (R$) Total') or row.get('Realizado(R$) Total') or '').strip()
+    meta_n = _v101_money_float(meta_txt)
+    real_n = _v101_money_float(real_txt)
+    total_n = _v101_money_float(total_txt)
+    if meta_n <= 0 or real_n <= 0:
+        return False, 0.0
+    if total_n > 0 and real_n > (total_n + 0.01):
+        return False, 0.0
+    ating = round((real_n / meta_n) * 100.0, 2)
+    return ating >= 100.0, ating
+
 def load_meta_diaria_batidas(base_dir):
     """Lê metas_vendas_dia_atual.json e retorna somente Venda/Mercantil com Atingido Período >= 100%.
 
@@ -982,8 +1015,8 @@ def load_meta_diaria_batidas(base_dir):
             row_tipo = str(row.get('_meta_tipo') or spec.get('tipo') or '').strip().lower()
             if row_tipo and row_tipo != 'venda':
                 continue
-            ating = _float(row.get('Atingido Período_float', row.get('Atingido Período')), 0.0)
-            if ating < 100:
+            ok_meta_dia, ating = _v101_meta_diaria_validada(row)
+            if not ok_meta_dia:
                 continue
             escopo = str(row.get('_meta_escopo') or spec.get('escopo') or '')
             nome = str(row.get('Vendedor_2') or row.get('Vendedor') or row.get('Filial') or '').strip()
@@ -1361,3 +1394,5 @@ def build_daily_summary(base_dir, date_str=None):
 
 
 # MDL_V99_RESUMO_LOGS_REMOTE_AVISOS: le cobrancas_log/cobrancas_api/mensagens_api remotos e locais, com deduplicacao.
+
+# MDL_V101_META_DIARIA_VALIDADA: alertas somente por Realizado Período / Meta Período.

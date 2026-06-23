@@ -33,7 +33,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.0"
+DASHBOARD_BUILD_VERSION = "V10.1"
 DASHBOARD_BUILD_TAG = "DASH2_0_V10_0_REATIVACAO_INDIVIDUAL_LAZY_BASE"
 
 def now_brasilia():
@@ -4561,6 +4561,49 @@ def _v54_cell(row, *keys):
             return row.get(k)
     return ""
 
+
+def _v101_money_float(v):
+    """Converte valor BR de dinheiro para float. Usado para validar meta diária sem confundir Projetado/Total."""
+    try:
+        if isinstance(v, (int, float)):
+            return float(v)
+        s = str(v or "").strip()
+        if not s or s.lower() in ("nan", "none", "null"):
+            return 0.0
+        s = s.replace("R$", "").replace("%", "").replace(" ", "")
+        if "," in s:
+            s = s.replace(".", "").replace(",", ".")
+        return float(s)
+    except Exception:
+        return 0.0
+
+
+def _v101_meta_diaria_validada(row):
+    """V10.1: meta diária só é considerada batida se Realizado Período / Meta Período >= 100.
+
+    Proteções:
+    - Nunca usa Projetado nem Realizado Total para disparar mural/Telegram.
+    - Se Realizado Período vier maior que Realizado Total, considera linha desalinhada e ignora.
+    - Se percentual do SGI divergir do cálculo, prevalece o cálculo Realizado Período / Meta Período.
+    """
+    meta_txt = _v54_cell(row, "Meta (R$) Período", "Meta (R$) Periodo", "Meta(R$) Período", "Meta(R$) Periodo")
+    real_txt = _v54_cell(row, "Realizado (R$) Período", "Realizado (R$) Periodo", "Realizado(R$) Período", "Realizado(R$) Periodo")
+    total_txt = _v54_cell(row, "Realizado (R$) Total", "Realizado(R$) Total")
+    meta_n = _v101_money_float(meta_txt)
+    real_n = _v101_money_float(real_txt)
+    total_n = _v101_money_float(total_txt)
+
+    if meta_n <= 0 or real_n <= 0:
+        return False, 0.0, meta_txt or "R$ 0,00", real_txt or "R$ 0,00"
+
+    # Em um relatório hoje-hoje, o realizado do período nunca pode ser maior que o total acumulado do mês.
+    # Quando isso acontece, normalmente a tabela foi lida desalinhada e pegou Projetado como Realizado Período.
+    if total_n > 0 and real_n > (total_n + 0.01):
+        return False, 0.0, meta_txt or "R$ 0,00", real_txt or "R$ 0,00"
+
+    ating_calc = round((real_n / meta_n) * 100.0, 2)
+    return ating_calc >= 100.0, ating_calc, meta_txt or "R$ 0,00", real_txt or "R$ 0,00"
+
 def _v54_meta_diaria_precalc(dados):
     """Pré-calcula no Python quem bateu meta diária para evitar erro JS no HTML."""
     out = []
@@ -4577,15 +4620,9 @@ def _v54_meta_diaria_precalc(dados):
         def add_row(row, kind):
             if not isinstance(row, dict) or row.get("_is_total"):
                 return
-            ating = row.get("Atingido Período_float")
-            if ating in (None, ""):
-                ating = _v54_num_pct_meta_diaria(_v54_cell(row, "Atingido Período", "Atingido Periodo"))
-            else:
-                ating = _v54_num_pct_meta_diaria(ating)
-            if ating < 100:
+            ok_meta_dia, ating, meta, realizado = _v101_meta_diaria_validada(row)
+            if not ok_meta_dia:
                 return
-            meta = _v54_cell(row, "Meta (R$) Período", "Meta (R$) Periodo", "Meta(R$) Período", "Meta(R$) Periodo") or "R$ 0,00"
-            realizado = _v54_cell(row, "Realizado (R$) Período", "Realizado (R$) Periodo", "Realizado(R$) Período", "Realizado(R$) Periodo") or "R$ 0,00"
             if kind == "filial":
                 raw = str(_v54_cell(row, "Filial", "Nome") or "Filial").strip()
                 filial = _filial_key_from_text(raw) or ""
@@ -13032,7 +13069,9 @@ function mdlV52MetaDiariaEntries(){
       })).filter(x=>x.nome).sort((a,b)=>Number(b.ating||0)-Number(a.ating||0)||String(a.nome).localeCompare(String(b.nome),'pt-BR'));
     }
   }catch(e){console.warn('META_DIARIA_BATIDA_PRECALC falhou',e)}
-  try{return _v54_oldMetaDiariaEntries ? _v54_oldMetaDiariaEntries() : [];}catch(e){console.warn('fallback meta diaria',e); return []}
+  // V10.1: não usa fallback antigo da meta diária, porque ele podia ler Projetado/Total como Realizado Período.
+  // Se o pré-cálculo Python vier vazio, a regra correta é mostrar zero meta diária batida.
+  return [];
 }
 function mdlV51MetaDiariaCount(){try{return mdlV52MetaDiariaEntries().length}catch(e){return 0}}
 function renderMetaDiariaBatidaAlerts(){
@@ -14504,3 +14543,5 @@ driver.quit()
 
 
 # MDL_V99_RESUMO_TELEGRAM_LOGS_FIX: dashboard mantido com hotfix de resumo Telegram via telegram_monitor_mdl_v23.
+
+# MDL_V101_META_DIARIA_VALIDACAO_PERIODO: usa somente Realizado Período / Meta Período e bloqueia Projetado/Total.
