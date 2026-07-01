@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_4_CONFIG_META_FTP_FIX
+# VERSAO: DASH2_0_V10_5_RECEBIMENTOS_META_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -16,6 +16,7 @@ import json
 import unicodedata
 import urllib.request
 import urllib.error
+import ssl
 import tempfile
 import shutil
 import sys
@@ -33,8 +34,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.4"
-DASHBOARD_BUILD_TAG = "DASH2_0_V10_4_CONFIG_META_FTP_FIX"
+DASHBOARD_BUILD_VERSION = "V10.5"
+DASHBOARD_BUILD_TAG = "DASH2_0_V10_5_RECEBIMENTOS_META_FIX"
 
 def now_brasilia():
     return datetime.now(APP_TZ)
@@ -2374,38 +2375,49 @@ recebido_faixa    = {}   # {key: {grave, alerta, atencao, is_ativo, is_fdep, fil
 clientes_key_hoje = set()
 _vend_cli_atual   = None
 
-# Data de corte para recebimentos do período:
-# 1. Prioridade: snapshot_referencia_YYYY-MM.json
-# 2. Se não existir: snapshot de ontem
-# 3. Fallback: snapshot mais recente disponível
+# Data de corte para recebimentos do período (V10.5):
+# A meta de recebimentos por faixa é MENSAL. Portanto, durante todo o mês
+# a cobrança deve somar pagamentos desde o dia 01 da competência.
+# Nunca usa snapshot futuro (ex.: 01/07 em execução de 30/06) nem "último snapshot
+# disponível" como corte, pois isso zera os recebimentos de junho antes da virada.
 import json as _json_tmp
 
-_mes_atual_str   = now_brasilia().strftime("%Y-%m")
-_ref_path        = os.path.join(pasta, "cache_historico", f"snapshot_referencia_{_mes_atual_str}.json")
-_ontem_str_parse = (now_brasilia() - __import__("datetime").timedelta(days=1)).strftime("%Y-%m-%d")
-_snap_ontem_path = os.path.join(pasta, "cache_historico", f"snapshot_{_ontem_str_parse}.json")
+_mes_atual_str = os.getenv("COBRANCA_COMPETENCIA", now_brasilia().strftime("%Y-%m")).strip()[:7]
+if not re.match(r"^\d{4}-\d{2}$", _mes_atual_str):
+    _mes_atual_str = now_brasilia().strftime("%Y-%m")
 
-if os.path.exists(_ref_path):
-    with open(_ref_path, encoding="utf-8") as _f_tmp:
-        _ref_tmp = _json_tmp.load(_f_tmp)
-    _data_corte_parse = _dt.strptime(_ref_tmp.get("data", f"{_mes_atual_str}-01"), "%Y-%m-%d")
-    print(f"📅 Referência do mês (base): {_data_corte_parse.strftime('%d/%m/%Y')} → acumulando desde início do mês")
-elif os.path.exists(_snap_ontem_path):
-    with open(_snap_ontem_path, encoding="utf-8") as _f_tmp:
-        _snap_ontem_tmp = _json_tmp.load(_f_tmp)
-    _data_corte_parse = _dt.strptime(_snap_ontem_tmp.get("data", _ontem_str_parse), "%Y-%m-%d")
-    print(f"📅 Data de corte (ontem): {_data_corte_parse.strftime('%d/%m/%Y')}")
-else:
-    _data_corte_parse = None
-    for _d in range(1, 60):
-        _d_str = (now_brasilia() - __import__("datetime").timedelta(days=_d)).strftime("%Y-%m-%d")
-        _p = os.path.join(pasta, "cache_historico", f"snapshot_{_d_str}.json")
-        if os.path.exists(_p):
-            _data_corte_parse = _dt.strptime(_d_str, "%Y-%m-%d")
-            break
-    if _data_corte_parse is None:
-        _data_corte_parse = _dt(_dt.now().year, _dt.now().month, 1)
-    print(f"📅 Data de corte (snapshot disponível): {_data_corte_parse.strftime('%d/%m/%Y')}")
+_month_start_str = f"{_mes_atual_str}-01"
+_month_start_parse = _dt.strptime(_month_start_str, "%Y-%m-%d")
+_data_corte_parse = _month_start_parse
+_ref_path = os.path.join(pasta, "cache_historico", f"snapshot_referencia_{_mes_atual_str}.json")
+os.makedirs(os.path.dirname(_ref_path), exist_ok=True)
+
+_ref_precisa_regravar = True
+try:
+    if os.path.exists(_ref_path):
+        with open(_ref_path, encoding="utf-8") as _f_tmp:
+            _ref_tmp = _json_tmp.load(_f_tmp) or {}
+        _ref_data_raw = str(_ref_tmp.get("data") or "")[:10]
+        if _ref_data_raw != _month_start_str:
+            print(f"⚠️ Referência mensal inválida para {_mes_atual_str}: {_ref_data_raw or 'vazia'} → corrigindo para {_month_start_str}")
+        else:
+            _ref_precisa_regravar = False
+except Exception as _e_ref_mes:
+    print(f"⚠️ Não consegui ler referência mensal; vou recriar: {_e_ref_mes}")
+
+if _ref_precisa_regravar:
+    try:
+        with open(_ref_path, "w", encoding="utf-8") as _f_tmp:
+            _json_tmp.dump({
+                "data": _month_start_str,
+                "gerado_em": now_brasilia().isoformat(),
+                "origem": "inicio_mes_forcado_v10_5",
+                "observacao": "Corte mensal de recebimentos por faixa; evita reset antes da virada do mês."
+            }, _f_tmp, ensure_ascii=False, indent=2)
+    except Exception as _e_ref_write:
+        print(f"⚠️ Não consegui gravar referência mensal V10.5: {_e_ref_write}")
+
+print(f"📅 Referência do mês (base): {_data_corte_parse.strftime('%d/%m/%Y')} → acumulando recebimentos desde início do mês")
 
 for _i in range(len(df_raw)):
     _row = df_raw.iloc[_i]
@@ -3407,7 +3419,7 @@ try:
         print('🌐 Fechamentos mensais sincronizados do servidor')
 except Exception:
     pass
-# V10.4: config_meta.json do FTP é fonte de verdade.
+# V10.5: config_meta.json do FTP é fonte de verdade; aceita HTTPS com SSL quebrado e fallback FTP.
 # Aceita tanto o JSON cru {global,individual} quanto resposta da API {ok:true,data:{...}}.
 def _normalizar_config_meta_payload(_data):
     try:
@@ -3473,24 +3485,64 @@ def _baixar_config_meta_remota():
         REMOTE_CONFIG_URL,
         REMOTE_PUBLIC_BASE + "/config_meta_api.php",
     ]
+
+    # V10.5: alguns ambientes Railway/Locaweb falham na cadeia SSL do HTTPS.
+    # Para NÃO cair em default, tenta HTTPS com contexto normal, depois sem verificação,
+    # e por fim baixa o JSON diretamente via FTP.
+    _contexts = [None]
+    try:
+        _contexts.append(ssl._create_unverified_context())
+    except Exception:
+        pass
+
     for _url in _urls:
-        try:
-            _sep = "&" if "?" in _url else "?"
-            with urllib.request.urlopen(_url + _sep + "_=" + str(int(time.time())), timeout=15) as _resp_cfg:
-                _remote_cfg = _resp_cfg.read().decode("utf-8", errors="ignore").strip()
-            if not _remote_cfg or not _remote_cfg.startswith("{"):
-                continue
-            _payload = _normalizar_config_meta_payload(json.loads(_remote_cfg))
-            if not _config_meta_tem_conteudo(_payload):
-                continue
+        for _ctx in _contexts:
+            try:
+                _sep = "&" if "?" in _url else "?"
+                _req_url = _url + _sep + "_=" + str(int(time.time()))
+                if _ctx is None:
+                    _resp_obj = urllib.request.urlopen(_req_url, timeout=15)
+                else:
+                    _resp_obj = urllib.request.urlopen(_req_url, timeout=15, context=_ctx)
+                with _resp_obj as _resp_cfg:
+                    _remote_cfg = _resp_cfg.read().decode("utf-8", errors="ignore").strip()
+                if not _remote_cfg or not _remote_cfg.startswith("{"):
+                    continue
+                _payload = _normalizar_config_meta_payload(json.loads(_remote_cfg))
+                if not _config_meta_tem_conteudo(_payload):
+                    continue
+                with open(_config_meta_path, "w", encoding="utf-8") as _f_cfg_local:
+                    json.dump(_payload, _f_cfg_local, ensure_ascii=False, indent=2)
+                _modo_ssl = "SSL normal" if _ctx is None else "SSL sem verificação"
+                print(f"🌐 Config meta sincronizada do servidor ({_modo_ssl}): {_url}")
+                return _payload
+            except Exception as _e_cfg_remote:
+                _modo_ssl = "SSL normal" if _ctx is None else "SSL sem verificação"
+                print(f"⚠️ Não consegui baixar config meta de {_url} ({_modo_ssl}): {_e_cfg_remote}")
+
+    # Fallback FTP: este é o mais fiel ao arquivo que fica em /public_html/colaborador.
+    try:
+        import ftplib
+        from io import BytesIO
+        _bio = BytesIO()
+        _ftp_cfg = ftplib.FTP()
+        _ftp_cfg.connect("moveisdolar.com.br", 21, timeout=20)
+        _ftp_cfg.login("moveisdolar3", "Deg27ll02mdl2301#")
+        _ftp_cfg.encoding = "utf-8"
+        _ftp_cfg.cwd("/public_html/colaborador")
+        _ftp_cfg.retrbinary("RETR config_meta.json", _bio.write)
+        _ftp_cfg.quit()
+        _raw_ftp = _bio.getvalue().decode("utf-8", errors="ignore").strip()
+        _payload = _normalizar_config_meta_payload(json.loads(_raw_ftp))
+        if _config_meta_tem_conteudo(_payload):
             with open(_config_meta_path, "w", encoding="utf-8") as _f_cfg_local:
                 json.dump(_payload, _f_cfg_local, ensure_ascii=False, indent=2)
-            print(f"🌐 Config meta sincronizada do servidor: {_url}")
+            print("🌐 Config meta sincronizada diretamente do FTP: config_meta.json")
             return _payload
-        except Exception as _e_cfg_remote:
-            print(f"⚠️ Não consegui baixar config meta de {_url}: {_e_cfg_remote}")
-    return None
+    except Exception as _e_cfg_ftp:
+        print(f"⚠️ Não consegui baixar config_meta.json via FTP: {_e_cfg_ftp}")
 
+    return None
 
 _config_meta_payload_remoto = _baixar_config_meta_remota()
 if _config_meta_payload_remoto:
@@ -3561,7 +3613,7 @@ else:
     CONFIG_META_IND = {}
     with open(_config_meta_path, "w", encoding="utf-8") as _f:
         json.dump({"global": CONFIG_META, "individual": {}}, _f, ensure_ascii=False, indent=2)
-    print("⚠️ Config meta não encontrada no FTP/local; usando defaults de segurança V10.4.")
+    print("⚠️ Config meta não encontrada no FTP/local; usando defaults de segurança V10.5.")
 
 def get_config_meta(key):
     """Retorna config de meta para um vendedor/filial, com fallback para global."""
@@ -3713,29 +3765,33 @@ def _find_last_snapshot_of_month(_month_str):
         return None
 
 def ensure_month_reference_locked(_month_str, _today_str):
+    """V10.5: a referência mensal de cobrança deve ser sempre o dia 01 da competência.
+    Isso evita que um snapshot futuro ou do fim do mês zere os recebimentos por faixa.
+    """
     _rp = ref_path(_month_str)
-    if os.path.exists(_rp):
-        return _rp
-    _base_snap = _find_last_snapshot_before_date(_today_str)
-    if _base_snap:
-        _ref_payload = {
-            'data': _base_snap.get('data', _today_str),
-            'gerado_em': now_brasilia().isoformat(),
-            'origem': 'ultimo_snapshot_anterior',
-            'snapshot_origem_path': _base_snap.get('_path',''),
-            'snapshot_origem_data': _base_snap.get('data', _today_str),
-        }
-    else:
-        _ref_payload = {
-            'data': f'{_month_str}-01',
-            'gerado_em': now_brasilia().isoformat(),
-            'origem': 'inicio_mes_sem_snapshot_anterior',
-            'snapshot_origem_path': '',
-            'snapshot_origem_data': f'{_month_str}-01',
-        }
+    _base_data = f'{_month_str}-01'
+    _precisa = True
+    try:
+        if os.path.exists(_rp):
+            with open(_rp, encoding='utf-8') as _f:
+                _cur = json.load(_f) or {}
+            if str(_cur.get('data') or '')[:10] == _base_data:
+                return _rp
+            print(f'⚠️ Referência mensal antiga/inválida em {_rp}: {_cur.get("data")} → corrigindo para {_base_data}')
+    except Exception as _e_ref_lock:
+        print(f'⚠️ Erro lendo referência mensal em {_rp}: {_e_ref_lock}')
+
+    _ref_payload = {
+        'data': _base_data,
+        'gerado_em': now_brasilia().isoformat(),
+        'origem': 'inicio_mes_forcado_v10_5',
+        'snapshot_origem_path': '',
+        'snapshot_origem_data': _base_data,
+        'observacao': 'Corte mensal fixo para recebimentos por faixa; não usar snapshot futuro nem fim do mês.',
+    }
     with open(_rp, 'w', encoding='utf-8') as _f:
         json.dump(_ref_payload, _f, ensure_ascii=False, indent=2)
-    print(f'🧷 Referência mensal travada: {_rp} → base {_ref_payload["data"]}')
+    print(f'🧷 Referência mensal travada/corrigida: {_rp} → base {_ref_payload["data"]}')
     return _rp
 
 def fechar_mes_anterior_travado(_mes_atual, _hist_dash, _config_global, _config_ind):
