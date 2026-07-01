@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_0_REATIVACAO_INDIVIDUAL_LAZY_BASE
+# VERSAO: DASH2_0_V10_4_CONFIG_META_FTP_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -33,8 +33,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.3"
-DASHBOARD_BUILD_TAG = "DASH2_0_V10_2_META_DIARIA_JS_STRICT"
+DASHBOARD_BUILD_VERSION = "V10.4"
+DASHBOARD_BUILD_TAG = "DASH2_0_V10_4_CONFIG_META_FTP_FIX"
 
 def now_brasilia():
     return datetime.now(APP_TZ)
@@ -3407,16 +3407,94 @@ try:
         print('🌐 Fechamentos mensais sincronizados do servidor')
 except Exception:
     pass
-try:
-    with urllib.request.urlopen(REMOTE_CONFIG_URL, timeout=10) as _resp_cfg:
-        _remote_cfg = _resp_cfg.read().decode("utf-8", errors="ignore").strip()
-    if _remote_cfg and _remote_cfg.startswith("{"):
-        with open(_config_meta_path, "w", encoding="utf-8") as _f_cfg_local:
-            _f_cfg_local.write(_remote_cfg)
-        _config_meta_loaded_from_remote = True
-        print("🌐 Config meta sincronizada do servidor")
-except Exception:
-    pass
+# V10.4: config_meta.json do FTP é fonte de verdade.
+# Aceita tanto o JSON cru {global,individual} quanto resposta da API {ok:true,data:{...}}.
+def _normalizar_config_meta_payload(_data):
+    try:
+        if not isinstance(_data, dict):
+            return None
+
+        # API PHP pode devolver {ok:true,data:{global:{...},individual:{...}}}
+        if isinstance(_data.get("data"), dict):
+            _data = _data.get("data")
+
+        if isinstance(_data.get("global"), dict) or isinstance(_data.get("individual"), dict):
+            return {
+                "global": _data.get("global") if isinstance(_data.get("global"), dict) else {},
+                "individual": _data.get("individual") if isinstance(_data.get("individual"), dict) else {},
+            }
+
+        # Formato antigo: o próprio objeto era o global.
+        _chaves_global = {
+            "grave_pct", "alerta_pct", "atencao_pct", "peso_grave", "peso_alerta", "peso_atencao",
+            "vendas_min_pct", "servicos_min_pct", "gerente_vendas_min_pct", "gerente_servicos_min_pct",
+            "vendedor_policy", "gerente_policy", "camp_meta_diaria_vend", "camp_meta_diaria_ger",
+            "camp_dindin_vend", "camp_dindin_ger", "camp_admin", "comissao_pagamento_texto",
+        }
+        if any(k in _data for k in _chaves_global):
+            return {"global": _data, "individual": {}}
+    except Exception:
+        pass
+    return None
+
+
+def _config_meta_tem_conteudo(_payload):
+    try:
+        if not isinstance(_payload, dict):
+            return False
+        _glob = _payload.get("global") if isinstance(_payload.get("global"), dict) else {}
+        _ind = _payload.get("individual") if isinstance(_payload.get("individual"), dict) else {}
+        _chaves_criticas = (
+            "comissao_pagamento_texto", "gerente_vendas_min_pct", "gerente_servicos_min_pct",
+            "camp_meta_diaria_vend", "camp_meta_diaria_ger", "vendedor_policy", "gerente_policy",
+            "crediaristas_config",
+        )
+        return bool(_ind) or any(k in _glob for k in _chaves_criticas)
+    except Exception:
+        return False
+
+
+def _ler_config_meta_arquivo(_path):
+    try:
+        if not _path or not os.path.exists(_path):
+            return None
+        with open(_path, "r", encoding="utf-8") as _f_cfg_read:
+            _raw = json.load(_f_cfg_read)
+        _payload = _normalizar_config_meta_payload(_raw)
+        if _config_meta_tem_conteudo(_payload):
+            return _payload
+    except Exception as _e_cfg_file:
+        print(f"⚠️ Config meta local inválida em {_path}: {_e_cfg_file}")
+    return None
+
+
+def _baixar_config_meta_remota():
+    _urls = [
+        REMOTE_CONFIG_URL,
+        REMOTE_PUBLIC_BASE + "/config_meta_api.php",
+    ]
+    for _url in _urls:
+        try:
+            _sep = "&" if "?" in _url else "?"
+            with urllib.request.urlopen(_url + _sep + "_=" + str(int(time.time())), timeout=15) as _resp_cfg:
+                _remote_cfg = _resp_cfg.read().decode("utf-8", errors="ignore").strip()
+            if not _remote_cfg or not _remote_cfg.startswith("{"):
+                continue
+            _payload = _normalizar_config_meta_payload(json.loads(_remote_cfg))
+            if not _config_meta_tem_conteudo(_payload):
+                continue
+            with open(_config_meta_path, "w", encoding="utf-8") as _f_cfg_local:
+                json.dump(_payload, _f_cfg_local, ensure_ascii=False, indent=2)
+            print(f"🌐 Config meta sincronizada do servidor: {_url}")
+            return _payload
+        except Exception as _e_cfg_remote:
+            print(f"⚠️ Não consegui baixar config meta de {_url}: {_e_cfg_remote}")
+    return None
+
+
+_config_meta_payload_remoto = _baixar_config_meta_remota()
+if _config_meta_payload_remoto:
+    _config_meta_loaded_from_remote = True
 _config_meta_default_global = {
     "grave_pct":   20.0,
     "alerta_pct":  15.0,
@@ -3426,8 +3504,8 @@ _config_meta_default_global = {
     "peso_atencao":10.0,
     "vendas_min_pct": 80.0,
     "servicos_min_pct": 80.0,
-    "gerente_vendas_min_pct": 90.0,
-    "gerente_servicos_min_pct": 90.0,
+    "gerente_vendas_min_pct": 80.0,
+    "gerente_servicos_min_pct": 80.0,
     "vendedor_rentab_min_mercantil_pct": 80.0,
     "gerente_rentab_min_mercantil_pct": 80.0,
     "vendedor_policy": [],
@@ -3447,7 +3525,7 @@ _config_meta_default_global = {
     "cob_cred_rateio_filial_pct": 50.0,
     "cob_cred_rateio_cred_pct": 50.0,
     "cobranca_global_rateio_pct": 20.0,
-    "comissao_pagamento_texto": "A comissão reinicia a cada mês e o pagamento é previsto para o dia 10 do mês seguinte.",
+    "comissao_pagamento_texto": "A comissão reinicia a cada mês e o pagamento é previsto para o dia 25 do mês seguinte.",
     "telegram_contacts": [],
     "aniversario_msg_template": "Olá, {primeiro_nome}! Feliz aniversário! 🎂🎉\n\nAqui é da Lojas MDL - Móveis do Lar. Desejamos muita saúde, paz e felicidades neste dia especial. 😍😍\n\nPreparamos condições especiais para você comemorar com a gente.\n🕺🎉🤩",
     "reativacao_msg_template": "Olá, {primeiro_nome}! Tudo bem? 😊\n\nAqui é da Lojas MDL - Móveis do Lar. Estamos com saudades de você! Faz um tempinho que você não aparece na loja.  🥹\n\nVenha conhecer nossas novidades e aproveitar condições especiais que preparamos para nossos clientes. 👈👈😍😍",
@@ -3461,21 +3539,29 @@ _config_meta_default_global = {
         {"login": "crediaristaf09_01", "nome": "Crediarista F9 01", "filial": "F9", "pct": 100}
     ],
 }
-if os.path.exists(_config_meta_path):
-    with open(_config_meta_path, encoding="utf-8") as _f:
-        _cfg_raw = json.load(_f)
-    # Suporte ao formato antigo (sem chave "global")
-    if "global" in _cfg_raw:
-        CONFIG_META        = {**_config_meta_default_global, **_cfg_raw["global"]}
-        CONFIG_META_IND    = _cfg_raw.get("individual", {})  # {key_vend: {...}}
-    else:
-        CONFIG_META        = {**_config_meta_default_global, **_cfg_raw}
-        CONFIG_META_IND    = {}
+_config_meta_payload = (
+    _config_meta_payload_remoto
+    or _ler_config_meta_arquivo(_config_meta_path)
+    or _ler_config_meta_arquivo(os.path.join(pasta, "config_meta.json"))
+)
+
+if _config_meta_payload:
+    _cfg_global = _config_meta_payload.get("global") if isinstance(_config_meta_payload.get("global"), dict) else {}
+    _cfg_individual = _config_meta_payload.get("individual") if isinstance(_config_meta_payload.get("individual"), dict) else {}
+    CONFIG_META = {**_config_meta_default_global, **_cfg_global}
+    CONFIG_META_IND = _cfg_individual
+    try:
+        # Mantém um cache normalizado para as próximas rotinas e para o monitor Telegram.
+        with open(_config_meta_path, "w", encoding="utf-8") as _f:
+            json.dump({"global": CONFIG_META, "individual": CONFIG_META_IND}, _f, ensure_ascii=False, indent=2)
+    except Exception as _e_cfg_cache:
+        print(f"⚠️ Não consegui salvar cache local do config_meta.json: {_e_cfg_cache}")
 else:
-    CONFIG_META     = _config_meta_default_global.copy()
+    CONFIG_META = _config_meta_default_global.copy()
     CONFIG_META_IND = {}
     with open(_config_meta_path, "w", encoding="utf-8") as _f:
         json.dump({"global": CONFIG_META, "individual": {}}, _f, ensure_ascii=False, indent=2)
+    print("⚠️ Config meta não encontrada no FTP/local; usando defaults de segurança V10.4.")
 
 def get_config_meta(key):
     """Retorna config de meta para um vendedor/filial, com fallback para global."""
@@ -3488,10 +3574,10 @@ def get_config_meta(key):
             return {**CONFIG_META, **CONFIG_META_IND[ak]}
     return CONFIG_META
 
-print(f"⚙️  Config meta global: Grave={CONFIG_META['grave_pct']}% Alerta={CONFIG_META['alerta_pct']}% Atenção={CONFIG_META['atencao_pct']}% | Pesos: {CONFIG_META['peso_grave']}/{CONFIG_META['peso_alerta']}/{CONFIG_META['peso_atencao']}")
+print(f"⚙️  Config meta global: Grave={CONFIG_META['grave_pct']}% Alerta={CONFIG_META['alerta_pct']}% Atenção={CONFIG_META['atencao_pct']}% | Pesos: {CONFIG_META['peso_grave']}/{CONFIG_META['peso_alerta']}/{CONFIG_META['peso_atencao']} | Gerente mínimo={CONFIG_META.get('gerente_vendas_min_pct')}%/{CONFIG_META.get('gerente_servicos_min_pct')}% | Comissão texto={CONFIG_META.get('comissao_pagamento_texto')}")
 print(f"⚙️  Configs individuais: {len(CONFIG_META_IND)} sobreposições")
 
-# Histórico mensal de comissão de cobrança (pagamento dia 10 do mês seguinte)
+# Histórico mensal de comissão de cobrança (pagamento configurável no config_meta.json)
 COMISSAO_HIST_PATH = os.path.join(pasta, "historico_comissao_cobranca.json")
 
 def _row_key_cob_json(r):
@@ -5205,7 +5291,7 @@ def _dias_uteis_campanha_padrao(ent_type, ent_key):
         else:
             _rows = (_cfg.get("camp_meta_diaria_vend") or [])
         if _rows:
-            return max(1, int(float(str(_rows[0].get("dias_uteis", 26)).replace(",", "."))))
+            return max(1, int(float(str(_rows[0].get("dias_uteis", 25)).replace(",", "."))))
     except Exception:
         pass
     return 26
@@ -7929,7 +8015,7 @@ function getRentEmpresa(){
 }
 
 let SERVICOS_RELATORIO=__JS_SERVICOS_RELATORIO__||{empresa:{},servicos:{},filiais:{},vendedores:{},detalhes:[]};
-let CONFIG_META={grave_pct:20,alerta_pct:15,atencao_pct:10,comissao_pagamento_texto:'A comissão reinicia a cada mês e o pagamento é previsto para o dia 10 do mês seguinte.',reativacao_rateio_modo:'igualitario',reativacao_msg_template_filiais:{},aniversario_msg_template_filiais:{},dias_uteis_meta_diaria:25,aniversario_msg_template:`Olá, {primeiro_nome}! Feliz aniversário!
+let CONFIG_META={grave_pct:20,alerta_pct:15,atencao_pct:10,comissao_pagamento_texto:'A comissão reinicia a cada mês e o pagamento é previsto para o dia 25 do mês seguinte.',reativacao_rateio_modo:'igualitario',reativacao_msg_template_filiais:{},aniversario_msg_template_filiais:{},dias_uteis_meta_diaria:25,aniversario_msg_template:`Olá, {primeiro_nome}! Feliz aniversário!
 
 Aqui é da Lojas MDL - Móveis do Lar. Desejamos muita saúde, paz e felicidades neste dia especial.
 
@@ -7937,7 +8023,7 @@ Preparamos condições especiais para você comemorar com a gente.`,reativacao_m
 
 Aqui é da Lojas MDL - Móveis do Lar. Estamos com saudades de você! Faz um tempinho que você não aparece na loja.
 
-Venha conhecer nossas novidades e aproveitar condições especiais que preparamos para nossos clientes.`,peso_grave:60,peso_alerta:30,peso_atencao:10,vendas_min_pct:80,servicos_min_pct:80,gerente_vendas_min_pct:90,gerente_servicos_min_pct:90,vendedor_rentab_min_mercantil_pct:80,gerente_rentab_min_mercantil_pct:80,bonus_50:'',bonus_75:'',bonus_85:'',bonus_100:'',cob_cred_rateio_filial_pct:50,cob_cred_rateio_cred_pct:50,cobranca_global_rateio_pct:20,cobranca_msg_template_terceira:`Olá, {primeiro_nome}. Tudo bem?
+Venha conhecer nossas novidades e aproveitar condições especiais que preparamos para nossos clientes.`,peso_grave:60,peso_alerta:30,peso_atencao:10,vendas_min_pct:80,servicos_min_pct:80,gerente_vendas_min_pct:80,gerente_servicos_min_pct:80,vendedor_rentab_min_mercantil_pct:80,gerente_rentab_min_mercantil_pct:80,bonus_50:'',bonus_75:'',bonus_85:'',bonus_100:'',cob_cred_rateio_filial_pct:50,cob_cred_rateio_cred_pct:50,cobranca_global_rateio_pct:20,cobranca_msg_template_terceira:`Olá, {primeiro_nome}. Tudo bem?
 Aqui é da Lojas MDL - Móveis do Lar.
 
 Já tentamos contato sobre a parcela vencida em {vencimento}, no valor de {valor}, referente ao título {titulo}/{parcela}.
@@ -8785,7 +8871,12 @@ function setMainTab(tab){
   renderTopMural();
   if(tab==='inicio') renderInicioTab();
   if(tab==='vendedores'||tab==='filiais'){renderFilters();renderList()}
-  if(tab==='metas') renderMetasTab();
+  if(tab==='metas'){
+    renderMetasTab();
+    if(!window._configMetaOnlineLoaded){
+      carregarConfigOnline().then(()=>{ if(mainTab==='metas') renderMetasTab(); }).catch(()=>{});
+    }
+  }
   if(tab==='servicos') renderServicosTab(false);
   if(tab==='cobrancas') renderLogsTab();
   if(tab==='reativacao') renderReativacaoTab();
@@ -9022,7 +9113,7 @@ function renderList(){const entities=currentEntities();const title=mainTab==='fi
 function findEntity(ref){const n=String(ref?.nome||'').toLowerCase(); const f=String(ref?.filial||'').toUpperCase(); const t=String(ref?.type||'').toLowerCase(); if(t==='terceiro' || ref?.is_terceiro || n===String(COBRANCA10_NOME).toLowerCase() || n===String(COBRANCA10_LOGIN).toLowerCase() || f==='FTER'){return thirdChargeEntity()} if(t==='crediarista' || ref?.is_crediarista || n.startsWith('crediarista') || String(ref?.login||'').toLowerCase().startsWith('crediaristaf')){return crediaristaEntityByLogin(ref?.login||ref?.nome||ref?.filial)} if(ref.type==='filial'){return flattenFiliais().find(x=>x.filial===ref.filial)} return flattenVendedores().find(x=>x.filial===ref.filial && x.nome===ref.nome)}
 function keysFromLogsForCommission(logs){const out=new Set(); (logs||[]).forEach(l=>{out.add(cobrancaRowKey(l)); const alt=[String(l.cliente||'').trim().toUpperCase(),String(l.titulo||'').trim(),String(l.parcela||'').trim()].join('|'); out.add(alt);}); return out}
 function key3Cob(r){return [String(r.cliente||r.nome||'').trim().toUpperCase(),String(r.titulo||'').trim(),String(r.parcela||'').trim()].join('|')}
-function renderTerceiroCommission(ent){const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista'); const baseCfg=isCred?entityConfig({type:'vendedor',nome:ent.nome,filial:ent.filial}):entityConfig({type:'vendedor',nome:COBRANCA10_NOME,filial:'FTER'}); const cfg=commissionCfg(baseCfg); const policy=(isCred?(cfg.camp_cob_crediarista||[]):(cfg.camp_cobranca_terceiro||[])); const policyOk=Array.isArray(policy)&&policy.length?policy:(isCred?defaultCampCrediarista():defaultCampTerceiro()); const byFaixa={atencao:{pct:0,cobrado:0,recebido:0,comissao:0},alerta:{pct:0,cobrado:0,recebido:0,comissao:0},grave:{pct:0,cobrado:0,recebido:0,comissao:0}}; policyOk.forEach(r=>{const fx=String(r.faixa||'').toLowerCase(); if(byFaixa[fx]) byFaixa[fx].pct=Number(String(r.pct||0).replace(',','.'))||0}); const mesAtual=dateOnlyISO(new Date()).slice(0,7); const userKeys=isCred?[String(ent.login||'').toLowerCase(),String(ent.nome||'').toLowerCase()]:[COBRANCA10_NOME.toLowerCase(),COBRANCA10_LOGIN]; const cobrados=(COB_LOGS||[]).filter(x=>userKeys.includes(String(x.usuario||'').toLowerCase()) && dateOnlyISO(x.server_time||x.criado_em||x.data||'').slice(0,7)===mesAtual); const keys=keysFromLogsForCommission(cobrados); const srcCli=isCred?(CLIENTES_CREDIARISTA?.[String(ent.login||'').toLowerCase()]||{grave:[],alerta:[],atencao:[]}):(CLIENTES_TERCEIRO||{grave:[],alerta:[],atencao:[]}); const srcRec=getRecebimentos(ent)||{grave:[],alerta:[],atencao:[]}; ['atencao','alerta','grave'].forEach(fx=>{byFaixa[fx].cobrado=(srcCli?.[fx]||[]).filter(r=>keys.has(cobrancaRowKey(r))||keys.has(key3Cob(r))).length; (srcRec?.[fx]||[]).forEach(r=>{const pagMes=dateOnlyISO(r.pagamento||r.data_pagamento||'').slice(0,7); if((keys.has(cobrancaRowKey(r))||keys.has(key3Cob(r))) && pagMes===mesAtual){byFaixa[fx].recebido+=Number(r.pago||0)}}); byFaixa[fx].comissao=byFaixa[fx].recebido*(byFaixa[fx].pct/100)}); const total=Object.values(byFaixa).reduce((a,b)=>a+b.comissao,0); const item=(t,v,s='')=>`<div class="commission-item unlocked ${s}"><div class="k">${t}</div><div class="v">${v}</div></div>`; return `<div class="glass panel commission-card"><h3>💵 ${isCred?'Comissão crediarista':'Comissão cobrança terceiro'} <span class="note">· só títulos cobrados pelo usuário e pagos no mês</span></h3><div class="commission-grid">${item('Atenção %',String(byFaixa.atencao.pct.toFixed(2)).replace('.',',')+'%')}${item('Alerta %',String(byFaixa.alerta.pct.toFixed(2)).replace('.',',')+'%')}${item('Grave %',String(byFaixa.grave.pct.toFixed(2)).replace('.',',')+'%')}${item('Recebido atenção',R(byFaixa.atencao.recebido||0))}${item('Recebido alerta',R(byFaixa.alerta.recebido||0))}${item('Recebido grave',R(byFaixa.grave.recebido||0))}${item('Comissão atenção',R(byFaixa.atencao.comissao||0))}${item('Comissão alerta',R(byFaixa.alerta.comissao||0))}${item('Comissão grave',R(byFaixa.grave.comissao||0))}${item('Total previsto',R(total||0),'total-final')}</div><div class="commission-note">${esc(CONFIG_META?.comissao_pagamento_texto||'A comissão reinicia a cada mês e o pagamento é previsto para o dia 10 do mês seguinte.')}</div></div>`}
+function renderTerceiroCommission(ent){const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista'); const baseCfg=isCred?entityConfig({type:'vendedor',nome:ent.nome,filial:ent.filial}):entityConfig({type:'vendedor',nome:COBRANCA10_NOME,filial:'FTER'}); const cfg=commissionCfg(baseCfg); const policy=(isCred?(cfg.camp_cob_crediarista||[]):(cfg.camp_cobranca_terceiro||[])); const policyOk=Array.isArray(policy)&&policy.length?policy:(isCred?defaultCampCrediarista():defaultCampTerceiro()); const byFaixa={atencao:{pct:0,cobrado:0,recebido:0,comissao:0},alerta:{pct:0,cobrado:0,recebido:0,comissao:0},grave:{pct:0,cobrado:0,recebido:0,comissao:0}}; policyOk.forEach(r=>{const fx=String(r.faixa||'').toLowerCase(); if(byFaixa[fx]) byFaixa[fx].pct=Number(String(r.pct||0).replace(',','.'))||0}); const mesAtual=dateOnlyISO(new Date()).slice(0,7); const userKeys=isCred?[String(ent.login||'').toLowerCase(),String(ent.nome||'').toLowerCase()]:[COBRANCA10_NOME.toLowerCase(),COBRANCA10_LOGIN]; const cobrados=(COB_LOGS||[]).filter(x=>userKeys.includes(String(x.usuario||'').toLowerCase()) && dateOnlyISO(x.server_time||x.criado_em||x.data||'').slice(0,7)===mesAtual); const keys=keysFromLogsForCommission(cobrados); const srcCli=isCred?(CLIENTES_CREDIARISTA?.[String(ent.login||'').toLowerCase()]||{grave:[],alerta:[],atencao:[]}):(CLIENTES_TERCEIRO||{grave:[],alerta:[],atencao:[]}); const srcRec=getRecebimentos(ent)||{grave:[],alerta:[],atencao:[]}; ['atencao','alerta','grave'].forEach(fx=>{byFaixa[fx].cobrado=(srcCli?.[fx]||[]).filter(r=>keys.has(cobrancaRowKey(r))||keys.has(key3Cob(r))).length; (srcRec?.[fx]||[]).forEach(r=>{const pagMes=dateOnlyISO(r.pagamento||r.data_pagamento||'').slice(0,7); if((keys.has(cobrancaRowKey(r))||keys.has(key3Cob(r))) && pagMes===mesAtual){byFaixa[fx].recebido+=Number(r.pago||0)}}); byFaixa[fx].comissao=byFaixa[fx].recebido*(byFaixa[fx].pct/100)}); const total=Object.values(byFaixa).reduce((a,b)=>a+b.comissao,0); const item=(t,v,s='')=>`<div class="commission-item unlocked ${s}"><div class="k">${t}</div><div class="v">${v}</div></div>`; return `<div class="glass panel commission-card"><h3>💵 ${isCred?'Comissão crediarista':'Comissão cobrança terceiro'} <span class="note">· só títulos cobrados pelo usuário e pagos no mês</span></h3><div class="commission-grid">${item('Atenção %',String(byFaixa.atencao.pct.toFixed(2)).replace('.',',')+'%')}${item('Alerta %',String(byFaixa.alerta.pct.toFixed(2)).replace('.',',')+'%')}${item('Grave %',String(byFaixa.grave.pct.toFixed(2)).replace('.',',')+'%')}${item('Recebido atenção',R(byFaixa.atencao.recebido||0))}${item('Recebido alerta',R(byFaixa.alerta.recebido||0))}${item('Recebido grave',R(byFaixa.grave.recebido||0))}${item('Comissão atenção',R(byFaixa.atencao.comissao||0))}${item('Comissão alerta',R(byFaixa.alerta.comissao||0))}${item('Comissão grave',R(byFaixa.grave.comissao||0))}${item('Total previsto',R(total||0),'total-final')}</div><div class="commission-note">${esc(CONFIG_META?.comissao_pagamento_texto||'A comissão reinicia a cada mês e o pagamento é previsto para o dia 25 do mês seguinte.')}</div></div>`}
 function openCrediaristaPanel(login, filial, nome){
   const filialNorm=String(filial||'').toUpperCase();
   const loginNorm=String(login||crediaristaLoginByFilial(filialNorm)||'').toLowerCase();
@@ -9308,8 +9399,8 @@ camp_cob_crediarista:Array.isArray(cfg?.camp_cob_crediarista)&&cfg.camp_cob_cred
 }}
 function renderPolicyTable(id, rows, cols, headers){return `<div class="comm-scroll"><table class="comm-table"><thead><tr>${cols.map((c,i)=>`<th><input data-comm-head="${id}" data-index="${i}" value="${esc(headers?.[i]??c.label)}"></th>`).join('')}</tr></thead><tbody>${rows.map((r,i)=>`<tr>${cols.map(c=>`<td><input data-comm="${id}" data-row="${i}" data-key="${c.key}" value="${esc(r[c.key]??'')}"></td>`).join('')}</tr>`).join('')}</tbody></table></div>`}
 
-function defaultCampMetaDiariaVend(){return [{dias_uteis:'26',bonus_final:'500'}]}
-function defaultCampMetaDiariaGer(){return [{dias_uteis:'26',bonus_final:'1000'}]}
+function defaultCampMetaDiariaVend(){return [{dias_uteis:'25',bonus_final:'500'}]}
+function defaultCampMetaDiariaGer(){return [{dias_uteis:'25',bonus_final:'1000'}]}
 function defaultCampDindinVend(){return [{atingido:'105',extra_pct:'0.50'},{atingido:'110',extra_pct:'1.00'}]}
 function defaultCampDindinGer(){return [{atingido:'105',extra_pct:'0.50'},{atingido:'110',extra_pct:'1.00'}]}
 function defaultCampAdmin(){return [{atingido:'100',extra_pct:'0.15',colaboradores:'5'},{atingido:'105',extra_pct:'0.20',colaboradores:'5'},{atingido:'110',extra_pct:'0.22',colaboradores:'5'}]}
@@ -9381,8 +9472,8 @@ function calcCommissionSummary(ent){
   const vendasComissao=(vendaReal*comPerc/100);
   let bonusMeta=0;
   let bonusLiberado=false;
-  const minVenda = ent.type==='filial' ? Number(cfg.gerente_vendas_min_pct||90) : Number(cfg.vendas_min_pct||80);
-  const minServico = ent.type==='filial' ? Number(cfg.gerente_servicos_min_pct||90) : Number(cfg.servicos_min_pct||80);
+  const minVenda = ent.type==='filial' ? Number(cfg.gerente_vendas_min_pct||80) : Number(cfg.vendas_min_pct||80);
+  const minServico = ent.type==='filial' ? Number(cfg.gerente_servicos_min_pct||80) : Number(cfg.servicos_min_pct||80);
   const rentMinMercantil = ent.type==='filial' ? Number(cfg.gerente_rentab_min_mercantil_pct||80) : Number(cfg.vendedor_rentab_min_mercantil_pct||80);
   const rentMin50 = 50;
   const geralMeta = calcMeta(ent).geral||0;
@@ -9441,7 +9532,7 @@ function campaignMetaDailyData(ent){
     ? rowFirst(cfg.camp_meta_diaria_ger)
     : rowFirst(cfg.camp_meta_diaria_vend);
 
-  const diasUteis = Math.max(1, Number(metaDiaRow.dias_uteis || 26));
+  const diasUteis = Math.max(1, Number(metaDiaRow.dias_uteis || 25));
 
   // CORRETO: meta diária usa META TOTAL, não Meta Período.
   const metaTotal = moneyNum(salesCell(vendaRow, [
@@ -10220,7 +10311,20 @@ async function carregarCobrancasOnline(){
 
 async function removerCobranca(id,cliente='',titulo='',parcela=''){if(!confirm('Remover esta cobrança do histórico?')) return; try{const r=await fetch(API_COB,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete',id,cliente,titulo,parcela})}); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} if(j.ok){toast('Cobrança removida.','success'); await carregarCobrancasOnline(); renderLogsTab(); renderList(); if(currentDetailRef) openEntity(currentDetailRef);}else{console.log('Falha remover cobrança:', txt); toast('Não consegui remover.')}}catch(e){console.log(e); toast('Falha ao remover cobrança.')}}
 function toggleAcc(el){el.parentElement.classList.toggle('open')}
-async function carregarConfigOnline(){try{const r=await fetchComTimeout(API_CFG+'?_='+Date.now(),{},2500); const j=await r.json(); if(j.ok && j.data){CONFIG_META={...CONFIG_META,...(j.data.global||{})}; CREDIARISTAS_CONFIG=getCrediaristasConfig(); const ind=(j.data.individual && typeof j.data.individual==='object' && !Array.isArray(j.data.individual))?j.data.individual:{}; CONFIG_META_IND=ind;}}catch(e){console.log('Falha ao carregar config meta',e);}}
+function normalizarConfigMetaPayloadOnline(j){
+  try{
+    let data=(j && typeof j==='object' && j.data && typeof j.data==='object') ? j.data : j;
+    if(!data || typeof data!=='object') return null;
+    if(data.global || data.individual){
+      return {global:(data.global && typeof data.global==='object')?data.global:{}, individual:(data.individual && typeof data.individual==='object' && !Array.isArray(data.individual))?data.individual:{}};
+    }
+    const keys=['grave_pct','alerta_pct','atencao_pct','gerente_vendas_min_pct','gerente_servicos_min_pct','comissao_pagamento_texto','vendedor_policy','gerente_policy','camp_meta_diaria_vend','camp_meta_diaria_ger'];
+    if(keys.some(k=>Object.prototype.hasOwnProperty.call(data,k))) return {global:data, individual:{}};
+  }catch(e){}
+  return null;
+}
+window._configMetaOnlineLoaded=false;
+async function carregarConfigOnline(){try{const r=await fetchComTimeout(API_CFG+'?_='+Date.now(),{},8000); const j=await r.json(); const payload=normalizarConfigMetaPayloadOnline(j); if(payload){CONFIG_META={...CONFIG_META,...(payload.global||{})}; CREDIARISTAS_CONFIG=getCrediaristasConfig(); CONFIG_META_IND=payload.individual||{}; window._configMetaOnlineLoaded=true;}}catch(e){console.log('Falha ao carregar config meta',e);}}
 
 function optionTargets(){let opts=''; flattenFiliais().forEach(f=>{opts+=`<option value="FILIAL::${f.filial}">🏬 ${filialLabel(f.filial)}</option>`}); opts+=`<option value="VEND::${COBRANCA10_NOME}_FTER">🤝 ${COBRANCA10_NOME} (Cobranças Terceiro)</option>`; crediaristaEntities().forEach(c=>{opts+=`<option value="VEND::${c.nome}_${c.filial}">🧾 ${c.nome} (${c.filial})</option>`}); flattenVendedores().forEach(v=>{opts+=`<option value="VEND::${v.nome}_${v.filial}">👤 ${v.nome} (${v.filial})</option>`}); return opts}
 function fillMetaForm(mode,val){const cfg=mode==='global'?{...CONFIG_META}:mergedMetaConfig(metaAliasesFromRaw(val)); ['grave_pct','alerta_pct','atencao_pct','peso_grave','peso_alerta','peso_atencao','bonus_50','bonus_75','bonus_85','bonus_100','vendas_min_pct','servicos_min_pct','gerente_vendas_min_pct','gerente_servicos_min_pct','vendedor_rentab_min_mercantil_pct','gerente_rentab_min_mercantil_pct','cobranca_global_rateio_pct','comissao_pagamento_texto'].forEach(k=>{const el=document.getElementById('cfg_'+k); if(el) el.value=cfg[k]??''}); renderCommissionPanel(cfg)}
@@ -10274,7 +10378,7 @@ function readCrediaristasConfigFromUI(){
   }).filter(r=>r.login&&r.filial&&r.pct>0);
 }
 
-function renderMetasTab(){const cards=[...flattenVendedores(),...flattenFiliais()]; const currentMode=window._metaMode||'global'; const currentTarget=window._metaSelectedTarget||''; metaSection.innerHTML=`<div class="section-head"><div><h2>🎯 Configuração de metas e bônus</h2><div class="hint">Altere globalmente ou por vendedor/filial. Ao salvar, já fica online.</div></div></div><div class="meta-layout"><div class="glass panel"><div class="tabs" style="justify-content:flex-start;margin-top:0"><button id="btnModeGlobal" class="tab" onclick="setMetaMode('global')">🌐 Padrão global</button><button id="btnModeInd" class="tab" onclick="setMetaMode('individual')">👤 Por vendedor/filial</button></div><div id="metaSelectWrap" class="hidden" style="margin:8px 0 14px"><div class="input-card"><label>Selecionar alvo</label><select id="metaTarget" onchange="loadMetaSelected()"><option value="">Selecione...</option>${optionTargets()}</select></div></div><div class="section-head" style="margin-top:10px"><div><h2 style="font-size:18px">% de meta por faixa</h2></div></div><div class="form-grid"><div class="input-card"><label>Grave</label><input id="cfg_grave_pct" type="number" step="0.01"></div><div class="input-card"><label>Alerta</label><input id="cfg_alerta_pct" type="number" step="0.01"></div><div class="input-card"><label>Atenção</label><input id="cfg_atencao_pct" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">Pesos da meta geral</h2></div></div><div class="form-grid"><div class="input-card"><label>Peso Grave</label><input id="cfg_peso_grave" type="number" step="0.01"></div><div class="input-card"><label>Peso Alerta</label><input id="cfg_peso_alerta" type="number" step="0.01"></div><div class="input-card"><label>Peso Atenção</label><input id="cfg_peso_atencao" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">Bônus / mensagem da faixa <span class="note">· Não acumulativo</span></h2></div></div><div class="form-grid bonus"><div class="input-card"><label>50%</label><input id="cfg_bonus_50" placeholder="Ex: Parabéns, você ganhou R$ 100,00"></div><div class="input-card"><label>75%</label><input id="cfg_bonus_75"></div><div class="input-card"><label>85%</label><input id="cfg_bonus_85"></div><div class="input-card"><label>100%</label><input id="cfg_bonus_100"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">💲 Meta mínima Vendas e Serviços</h2><div class="hint">Configuração inicial para comissão de vendedor e gerente/filial.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Vendedor · mínimo vendas (%)</label><input id="cfg_vendas_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Vendedor · mínimo serviços (%)</label><input id="cfg_servicos_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial · mínimo vendas (%)</label><input id="cfg_gerente_vendas_min_pct" type="number" step="0.01" placeholder="90"></div><div class="input-card"><label>Gerente/Filial · mínimo serviços (%)</label><input id="cfg_gerente_servicos_min_pct" type="number" step="0.01" placeholder="90"></div><div class="input-card"><label>Vendedor · mercantil mínimo para rentab (%)</label><input id="cfg_vendedor_rentab_min_mercantil_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial · mercantil mínimo para rentab (%)</label><input id="cfg_gerente_rentab_min_mercantil_pct" type="number" step="0.01" placeholder="80"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🤝 Rateio cobrança global</h2><div class="hint">Percentual do total único da cobrança geral distribuído para os usuários do tipo cobrança global (ex.: Cobrança10).</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Usuários de cobrança global (%)</label><input id="cfg_cobranca_global_rateio_pct" type="number" step="0.01" placeholder="20"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🧾 Texto da comissão</h2><div class="hint">Frase exibida no card de comissão de crediaristas/cobrança terceira.</div></div></div><div class="form-grid bonus"><div class="input-card" style="grid-column:1/-1"><label>Mensagem abaixo da comissão</label><input id="cfg_comissao_pagamento_texto" placeholder="Ex: Pagamento previsto para o dia 10 do mês seguinte"></div></div>${renderCrediaristasConfigPanel()}<div id="commissionPanel"></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button class="btn primary" onclick="salvarMeta()">💾 Salvar configuração</button><button class="btn ghost" onclick="removerMetaIndividual()">🗑️ Remover individual</button></div><div id="metaSaveMsg" class="note" style="margin-top:10px"></div><div id="metaSavedList" class="note" style="margin-top:10px"></div></div></div>`; const sel=document.getElementById('metaTarget'); if(sel && currentTarget) sel.value=currentTarget; setMetaMode(currentMode); renderSavedMetaList();}
+function renderMetasTab(){const cards=[...flattenVendedores(),...flattenFiliais()]; const currentMode=window._metaMode||'global'; const currentTarget=window._metaSelectedTarget||''; metaSection.innerHTML=`<div class="section-head"><div><h2>🎯 Configuração de metas e bônus</h2><div class="hint">Altere globalmente ou por vendedor/filial. Ao salvar, já fica online.</div></div></div><div class="meta-layout"><div class="glass panel"><div class="tabs" style="justify-content:flex-start;margin-top:0"><button id="btnModeGlobal" class="tab" onclick="setMetaMode('global')">🌐 Padrão global</button><button id="btnModeInd" class="tab" onclick="setMetaMode('individual')">👤 Por vendedor/filial</button></div><div id="metaSelectWrap" class="hidden" style="margin:8px 0 14px"><div class="input-card"><label>Selecionar alvo</label><select id="metaTarget" onchange="loadMetaSelected()"><option value="">Selecione...</option>${optionTargets()}</select></div></div><div class="section-head" style="margin-top:10px"><div><h2 style="font-size:18px">% de meta por faixa</h2></div></div><div class="form-grid"><div class="input-card"><label>Grave</label><input id="cfg_grave_pct" type="number" step="0.01"></div><div class="input-card"><label>Alerta</label><input id="cfg_alerta_pct" type="number" step="0.01"></div><div class="input-card"><label>Atenção</label><input id="cfg_atencao_pct" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">Pesos da meta geral</h2></div></div><div class="form-grid"><div class="input-card"><label>Peso Grave</label><input id="cfg_peso_grave" type="number" step="0.01"></div><div class="input-card"><label>Peso Alerta</label><input id="cfg_peso_alerta" type="number" step="0.01"></div><div class="input-card"><label>Peso Atenção</label><input id="cfg_peso_atencao" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">Bônus / mensagem da faixa <span class="note">· Não acumulativo</span></h2></div></div><div class="form-grid bonus"><div class="input-card"><label>50%</label><input id="cfg_bonus_50" placeholder="Ex: Parabéns, você ganhou R$ 100,00"></div><div class="input-card"><label>75%</label><input id="cfg_bonus_75"></div><div class="input-card"><label>85%</label><input id="cfg_bonus_85"></div><div class="input-card"><label>100%</label><input id="cfg_bonus_100"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">💲 Meta mínima Vendas e Serviços</h2><div class="hint">Configuração inicial para comissão de vendedor e gerente/filial.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Vendedor · mínimo vendas (%)</label><input id="cfg_vendas_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Vendedor · mínimo serviços (%)</label><input id="cfg_servicos_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial · mínimo vendas (%)</label><input id="cfg_gerente_vendas_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial · mínimo serviços (%)</label><input id="cfg_gerente_servicos_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Vendedor · mercantil mínimo para rentab (%)</label><input id="cfg_vendedor_rentab_min_mercantil_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial · mercantil mínimo para rentab (%)</label><input id="cfg_gerente_rentab_min_mercantil_pct" type="number" step="0.01" placeholder="80"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🤝 Rateio cobrança global</h2><div class="hint">Percentual do total único da cobrança geral distribuído para os usuários do tipo cobrança global (ex.: Cobrança10).</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Usuários de cobrança global (%)</label><input id="cfg_cobranca_global_rateio_pct" type="number" step="0.01" placeholder="20"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🧾 Texto da comissão</h2><div class="hint">Frase exibida no card de comissão de crediaristas/cobrança terceira.</div></div></div><div class="form-grid bonus"><div class="input-card" style="grid-column:1/-1"><label>Mensagem abaixo da comissão</label><input id="cfg_comissao_pagamento_texto" placeholder="Ex: Pagamento previsto para o dia 25 do mês seguinte"></div></div>${renderCrediaristasConfigPanel()}<div id="commissionPanel"></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button class="btn primary" onclick="salvarMeta()">💾 Salvar configuração</button><button class="btn ghost" onclick="removerMetaIndividual()">🗑️ Remover individual</button></div><div id="metaSaveMsg" class="note" style="margin-top:10px"></div><div id="metaSavedList" class="note" style="margin-top:10px"></div></div></div>`; const sel=document.getElementById('metaTarget'); if(sel && currentTarget) sel.value=currentTarget; setMetaMode(currentMode); renderSavedMetaList();}
 function setMetaMode(mode){window._metaMode=mode; const bg=document.getElementById('btnModeGlobal'); const bi=document.getElementById('btnModeInd'); if(bg) bg.classList.toggle('active',mode==='global'); if(bi) bi.classList.toggle('active',mode==='individual'); const wrap=document.getElementById('metaSelectWrap'); if(wrap) wrap.classList.toggle('hidden',mode!=='individual'); if(mode==='global'){fillMetaForm('global')} else {const raw=(document.getElementById('metaTarget')?.value)||window._metaSelectedTarget||''; if(raw){window._metaSelectedTarget=raw; fillMetaForm('individual',raw)} else {fillMetaForm('global')}}}
 function loadMetaSelected(){const val=document.getElementById('metaTarget').value; window._metaSelectedTarget=val; if(!val){fillMetaForm('global'); return;} fillMetaForm('individual',val)}
 function collectMetaForm(){const out={}; ['grave_pct','alerta_pct','atencao_pct','peso_grave','peso_alerta','peso_atencao','vendas_min_pct','servicos_min_pct','gerente_vendas_min_pct','gerente_servicos_min_pct','vendedor_rentab_min_mercantil_pct','gerente_rentab_min_mercantil_pct','cobranca_global_rateio_pct'].forEach(k=>out[k]=Number(document.getElementById('cfg_'+k).value||0)); ['bonus_50','bonus_75','bonus_85','bonus_100','comissao_pagamento_texto'].forEach(k=>out[k]=document.getElementById('cfg_'+k)?.value||''); return {...out,crediaristas_config:readCrediaristasConfigFromUI(),...readCommissionPanel()}}
