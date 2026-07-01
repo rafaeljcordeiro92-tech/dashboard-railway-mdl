@@ -412,3 +412,5 @@ while True:
 # MDL_V99_RESUMO_LOGS_REMOTE_AVISOS
 
 # MDL_V42_MONITOR_LOGS_FIX: painel de logs não recria/zera área enquanto usuário lê.
+
+# MDL_V43_V103_CRED_FREEZE_RESUMO

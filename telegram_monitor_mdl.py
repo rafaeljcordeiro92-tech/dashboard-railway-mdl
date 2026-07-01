@@ -34,7 +34,7 @@ def _extract_list_payload(data):
     return []
 
 
-# VERSAO: TELEGRAM_MONITOR_MDL_V26_META_DIARIA_STRICT
+# VERSAO: TELEGRAM_MONITOR_MDL_V27_V103_RESUMO_LOGS_ROBUSTO
 import json
 import os
 import re
@@ -373,7 +373,7 @@ def _active_messages(base_dir):
             continue
         if m.get('deleted') is True or str(m.get('status') or '').lower() in {'deleted','removido','removida','cancelado','cancelada'}:
             continue
-        exp = str(m.get("expires_at") or m.get("valid_until") or m.get("ate") or "").strip()
+        exp = str(m.get("expires_at") or m.get("valid_until") or m.get("ate") or m.get("data_final") or m.get("validade") or m.get("fim") or m.get("expires") or "").strip()
         expired = False
         if exp:
             try:
@@ -423,11 +423,25 @@ def _merge_log_sources(*sources):
 
 
 def _load_cobrancas(base_dir):
-    """Carrega logs do FTP/API público e local, mesclando sem duplicar."""
+    """Carrega logs do FTP/API público e local, mesclando sem duplicar.
+
+    V10.3: inclui backups/append e cache busting, além de aceitar wrappers diversos.
+    Isso corrige resumo final zerado quando o Railway não enxergava a lista principal.
+    """
     local = _read_json_file(os.path.join(base_dir, "cobrancas_log.json"), [])
-    remote_file = _read_url_json(f"{PUBLIC_BASE}/cobrancas_log.json", [], timeout=18)
-    remote_api = _read_url_json(f"{PUBLIC_BASE}/cobrancas_api.php", [], timeout=18)
-    return _merge_log_sources(remote_api, remote_file, local)
+    remote_file = _read_url_json(f"{PUBLIC_BASE}/cobrancas_log.json", [], timeout=20)
+    remote_api = _read_url_json(f"{PUBLIC_BASE}/cobrancas_api.php", [], timeout=20)
+    remote_api2 = _read_url_json(f"{PUBLIC_BASE}/cobrancas_api.php?full=1", [], timeout=20)
+    hoje = now_br().strftime("%Y-%m-%d")
+    ontem = (now_br() - timedelta(days=1)).strftime("%Y-%m-%d")
+    backup_hoje = _read_url_json(f"{PUBLIC_BASE}/backups_cobrancas/cobrancas_log_{hoje}_latest.json", [], timeout=12)
+    backup_ontem = _read_url_json(f"{PUBLIC_BASE}/backups_cobrancas/cobrancas_log_{ontem}_latest.json", [], timeout=12)
+    ndjson_hoje = _read_url_ndjson(f"{PUBLIC_BASE}/backups_cobrancas/cobrancas_log_append_{hoje}.ndjson", timeout=12)
+    ndjson_ontem = _read_url_ndjson(f"{PUBLIC_BASE}/backups_cobrancas/cobrancas_log_append_{ontem}.ndjson", timeout=12)
+    # Alguns deploys guardam cópia em /app/monitor_logs ou cache_historico.
+    local2 = _read_json_file_any(os.path.join(base_dir, "monitor_logs", "cobrancas_log.json"), [])
+    local3 = _read_json_file_any(os.path.join(base_dir, "cache_historico", "cobrancas_log.json"), [])
+    return _merge_log_sources(remote_api, remote_api2, remote_file, backup_hoje, backup_ontem, ndjson_hoje, ndjson_ontem, local, local2, local3)
 
 
 def _load_users(base_dir):
@@ -750,10 +764,17 @@ def _log_aliases(x):
 def _log_date(x):
     if not isinstance(x, dict):
         return ""
-    for k in ("server_time", "criado_em", "created_at", "data", "timestamp", "hora", "enviado_em", "sent_at", "updated_at", "created", "date"):
+    # V10.3: muitos registros antigos usam server_date/data_envio/data_hora.
+    # Se não aceitar esses campos, o resumo diário fica zerado.
+    for k in ("server_date", "data_envio", "data_hora", "datahora", "data_log", "enviado_em", "sent_at", "server_time", "criado_em", "created_at", "created", "updated_at", "timestamp", "hora", "data", "date"):
         d = _date_only_br_from_any(x.get(k))
         if d:
             return d
+    # fallback: tenta localizar data em qualquer campo textual do registro
+    blob = " ".join(str(v) for v in x.values() if isinstance(v, (str, int, float)))
+    m = re.search(r"(\d{4}-\d{2}-\d{2}|\d{2}/\d{2}/\d{4})", blob)
+    if m:
+        return _date_only_br_from_any(m.group(1))
     return ""
 
 
@@ -785,13 +806,15 @@ def _is_real_collection_log(x):
         return False
     if _is_reactivation_log(x) or _is_birthday_log(x):
         return False
-    t = str(x.get("titulo") or "").strip().upper()
-    if t in {"REATIVACAO", "ANIVERSARIO", "ANIVERSARIO_DIRETOR"}:
+    t = str(x.get("titulo") or x.get("tipo") or "").strip().upper()
+    if t in {"REATIVACAO", "REATIVAÇÃO", "ANIVERSARIO", "ANIVERSÁRIO", "ANIVERSARIO_DIRETOR"}:
         return False
-    if x.get("cliente") or x.get("nome"):
-        if x.get("telefone") or x.get("pendente") is not None or x.get("parcela") or x.get("titulo"):
-            return True
-    return False
+    # V10.3: cobrança real pode vir só com usuario+telefone+cliente_key/titulo/parcela.
+    has_owner = bool(x.get("usuario") or x.get("destino_nome") or x.get("login") or x.get("responsavel"))
+    has_client = bool(x.get("cliente") or x.get("nome") or x.get("cliente_key") or x.get("cobranca_key"))
+    has_contact = bool(x.get("telefone") or x.get("phone") or x.get("whatsapp") or x.get("acao") == "whatsapp")
+    has_title = bool(x.get("titulo") or x.get("parcela") or x.get("pendente") is not None or x.get("vencimento"))
+    return bool(has_owner and has_client and (has_contact or has_title))
 
 
 def _log_owner_label(x):
@@ -1277,7 +1300,9 @@ def build_daily_summary(base_dir, date_str=None):
     sem_aniv = _users_missing_action(users, aniv_keys, "participa_aniversariantes")
 
     msgs = _active_messages(base_dir)
-    campaigns = [m for m in msgs if str(m.get("message_kind") or m.get("kind") or "").lower() == "campaign"]
+    def _msg_kind_v103(m):
+        return str(m.get("message_kind") or m.get("kind") or m.get("tipo") or m.get("categoria") or "").lower().strip()
+    campaigns = [m for m in msgs if _msg_kind_v103(m) in {"campaign", "campanha", "campanhas"} or "campanha" in _msg_kind_v103(m)]
     notices = [m for m in msgs if m not in campaigns]
 
     merc = _float(sales_emp.get("venda_realizado_total"))
@@ -1404,3 +1429,5 @@ def build_daily_summary(base_dir, date_str=None):
 
 # MDL_V101_META_DIARIA_VALIDADA: alertas somente por Realizado Período / Meta Período.
 # MDL_V102_META_DIARIA_STRICT: bloqueia discrepância de Atingido Período e qualquer leitura acima de 500%.
+
+# MDL_V103_RESUMO_LOGS_ROBUSTO

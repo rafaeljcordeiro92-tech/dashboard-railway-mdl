@@ -33,7 +33,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.2"
+DASHBOARD_BUILD_VERSION = "V10.3"
 DASHBOARD_BUILD_TAG = "DASH2_0_V10_2_META_DIARIA_JS_STRICT"
 
 def now_brasilia():
@@ -12026,7 +12026,7 @@ function abrirTelaComissionamentoAtual(){
     const ent=currentEntities().find(e=>_comKeyNow(e)===key) || currentEntities()[0];
     const m=calcMeta(ent); const s=summarizeSalesCard(ent)||{}; const c=commissionSummaryForEntity?commissionSummaryForEntity(ent):{};
     const rows=[['Pendente',_v46CsvMoney(ent.pendente)],['Recebido',_v46CsvMoney(ent.pago)],['Meta cobrança',_v46CsvPct(m.geral)],['Venda mercantil',_v46CsvMoney(s.venda_realizado_total||s.venda||0)],['Serviços',_v46CsvMoney(s.servico_realizado_total||s.servicos||0)],['Caminhão',_v46CsvMoney(s.caminhao_realizado_total||0)],['Comissão vendas',_v46CsvMoney(c.comissao_vendas)],['Comissão cobrança',_v46CsvMoney(c.comissao_cobranca)],['Bônus/meta',_v46CsvMoney(c.bonus_meta)],['Total previsto',_v46CsvMoney(c.total_previsto)]];
-    const html=`<html><head><title>Comissionamento ${esc(ent.nome||'')}</title></head><body><div class="hist-freeze-screen"><button onclick="window.print()">Salvar PDF / Imprimir</button><div class="hist-freeze-header"><div><h1>${esc(ent.nome||filialLabel(ent.filial)||'Entidade')}</h1><div>${esc(ent.type||'')} · ${esc(ent.filial||'')} · mês ${esc(mesAtualComissao())}</div></div><div><strong>Dashboard MDL V6.5</strong><br>${new Date().toLocaleString('pt-BR')}</div></div><div class="hist-freeze-grid">${rows.map(r=>`<div class="hist-freeze-card"><div class="k">${esc(r[0])}</div><div class="v">${esc(r[1])}</div></div>`).join('')}</div><h2>Resumo para folha</h2><table class="hist-freeze-table"><tbody>${rows.map(r=>`<tr><th>${esc(r[0])}</th><td>${esc(r[1])}</td></tr>`).join('')}</tbody></table></div></body></html>`;
+    const html=`<html><head><title>Comissionamento ${esc(ent.nome||'')}</title></head><body><div class="hist-freeze-screen"><button onclick="window.print()">Salvar PDF / Imprimir</button><div class="hist-freeze-header"><div><h1>${esc(ent.nome||filialLabel(ent.filial)||'Entidade')}</h1><div>${esc(ent.type||'')} · ${esc(ent.filial||'')} · mês ${esc(mesAtualComissao())}</div></div><div><strong>Dashboard MDL ${esc(typeof DASHBOARD_BUILD_VERSION !== 'undefined'?DASHBOARD_BUILD_VERSION:'')}</strong><br>${new Date().toLocaleString('pt-BR')}</div></div><div class="hist-freeze-grid">${rows.map(r=>`<div class="hist-freeze-card"><div class="k">${esc(r[0])}</div><div class="v">${esc(r[1])}</div></div>`).join('')}</div><h2>Resumo para folha</h2><table class="hist-freeze-table"><tbody>${rows.map(r=>`<tr><th>${esc(r[0])}</th><td>${esc(r[1])}</td></tr>`).join('')}</tbody></table></div></body></html>`;
     const w=window.open('about:blank','_blank'); w.document.write(html); w.document.close();
   }catch(e){console.error(e); toast('Não foi possível montar tela congelada: '+(e.message||e));}
 }
@@ -12148,7 +12148,7 @@ function abrirTelaComissionamentoAtual(){
     if(!ent) throw new Error('Nenhum usuário/filial encontrado para congelar.');
     const rows=_v47ResumoRows(ent);
     const title=ent.nome||filialLabel(ent.filial)||'Entidade';
-    const html=`<!doctype html><html><head><meta charset="utf-8"><title>Comissionamento ${esc(title)}</title><style>body{font-family:Arial,Helvetica,sans-serif;background:#080b10;color:#f4f7ff;padding:24px}.hist-freeze-screen{max-width:1100px;margin:auto}.hist-freeze-header{display:flex;justify-content:space-between;gap:16px;border:1px solid #334155;border-radius:18px;padding:18px;margin-bottom:16px;background:#111827}.hist-freeze-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.hist-freeze-card{background:#111827;border:1px solid #334155;border-radius:16px;padding:14px}.k{font-size:11px;text-transform:uppercase;color:#9ca3af;font-weight:800}.v{font-size:20px;font-weight:900;margin-top:6px}.hist-freeze-table{width:100%;border-collapse:collapse;margin-top:18px}.hist-freeze-table th,.hist-freeze-table td{border:1px solid #334155;padding:10px;text-align:left}button{padding:10px 14px;border-radius:10px;border:0;font-weight:800}@media print{button{display:none}body{background:white;color:black}.hist-freeze-header,.hist-freeze-card{background:white;color:black;border-color:#ddd}}</style></head><body><div class="hist-freeze-screen"><button onclick="window.print()">Salvar PDF / Imprimir</button><div class="hist-freeze-header"><div><h1>${esc(title)}</h1><div>${esc(ent.type||'')} · ${esc(ent.filial||'')} · mês ${esc(typeof mesAtualComissao==='function'?mesAtualComissao():'')}</div></div><div><strong>Dashboard MDL V6.5</strong><br>${new Date().toLocaleString('pt-BR')}</div></div><div class="hist-freeze-grid">${rows.map(r=>`<div class="hist-freeze-card"><div class="k">${esc(r[0])}</div><div class="v">${esc(r[1])}</div></div>`).join('')}</div><h2>Resumo para folha</h2><table class="hist-freeze-table"><tbody>${rows.map(r=>`<tr><th>${esc(r[0])}</th><td>${esc(r[1])}</td></tr>`).join('')}</tbody></table></div></body></html>`;
+    const html=`<!doctype html><html><head><meta charset="utf-8"><title>Comissionamento ${esc(title)}</title><style>body{font-family:Arial,Helvetica,sans-serif;background:#080b10;color:#f4f7ff;padding:24px}.hist-freeze-screen{max-width:1100px;margin:auto}.hist-freeze-header{display:flex;justify-content:space-between;gap:16px;border:1px solid #334155;border-radius:18px;padding:18px;margin-bottom:16px;background:#111827}.hist-freeze-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.hist-freeze-card{background:#111827;border:1px solid #334155;border-radius:16px;padding:14px}.k{font-size:11px;text-transform:uppercase;color:#9ca3af;font-weight:800}.v{font-size:20px;font-weight:900;margin-top:6px}.hist-freeze-table{width:100%;border-collapse:collapse;margin-top:18px}.hist-freeze-table th,.hist-freeze-table td{border:1px solid #334155;padding:10px;text-align:left}button{padding:10px 14px;border-radius:10px;border:0;font-weight:800}@media print{button{display:none}body{background:white;color:black}.hist-freeze-header,.hist-freeze-card{background:white;color:black;border-color:#ddd}}</style></head><body><div class="hist-freeze-screen"><button onclick="window.print()">Salvar PDF / Imprimir</button><div class="hist-freeze-header"><div><h1>${esc(title)}</h1><div>${esc(ent.type||'')} · ${esc(ent.filial||'')} · mês ${esc(typeof mesAtualComissao==='function'?mesAtualComissao():'')}</div></div><div><strong>Dashboard MDL ${esc(typeof DASHBOARD_BUILD_VERSION !== 'undefined'?DASHBOARD_BUILD_VERSION:'')}</strong><br>${new Date().toLocaleString('pt-BR')}</div></div><div class="hist-freeze-grid">${rows.map(r=>`<div class="hist-freeze-card"><div class="k">${esc(r[0])}</div><div class="v">${esc(r[1])}</div></div>`).join('')}</div><h2>Resumo para folha</h2><table class="hist-freeze-table"><tbody>${rows.map(r=>`<tr><th>${esc(r[0])}</th><td>${esc(r[1])}</td></tr>`).join('')}</tbody></table></div></body></html>`;
     const w=window.open('about:blank','_blank'); if(!w) throw new Error('Pop-up bloqueado pelo navegador.'); w.document.open(); w.document.write(html); w.document.close();
   }catch(e){console.error(e); toast('Não foi possível montar tela congelada: '+(e.message||e),'warn');}
 }
@@ -12253,8 +12253,59 @@ function _v48ServiceTotal(ent){try{return Number(servicosEntidadeTotal(ent)||0)}
 function _v48FmtMoney(v){try{return R(Number(v||0))}catch(e){return 'R$ 0,00'}}
 function _v48FmtPct(v){return (Number(v||0)).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%'}
 function _v48Commission(ent){try{return calcCommissionSummary(ent)||{}}catch(e){return {}}}
+
+// MDL_V103_CREDIARISTA_FREEZE_FIX: calcula comissão de crediarista/terceiro para tela congelada/exportação.
+function _v103CobCommissionSummary(ent){
+  try{
+    const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista');
+    const baseCfg=isCred?entityConfig({type:'vendedor',nome:ent.nome,filial:ent.filial}):entityConfig({type:'vendedor',nome:COBRANCA10_NOME,filial:'FTER'});
+    const cfg=commissionCfg(baseCfg);
+    const policy=(isCred?(cfg.camp_cob_crediarista||[]):(cfg.camp_cobranca_terceiro||[]));
+    const policyOk=Array.isArray(policy)&&policy.length?policy:(isCred?defaultCampCrediarista():defaultCampTerceiro());
+    const byFaixa={atencao:{pct:0,cobrado:0,recebido:0,comissao:0},alerta:{pct:0,cobrado:0,recebido:0,comissao:0},grave:{pct:0,cobrado:0,recebido:0,comissao:0}};
+    policyOk.forEach(r=>{const fx=String(r.faixa||'').toLowerCase(); if(byFaixa[fx]) byFaixa[fx].pct=Number(String(r.pct||0).replace(',','.'))||0});
+    const mesAtual=dateOnlyISO(new Date()).slice(0,7);
+    const userKeys=isCred?[String(ent.login||'').toLowerCase(),String(ent.nome||'').toLowerCase()]:[String(COBRANCA10_NOME||'').toLowerCase(),String(COBRANCA10_LOGIN||'').toLowerCase()];
+    const cobrados=(COB_LOGS||[]).filter(x=>userKeys.includes(String(x.usuario||'').toLowerCase()) && dateOnlyISO(x.server_time||x.criado_em||x.created_at||x.data||x.server_date||'').slice(0,7)===mesAtual);
+    const keys=(typeof keysFromLogsForCommission==='function')?keysFromLogsForCommission(cobrados):new Set();
+    const srcCli=isCred?(CLIENTES_CREDIARISTA?.[String(ent.login||'').toLowerCase()]||{grave:[],alerta:[],atencao:[]}):(CLIENTES_TERCEIRO||{grave:[],alerta:[],atencao:[]});
+    const srcRec=getRecebimentos(ent)||{grave:[],alerta:[],atencao:[]};
+    ['atencao','alerta','grave'].forEach(fx=>{
+      byFaixa[fx].cobrado=(srcCli?.[fx]||[]).filter(r=>keys.has(cobrancaRowKey(r))||keys.has(key3Cob(r))).length;
+      (srcRec?.[fx]||[]).forEach(r=>{
+        const pagMes=dateOnlyISO(r.pagamento||r.data_pagamento||r.pagto||'').slice(0,7);
+        if((keys.has(cobrancaRowKey(r))||keys.has(key3Cob(r))) && pagMes===mesAtual){byFaixa[fx].recebido+=Number(r.pago||0)}
+      });
+      byFaixa[fx].comissao=byFaixa[fx].recebido*(byFaixa[fx].pct/100);
+    });
+    const total=Object.values(byFaixa).reduce((a,b)=>a+Number(b.comissao||0),0);
+    return {isCred, byFaixa, total, totalPrevisto:total,
+      recebidoAtencao:byFaixa.atencao.recebido, recebidoAlerta:byFaixa.alerta.recebido, recebidoGrave:byFaixa.grave.recebido,
+      comissaoAtencao:byFaixa.atencao.comissao, comissaoAlerta:byFaixa.alerta.comissao, comissaoGrave:byFaixa.grave.comissao,
+      pctAtencao:byFaixa.atencao.pct, pctAlerta:byFaixa.alerta.pct, pctGrave:byFaixa.grave.pct};
+  }catch(e){console.warn('MDL_V103_CREDIARISTA_FREEZE_FIX falhou', e); return {byFaixa:{},total:0,totalPrevisto:0};}
+}
+
 function _v48CommissionRow(ent){
-  const meta=calcMeta(ent); const venda=_v48SalesBlock(ent, ent.type==='filial'?'venda_filial_meta':'venda_filial_vendedor_meta');
+  const meta=calcMeta(ent);
+  const isCobOnly=!!(ent?.type==='crediarista'||ent?.is_crediarista||ent?.type==='terceiro'||ent?.is_terceiro);
+  if(isCobOnly){
+    const cs=_v103CobCommissionSummary(ent);
+    const rec=_recebResumo(ent);
+    return {
+      tipo:ent.type||'', nome:ent.nome||filialLabel(ent.filial)||'', filial:ent.filial||'', login:ent.login||'',
+      pendente:Number(ent.pendente||0), recebido:Number(ent.pago||rec.total||0), meta_cobranca:Number(meta.geral||0),
+      grave_alvo:Number(meta.grave?.alvo||0), grave_rec:Number(meta.grave?.rec||0), alerta_alvo:Number(meta.alerta?.alvo||0), alerta_rec:Number(meta.alerta?.rec||0), atencao_alvo:Number(meta.atencao?.alvo||0), atencao_rec:Number(meta.atencao?.rec||0),
+      venda_meta_total:0, venda_real_total:0, venda_ating_total:0, venda_meta_periodo:0, venda_real_periodo:0, venda_ating_periodo:0, venda_projetado:0,
+      servico_meta_total:0, servico_real_total:0, servico_ating_total:0, servico_meta_periodo:0, servico_real_periodo:0, servico_ating_periodo:0, servico_projetado:0,
+      caminhao_meta_total:0, caminhao_real_total:0, caminhao_ating_total:0, caminhao_projetado:0,
+      faixa:'Cobrança', comissao_mercantil:Number(cs.totalPrevisto||0), comissao_servicos:0, comissao_caminhao:0, bonus_meta:0, rentab48:0, rentab52:0, rentab55:0, total_previsto:Number(cs.totalPrevisto||0),
+      recebido_atencao:Number(cs.recebidoAtencao||0), recebido_alerta:Number(cs.recebidoAlerta||0), recebido_grave:Number(cs.recebidoGrave||0),
+      comissao_atencao:Number(cs.comissaoAtencao||0), comissao_alerta:Number(cs.comissaoAlerta||0), comissao_grave:Number(cs.comissaoGrave||0),
+      pct_atencao:Number(cs.pctAtencao||0), pct_alerta:Number(cs.pctAlerta||0), pct_grave:Number(cs.pctGrave||0), cob_only:true
+    };
+  }
+  const venda=_v48SalesBlock(ent, ent.type==='filial'?'venda_filial_meta':'venda_filial_vendedor_meta');
   const serv=_v48SalesBlock(ent, ent.type==='filial'?'servico_filial_ouro_fob':'servico_filial_vendedor_ouro_fob');
   const cam=_v48SalesBlock(ent, ent.type==='filial'?'venda_filial_subgrupo_20k':'venda_vendedor_subgrupo_20k');
   const c=_v48Commission(ent);
@@ -12287,8 +12338,10 @@ function abrirTelaComissionamentoAtual(){
   try{
     const ent=_v48SelectedEnt(); if(!ent) throw new Error('Nenhum usuário/filial encontrado.');
     const r=_v48CommissionRow(ent); const title=r.nome||'Entidade';
-    const cards=[['Pendente cobrança',_v48FmtMoney(r.pendente)],['Recebido cobrança',_v48FmtMoney(r.recebido)],['Meta cobrança',_v48FmtPct(r.meta_cobranca)],['Venda mercantil',_v48FmtMoney(r.venda_real_total)],['Venda atingido',_v48FmtPct(r.venda_ating_total)],['Venda projetado',_v48FmtMoney(r.venda_projetado)],['Serviços',_v48FmtMoney(r.servico_real_total)],['Serviço atingido',_v48FmtPct(r.servico_ating_total)],['Serviço projetado',_v48FmtMoney(r.servico_projetado)],['Caminhão',_v48FmtMoney(r.caminhao_real_total)],['Comissão mercantil',_v48FmtMoney(r.comissao_mercantil)],['Comissão serviços',_v48FmtMoney(r.comissao_servicos)],['Comissão caminhão',_v48FmtMoney(r.comissao_caminhao)],['Bônus/meta',_v48FmtMoney(r.bonus_meta)],['Rentab 48%',_v48FmtMoney(r.rentab48)],['Rentab 52,15%',_v48FmtMoney(r.rentab52)],['Rentab 55,50%',_v48FmtMoney(r.rentab55)],['Total previsto',_v48FmtMoney(r.total_previsto)]];
-    const html=`<!doctype html><html><head><meta charset="utf-8"><title>Comissionamento ${esc(title)}</title><style>body{font-family:Arial,Helvetica,sans-serif;background:#080b10;color:#f4f7ff;padding:24px}.hist-freeze-screen{max-width:1180px;margin:auto}.hist-freeze-header{display:flex;justify-content:space-between;gap:16px;border:1px solid #334155;border-radius:18px;padding:18px;margin-bottom:16px;background:#111827}.hist-freeze-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.hist-freeze-card{background:#111827;border:1px solid #334155;border-radius:16px;padding:14px}.k{font-size:11px;text-transform:uppercase;color:#9ca3af;font-weight:800}.v{font-size:20px;font-weight:900;margin-top:6px}.hist-freeze-table{width:100%;border-collapse:collapse;margin-top:18px}.hist-freeze-table th,.hist-freeze-table td{border:1px solid #334155;padding:10px;text-align:left}button{padding:10px 14px;border-radius:10px;border:0;font-weight:800}@media print{button{display:none}body{background:white;color:black}.hist-freeze-header,.hist-freeze-card{background:white;color:black;border-color:#ddd}}</style></head><body><div class="hist-freeze-screen"><button onclick="window.print()">Salvar PDF / Imprimir</button><div class="hist-freeze-header"><div><h1>${esc(title)}</h1><div>${esc(r.tipo)} · ${esc(r.filial)} · mês ${esc(typeof mesAtualComissao==='function'?mesAtualComissao():'')}</div></div><div><strong>Dashboard MDL V6.5</strong><br>${new Date().toLocaleString('pt-BR')}</div></div><div class="hist-freeze-grid">${cards.map(x=>_v48FreezeCard(x[0],x[1])).join('')}</div><h2>Resumo para folha</h2><table class="hist-freeze-table"><tbody>${cards.map(x=>`<tr><th>${esc(x[0])}</th><td>${esc(x[1])}</td></tr>`).join('')}</tbody></table></div></body></html>`;
+    const cards=r.cob_only
+      ? [['Pendente cobrança',_v48FmtMoney(r.pendente)],['Recebido cobrança',_v48FmtMoney(r.recebido)],['Meta cobrança',_v48FmtPct(r.meta_cobranca)],['Atenção %',_v48FmtPct(r.pct_atencao)],['Alerta %',_v48FmtPct(r.pct_alerta)],['Grave %',_v48FmtPct(r.pct_grave)],['Recebido atenção',_v48FmtMoney(r.recebido_atencao)],['Recebido alerta',_v48FmtMoney(r.recebido_alerta)],['Recebido grave',_v48FmtMoney(r.recebido_grave)],['Comissão atenção',_v48FmtMoney(r.comissao_atencao)],['Comissão alerta',_v48FmtMoney(r.comissao_alerta)],['Comissão grave',_v48FmtMoney(r.comissao_grave)],['Total previsto',_v48FmtMoney(r.total_previsto)]]
+      : [['Pendente cobrança',_v48FmtMoney(r.pendente)],['Recebido cobrança',_v48FmtMoney(r.recebido)],['Meta cobrança',_v48FmtPct(r.meta_cobranca)],['Venda mercantil',_v48FmtMoney(r.venda_real_total)],['Venda atingido',_v48FmtPct(r.venda_ating_total)],['Venda projetado',_v48FmtMoney(r.venda_projetado)],['Serviços',_v48FmtMoney(r.servico_real_total)],['Serviço atingido',_v48FmtPct(r.servico_ating_total)],['Serviço projetado',_v48FmtMoney(r.servico_projetado)],['Caminhão',_v48FmtMoney(r.caminhao_real_total)],['Comissão mercantil',_v48FmtMoney(r.comissao_mercantil)],['Comissão serviços',_v48FmtMoney(r.comissao_servicos)],['Comissão caminhão',_v48FmtMoney(r.comissao_caminhao)],['Bônus/meta',_v48FmtMoney(r.bonus_meta)],['Rentab 48%',_v48FmtMoney(r.rentab48)],['Rentab 52,15%',_v48FmtMoney(r.rentab52)],['Rentab 55,50%',_v48FmtMoney(r.rentab55)],['Total previsto',_v48FmtMoney(r.total_previsto)]];
+    const html=`<!doctype html><html><head><meta charset="utf-8"><title>Comissionamento ${esc(title)}</title><style>body{font-family:Arial,Helvetica,sans-serif;background:#080b10;color:#f4f7ff;padding:24px}.hist-freeze-screen{max-width:1180px;margin:auto}.hist-freeze-header{display:flex;justify-content:space-between;gap:16px;border:1px solid #334155;border-radius:18px;padding:18px;margin-bottom:16px;background:#111827}.hist-freeze-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.hist-freeze-card{background:#111827;border:1px solid #334155;border-radius:16px;padding:14px}.k{font-size:11px;text-transform:uppercase;color:#9ca3af;font-weight:800}.v{font-size:20px;font-weight:900;margin-top:6px}.hist-freeze-table{width:100%;border-collapse:collapse;margin-top:18px}.hist-freeze-table th,.hist-freeze-table td{border:1px solid #334155;padding:10px;text-align:left}button{padding:10px 14px;border-radius:10px;border:0;font-weight:800}@media print{button{display:none}body{background:white;color:black}.hist-freeze-header,.hist-freeze-card{background:white;color:black;border-color:#ddd}}</style></head><body><div class="hist-freeze-screen"><button onclick="window.print()">Salvar PDF / Imprimir</button><div class="hist-freeze-header"><div><h1>${esc(title)}</h1><div>${esc(r.tipo)} · ${esc(r.filial)} · mês ${esc(typeof mesAtualComissao==='function'?mesAtualComissao():'')}</div></div><div><strong>Dashboard MDL ${esc(typeof DASHBOARD_BUILD_VERSION !== 'undefined'?DASHBOARD_BUILD_VERSION:'')}</strong><br>${new Date().toLocaleString('pt-BR')}</div></div><div class="hist-freeze-grid">${cards.map(x=>_v48FreezeCard(x[0],x[1])).join('')}</div><h2>Resumo para folha</h2><table class="hist-freeze-table"><tbody>${cards.map(x=>`<tr><th>${esc(x[0])}</th><td>${esc(x[1])}</td></tr>`).join('')}</tbody></table></div></body></html>`;
     const w=window.open('about:blank','_blank'); if(!w) throw new Error('Pop-up bloqueado pelo navegador.'); w.document.open(); w.document.write(html); w.document.close();
   }catch(e){console.error(e); toast('Não foi possível montar tela congelada: '+(e.message||e),'warn');}
 }
@@ -14649,3 +14702,5 @@ driver.quit()
 
 # MDL_V101_META_DIARIA_VALIDACAO_PERIODO: usa somente Realizado Período / Meta Período e bloqueia Projetado/Total.
 # MDL_V102_META_DIARIA_JS_STRICT: renderização do mural ignora precalc antigo e valida no navegador.
+
+# MDL_V103_CREDIARISTA_FREEZE_FIX
