@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_9_GERENTES_REATIVACAO_FECHAMENTO_FIX
+# VERSAO: DASH2_0_V10_10_GERENTES_CSM_FREEZE_RESUMO_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,7 +34,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.9"
+DASHBOARD_BUILD_VERSION = "V10.10"
 DASHBOARD_BUILD_TAG = "DASH2_0_V10_8_LOGIN_MASTER_FIX"
 
 def now_brasilia():
@@ -3318,6 +3318,59 @@ for _, row in df_vend.iterrows():
     }
     tipo = "GERENTE" if is_ger else "VENDEDOR"
     linhas_txt.append(f"{login_fin} | {nome_exib} | {senha_atual} | {filial} | {tipo}")
+
+
+# ===== V10.10: garantir acessos de GERENTES vindos do SGI/Controle de Metas =====
+# Alguns gerentes aparecem no SGI apenas na meta de vendas como "NOME (GERF4)" e
+# podem não ter carteira de cobrança no relatório de contas a receber. Mesmo assim
+# precisam de login no dashboard, sempre apontando para o painel da FILIAL inteira.
+GERENTES_FIXOS_SGI_V1010 = [
+    ("SANDY OLIVEIRA DA SILVA", "F1", "sandy"),
+    ("GERENTE F2", "F2", "gerente"),
+    ("EVA MARIA RODRIGUES DE ALMEIDA", "F3", "eva"),
+    ("YASMIM OLIVEIRA SANTOS", "F4", "yasmim"),
+    ("GRACIELLE DE FATIMA MARCONDES", "F5", "gracielle"),
+    ("VALDECI DA COSTA", "F6", "valdeci"),
+    ("JEANE PEREIRA MACHADO", "F8", "jeane"),
+    ("AMANDA SCHVIK DE OLIVEIRA", "F9", "amanda"),
+]
+
+def _ensure_gerente_access_v1010(nome_ger, filial_ger, login_sugerido):
+    try:
+        filial_ger = str(filial_ger or "").strip().upper()
+        nome_ger = limpar_nome_display(nome_ger)
+        login_fin = _buscar_login_existente_por_nome_filial(nome_ger, filial_ger, is_gerente=True) or str(login_sugerido or normalizar_login(nome_ger)).strip().lower()
+        if not login_fin:
+            login_fin = normalizar_login(nome_ger) or f"gerente_{filial_ger.lower()}"
+        if login_fin in credenciais and str(credenciais[login_fin].get("filial") or "").upper() not in {"", filial_ger}:
+            login_fin = f"{login_fin}_{filial_ger.lower()}"
+        estado_ant = (cred_state.get("users", {}) or {}).get(login_fin, {})
+        senha_ini = creds_salvas.get(f"{login_fin}_{filial_ger}") or creds_salvas.get(login_fin) or (login_fin.upper() + str(random.randint(100,999)))
+        senha_atual = estado_ant.get("password") or senha_ini
+        precisa_trocar = bool(estado_ant.get("must_change_password", senha_atual == senha_ini))
+        fil = FILIAIS.get(filial_ger, {}) if isinstance(FILIAIS, dict) else {}
+        credenciais[login_fin] = {
+            "senha": senha_atual, "senha_inicial": senha_ini, "nome": nome_ger,
+            "filial": filial_ger, "is_gerente": True,
+            "pendente": round(float(fil.get("pendente", 0) or 0), 2),
+            "pago": round(float(fil.get("pago", 0) or 0), 2),
+            "total": round(float(fil.get("total", fil.get("pendente", 0)) or 0), 2),
+            "perc_filial": 100.0,
+        }
+        auth_users[login_fin] = {
+            "login": login_fin, "password": senha_atual, "initial_password": senha_ini,
+            "must_change_password": precisa_trocar, "nome": nome_ger, "filial": filial_ger,
+            "is_gerente": True, "email_recuperacao": EMAIL_RECUPERACAO,
+        }
+        linha = f"{login_fin} | {nome_ger} | {senha_atual} | {filial_ger} | GERENTE"
+        if not any(str(x).startswith(login_fin + " | ") for x in linhas_txt):
+            linhas_txt.append(linha)
+        print(f"✅ V10.10 gerente garantido no dashboard: {nome_ger} ({filial_ger}) login={login_fin}")
+    except Exception as e:
+        print(f"⚠️ V10.10 falha garantindo gerente {nome_ger}/{filial_ger}: {e}")
+
+for _nome_ger, _fil_ger, _login_ger in GERENTES_FIXOS_SGI_V1010:
+    _ensure_gerente_access_v1010(_nome_ger, _fil_ger, _login_ger)
 
 # Usuário especial de cobrança terceirizada
 _chave_cob10 = COBRANCA10_LOGIN
@@ -6689,7 +6742,7 @@ def carregar_clientes_sem_movimento_local():
     base_path = os.path.join(pasta, "clientes_sem_movimento_base.json")
     seen_path = os.path.join(pasta, "clientes_sem_movimento_seen.json")
     global clientes_sem_movimento_meta_py, clientes_sem_movimento_base_py
-    clientes_sem_movimento_meta_py = {"modo":"acionaveis_novos_pendentes_retorno_10d", "base_total":0, "acionaveis_total":0, "novos_total":0, "seen_total":0}
+    clientes_sem_movimento_meta_py = {"modo":"acionaveis_novos_pendentes_retorno_30d", "base_total":0, "acionaveis_total":0, "novos_total":0, "seen_total":0}
     clientes_sem_movimento_base_py = []
 
     def _csm_key_row(r):
@@ -6702,6 +6755,26 @@ def carregar_clientes_sem_movimento_local():
             normalizar_texto_match(r.get("cliente")),
             tel,
         ])
+
+    def _csm_js_key_row(r):
+        """Mesmo padrão usado no navegador em reativacaoClienteKey()."""
+        try:
+            filial = str(r.get("filial") or "").strip().upper()
+            codigo = re.sub(r"\D+", "", str(r.get("codigo") or ""))
+            nome = normalizar_texto_match(r.get("cliente"))
+            ultimo = str(r.get("ultimo_movimento") or "").strip()
+            cidade = normalizar_texto_match(r.get("cidade"))
+            return f"REAT|{filial}|{codigo or nome}|{ultimo}|{cidade}"
+        except Exception:
+            return ""
+
+    def _csm_all_keys_row(r):
+        keys = []
+        for k in [_csm_key_row(r), _csm_js_key_row(r), str(r.get("cliente_key") or ""), str(r.get("cobranca_key") or "")]:
+            k = str(k or "").strip()
+            if k and k not in keys:
+                keys.append(k)
+        return keys
 
     def _load_seen_clientes_sem_movimento():
         """V8.7: histórico de clientes já exibidos para o dashboard trabalhar só com NOVOS."""
@@ -6894,17 +6967,35 @@ def carregar_clientes_sem_movimento_local():
                     m = re.search(r'CLIENTE_SEM_MOVIMENTO\|([^|]+)', parc)
                     if m:
                         k = m.group(1).strip()
-                if not k:
-                    continue
                 d = _parse_dt_csm(x.get('server_time') or x.get('data') or x.get('created_at') or x.get('criado_em'))
                 if not d:
                     continue
-                st = stats.setdefault(k, {'qtd':0, 'primeiro':d, 'ultimo':d})
-                st['qtd'] += 1
-                if d < st['primeiro']:
-                    st['primeiro'] = d
-                if d > st['ultimo']:
-                    st['ultimo'] = d
+                alias_keys = set()
+                if k:
+                    alias_keys.add(str(k))
+                try:
+                    tel = str(x.get('telefone') or x.get('whatsapp') or x.get('contato') or '')
+                    legacy = _csm_key_row({'filial': x.get('filial'), 'cliente': x.get('cliente') or x.get('nome'), 'telefones': [tel]})
+                    if legacy.strip('|'):
+                        alias_keys.add(legacy)
+                except Exception:
+                    pass
+                try:
+                    parc = str(x.get('parcela') or '')
+                    m2 = re.search(r'CLIENTE_SEM_MOVIMENTO\|(REAT\|.+?)(?:\|[A-Z0-9_]+)?$', parc)
+                    if m2:
+                        alias_keys.add(m2.group(1).strip())
+                except Exception:
+                    pass
+                if not alias_keys:
+                    continue
+                for kk in alias_keys:
+                    st = stats.setdefault(kk, {'qtd':0, 'primeiro':d, 'ultimo':d})
+                    st['qtd'] += 1
+                    if d < st['primeiro']:
+                        st['primeiro'] = d
+                    if d > st['ultimo']:
+                        st['ultimo'] = d
             except Exception:
                 continue
         print(f"🧡 Clientes sem movimento V9.2: histórico de envios REATIVACAO carregado ({len(stats)} cliente(s) com envio)")
@@ -6918,11 +7009,18 @@ def carregar_clientes_sem_movimento_local():
     novos_count = pendentes_count = retorno_count = aguardando_count = 0
     for r in final_com_key:
         rr = dict(r)
-        k = str(rr.get('_csm_key') or _csm_key_row(rr))
-        st = logs_stats.get(k)
-        is_novo = k not in seen_antigo
+        keys_rr = _csm_all_keys_row(rr)
+        k = str(rr.get('_csm_key') or (keys_rr[0] if keys_rr else _csm_key_row(rr)))
+        st = None
+        for _kk in keys_rr:
+            if _kk in logs_stats:
+                st = logs_stats.get(_kk)
+                break
+        is_novo = not any(_kk in seen_antigo for _kk in keys_rr)
         rr['_reat_novo'] = bool(is_novo)
         rr['_reat_cooldown_dias'] = cooldown_dias
+        rr['_reat_keys'] = keys_rr
+        rr['_reat_js_key'] = _csm_js_key_row(rr)
         if st:
             ultimo = st.get('ultimo')
             primeiro = st.get('primeiro')
@@ -6947,7 +7045,15 @@ def carregar_clientes_sem_movimento_local():
             actionable.append(rr)
 
     print(f"🧡 Clientes sem movimento V9.2: {len(actionable)} acionável(is) de {len(final_com_key)} na base | novos={novos_count} pendentes_sem_envio={pendentes_count} retorno_{cooldown_dias}d={retorno_count} aguardando_reenvio={aguardando_count}")
-    seen_union = sorted(set(list(seen_antigo) + [str(r.get('_csm_key') or _csm_key_row(r)) for r in final_com_key if (r.get('_csm_key') or _csm_key_row(r))]))
+    _seen_new = []
+    for r in final_com_key:
+        try:
+            _seen_new.extend(_csm_all_keys_row(r))
+        except Exception:
+            ktmp = str(r.get('_csm_key') or _csm_key_row(r))
+            if ktmp:
+                _seen_new.append(ktmp)
+    seen_union = sorted(set(list(seen_antigo) + [x for x in _seen_new if x]))
     try:
         with open(seen_path, "w", encoding="utf-8") as f_seen:
             json.dump({"gerado_em": now_brasilia().isoformat(), "versao": DASHBOARD_BUILD_VERSION, "seen": seen_union}, f_seen, ensure_ascii=False, indent=2)
@@ -6956,12 +7062,12 @@ def carregar_clientes_sem_movimento_local():
         print(f"⚠️ Não consegui salvar clientes_sem_movimento_seen.json: {e}")
 
     clientes_sem_movimento_meta_py = {
-        "modo":"acionaveis_novos_pendentes_retorno_10d",
+        "modo":"acionaveis_novos_pendentes_retorno_30d",
         "base_total":len(final_com_key),
         "acionaveis_total":len(actionable),
         "novos_total":novos_count,
         "pendentes_sem_envio_total":pendentes_count,
-        "retorno_10d_total":retorno_count,
+        "retorno_30d_total":retorno_count,
         "aguardando_reenvio_total":aguardando_count,
         "seen_total":len(seen_union),
         "cooldown_dias":cooldown_dias,
@@ -11771,7 +11877,7 @@ function reatInfoExtra(r){
   const motivo=String(r?._reat_motivo||'');
   if(qtd>0){
     const ult=r._reat_ultimo_envio||''; const pri=r._reat_primeiro_envio||''; const dias=Number(r._reat_dias_desde_envio||0);
-    if(motivo==='retorno_30d' || motivo==='retorno_10d') return ` · ${qtd} envio(s) · último ${esc(ult)} · voltou após ${dias} dias`;
+    if(motivo==='retorno_30d' || motivo==='retorno_30d') return ` · ${qtd} envio(s) · último ${esc(ult)} · voltou após ${dias} dias`;
     return ` · ${qtd} envio(s) · último ${esc(ult)} · aguardar ${Number(r._reat_cooldown_dias||30)} dias`;
   }
   if(motivo==='pendente_sem_envio') return ' · pendente sem envio anterior';
@@ -11795,7 +11901,7 @@ function renderReativacaoTab(){
     box.innerHTML=`<div class="section-head"><div><h2>🧡 Clientes sem movimento +45 dias <span class="note" style="color:#f59e0b">${esc(DASHBOARD_BUILD_VERSION)}</span></h2><div class="hint">Base do Sólidus para reativação por WhatsApp. ${esc(porFilial||'Nenhum XLS carregado ainda.')}</div></div></div>
     ${semBase?'<div class="glass panel" style="border-color:rgba(245,158,11,.35);margin-bottom:14px"><strong>⚠️ Sem base de clientes carregada</strong><div class="hint">Coloque ou baixe os XLS de Clientes sem Movimento na pasta do dashboard e rode o script novamente.</div></div>':''}
     <div class="kpis" style="margin-bottom:14px">
-      ${makeKpi('Para acionar',String(CLIENTES_SEM_MOVIMENTO.length),'var(--amber-400)',`Novos ${Number(CLIENTES_SEM_MOVIMENTO_META.novos_total||0).toLocaleString('pt-BR')} · retorno 10d ${Number(CLIENTES_SEM_MOVIMENTO_META.retorno_10d_total||0).toLocaleString('pt-BR')} · base ${Number(CLIENTES_SEM_MOVIMENTO_META.base_total||0).toLocaleString('pt-BR')}`)}
+      ${makeKpi('Para acionar',String(CLIENTES_SEM_MOVIMENTO.length),'var(--amber-400)',`Novos ${Number(CLIENTES_SEM_MOVIMENTO_META.novos_total||0).toLocaleString('pt-BR')} · retorno 30d ${Number(CLIENTES_SEM_MOVIMENTO_META.retorno_30d_total||0).toLocaleString('pt-BR')} · base ${Number(CLIENTES_SEM_MOVIMENTO_META.base_total||0).toLocaleString('pt-BR')}`)}
       ${makeKpi(tituloLista,String(rows.length),'var(--blue)',usuarioAtual?.tipo==='master'?'Filtro atual':'Distribuída sem duplicar')}
       ${makeKpi('Enviados hoje',String(enviadosHoje),'var(--green)','Da lista exibida')}
       ${makeKpi('Minha base total',String(totalPermitido),'var(--orange)','Rateio automático por filial')}
@@ -14643,6 +14749,117 @@ Preparamos condições especiais para você comemorar com a gente.
 })();
 </script>
 
+
+
+<script>
+// ===== V10.10: gerentes garantidos, reativação com contador/30d e PDF das telas reais =====
+(function(){
+  const TAG='MDL_V1010_GERENTES_CSM_FREEZE_RESUMO';
+  const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
+  function normTxt1010(s){try{return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim()}catch(e){return String(s||'').toUpperCase()}}
+  function isGer1010(u){return !!(u && (u.is_gerente || /\bGERENTE\b/i.test(String(u.tipo||'')) || /\(\s*GER\s*F?\d+\s*\)/i.test(String(u.nome||''))));}
+  function activeCredUsers1010(){
+    try{return Object.entries(CREDS||{}).map(([login,u])=>({login,...u})).filter(u=>{
+      const st=String(u.status_operacional||u.status||'ativo').toLowerCase();
+      if(u.access_disabled || u.is_viewer || u.is_terceiro || u.is_crediarista) return false;
+      if(st && !['ativo','active','true','1'].includes(st)) return false;
+      if(u.participa_sem_movimento===false) return false;
+      return true;
+    });}catch(e){return []}
+  }
+  function gerenteFilialEntity1010(filial){
+    filial=String(filial||'').toUpperCase();
+    let f=null; try{f=(flattenFiliais()||[]).find(x=>String(x.filial||'').toUpperCase()===filial)}catch(e){}
+    return f || {type:'filial',filial,nome:typeof filialLabel==='function'?filialLabel(filial):`Filial ${filial}`};
+  }
+  function vendedoresAtivosFilial1010(filial){
+    filial=String(filial||'').toUpperCase();
+    const arr=[]; const seen=new Set();
+    function add(v){
+      if(!v) return; if(isGer1010(v)) return;
+      const nome=String(v.nome||v.vendedor||v.login||'').trim(); if(!nome) return;
+      const login=String(v.login||'').toLowerCase();
+      const key=(login||normTxt1010(nome))+'|'+filial;
+      if(seen.has(key)) return; seen.add(key);
+      arr.push({type:'vendedor',tipo:'vendedor',nome,login,filial,key:reatUserKeyFromNome(nome,filial),label:`${nome} (${filial})`});
+    }
+    try{(flattenVendedores()||[]).filter(v=>String(v.filial||'').toUpperCase()===filial).forEach(add)}catch(e){}
+    activeCredUsers1010().filter(u=>String(u.filial||'').toUpperCase()===filial && !isGer1010(u)).forEach(add);
+    return arr;
+  }
+  if(typeof window.reativacaoDestinatariosFilial==='function' && !window.reativacaoDestinatariosFilial.__mdl_v1010){
+    const old=window.reativacaoDestinatariosFilial;
+    const fn=function(filial){
+      filial=String(filial||'').toUpperCase();
+      const vends=vendedoresAtivosFilial1010(filial);
+      const temGerente=activeCredUsers1010().some(u=>String(u.filial||'').toUpperCase()===filial && isGer1010(u));
+      const gerente=temGerente?[{tipo:'gerente',type:'filial',nome:`GERENTE ${filial}`,filial,key:`GERENTE_${filial}`,label:`Gerente ${filial}`}]:[];
+      const arr=[...gerente,...vends].filter((x,i,a)=>a.findIndex(y=>y.key===x.key)===i);
+      if(arr.length) return arr;
+      try{return old(filial)}catch(e){return [{tipo:'filial',type:'filial',nome:`FILIAL ${filial}`,filial,key:`GERENTE_${filial}`,label:`Filial ${filial}`}];}
+    };
+    fn.__mdl_v1010=true; window.reativacaoDestinatariosFilial=fn;
+  }
+
+  function logDate1010(x){return String(x?.server_time||x?.created_at||x?.criado_em||x?.data||'').replace('T',' ').slice(0,19)}
+  function reatLogKey1010(x){return String(x?.cliente_key||x?.cobranca_key||'') || (String(x?.parcela||'').match(/CLIENTE_SEM_MOVIMENTO\|(.+?)(?:\|[A-Z0-9_]+)?$/)||[])[1] || ''}
+  function logsReat1010(){return (Array.isArray(COB_LOGS)?COB_LOGS:[]).filter(x=>String(x?.titulo||'').toUpperCase()==='REATIVACAO')}
+  function todayIso1010(){return new Date().toISOString().slice(0,10)}
+  function reatSentRowsToday1010(){const hoje=todayIso1010(); return logsReat1010().filter(x=>String(x?.server_time||x?.created_at||x?.criado_em||x?.data||'').slice(0,10)===hoje)}
+  window.mdlV1010ReatSentRowsToday=reatSentRowsToday1010;
+  window.mdlV1010OpenEnviadosReativacao=function(){
+    const logs=reatSentRowsToday1010().sort((a,b)=>String(b.server_time||b.created_at||'').localeCompare(String(a.server_time||a.created_at||'')));
+    const rows=logs.map(x=>{
+      const key=reatLogKey1010(x); const qtd=logsReat1010().filter(y=>reatLogKey1010(y)===key && key).length;
+      return `<div class="row-item"><div class="row-top"><div><div class="name">${esc(x.cliente||x.nome||'Cliente')}</div><div class="small muted">${esc(x.filial||'')} · ${esc(x.telefone||'')} · key ${esc(key||'-')}</div></div><div><strong>${esc(x.destino_nome||x.usuario||x.login||'')}</strong><div class="small muted">Quem enviou</div></div><div><strong>${esc(logDate1010(x)||'-')}</strong><div class="small muted">Data/hora</div></div><div><strong>${qtd||1}</strong><div class="small muted">contador cliente</div></div></div></div>`;
+    }).join('') || '<div class="empty">Nenhuma reativação enviada hoje.</div>';
+    let modal=document.getElementById('mdlV1010ReatModal');
+    if(!modal){modal=document.createElement('div'); modal.id='mdlV1010ReatModal'; modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:99999;display:flex;align-items:flex-start;justify-content:center;padding:6vh 20px;overflow:auto'; document.body.appendChild(modal)}
+    modal.innerHTML=`<div class="glass panel" style="max-width:1120px;width:100%;border-color:rgba(52,211,153,.35)"><div class="section-head"><div><h2>📨 Enviados hoje · Clientes sem movimento</h2><div class="hint">Lista de quem enviou, cliente, data/hora e contador. A regra de retorno é 30 dias sem compra.</div></div><button class="btn soft" onclick="document.getElementById('mdlV1010ReatModal').remove()">Fechar</button></div><div class="tableish">${rows}</div></div>`;
+  };
+  if(typeof window.renderReativacaoTab==='function' && !window.renderReativacaoTab.__mdl_v1010){
+    const old=window.renderReativacaoTab;
+    const fn=function(){
+      const ret=old.apply(this,arguments);
+      setTimeout(()=>{try{document.querySelectorAll('#reativacaoSection .kpi').forEach(k=>{const label=(k.querySelector('.kpi-label-text')?.textContent||'').trim().toLowerCase();if(label==='enviados hoje'){k.style.cursor='pointer'; k.title='Clique para ver quem enviou'; k.onclick=window.mdlV1010OpenEnviadosReativacao; if(!k.querySelector('.mdl-v1010-click')) k.insertAdjacentHTML('beforeend','<div class="subline mdl-v1010-click" style="color:#34d399;font-weight:900">🔎 Clique para visualizar</div>');}});}catch(e){console.warn(TAG,'reat click patch',e)}},50);
+      return ret;
+    };
+    fn.__mdl_v1010=true; window.renderReativacaoTab=fn;
+  }
+
+  function entToFilialIfGer1010(ent){try{ if(ent && isGer1010(ent) && ent.filial) return gerenteFilialEntity1010(ent.filial); }catch(e){} return ent;}
+  function allComissaoEntities1010(){
+    let ents=[]; try{ents=ents.concat((flattenVendedores()||[]).filter(v=>!isGer1010(v)))}catch(e){} try{ents=ents.concat(flattenFiliais()||[])}catch(e){} try{ents=ents.concat(crediaristaEntities()||[])}catch(e){} try{const t=thirdChargeEntity(); if(t) ents.push(t)}catch(e){}
+    const seen=new Set(); return ents.map(entToFilialIfGer1010).filter(Boolean).filter(e=>{const k=(typeof _v48EntKey==='function'?_v48EntKey(e):`${e.type||''}|${e.filial||''}|${e.login||e.nome||''}`); if(seen.has(k)) return false; seen.add(k); return true;});
+  }
+  window.mdlV109AllComissaoEntities=allComissaoEntities1010; window._v48AllComissaoEntities=allComissaoEntities1010; window._allComissaoEntitiesNow=allComissaoEntities1010;
+  function comKey1010(e){try{return (typeof _v48EntKey==='function')?_v48EntKey(e):((typeof _comKeyNow==='function')?_comKeyNow(e):`${e.type||'ent'}::${e.filial||''}::${e.login||e.nome||''}`)}catch(err){return `${e.type||'ent'}::${e.filial||''}::${e.login||e.nome||''}`}}
+  function selectedEnt1010(){const key=document.getElementById('histComCurrentEntity')?.value||'';return allComissaoEntities1010().find(e=>comKey1010(e)===key)||allComissaoEntities1010()[0]||null;}
+  async function captureDetailHtml1010(ent){
+    ent=entToFilialIfGer1010(ent);
+    try{
+      if(ent?.type==='terceiro' || ent?.is_terceiro){ if(typeof renderTerceiroDetail==='function') renderTerceiroDetail(ent); else if(typeof openThirdChargePanel==='function') openThirdChargePanel(); }
+      else if(ent?.type==='crediarista' || ent?.is_crediarista){ openCrediaristaPanel(ent.login||'',ent.filial||'',ent.nome||''); }
+      else { openEntity(ent); }
+      await sleep(120);
+      const raw=document.getElementById('detailScreen')?.innerHTML||'';
+      if(raw && raw.length>80) return `<div class="snap-sheet detail-clone">${raw}</div>`;
+    }catch(e){console.warn(TAG,'detail capture failed, fallback snapshot',e)}
+    try{return snapshotEntityHTML(ent)||''}catch(e){return ''}
+  }
+  function restoreHistorico1010(){try{document.getElementById('detailScreen')?.classList.add('hidden');document.getElementById('mainScreen')?.classList.remove('hidden'); if(typeof setMainTab==='function') setMainTab('historico'); if(window._histMode) window._histMode='comissao'; if(typeof renderHistoricoComissaoResults==='function') renderHistoricoComissaoResults();}catch(e){}}
+  function printWindow1010(title,bodyHtml){
+    const w=window.open('about:blank','_blank'); if(!w){toast('Pop-up bloqueado pelo navegador.','warn');return;}
+    w.document.open();
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>body{margin:0;background:#080a0f;color:#f4f6fb;font-family:Inter,Arial,sans-serif;padding:12px}.print-toolbar{position:sticky;top:0;z-index:99;background:#111827;border:1px solid #334155;border-radius:14px;padding:10px;margin:0 0 12px;display:flex;gap:8px;align-items:center;justify-content:space-between}.print-toolbar button{padding:10px 14px;border:0;border-radius:10px;font-weight:900;cursor:pointer}.mdl-freeze-page{page-break-after:always;break-after:page;margin:0 auto 18px;max-width:1280px}.mdl-freeze-page:last-child{page-break-after:auto;break-after:auto}.back-row .btn,.back-row button,.toast,.modal,.phone-modal{display:none!important}.detail-top{grid-template-columns:1fr 1fr!important}.detail-clone{max-width:1280px;margin:auto}@media print{body{background:#fff!important;color:#111!important;padding:0}.print-toolbar{display:none!important}.mdl-freeze-page{margin:0!important;page-break-after:always;break-after:page}.mdl-freeze-page:last-child{page-break-after:auto;break-after:auto}.glass,.panel,.metric,.accordion,.row-item{box-shadow:none!important}}</style></head><body><div class="print-toolbar"><strong>${esc(title)}</strong><div><button onclick="window.print()">🖨️ Salvar PDF / Imprimir</button><button onclick="window.close()">Fechar</button></div></div>${bodyHtml}</body></html>`);
+    w.document.close();
+  }
+  window.abrirTelaComissionamentoAtual=async function(){const ent=selectedEnt1010(); if(!ent){toast('Nenhum usuário/filial encontrado.','warn');return;} toast('Montando tela congelada...','info'); const html=await captureDetailHtml1010(ent); restoreHistorico1010(); if(!html || html.length<80){toast('Não consegui montar a tela individual completa.','warn');return;} printWindow1010('Comissionamento '+(ent.nome||ent.filial||''),`<div class="mdl-freeze-page">${html}</div>`);};
+  window.congelarTodasTelasComissionamentoPDF=async function(){const ents=allComissaoEntities1010(); if(!ents.length){toast('Nenhuma tela para congelar.','warn');return;} toast(`Montando ${ents.length} tela(s). Aguarde...`,'info'); const pages=[]; for(const ent of ents){const html=await captureDetailHtml1010(ent); if(html && html.length>80) pages.push(`<div class="mdl-freeze-page">${html}</div>`); await sleep(40);} restoreHistorico1010(); if(!pages.length){toast('Não consegui montar nenhuma tela.','warn');return;} printWindow1010(`Fechamento comissionamento ${typeof mesAtualComissao==='function'?mesAtualComissao():''} · ${pages.length} tela(s)`,pages.join(''));};
+  if(typeof window.renderHistoricoComissaoResults==='function' && !window.renderHistoricoComissaoResults.__mdl_v1010){const old=window.renderHistoricoComissaoResults; const fn=function(){const ret=old.apply(this,arguments); setTimeout(()=>{try{const sel=document.getElementById('histComCurrentEntity'); if(sel){const opts=allComissaoEntities1010().map(e=>`<option value="${esc(comKey1010(e))}">${esc(e.nome||filialLabel(e.filial)||'Entidade')} · ${esc(e.filial||'')}</option>`).join(''); if(opts) sel.innerHTML=opts;}}catch(e){}},50); return ret;}; fn.__mdl_v1010=true; window.renderHistoricoComissaoResults=fn;}
+  console.log('[V10.10] hotfix ativo:', TAG);
+})();
+</script>
 </body>
 </html>
 """

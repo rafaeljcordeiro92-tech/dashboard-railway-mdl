@@ -1,4 +1,4 @@
-# VERSAO: RAILWAY_SCHEDULER_MDL_V42_MONITOR_LOGS_FIX
+# VERSAO: RAILWAY_SCHEDULER_MDL_V44_RESUMO_ASYNC_FIX
 import json
 import os
 import sys
@@ -73,7 +73,7 @@ _force_main_boot = True
 _force_sales_after_main = False
 
 STATE = {
-    'version': 'V42_LOGS_FIX',
+    'version': 'V44_RESUMO_ASYNC_FIX',
     'started_at': None,
     'updated_at': None,
     'scheduler': 'starting',
@@ -310,7 +310,20 @@ def maybe_send_meta_mercantil_100_alerts(now):
     except Exception as e:
         log(f'⚠️ Falha watcher Telegram meta mercantil 100%: {e}')
 
-def force_summary_now(): return telegram_send(build_daily_summary(BASE_DIR, br_now().strftime('%Y-%m-%d')), alert_type='resumo', base_dir=BASE_DIR)
+def _force_summary_worker():
+    try:
+        day = br_now().strftime('%Y-%m-%d')
+        text = build_daily_summary(BASE_DIR, day)
+        ok, resp = telegram_send(text, alert_type='resumo', base_dir=BASE_DIR)
+        log('📲 Resumo Telegram manual enviado' if ok else f'⚠️ Falha resumo Telegram manual: {resp}')
+    except Exception as e:
+        log(f'⚠️ Erro montando/enviando resumo Telegram manual: {e}')
+
+
+def force_summary_now():
+    # V44: não deixa a requisição HTTP presa enquanto monta o resumo e chama a API do Telegram.
+    threading.Thread(target=_force_summary_worker, daemon=True).start()
+    return True, 'Resumo Telegram enfileirado. Confira o grupo e o log em alguns segundos.'
 
 def force_run(kind):
     global _sales_proc, _cobranca_proc, _force_sales_after_main
@@ -351,7 +364,7 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path.startswith('/telegram/test'):
             ok,resp=telegram_send('✅ Teste Telegram COB+VENDAS OK\n'+br_now().strftime('%d/%m/%Y %H:%M:%S'), alert_type='teste', base_dir=BASE_DIR); self._send(200, {'ok':ok,'message':'Telegram enviado' if ok else resp})
         elif self.path.startswith('/telegram/summary'):
-            ok,resp=force_summary_now(); self._send(200, {'ok':ok,'message':'Resumo enviado' if ok else resp})
+            ok,resp=force_summary_now(); self._send(200, {'ok':ok,'message':resp})
         else: self._send(404, {'ok':False,'message':'not found'})
     def log_message(self, fmt, *args): return
 
@@ -364,7 +377,7 @@ def start_http_panel():
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log('VERSAO V42: monitor de logs estável + meta diaria strict')
+log('VERSAO V44: resumo Telegram assíncrono + monitor de logs estável')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
