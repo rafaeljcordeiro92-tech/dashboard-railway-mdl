@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_5_RECEBIMENTOS_META_FIX
+# VERSAO: DASH2_0_V10_7_RATEIO_MES_CREDIARISTA_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,8 +34,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.5"
-DASHBOARD_BUILD_TAG = "DASH2_0_V10_5_RECEBIMENTOS_META_FIX"
+DASHBOARD_BUILD_VERSION = "V10.7"
+DASHBOARD_BUILD_TAG = "DASH2_0_V10_7_RATEIO_MES_CREDIARISTA_FIX"
 
 def now_brasilia():
     return datetime.now(APP_TZ)
@@ -179,6 +179,29 @@ def iniciar_driver_chrome():
 driver = iniciar_driver_chrome()
 driver.set_page_load_timeout(120)
 wait = WebDriverWait(driver, 40)
+
+# V10.6: no Chrome headless/Railway, às vezes o clique em Gerar acontece,
+# mas o Chromium não grava o arquivo em /tmp sem liberar o download via CDP.
+# Mantém também os prefs normais, mas força o downloadPath aqui.
+def habilitar_download_headless():
+    try:
+        os.makedirs(download_dir, exist_ok=True)
+    except Exception:
+        pass
+    for _cmd in ("Page.setDownloadBehavior", "Browser.setDownloadBehavior"):
+        try:
+            driver.execute_cdp_cmd(_cmd, {"behavior": "allow", "downloadPath": download_dir})
+            print(f"✅ Download headless liberado via CDP ({_cmd}): {download_dir}")
+            return True
+        except Exception as _e_cdp:
+            _last_cdp_err = _e_cdp
+    try:
+        print(f"⚠️ Não consegui liberar download via CDP; seguindo com prefs. Erro: {_last_cdp_err}")
+    except Exception:
+        print("⚠️ Não consegui liberar download via CDP; seguindo com prefs.")
+    return False
+
+habilitar_download_headless()
 
 
 # ===== SELENIUM HELPERS
@@ -1870,16 +1893,19 @@ time.sleep(5)
 # ===== RELATÓRIO
 driver.get(URL + "/relatorio_contas_receber")
 wait.until(EC.presence_of_element_located((By.ID, "data_vencimento_inicial")))
-Select(driver.find_element(By.ID, "data_vencimento")).select_by_value("intervalo")
+try:
+    _sel_data_venc = driver.find_element(By.ID, "data_vencimento")
+    Select(_sel_data_venc).select_by_value("intervalo")
+    driver.execute_script("arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", _sel_data_venc)
+except Exception as _e_sel_data:
+    print(f"⚠️ Erro selecionando intervalo de vencimento: {_e_sel_data}")
 time.sleep(2)
 
-inicio = driver.find_element(By.ID, "data_vencimento_inicial")
-driver.execute_script("arguments[0].value = '';", inicio)
-inicio.send_keys(data_inicio)
-
-fim = driver.find_element(By.ID, "data_vencimento_final")
-driver.execute_script("arguments[0].value = '';", fim)
-fim.send_keys(data_fim)
+# V10.6: seta datas com eventos change/blur. Em algumas execuções headless o SGI
+# não registrava o valor quando era apenas value='' + send_keys, e o download não começava.
+_set_input_by_id_safely("data_vencimento_inicial", data_inicio)
+_set_input_by_id_safely("data_vencimento_final", data_fim)
+print(f"🧾 Filtro contas a receber: vencimento {data_inicio} até {data_fim}")
 
 # Filiais
 try:
@@ -1924,26 +1950,86 @@ except Exception as e:
 # Conta Caixa já vem no relatório automaticamente — sem ação Selenium necessária
 
 # ===== GERAR E AGUARDAR DOWNLOAD
-arquivos_antes = set(
-    f for f in os.listdir(download_dir)
-    if nome_arquivo_contas_valido(f)
-)
-driver.find_element(By.ID, "gerar").click()
-print("📥 Gerando XLS... aguardando download...")
+def _listar_xls_contas_download():
+    try:
+        return [f for f in os.listdir(download_dir) if nome_arquivo_contas_valido(f)]
+    except Exception:
+        return []
 
+def _tem_download_em_andamento():
+    try:
+        return any(f.endswith(".crdownload") or f.endswith(".tmp") for f in os.listdir(download_dir))
+    except Exception:
+        return False
+
+def _clicar_gerar_relatorio_principal():
+    btn = wait.until(EC.presence_of_element_located((By.ID, "gerar")))
+    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", btn)
+    esperar_sumir_overlays(15)
+    try:
+        wait.until(EC.element_to_be_clickable((By.ID, "gerar"))).click()
+    except Exception:
+        driver.execute_script("arguments[0].click();", btn)
+    try:
+        driver.execute_script("arguments[0].dispatchEvent(new MouseEvent('click', {bubbles:true,cancelable:true,view:window}));", btn)
+    except Exception:
+        pass
+
+def _aguardar_xls_contas(arquivos_antes, inicio_click_ts, timeout_seg=240):
+    fim_wait = time.time() + timeout_seg
+    ultimo_print = 0
+    while time.time() < fim_wait:
+        time.sleep(2)
+        if _tem_download_em_andamento():
+            if time.time() - ultimo_print > 10:
+                print("⏳ Ainda baixando XLS de Contas a Receber...")
+                ultimo_print = time.time()
+            continue
+        atuais = set(_listar_xls_contas_download())
+        novos = atuais - set(arquivos_antes)
+        candidatos = []
+        for f in novos:
+            p = os.path.join(download_dir, f)
+            try:
+                if os.path.getsize(p) > 0:
+                    candidatos.append(p)
+            except Exception:
+                pass
+        # fallback: se o navegador reusou nome/sobrescreveu algum arquivo, pega XLS criado após o clique
+        for f in atuais:
+            p = os.path.join(download_dir, f)
+            try:
+                if os.path.getctime(p) >= (inicio_click_ts - 3) and os.path.getsize(p) > 0 and p not in candidatos:
+                    candidatos.append(p)
+            except Exception:
+                pass
+        if candidatos:
+            return max(candidatos, key=os.path.getctime)
+        if time.time() - ultimo_print > 20:
+            print(f"⏳ Aguardando XLS... arquivos atuais válidos={len(atuais)}")
+            ultimo_print = time.time()
+    return None
+
+arquivos_antes = set(_listar_xls_contas_download())
 caminho = None
-for _ in range(60):
-    time.sleep(2)
-    baixando = any(f.endswith(".crdownload") or f.endswith(".tmp") for f in os.listdir(download_dir))
-    if baixando:
-        print("⏳ Ainda baixando..."); continue
-    novos = set(
-        f for f in os.listdir(download_dir)
-        if nome_arquivo_contas_valido(f)
-    ) - arquivos_antes
-    if novos:
-        caminho = max([os.path.join(download_dir, f) for f in novos], key=os.path.getctime)
-        print(f"✅ Download OK: {caminho}"); break
+for _tent_dl in range(1, 4):
+    _inicio_click = time.time()
+    print(f"📥 Gerando XLS de Contas a Receber... tentativa {_tent_dl}/3")
+    try:
+        _clicar_gerar_relatorio_principal()
+    except Exception as _e_click_dl:
+        print(f"⚠️ Falha ao clicar Gerar na tentativa {_tent_dl}: {_e_click_dl}")
+    caminho = _aguardar_xls_contas(arquivos_antes, _inicio_click, timeout_seg=180 if _tent_dl < 3 else 300)
+    if caminho:
+        print(f"✅ Download OK: {caminho}")
+        break
+    try:
+        print(f"⚠️ Nenhum XLS encontrado na tentativa {_tent_dl}. URL atual: {driver.current_url} | TITLE: {driver.title}")
+        print("📂 Arquivos atuais:", os.listdir(download_dir))
+        driver.save_screenshot(os.path.join(download_dir, f"debug_sem_xls_contas_tentativa_{_tent_dl}.png"))
+    except Exception as _e_diag_dl:
+        print(f"⚠️ Falha ao registrar diagnóstico do download: {_e_diag_dl}")
+    time.sleep(3)
 
 if not caminho:
     print(f"📂 download_dir: {download_dir}")
@@ -1951,6 +2037,13 @@ if not caminho:
         print("📂 Arquivos atuais:", os.listdir(download_dir))
     except Exception as e:
         print(f"⚠️ Não consegui listar download_dir: {e}")
+    try:
+        _html_debug_path = os.path.join(download_dir, "debug_sem_xls_contas_page.html")
+        with open(_html_debug_path, "w", encoding="utf-8", errors="ignore") as _fh_dbg:
+            _fh_dbg.write(driver.page_source or "")
+        print(f"🧪 Debug HTML salvo: {_html_debug_path}")
+    except Exception:
+        pass
 
     driver.quit()
     raise Exception("Nenhum XLS válido de Contas a Receber foi baixado nesta execução")
@@ -2411,7 +2504,7 @@ if _ref_precisa_regravar:
             _json_tmp.dump({
                 "data": _month_start_str,
                 "gerado_em": now_brasilia().isoformat(),
-                "origem": "inicio_mes_forcado_v10_5",
+                "origem": "inicio_mes_forcado_v10_7",
                 "observacao": "Corte mensal de recebimentos por faixa; evita reset antes da virada do mês."
             }, _f_tmp, ensure_ascii=False, indent=2)
     except Exception as _e_ref_write:
@@ -3048,6 +3141,40 @@ if _filiais_com_novo_vendas:
     df_vend["perc_filial"] = (df_vend["pendente"] / df_vend["total_filial"].replace(0, 1) * 100).round(2)
     df_vend["filial_ordem"] = pd.Categorical(df_vend["filial_vendedor"], categories=ORDEM_FILIAIS, ordered=True)
     df_vend = df_vend.sort_values(["filial_ordem", "is_gerente", "pendente"], ascending=[True, False, False]).reset_index(drop=True)
+
+
+# ===== V10.7: REATIVA RATEIO DE FILIAL QUE GANHOU USUÁRIO PELAS METAS =====
+# Caso clássico: F5 não tinha colaborador ativo no relatório de cobrança, então a carteira
+# ficou em filiais_sem_ativo. Depois a rotina V23 cria gerente/vendedor a partir das metas
+# de vendas do SGI; se não transferir o bloco consolidado para esses usuários, a tela da
+# filial fica com pendente/pago zerados, mas ainda aparece recebimento por faixa.
+try:
+    _filiais_drenadas_v107 = []
+    for _fil_v107 in list(filiais_sem_ativo.keys()):
+        if _fil_v107 not in ORDEM_FILIAIS:
+            continue
+        _bloco_v107 = filiais_sem_ativo.get(_fil_v107) or {}
+        _pend_bloco_v107 = float(_bloco_v107.get('pendente', 0) or 0)
+        _pago_bloco_v107 = float(_bloco_v107.get('pago', 0) or 0)
+        if abs(_pend_bloco_v107) < 0.01 and abs(_pago_bloco_v107) < 0.01:
+            continue
+        _tem_ativos_v107 = (df_vend['filial_vendedor'].astype(str).str.upper() == _fil_v107).any()
+        if not _tem_ativos_v107:
+            continue
+        df_vend = ratear(df_vend, _fil_v107, _pend_bloco_v107, _pago_bloco_v107)
+        # Remove o consolidado da filial para ela não ser considerada "sem ativo" depois.
+        del filiais_sem_ativo[_fil_v107]
+        _filiais_drenadas_v107.append(f"{_fil_v107}: pend={_pend_bloco_v107:,.2f} pago={_pago_bloco_v107:,.2f}")
+    if _filiais_drenadas_v107:
+        df_vend['total'] = df_vend['pendente'].astype(float) + df_vend['pago'].astype(float)
+        _total_por_filial_v107 = df_vend.groupby('filial_vendedor')['pendente'].sum().rename('total_filial')
+        df_vend = df_vend.drop(columns=[c for c in ['total_filial'] if c in df_vend.columns], errors='ignore').merge(_total_por_filial_v107, on='filial_vendedor', how='left')
+        df_vend['perc_filial'] = (df_vend['pendente'] / df_vend['total_filial'].replace(0, 1) * 100).round(2)
+        df_vend['filial_ordem'] = pd.Categorical(df_vend['filial_vendedor'], categories=ORDEM_FILIAIS, ordered=True)
+        df_vend = df_vend.sort_values(['filial_ordem', 'is_gerente', 'pendente'], ascending=[True, False, False]).reset_index(drop=True)
+        print('✅ V10.7 rateio consolidado drenado para usuários ativos/metas: ' + '; '.join(_filiais_drenadas_v107))
+except Exception as _e_v107_dreno:
+    print(f'⚠️ V10.7 falhou ao drenar filial sem ativo para usuários de metas: {_e_v107_dreno}')
 
 # ===== SALVAR CSV
 csv_path = os.path.join(pasta, "dashboard_vendedores.csv")
@@ -3784,7 +3911,7 @@ def ensure_month_reference_locked(_month_str, _today_str):
     _ref_payload = {
         'data': _base_data,
         'gerado_em': now_brasilia().isoformat(),
-        'origem': 'inicio_mes_forcado_v10_5',
+        'origem': 'inicio_mes_forcado_v10_7',
         'snapshot_origem_path': '',
         'snapshot_origem_data': _base_data,
         'observacao': 'Corte mensal fixo para recebimentos por faixa; não usar snapshot futuro nem fim do mês.',
@@ -5079,6 +5206,69 @@ for f in ORDEM_FILIAIS:
         }
 
 filiais_js_ordered = {f: filiais_js[f] for f in ORDEM_FILIAIS if f in filiais_js}
+
+
+# ── V10.7: histórico mensal explícito de recebimentos por faixa ─────────────
+# Serve para manter fechado o mês anterior no FTP quando virar o mês, enquanto o mês atual
+# passa a contar somente pagamentos da nova competência.
+RECEBIMENTOS_MENSAL_PATH = os.path.join(CACHE_DIR, 'historico_recebimentos_mensais.json')
+def _sum_meta_mes_obj(_meta_obj):
+    _out = {'grave_rec':0.0,'alerta_rec':0.0,'atencao_rec':0.0,'grave_alvo':0.0,'alerta_alvo':0.0,'atencao_alvo':0.0,'grave_pend':0.0,'alerta_pend':0.0,'atencao_pend':0.0}
+    for _vals in ((_meta_obj or {}).get('filiais') or {}).values():
+        if not isinstance(_vals, dict):
+            continue
+        for _k in list(_out.keys()):
+            _out[_k] += float(_vals.get(_k, 0) or 0)
+    return {k: round(v, 2) for k, v in _out.items()}
+
+def _salvar_historico_recebimentos_mensais_v107():
+    try:
+        _hist_rec = _load_json_file(RECEBIMENTOS_MENSAL_PATH, {'months': {}})
+        _hist_rec.setdefault('months', {})
+        # Fecha mês anterior se houver meta_<mes>.json e ainda não estiver salvo.
+        try:
+            _first = datetime.strptime(mes_str + '-01', '%Y-%m-%d')
+            _prev_mes = (_first - timedelta(days=1)).strftime('%Y-%m')
+        except Exception:
+            _prev_mes = ''
+        if _prev_mes and _prev_mes not in _hist_rec['months']:
+            _prev_meta_file = meta_path(_prev_mes)
+            if os.path.exists(_prev_meta_file):
+                with open(_prev_meta_file, encoding='utf-8') as _fpm:
+                    _prev_meta = json.load(_fpm) or {}
+                _hist_rec['months'][_prev_mes] = {
+                    'mes': _prev_mes,
+                    'fechado_em': now_brasilia().isoformat(),
+                    'origem': os.path.basename(_prev_meta_file),
+                    'empresa': _sum_meta_mes_obj(_prev_meta),
+                    'filiais': _prev_meta.get('filiais', {}),
+                    'vendedores': _prev_meta.get('vendedores', {}),
+                }
+                print(f'📦 V10.7 histórico de recebimentos fechado: {_prev_mes}')
+        # Salva/atualiza mês atual com o estado corrente.
+        _hist_rec['months'][mes_str] = {
+            'mes': mes_str,
+            'atualizado_em': now_brasilia().isoformat(),
+            'empresa': {
+                'grave_rec': round(sum(float(v.get('grave_rec',0) or 0) for v in filiais_js_ordered.values()), 2),
+                'alerta_rec': round(sum(float(v.get('alerta_rec',0) or 0) for v in filiais_js_ordered.values()), 2),
+                'atencao_rec': round(sum(float(v.get('atencao_rec',0) or 0) for v in filiais_js_ordered.values()), 2),
+                'grave_alvo': round(sum(float(v.get('grave_alvo',0) or 0) for v in filiais_js_ordered.values()), 2),
+                'alerta_alvo': round(sum(float(v.get('alerta_alvo',0) or 0) for v in filiais_js_ordered.values()), 2),
+                'atencao_alvo': round(sum(float(v.get('atencao_alvo',0) or 0) for v in filiais_js_ordered.values()), 2),
+            },
+            'filiais': filiais_js_ordered,
+            'vendedores': {f'{r.get("nome")}_{r.get("filial")}': r for arr in todos_js.values() for r in arr},
+        }
+        with open(RECEBIMENTOS_MENSAL_PATH, 'w', encoding='utf-8') as _fhrm:
+            json.dump(_hist_rec, _fhrm, ensure_ascii=False, indent=2)
+        print(f'🧾 V10.7 histórico mensal de recebimentos salvo: {RECEBIMENTOS_MENSAL_PATH}')
+        return _hist_rec
+    except Exception as _e_hrm:
+        print(f'⚠️ V10.7 erro salvando histórico mensal de recebimentos: {_e_hrm}')
+        return {'months': {}}
+
+HIST_RECEBIMENTOS_MENSAIS = _salvar_historico_recebimentos_mensais_v107()
 
 # ── Histórico diário persistente (Master / Diretor Comercial) ───────────────
 def _load_hist_dash():
@@ -6867,6 +7057,7 @@ js_crediaristas_map = json.dumps(CREDIARISTAS_CONFIG, ensure_ascii=False)
 js_destaque = json.dumps(destaque_semana or {}, ensure_ascii=False)
 js_hist_dash = json.dumps(hist_dash, ensure_ascii=False)
 js_quitados_180 = json.dumps((quitados_180_info.get('dados') or {}).get('quitados', []), ensure_ascii=False)
+js_hist_recebimentos_mensais = json.dumps(HIST_RECEBIMENTOS_MENSAIS, ensure_ascii=False)
 js_clientes_sem_movimento = json.dumps(clientes_sem_movimento_js, ensure_ascii=False)
 js_clientes_sem_movimento_meta = json.dumps(clientes_sem_movimento_meta_py, ensure_ascii=False)
 js_aniversariantes = json.dumps(aniversariantes_js, ensure_ascii=False)
@@ -8013,6 +8204,7 @@ const RECEBIMENTOS=__JS_RECEBIMENTOS__;
 const RECEBIMENTOS_TERCEIRO=__JS_RECEBIMENTOS_TERCEIRO__;
 const RECEBIMENTOS_CREDIARISTA=__JS_RECEBIMENTOS_CREDIARISTA__||{};
 const QUITADOS_180=__JS_QUITADOS_180__||[];
+const HIST_RECEBIMENTOS_MENSAIS=__JS_HIST_RECEBIMENTOS_MENSAIS__||{months:{}};
 const DASHBOARD_BUILD_VERSION=__JS_DASHBOARD_BUILD_VERSION__;
 const DASHBOARD_BUILD_TAG=__JS_DASHBOARD_BUILD_TAG__;
 
@@ -8398,7 +8590,7 @@ function mergedMetaConfig(aliases){let cfg={...CONFIG_META}; (aliases||[]).forEa
 function entityConfig(ent){return mergedMetaConfig(metaAliasesFromEntity(ent))}
 function calcMeta(ent){const cfg=entityConfig(ent);const gPend=Number(ent.grave_pend||0), aPend=Number(ent.alerta_pend||0), tPend=Number(ent.atencao_pend||0);const gRec=Number(ent.grave_rec||0), aRec=Number(ent.alerta_rec||0), tRec=Number(ent.atencao_rec||0);
   const gAlvo=gPend*Number(cfg.grave_pct||0)/100, aAlvo=aPend*Number(cfg.alerta_pct||0)/100, tAlvo=tPend*Number(cfg.atencao_pct||0)/100;
-  const gPerc=gAlvo>0?(gRec/gAlvo*100):(gRec>0?100:0), aPerc=aAlvo>0?(aRec/aAlvo*100):(aRec>0?100:0), tPerc=tAlvo>0?(tRec/tAlvo*100):(tRec>0?100:0);
+  const gPerc=gAlvo>0?(gRec/gAlvo*100):0, aPerc=aAlvo>0?(aRec/aAlvo*100):0, tPerc=tAlvo>0?(tRec/tAlvo*100):0;
   const sumW=Number(cfg.peso_grave||0)+Number(cfg.peso_alerta||0)+Number(cfg.peso_atencao||0)||1;
   const geral=((Math.min(gPerc,100)*Number(cfg.peso_grave||0))+(Math.min(aPerc,100)*Number(cfg.peso_alerta||0))+(Math.min(tPerc,100)*Number(cfg.peso_atencao||0)))/sumW;
   return {cfg,grave:{pend:gPend,rec:gRec,alvo:gAlvo,perc:gPerc},alerta:{pend:aPend,rec:aRec,alvo:aAlvo,perc:aPerc},atencao:{pend:tPend,rec:tRec,alvo:tAlvo,perc:tPerc},geral:geral};
@@ -9174,33 +9366,29 @@ function openCrediaristaPanel(login, filial, nome){
   const filialNorm=String(filial||'').toUpperCase();
   const loginNorm=String(login||crediaristaLoginByFilial(filialNorm)||'').toLowerCase();
   const nomeNorm=String(nome||`CREDIARISTA${filialNorm}`);
-  // Carteira: usa CLIENTES_CREDIARISTA (Python já espelhou a base da filial)
-  const src=(CLIENTES_CREDIARISTA?.[loginNorm])||CLIENTES_FIL?.[filialNorm]||{grave:[],alerta:[],atencao:[]};
-  const rsrc=(RECEBIMENTOS_CREDIARISTA?.[loginNorm])||{grave:[],alerta:[],atencao:[]};
-  const pend=[...(src.grave||[]),...(src.alerta||[]),...(src.atencao||[])].reduce((a,b)=>a+Number(b.pendente||0),0);
-  const rec=[...(rsrc.grave||[]),...(rsrc.alerta||[]),...(rsrc.atencao||[])].reduce((a,b)=>a+Number(b.pago||0),0);
-  // Herda dados de meta da filial para que calcMeta() funcione corretamente
-  const filData=FILIAIS?.[filialNorm]||{};
-  const ent={
-    type:'crediarista',login:loginNorm,filial:filialNorm,nome:nomeNorm,
-    is_crediarista:true,only_cobranca:true,
-    pendente:pend,pago:rec,total:pend+rec,perc_filial:100,
-    // campos de meta herdados da filial espelhada
-    grave_pend:  Number(filData.grave_pend  ||0),
-    alerta_pend: Number(filData.alerta_pend ||0),
-    atencao_pend:Number(filData.atencao_pend||0),
-    grave_rec:   Number(filData.grave_rec   ||0),
-    alerta_rec:  Number(filData.alerta_rec  ||0),
-    atencao_rec: Number(filData.atencao_rec ||0),
-    grave_alvo:  Number(filData.grave_alvo  ||0),
-    alerta_alvo: Number(filData.alerta_alvo ||0),
-    atencao_alvo:Number(filData.atencao_alvo||0),
-    grave_perc:  Number(filData.grave_perc  ||0),
-    alerta_perc: Number(filData.alerta_perc ||0),
-    atencao_perc:Number(filData.atencao_perc||0),
-    perc_meta:   Number(filData.perc_meta   ||0),
-  };
-  currentDetailRef={type:'crediarista',filial:filialNorm,nome:nomeNorm,login:loginNorm};
+  // V10.7: abre exatamente a mesma entidade usada na lista inicial.
+  // Antes a lista calculava a meta pela carteira do crediarista, mas a tela aberta
+  // herdava a meta da filial, causando divergência tipo F3 13% na lista e 1% ao abrir.
+  const entLista=(crediaristaEntities()||[]).find(x=>
+    String(x.login||'').toLowerCase()===loginNorm ||
+    String(x.filial||'').toUpperCase()===filialNorm ||
+    String(x.nome||'').toLowerCase()===nomeNorm.toLowerCase()
+  );
+  let ent=entLista;
+  if(!ent){
+    const src=(CLIENTES_CREDIARISTA?.[loginNorm])||CLIENTES_FIL?.[filialNorm]||{grave:[],alerta:[],atencao:[]};
+    const rsrc=getRecebimentos({type:'crediarista',login:loginNorm,filial:filialNorm,nome:nomeNorm,is_crediarista:true})||{grave:[],alerta:[],atencao:[]};
+    const gp=(src.grave||[]).reduce((a,b)=>a+Number(b.pendente||0),0);
+    const ap=(src.alerta||[]).reduce((a,b)=>a+Number(b.pendente||0),0);
+    const tp=(src.atencao||[]).reduce((a,b)=>a+Number(b.pendente||0),0);
+    const gr=(rsrc.grave||[]).reduce((a,b)=>a+Number(b.pago||0),0);
+    const ar=(rsrc.alerta||[]).reduce((a,b)=>a+Number(b.pago||0),0);
+    const tr=(rsrc.atencao||[]).reduce((a,b)=>a+Number(b.pago||0),0);
+    ent={type:'crediarista',login:loginNorm,filial:filialNorm,nome:nomeNorm,is_crediarista:true,only_cobranca:true,
+      pendente:gp+ap+tp,pago:gr+ar+tr,total:gp+ap+tp+gr+ar+tr,perc_filial:100,
+      grave_pend:gp,alerta_pend:ap,atencao_pend:tp,grave_rec:gr,alerta_rec:ar,atencao_rec:tr};
+  }
+  currentDetailRef={type:'crediarista',filial:filialNorm,nome:ent.nome||nomeNorm,login:loginNorm};
   mascotCongrats(ent);
   document.getElementById('mainScreen').classList.add('hidden');
   detailScreen.classList.remove('hidden');
@@ -9798,6 +9986,9 @@ function getQuitadosConciliados(){
 
     const pagto=parseDataBRjs(q.pagamento);
     if(!pagto) return;
+    const mesPagto = dateOnlyISO(q.pagamento||'').slice(0,7);
+    const mesAtualReceb = (typeof mesAtualComissao==='function' ? mesAtualComissao() : new Date().toISOString().slice(0,7));
+    if(mesPagto !== mesAtualReceb) return;
 
     const antes=cand.filter(l=>{
       const raw=String(l.server_time||l.criado_em||l.data||'');
@@ -14219,6 +14410,7 @@ repls = {
     '__JS_DESTAQUE__': js_destaque,
     '__JS_HIST_DASH__': js_hist_dash,
     '__JS_QUITADOS_180__': js_quitados_180,
+    '__JS_HIST_RECEBIMENTOS_MENSAIS__': js_hist_recebimentos_mensais,
     '__JS_CLIENTES_SEM_MOVIMENTO__': '[]',  # V9.6: lazy-load do JSON no navegador para não pesar o HTML
     '__JS_CLIENTES_SEM_MOVIMENTO_BASE__': '[]',  # V9.6: base completa fica no FTP, não embutida no HTML
     '__JS_CLIENTES_SEM_MOVIMENTO_META__': js_clientes_sem_movimento_meta,
@@ -14776,6 +14968,13 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
                 ftp.storbinary('STOR fechamentos_mensais.json', f_fech)
         except Exception:
             ftp.storbinary('STOR fechamentos_mensais.json', BytesIO(b'{"months":{}}'))
+        try:
+            if os.path.exists(RECEBIMENTOS_MENSAL_PATH):
+                with open(RECEBIMENTOS_MENSAL_PATH, 'rb') as f_hrm:
+                    ftp.storbinary('STOR historico_recebimentos_mensais.json', f_hrm)
+                print('✅ FTP: historico_recebimentos_mensais.json enviado')
+        except Exception as e_hrm_ftp:
+            print(f'⚠️ Erro enviando historico_recebimentos_mensais.json: {e_hrm_ftp}')
         try:
             _csm_path = os.path.join(pasta, 'clientes_sem_movimento.json')
             _ani_path = os.path.join(pasta, 'aniversariantes_dia.json')
