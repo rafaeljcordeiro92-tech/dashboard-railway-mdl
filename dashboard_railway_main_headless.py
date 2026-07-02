@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_11_FREEZE_CARDS_TELEGRAM_CSM_YASMIM_FIX
+# VERSAO: DASH2_0_V10_14_DOWNLOAD_DIRETO_CONTAS_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,8 +34,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.13"
-DASHBOARD_BUILD_TAG = "DASH2_0_V10_11_FREEZE_CARDS_TELEGRAM_CSM_YASMIM_FIX"
+DASHBOARD_BUILD_VERSION = "V10.14"
+DASHBOARD_BUILD_TAG = "DASH2_0_V10_14_DOWNLOAD_DIRETO_CONTAS_FIX"
 
 def now_brasilia():
     return datetime.now(APP_TZ)
@@ -1975,6 +1975,106 @@ def _clicar_gerar_relatorio_principal():
     except Exception:
         pass
 
+
+def _tentar_download_direto_xls_contas(url_atual=None):
+    """
+    V10.14: Railway/Chrome headless às vezes abre a URL /impressao?formato=xls,
+    mas não grava o anexo no /tmp. Quando isso acontecer, baixa o mesmo XLS
+    diretamente com urllib usando os cookies da sessão Selenium.
+    """
+    try:
+        import html as _html_mod
+        import urllib.parse as _urlparse
+        import urllib.request as _urlreq
+        import ssl as _ssl_mod
+
+        url_dl = _html_mod.unescape(str(url_atual or driver.current_url or "")).strip()
+        if not url_dl or "/relatorio_contas_receber/impressao" not in url_dl:
+            return None
+        if url_dl.startswith("/"):
+            url_dl = URL.rstrip("/") + url_dl
+
+        parsed = _urlparse.urlparse(url_dl)
+        qs = _urlparse.parse_qs(parsed.query)
+        nome = (qs.get("nome_arquivo") or [""])[0].strip()
+        if not nome:
+            nome = f"relatorio_contas_pagar_receber_{now_brasilia().strftime('%Y%m%d%H%M%S')}.xls"
+        nome = _html_mod.unescape(nome)
+        nome = os.path.basename(re.sub(r'[<>:"/\\|?*]+', '_', nome))
+        if not nome.lower().endswith((".xls", ".xlsx")):
+            nome += ".xls"
+        if "contas" not in nome.lower() and "receber" not in nome.lower():
+            nome = "relatorio_contas_pagar_receber_" + nome
+
+        destino = os.path.join(download_dir, nome)
+        cookies = []
+        try:
+            for c in driver.get_cookies():
+                n = c.get("name")
+                v = c.get("value")
+                if n is not None and v is not None:
+                    cookies.append(f"{n}={v}")
+        except Exception:
+            pass
+        try:
+            ua = driver.execute_script("return navigator.userAgent || 'Mozilla/5.0';")
+        except Exception:
+            ua = "Mozilla/5.0"
+
+        headers = {
+            "User-Agent": ua,
+            "Accept": "application/vnd.ms-excel, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/octet-stream, */*",
+            "Referer": URL.rstrip("/") + "/relatorio_contas_receber",
+        }
+        if cookies:
+            headers["Cookie"] = "; ".join(cookies)
+
+        print(f"🌐 V10.14 fallback: baixando XLS direto da URL do SGI: {url_dl}")
+        req = _urlreq.Request(url_dl, headers=headers, method="GET")
+        ctx = _ssl_mod._create_unverified_context()
+        with _urlreq.urlopen(req, timeout=180, context=ctx) as resp:
+            data = resp.read()
+            ctype = resp.headers.get("Content-Type", "")
+
+        if not data or len(data) < 200:
+            print(f"⚠️ V10.14 fallback direto retornou arquivo pequeno/vazio: {len(data or b'')} bytes")
+            return None
+        inicio = data[:120].lstrip().lower()
+        # Se SGI devolveu tela HTML de login/erro, não usa como XLS.
+        if (inicio.startswith(b"<!doctype") or inicio.startswith(b"<html")) and b"<table" not in data[:5000].lower():
+            print(f"⚠️ V10.14 fallback direto recebeu HTML sem tabela. content-type={ctype} bytes={len(data)}")
+            return None
+
+        with open(destino, "wb") as fh:
+            fh.write(data)
+        print(f"✅ V10.14 fallback direto OK: {destino} ({len(data)} bytes, content-type={ctype})")
+        return destino
+    except Exception as e:
+        print(f"⚠️ V10.14 fallback download direto falhou: {e}")
+        return None
+
+
+def _ler_contas_receber_xls(caminho):
+    """Lê o arquivo do Contas a Receber seja XLSX real, XLS/HTML exportado ou HTML table."""
+    erros = []
+    try:
+        return pd.read_excel(caminho, header=None, engine="openpyxl")
+    except Exception as e:
+        erros.append(f"openpyxl: {e}")
+    try:
+        return pd.read_excel(caminho, header=None)
+    except Exception as e:
+        erros.append(f"read_excel_auto: {e}")
+    try:
+        tabelas = pd.read_html(caminho, decimal=',', thousands='.')
+        if tabelas:
+            print(f"✅ V10.14 leitura via read_html: {len(tabelas)} tabela(s)")
+            return tabelas[0]
+    except Exception as e:
+        erros.append(f"read_html: {e}")
+    raise Exception("Não consegui ler XLS de Contas a Receber: " + " | ".join(erros))
+
+
 def _aguardar_xls_contas(arquivos_antes, inicio_click_ts, timeout_seg=240):
     fim_wait = time.time() + timeout_seg
     ultimo_print = 0
@@ -2020,6 +2120,8 @@ for _tent_dl in range(1, 4):
     except Exception as _e_click_dl:
         print(f"⚠️ Falha ao clicar Gerar na tentativa {_tent_dl}: {_e_click_dl}")
     caminho = _aguardar_xls_contas(arquivos_antes, _inicio_click, timeout_seg=180 if _tent_dl < 3 else 300)
+    if not caminho:
+        caminho = _tentar_download_direto_xls_contas(driver.current_url)
     if caminho:
         print(f"✅ Download OK: {caminho}")
         break
@@ -2030,6 +2132,9 @@ for _tent_dl in range(1, 4):
     except Exception as _e_diag_dl:
         print(f"⚠️ Falha ao registrar diagnóstico do download: {_e_diag_dl}")
     time.sleep(3)
+
+if not caminho:
+    caminho = _tentar_download_direto_xls_contas(driver.current_url)
 
 if not caminho:
     print(f"📂 download_dir: {download_dir}")
@@ -2051,7 +2156,7 @@ if not caminho:
 # ===== LEITURA DO XLS
 if not nome_arquivo_contas_valido(os.path.basename(caminho)):
     raise Exception(f"Arquivo selecionado não é o relatório de contas a receber: {caminho}")
-df_raw = pd.read_excel(caminho, header=None, engine="openpyxl")
+df_raw = _ler_contas_receber_xls(caminho)
 print(f"📋 {df_raw.shape[0]} linhas lidas")
 
 metas_vendas_info = {"json_path": None, "xlsx_path": None, "dados": {}}
@@ -15138,9 +15243,9 @@ Preparamos condições especiais para você comemorar com a gente.
 
 
 <script>
-/* ===== V10.13: impressão 1 página + enviados CSM por base/COB_LOGS + opção página leve ===== */
+/* ===== V10.14: impressão 1 página + enviados CSM + download direto Contas a Receber ===== */
 (function(){
-  const TAG='V10.13_PRINT_ONE_PAGE_CSM_SENT_LIGHT';
+  const TAG='V10.14_DOWNLOAD_DIRETO_CONTAS_PRINT_CSM';
   const esc=(window.esc)||function(s){return String(s??'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]))};
   const sleep=(window.sleep)||function(ms){return new Promise(r=>setTimeout(r,ms))};
   function logsArr(){try{return (typeof COB_LOGS!=='undefined' && Array.isArray(COB_LOGS))?COB_LOGS:(Array.isArray(window.COB_LOGS)?window.COB_LOGS:[])}catch(e){return []}}
@@ -15211,7 +15316,7 @@ Preparamos condições especiais para você comemorar com a gente.
   window.abrirClientesSemMovimentoPaginaLeve=function(){const rows=currentRowsScope(); const w=window.open('about:blank','_blank'); if(!w){toast('Pop-up bloqueado.','warn');return;} const data=rows.map(r=>({idx:r._idx,cliente:r.cliente,filial:r.filial,cidade:r.cidade,dias:r.dias_sem_movimento,ultimo:r.ultimo_movimento,owner:(r._owner||ownerInfo(r)||{}).label||'',telefones:r.telefones||[],sent:isSentRow(r)})); const js=JSON.stringify(data).replace(/<\//g,'<\\/'); w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Clientes sem movimento</title><style>body{margin:0;background:#080a0f;color:#f4f6fb;font-family:Inter,Arial,sans-serif;padding:18px}.top{position:sticky;top:0;background:#111827;border:1px solid #334155;border-radius:16px;padding:14px;margin-bottom:14px}input{width:100%;padding:12px;border-radius:12px;border:1px solid #334155;background:#06080c;color:#fff}.row{display:grid;grid-template-columns:1.4fr .8fr .5fr auto;gap:12px;align-items:center;background:#111827;border:1px solid #293241;border-radius:14px;padding:12px;margin:8px 0}.muted{color:#94a3b8;font-size:12px}.wa{background:#15803d;color:white;border:0;border-radius:999px;padding:10px 14px;font-weight:900}.sent{opacity:.55}</style></head><body><div class="top"><h2>🧡 Clientes sem movimento · página leve</h2><div class="muted">Esta página abre separada para não pesar o dashboard principal. Total: <span id="total"></span></div><input id="q" placeholder="Buscar cliente, cidade, responsável" oninput="render()"></div><div id="list"></div><script>const rows=${js};function esc(s){return String(s??'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]))}function render(){const q=(document.getElementById('q').value||'').toLowerCase();const arr=rows.filter(r=>!q||JSON.stringify(r).toLowerCase().includes(q));document.getElementById('total').textContent=arr.length+' / '+rows.length;document.getElementById('list').innerHTML=arr.slice(0,300).map(r=>'<div class="row '+(r.sent?'sent':'')+'"><div><b>'+esc(r.cliente)+'</b><div class="muted">'+esc(r.filial)+' · '+esc(r.cidade)+' · '+esc(r.dias)+' dias · último '+esc(r.ultimo)+'</div></div><div><b>'+esc(r.owner)+'</b><div class="muted">Responsável</div></div><div>'+(r.sent?'✅ Enviado':'Pendente')+'</div><div>'+(r.telefones||[]).map(t=>'<button class="wa" onclick="window.opener&&window.opener.abrirWhatsReativacao('+r.idx+',\''+String(t).replace(/\D/g,'')+'\')">Whats '+esc(t)+'</button>').join(' ')+'</div></div>').join('')+(arr.length>300?'<div class="muted">Mostrando 300 primeiros. Use busca para filtrar.</div>':'')}</scr`+`ipt></body></html>`); w.document.close();};
   function patchCSMPageButton(){try{const box=document.getElementById('reativacaoSection')||document.querySelector('[data-tab="reativacao"]')||document.body; if(!box||document.getElementById('btnCSMLeve1013')) return; const h=[...document.querySelectorAll('h2,h3,.section-head')].find(x=>String(x.textContent||'').toLowerCase().includes('clientes sem movimento')); if(h){h.insertAdjacentHTML('afterend','<button id="btnCSMLeve1013" class="btn soft" style="margin:8px 0" onclick="abrirClientesSemMovimentoPaginaLeve()">🧡 Abrir clientes sem movimento em página leve</button>')}}catch(e){}}
   setTimeout(patchCSMPageButton,1200); setInterval(patchCSMPageButton,4000);
-  console.log('[V10.13] hotfix ativo:', TAG);
+  console.log('[V10.14] hotfix ativo:', TAG);
 })();
 </script>
 
