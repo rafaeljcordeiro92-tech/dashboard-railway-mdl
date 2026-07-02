@@ -34,7 +34,7 @@ def _extract_list_payload(data):
     return []
 
 
-# VERSAO: TELEGRAM_MONITOR_MDL_V27_V103_RESUMO_LOGS_ROBUSTO
+# VERSAO: TELEGRAM_MONITOR_MDL_V28_RESUMO_NDJSON_FIX
 import json
 import os
 import re
@@ -103,6 +103,48 @@ def _read_text_file(path, default=""):
         pass
     return default
 
+
+
+def _read_json_file_any(path, default):
+    """Lê JSON local aceitando lista/dict e nunca estoura o resumo."""
+    try:
+        if path and os.path.exists(path):
+            with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                raw = f.read().strip()
+            if not raw:
+                return default
+            return json.loads(raw)
+    except Exception:
+        return default
+    return default
+
+
+def _read_url_ndjson(url, default=None, timeout=12):
+    """Lê arquivo NDJSON remoto, 1 JSON por linha, usado pelos backups append.
+
+    Corrige o erro do resumo manual: name '_read_url_ndjson' is not defined.
+    """
+    out = [] if default is None else default
+    try:
+        raw = _read_url_text(url, "", timeout=timeout)
+        if not raw:
+            return [] if default is None else default
+        rows = []
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                item = json.loads(line)
+                if isinstance(item, dict):
+                    rows.append(item)
+                elif isinstance(item, list):
+                    rows.extend([x for x in item if isinstance(x, dict)])
+            except Exception:
+                continue
+        return rows
+    except Exception:
+        return [] if default is None else default
 
 def _read_url_text(url, default="", timeout=12):
     try:

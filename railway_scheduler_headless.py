@@ -1,4 +1,4 @@
-# VERSAO: RAILWAY_SCHEDULER_MDL_V44_RESUMO_ASYNC_FIX
+# VERSAO: RAILWAY_SCHEDULER_MDL_V45_RESUMO_ASYNC_NDJSON_FIX
 import json
 import os
 import sys
@@ -73,7 +73,7 @@ _force_main_boot = True
 _force_sales_after_main = False
 
 STATE = {
-    'version': 'V44_RESUMO_ASYNC_FIX',
+    'version': 'V45_RESUMO_ASYNC_NDJSON_FIX',
     'started_at': None,
     'updated_at': None,
     'scheduler': 'starting',
