@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_8_LOGIN_MASTER_FIX
+# VERSAO: DASH2_0_V10_9_GERENTES_REATIVACAO_FECHAMENTO_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,7 +34,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.8"
+DASHBOARD_BUILD_VERSION = "V10.9"
 DASHBOARD_BUILD_TAG = "DASH2_0_V10_8_LOGIN_MASTER_FIX"
 
 def now_brasilia():
@@ -3240,10 +3240,17 @@ def _norm_login_lookup_py(txt):
     return re.sub(r"\s+", " ", s).strip()
 
 def _buscar_login_existente_por_nome_filial(nome, filial, is_gerente=None):
-    """Mantém login customizado alterado pelo Master entre uma execução e outra."""
+    """Mantém login customizado alterado pelo Master entre uma execução e outra.
+
+    V10.9: quando alguém troca de vendedor para gerente no SGI, ex.:
+    YASMIM OLIVEIRA SANTOS (GERF4), o mesmo login antigo é reaproveitado e
+    atualizado para acesso de gerente/filial. Isso evita criar usuário duplicado
+    ou deixar a gerente sem acesso.
+    """
     try:
         alvo_nome = _norm_login_lookup_py(limpar_nome_display(nome))
         alvo_filial = str(filial or "").strip().upper()
+        candidatos_mesmo_nome = []
         for _login_ant, _u_ant in (cred_state.get("users", {}) or {}).items():
             if not isinstance(_u_ant, dict):
                 continue
@@ -3251,9 +3258,15 @@ def _buscar_login_existente_por_nome_filial(nome, filial, is_gerente=None):
                 continue
             if _norm_login_lookup_py(_u_ant.get("nome") or "") != alvo_nome:
                 continue
+            candidatos_mesmo_nome.append((_login_ant, _u_ant))
             if is_gerente is not None and bool(_u_ant.get("is_gerente")) != bool(is_gerente):
-                # não mistura gerente com vendedor de mesmo nome/filial
                 continue
+            return str(_u_ant.get("login") or _login_ant).strip().lower() or str(_login_ant).strip().lower()
+
+        # Migração de função: antigo vendedor virou gerente. Preserva login/senha.
+        if bool(is_gerente) and candidatos_mesmo_nome:
+            _login_ant, _u_ant = candidatos_mesmo_nome[0]
+            print(f"🔁 V10.9 migração vendedor→gerente preservando login: {nome} {alvo_filial} → {_login_ant}")
             return str(_u_ant.get("login") or _login_ant).strip().lower() or str(_login_ant).strip().lower()
     except Exception:
         pass
@@ -5407,6 +5420,15 @@ print(f"   Caminhão   : R$ {_sales_emp['caminhao_realizado_total']:>12,.2f}  pr
 _sales_fil = {}
 _sales_vend = {}
 
+def _sales_row_is_gerente_v109(row):
+    try:
+        if not isinstance(row, dict):
+            return False
+        txt = " ".join(str(row.get(k, "") or "") for k in ("Vendedor", "Vendedor_2", "Nome", "Nome_2", "Filial"))
+        return bool(re.search(r"\(\s*GER\s*F?\s*\d+\s*\)|\bGER\s*F\s*\d+\b", txt, flags=re.I))
+    except Exception:
+        return False
+
 for _meta_key, _meta_obj in (metas_vendas_info.get("dados", {}).get("metas", {}) or {}).items():
     if not isinstance(_meta_obj, dict) or not _meta_obj.get("ok"):
         continue
@@ -5460,6 +5482,9 @@ for _meta_key, _meta_obj in (metas_vendas_info.get("dados", {}).get("metas", {})
                 _b["caminhao_meta_total"]      = _val_meta(_r)
                 _b["caminhao_meta_periodo"]    = _val_meta_per(_r)
         elif _meta_key == "venda_filial_vendedor_meta":
+            if _sales_row_is_gerente_v109(_r):
+                # V10.9: linhas (GERFx) são apenas referência operacional; comissão do gerente vem da filial.
+                continue
             _nome = str(_r.get("Vendedor_2") or _r.get("Vendedor") or "").strip()
             _fil  = _filial_key_from_text(_r.get("Vendedor", "") or _r.get("Filial", ""))
             if _nome:
@@ -5469,6 +5494,9 @@ for _meta_key, _meta_obj in (metas_vendas_info.get("dados", {}).get("metas", {})
                 _b["venda_atingido_total"]  = _ating
                 _b["venda_projetado"]       = _proj
         elif _meta_key == "servico_filial_vendedor_ouro_fob":
+            if _sales_row_is_gerente_v109(_r):
+                # V10.9: gerente não recebe comissão por linha individual de vendedor.
+                continue
             _nome = str(_r.get("Vendedor_2") or _r.get("Vendedor") or "").strip()
             _fil  = _filial_key_from_text(_r.get("Vendedor", "") or _r.get("Filial", ""))
             if _nome:
@@ -6885,7 +6913,7 @@ def carregar_clientes_sem_movimento_local():
     clientes_sem_movimento_base_py = final_com_key
     logs_stats = _load_reativacao_logs_csm()
     hoje_csm = now_brasilia().date()
-    cooldown_dias = int(os.getenv('REATIVACAO_REENVIO_DIAS', '10') or '10')
+    cooldown_dias = int(os.getenv('REATIVACAO_REENVIO_DIAS', '30') or '30')
     actionable = []
     novos_count = pendentes_count = retorno_count = aguardando_count = 0
     for r in final_com_key:
@@ -6904,7 +6932,7 @@ def carregar_clientes_sem_movimento_local():
             rr['_reat_ultimo_envio'] = ultimo.strftime('%d/%m/%Y') if ultimo else ''
             rr['_reat_dias_desde_envio'] = int(dias)
             if dias >= cooldown_dias:
-                rr['_reat_motivo'] = 'retorno_10d'
+                rr['_reat_motivo'] = 'retorno_30d'
                 retorno_count += 1
                 actionable.append(rr)
             else:
@@ -11743,8 +11771,8 @@ function reatInfoExtra(r){
   const motivo=String(r?._reat_motivo||'');
   if(qtd>0){
     const ult=r._reat_ultimo_envio||''; const pri=r._reat_primeiro_envio||''; const dias=Number(r._reat_dias_desde_envio||0);
-    if(motivo==='retorno_10d') return ` · ${qtd} envio(s) · último ${esc(ult)} · voltou após ${dias} dias`;
-    return ` · ${qtd} envio(s) · último ${esc(ult)} · aguardar ${Number(r._reat_cooldown_dias||10)} dias`;
+    if(motivo==='retorno_30d' || motivo==='retorno_10d') return ` · ${qtd} envio(s) · último ${esc(ult)} · voltou após ${dias} dias`;
+    return ` · ${qtd} envio(s) · último ${esc(ult)} · aguardar ${Number(r._reat_cooldown_dias||30)} dias`;
   }
   if(motivo==='pendente_sem_envio') return ' · pendente sem envio anterior';
   if(motivo==='novo') return ' · novo na base';
@@ -14443,6 +14471,178 @@ Preparamos condições especiais para você comemorar com a gente.
   setTimeout(_bind, 800);
 })();
 </script>
+
+
+<script>
+// ===== V10.9: gerentes (GERFx), reativação 30d e fechamento em PDF/FTP =====
+(function(){
+  const TAG='MDL_V109_GERENTES_REATIVACAO_FECHAMENTO';
+  function normTxtV109(s){try{return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase()}catch(e){return String(s||'').toUpperCase()}}
+  function isGerNameV109(s){return /\(\s*GER\s*F?\s*\d+\s*\)|\bGER\s*F\s*\d+\b/i.test(String(s||''));}
+  function isGerSalesRowV109(row){
+    try{
+      const txt=[row?.Vendedor,row?.Vendedor_2,row?.Nome,row?.Nome_2,row?.Filial].map(x=>String(x||'')).join(' ');
+      return isGerNameV109(txt);
+    }catch(e){return false;}
+  }
+  window.mdlV109IsGerSalesRow=isGerSalesRowV109;
+
+  // Gerentes não aparecem como vendedor individual; comissão deles é sempre da filial.
+  try{
+    const oldFlatten=window.flattenVendedores;
+    if(typeof oldFlatten==='function' && !oldFlatten.__mdl_v109){
+      const fn=function(){return oldFlatten().filter(v=>!v?.is_gerente && !isGerNameV109(v?.nome||v?.vendedor||''));};
+      fn.__mdl_v109=true; window.flattenVendedores=fn;
+    }
+  }catch(e){console.warn(TAG,'flatten patch',e)}
+
+  // As linhas do SGI com (GERF5), (GERF6), etc, não entram nas metas/comissões do vendedor.
+  try{
+    const oldRowMatches=window.rowMatchesVendedor;
+    if(typeof oldRowMatches==='function' && !oldRowMatches.__mdl_v109){
+      const fn=function(ent,row,key=''){
+        if(isGerSalesRowV109(row)) return false;
+        return oldRowMatches(ent,row,key);
+      };
+      fn.__mdl_v109=true; window.rowMatchesVendedor=fn;
+    }
+  }catch(e){console.warn(TAG,'rowMatches patch',e)}
+
+  // Se um login virou gerente, qualquer abertura por login aponta para o painel da filial.
+  try{
+    const oldAbrirApp=window.abrirApp;
+    if(typeof oldAbrirApp==='function' && !oldAbrirApp.__mdl_v109){
+      const fn=async function(){
+        try{
+          if(window.usuarioAtual && usuarioAtual.is_gerente && usuarioAtual.filial){
+            usuarioAtual.type='filial';
+          }
+        }catch(e){}
+        return oldAbrirApp.apply(this,arguments);
+      };
+      fn.__mdl_v109=true; window.abrirApp=fn;
+    }
+  }catch(e){console.warn(TAG,'abrirApp patch',e)}
+
+  function allComissaoEntitiesV109(){
+    let ents=[];
+    try{ents=ents.concat(flattenVendedores())}catch(e){}
+    try{ents=ents.concat(flattenFiliais())}catch(e){}
+    try{ents=ents.concat(crediaristaEntities())}catch(e){}
+    try{ents.push(thirdChargeEntity())}catch(e){}
+    const seen=new Set();
+    return ents.filter(Boolean).filter(e=>{
+      const k=(typeof _v48EntKey==='function'?_v48EntKey(e):`${e.type||''}|${e.filial||''}|${e.login||e.nome||''}`);
+      if(seen.has(k)) return false; seen.add(k); return true;
+    });
+  }
+  window.mdlV109AllComissaoEntities=allComissaoEntitiesV109;
+  if(typeof window._v48AllComissaoEntities==='function') window._v48AllComissaoEntities=allComissaoEntitiesV109;
+  if(typeof window._allComissaoEntitiesNow==='function') window._allComissaoEntitiesNow=allComissaoEntitiesV109;
+
+  function comKeyV109(e){try{return (typeof _v48EntKey==='function')?_v48EntKey(e):((typeof _comKeyNow==='function')?_comKeyNow(e):`${e.type||'ent'}::${e.filial||''}::${e.login||e.nome||''}`)}catch(err){return `${e.type||'ent'}::${e.filial||''}::${e.login||e.nome||''}`}}
+  function selectedEntV109(){
+    const key=document.getElementById('histComCurrentEntity')?.value||'';
+    return allComissaoEntitiesV109().find(e=>comKeyV109(e)===key) || allComissaoEntitiesV109()[0] || null;
+  }
+  function fullIndividualHtmlV109(ent){
+    try{return snapshotEntityHTML(ent)||''}catch(e){console.warn(TAG,'snapshotEntityHTML',e);return ''}
+  }
+  function printWindowV109(title,bodyHtml,auto=false){
+    const w=window.open('about:blank','_blank');
+    if(!w){toast('Pop-up bloqueado pelo navegador.','warn'); return;}
+    w.document.open();
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>
+      body{margin:0;background:#080a0f;color:#f4f6fb;font-family:Inter,Arial,sans-serif;padding:12px}.print-toolbar{position:sticky;top:0;z-index:99;background:#111827;border:1px solid #334155;border-radius:14px;padding:10px;margin:0 0 12px;display:flex;gap:8px;align-items:center;justify-content:space-between}.print-toolbar button{padding:10px 14px;border:0;border-radius:10px;font-weight:900;cursor:pointer}.mdl-freeze-page{page-break-after:always;break-after:page;margin:0 auto 18px}.mdl-freeze-page:last-child{page-break-after:auto;break-after:auto}@media print{body{background:#fff!important;padding:0}.print-toolbar{display:none!important}.mdl-freeze-page{margin:0!important;page-break-after:always;break-after:page}.mdl-freeze-page:last-child{page-break-after:auto;break-after:auto}}
+    </style></head><body><div class="print-toolbar"><strong>${esc(title)}</strong><div><button onclick="window.print()">🖨️ Salvar PDF / Imprimir</button><button onclick="window.close()">Fechar</button></div></div>${bodyHtml}${auto?'<script>setTimeout(()=>window.print(),900)<\/script>':''}</body></html>`);
+    w.document.close();
+  }
+  window.abrirTelaComissionamentoAtual=function(){
+    const ent=selectedEntV109(); if(!ent){toast('Nenhum usuário/filial encontrado.','warn'); return;}
+    const html=fullIndividualHtmlV109(ent);
+    if(!html){toast('Não consegui montar a tela individual completa.','warn'); return;}
+    printWindowV109('Comissionamento '+(ent.nome||ent.filial||''), `<div class="mdl-freeze-page">${html}</div>`);
+  };
+  window.congelarTodasTelasComissionamentoPDF=function(){
+    const ents=allComissaoEntitiesV109();
+    const pages=ents.map(ent=>`<div class="mdl-freeze-page">${fullIndividualHtmlV109(ent)}</div>`).join('');
+    if(!pages){toast('Nenhuma tela para congelar.','warn'); return;}
+    printWindowV109(`Fechamento comissionamento ${typeof mesAtualComissao==='function'?mesAtualComissao():''} · ${ents.length} tela(s)`, pages, false);
+  };
+
+  // Snapshot salvo no FTP: guarda HTML igual à tela individual, resumo de recebimentos e cobranças do mês.
+  window.buildSnapshotComissionamentoMensal=function(month=(typeof mesAtualComissao==='function'?mesAtualComissao():new Date().toISOString().slice(0,7))){
+    const ents=allComissaoEntitiesV109();
+    const entidades=ents.map(ent=>{
+      let row={}; try{row=(typeof _v48CommissionRow==='function'?_v48CommissionRow(ent):snapshotComissaoEntidade(ent))||{}}catch(e){row={}}
+      return {...row,
+        key:comKeyV109(ent), tipo:ent.type, nome:ent.nome||filialLabel(ent.filial), filial:ent.filial||'', login:ent.login||'',
+        html_individual:fullIndividualHtmlV109(ent), modelo_tela:'individual_completa_v109'
+      };
+    });
+    const logsMes=(Array.isArray(COB_LOGS)?COB_LOGS:[]).filter(x=>String(x.server_time||x.criado_em||x.data||x.created_at||'').slice(0,7)===String(month));
+    const totalPrev=entidades.reduce((a,b)=>a+Number(b.total_previsto||b.totalPrevisto||0),0);
+    return {
+      month, gerado_em:new Date().toISOString(), atualizado_em_br:new Date().toLocaleString('pt-BR'), versao_snapshot:'v10_9_telas_individuais_completas',
+      total_previsto:totalPrev, entidades,
+      fechamento_integrado:{
+        historico_recebimentos_mes:(window.HIST_RECEBIMENTOS_MENSAIS?.months?.[month]||null),
+        cobrancas_log_mes_qtd:logsMes.length,
+        reativacoes_mes_qtd:logsMes.filter(x=>String(x.titulo||'').toUpperCase()==='REATIVACAO').length,
+        cobrancas_reais_mes_qtd:logsMes.filter(x=>String(x.titulo||'').toUpperCase()!=='REATIVACAO' && String(x.titulo||'').toUpperCase()!=='ANIVERSARIO').length,
+        origem:'Salvar fechamento do mês atual grava em historico_comissionamento.json no FTP e referencia historico_recebimentos_mensais/cobrancas_log.'
+      }
+    };
+  };
+
+  const oldRenderHist=window.renderHistoricoComissaoResults;
+  window.renderHistoricoComissaoResults=function(){
+    const box=document.getElementById('histComResults'); if(!box){ if(typeof oldRenderHist==='function') return oldRenderHist(); return; }
+    const ents=allComissaoEntitiesV109();
+    const opts=ents.map(e=>`<option value="${esc(comKeyV109(e))}">${esc(e.nome||filialLabel(e.filial)||'Entidade')} · ${esc(e.filial||'')}</option>`).join('');
+    const currentPanel=`<div class="glass panel" style="margin-bottom:14px"><div class="section-head"><div><h2 style="font-size:18px">🧊 Tela individual congelada atual</h2><div class="hint">Abre exatamente os mesmos cards da tela individual. Gerente aparece como filial; vendedor (GERFx) fica fora da comissão individual.</div></div></div><div class="form-grid"><div class="input-card"><label>Usuário / filial</label><select id="histComCurrentEntity">${opts}</select></div><div style="display:flex;align-items:end;gap:8px;flex-wrap:wrap"><button class="btn primary" onclick="abrirTelaComissionamentoAtual()">Abrir tela congelada</button><button class="btn primary" onclick="congelarTodasTelasComissionamentoPDF()">📄 Congelar todos em PDF</button><button class="btn soft" onclick="exportarComissaoAtualExcel()">Exportar Excel completo</button></div></div></div>`;
+    const months=(typeof _histComMeses==='function'?_histComMeses():[]); const current=document.getElementById('histComMonth')?.value || months[0] || (typeof mesAtualComissao==='function'?mesAtualComissao():'');
+    const snap=HIST_COMISSAO?.months?.[current];
+    if(!snap){box.innerHTML=currentPanel+`<div class="empty">Nenhum histórico salvo para ${esc(current)}. Você já pode abrir/congelar as telas atuais ou clicar em “Salvar fechamento do mês atual”.</div>`; return;}
+    const rows=[...(snap.entidades||[])].sort((a,b)=>String(a.tipo).localeCompare(String(b.tipo),'pt-BR')||String(a.nome).localeCompare(String(b.nome),'pt-BR'));
+    const integ=snap.fechamento_integrado||{};
+    const integrado=`<div class="glass panel" style="margin-bottom:14px;border-color:rgba(96,165,250,.25)"><div class="section-head" style="margin:0"><div><h2 style="font-size:18px">📦 Fechamento salvo no FTP</h2><div class="hint">Comissionamento salvo em historico_comissionamento.json. Recebimentos mensais continuam em historico_recebimentos_mensais.json e cobranças em cobrancas_log.json.</div></div></div><div class="meta-row"><span class="mini-chip">Cobranças mês: ${Number(integ.cobrancas_log_mes_qtd||0)}</span><span class="mini-chip">Reativações mês: ${Number(integ.reativacoes_mes_qtd||0)}</span><span class="mini-chip">Telas salvas: ${rows.filter(r=>String(r.html_individual||'').trim()).length}</span></div></div>`;
+    box.innerHTML=currentPanel+integrado+`<div class="kpis">${makeKpi('Mês',esc(snap.month||current),'var(--blue)')}${makeKpi('Total previsto',R(snap.total_previsto||0),'var(--green)')}${makeKpi('Entidades',String(rows.length),'var(--orange)')}${makeKpi('Salvo em',esc((snap.atualizado_em_br||snap.gerado_em||'').replace('T',' ').slice(0,19)),'var(--blue)')}</div>`+(typeof renderComissionamentoHistoricoTable==='function'?renderComissionamentoHistoricoTable(rows):'');
+  };
+
+  // Consulta de tela congelada salva: usa HTML completo salvo quando existir.
+  try{
+    const oldGet=window.getSnapshotHtmlFromSelection;
+    window.getSnapshotHtmlFromSelection=function(){
+      try{
+        const month=document.getElementById('histComMonth')?.value || (typeof mesAtualComissao==='function'?mesAtualComissao():'');
+        const key=document.getElementById('histComEntityView')?.value||'';
+        const snap=HIST_COMISSAO?.months?.[month];
+        const row=(snap?.entidades||[]).find(r=>String(r.key||'')===String(key));
+        if(row && String(row.html_individual||'').trim()) return {ok:true,html:String(row.html_individual),row,month,fonte:'tela individual completa salva no fechamento'};
+      }catch(e){}
+      return (typeof oldGet==='function')?oldGet():{ok:false,msg:'Tela não encontrada.'};
+    };
+  }catch(e){}
+
+  // Reativação: reforça visualmente a regra de 30 dias e contador por cliente.
+  try{
+    const oldInfo=window.reatInfoExtra;
+    window.reatInfoExtra=function(r){
+      const qtd=Number(r?._reat_qtd_envios||0);
+      if(qtd>0){
+        const ult=r._reat_ultimo_envio||''; const dias=Number(r._reat_dias_desde_envio||0); const cd=Number(r._reat_cooldown_dias||30);
+        return ` · contador ${qtd} envio(s) · último ${esc(ult)} · ${dias>=cd?'liberado novamente':'retorna em '+Math.max(0,cd-dias)+' dia(s)'}`;
+      }
+      return typeof oldInfo==='function'?oldInfo(r):'';
+    };
+  }catch(e){}
+
+  setTimeout(()=>{try{if(window.mainTab==='historico' && window._histMode==='comissao') renderHistoricoComissaoResults();}catch(e){}},500);
+  console.log('[V10.9] hotfix ativo:', TAG);
+})();
+</script>
+
 </body>
 </html>
 """
