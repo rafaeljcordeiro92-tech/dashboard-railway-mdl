@@ -34,7 +34,7 @@ def _extract_list_payload(data):
     return []
 
 
-# VERSAO: TELEGRAM_MONITOR_MDL_V28_RESUMO_NDJSON_FIX
+# VERSAO: TELEGRAM_MONITOR_MDL_V29_RESUMO_LOGS_DIA_FIX
 import json
 import os
 import re
@@ -465,25 +465,39 @@ def _merge_log_sources(*sources):
 
 
 def _load_cobrancas(base_dir):
-    """Carrega logs do FTP/API público e local, mesclando sem duplicar.
+    """Carrega logs de cobrança/reativação/aniversário de forma bem robusta.
 
-    V10.3: inclui backups/append e cache busting, além de aceitar wrappers diversos.
-    Isso corrige resumo final zerado quando o Railway não enxergava a lista principal.
+    V29:
+    - tenta HTTPS e HTTP do /colaborador;
+    - aumenta timeout dos arquivos grandes;
+    - prioriza também NDJSON do dia, que é menor e evita resumo zerado;
+    - aceita cópias locais em monitor_logs/cache_historico.
     """
-    local = _read_json_file(os.path.join(base_dir, "cobrancas_log.json"), [])
-    remote_file = _read_url_json(f"{PUBLIC_BASE}/cobrancas_log.json", [], timeout=20)
-    remote_api = _read_url_json(f"{PUBLIC_BASE}/cobrancas_api.php", [], timeout=20)
-    remote_api2 = _read_url_json(f"{PUBLIC_BASE}/cobrancas_api.php?full=1", [], timeout=20)
     hoje = now_br().strftime("%Y-%m-%d")
     ontem = (now_br() - timedelta(days=1)).strftime("%Y-%m-%d")
-    backup_hoje = _read_url_json(f"{PUBLIC_BASE}/backups_cobrancas/cobrancas_log_{hoje}_latest.json", [], timeout=12)
-    backup_ontem = _read_url_json(f"{PUBLIC_BASE}/backups_cobrancas/cobrancas_log_{ontem}_latest.json", [], timeout=12)
-    ndjson_hoje = _read_url_ndjson(f"{PUBLIC_BASE}/backups_cobrancas/cobrancas_log_append_{hoje}.ndjson", timeout=12)
-    ndjson_ontem = _read_url_ndjson(f"{PUBLIC_BASE}/backups_cobrancas/cobrancas_log_append_{ontem}.ndjson", timeout=12)
-    # Alguns deploys guardam cópia em /app/monitor_logs ou cache_historico.
-    local2 = _read_json_file_any(os.path.join(base_dir, "monitor_logs", "cobrancas_log.json"), [])
-    local3 = _read_json_file_any(os.path.join(base_dir, "cache_historico", "cobrancas_log.json"), [])
-    return _merge_log_sources(remote_api, remote_api2, remote_file, backup_hoje, backup_ontem, ndjson_hoje, ndjson_ontem, local, local2, local3)
+    bases = [PUBLIC_BASE]
+    if PUBLIC_BASE.startswith('https://'):
+        bases.append('http://' + PUBLIC_BASE[len('https://'):])
+    elif PUBLIC_BASE.startswith('http://'):
+        bases.append('https://' + PUBLIC_BASE[len('http://'):])
+    # remove duplicados preservando ordem
+    seen_b=set(); bases=[b for b in bases if not (b in seen_b or seen_b.add(b))]
+
+    sources = []
+    for base in bases:
+        sources.append(_read_url_ndjson(f"{base}/backups_cobrancas/cobrancas_log_append_{hoje}.ndjson", timeout=35))
+        sources.append(_read_url_json(f"{base}/backups_cobrancas/cobrancas_log_{hoje}_latest.json", [], timeout=35))
+        sources.append(_read_url_json(f"{base}/cobrancas_api.php", [], timeout=45))
+        sources.append(_read_url_json(f"{base}/cobrancas_api.php?full=1", [], timeout=45))
+        sources.append(_read_url_json(f"{base}/cobrancas_log.json", [], timeout=45))
+        sources.append(_read_url_ndjson(f"{base}/backups_cobrancas/cobrancas_log_append_{ontem}.ndjson", timeout=20))
+        sources.append(_read_url_json(f"{base}/backups_cobrancas/cobrancas_log_{ontem}_latest.json", [], timeout=20))
+
+    sources.append(_read_json_file(os.path.join(base_dir, "cobrancas_log.json"), []))
+    sources.append(_read_json_file_any(os.path.join(base_dir, "monitor_logs", "cobrancas_log.json"), []))
+    sources.append(_read_json_file_any(os.path.join(base_dir, "cache_historico", "cobrancas_log.json"), []))
+    out = _merge_log_sources(*sources)
+    return out
 
 
 def _load_users(base_dir):
@@ -820,6 +834,40 @@ def _log_date(x):
     return ""
 
 
+
+def _log_belongs_to_date(x, date_str):
+    """Confere a data do log por campos formais e por fallback textual."""
+    if not isinstance(x, dict):
+        return False
+    if _log_date(x) == date_str:
+        return True
+    for k in ("server_date", "server_time", "created_at", "criado_em", "data_hora", "data", "timestamp", "date"):
+        raw = str(x.get(k) or "")
+        if raw.startswith(date_str):
+            return True
+        if date_str in raw:
+            return True
+    br = ""
+    try:
+        br = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+    except Exception:
+        br = ""
+    if br:
+        blob = " ".join(str(v) for v in x.values() if isinstance(v, (str, int, float)))
+        if br in blob:
+            return True
+    return False
+
+
+def _is_action_whatsapp_log(x):
+    if not isinstance(x, dict):
+        return False
+    return bool(
+        str(x.get('acao') or '').lower() == 'whatsapp'
+        or x.get('telefone') or x.get('phone') or x.get('whatsapp')
+        or x.get('cliente') or x.get('nome')
+    )
+
 def _titulo_upper(x):
     return str((x or {}).get("titulo") or (x or {}).get("tipo") or (x or {}).get("tipo_log") or "").strip().upper()
 
@@ -835,12 +883,13 @@ def _log_blob_upper(x):
 
 def _is_reactivation_log(x):
     blob = _log_blob_upper(x)
-    return ("REATIVACAO" in blob) or ("REATIVAÇÃO" in blob) or ("CLIENTE_SEM_MOVIMENTO" in blob) or ("SEM_MOVIMENTO" in blob)
+    # V29: alguns logs de clientes sem movimento usam REATIF no cliente_key/parcela/cobranca_key.
+    return ("REATIVACAO" in blob) or ("REATIVAÇÃO" in blob) or ("REATIF" in blob) or ("CLIENTE_SEM_MOVIMENTO" in blob) or ("SEM_MOVIMENTO" in blob)
 
 
 def _is_birthday_log(x):
     blob = _log_blob_upper(x)
-    return ("ANIVERSARIO" in blob) or ("ANIVERSÁRIO" in blob) or ("ANIV" in blob)
+    return ("ANIVERSARIO" in blob) or ("ANIVERSÁRIO" in blob) or ("ANIV" in blob) or ("BIRTHDAY" in blob)
 
 
 def _is_real_collection_log(x):
@@ -1327,10 +1376,13 @@ def build_daily_summary(base_dir, date_str=None):
     receb_dia = _recebimentos_dia_por_faixa(base_dir, date_str)
 
     logs = _load_cobrancas(base_dir)
-    logs_day_all = [x for x in logs if _log_date(x) == date_str]
-    logs_cob = [x for x in logs_day_all if _is_real_collection_log(x)]
+    logs_day_all = [x for x in logs if _log_belongs_to_date(x, date_str)]
     logs_reat = [x for x in logs_day_all if _is_reactivation_log(x)]
     logs_aniv = [x for x in logs_day_all if _is_birthday_log(x)]
+    logs_cob = [x for x in logs_day_all if _is_real_collection_log(x)]
+    # V29: fallback contra resumo zerado quando o formato do log do PHP muda.
+    if not logs_cob and logs_day_all:
+        logs_cob = [x for x in logs_day_all if (not _is_reactivation_log(x)) and (not _is_birthday_log(x)) and _is_action_whatsapp_log(x)]
 
     cob_keys, cob_top = _active_keys_for_logs(logs_cob)
     reat_keys, reat_top = _active_keys_for_logs(logs_reat)

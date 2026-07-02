@@ -34,7 +34,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.11"
+DASHBOARD_BUILD_VERSION = "V10.12"
 DASHBOARD_BUILD_TAG = "DASH2_0_V10_11_FREEZE_CARDS_TELEGRAM_CSM_YASMIM_FIX"
 
 def now_brasilia():
@@ -3527,7 +3527,7 @@ for _key_old_st, _old_st in _status_antigo.items():
 
 cred_state["users"] = auth_users
 
-# ===== V10.11: garantia final de gerentes fixos no estado publicado =====
+# ===== V10.12: garantia final de gerentes fixos no estado publicado =====
 # Segunda blindagem: mesmo se o gerente não veio no relatório de cobrança nem no SGI
 # de metas, o JSON publicado no FTP recebe o login de gerente antes do HTML/API.
 def _v1011_final_force_manager_user(_login, _nome, _filial):
@@ -3578,9 +3578,9 @@ def _v1011_final_force_manager_user(_login, _nome, _filial):
         _st = _colab_default_status_py(_login, _nome, _filial, True)
         _st.update({'login': _login, 'status': 'ativo'})
         _status_map_final[_k] = _st
-        print(f"✅ V10.11 gerente garantido no estado final: {_nome} ({_filial}) login={_login}")
+        print(f"✅ V10.12 gerente garantido no estado final: {_nome} ({_filial}) login={_login}")
     except Exception as _e:
-        print(f"⚠️ V10.11 falha garantia final gerente {_nome}/{_filial}: {_e}")
+        print(f"⚠️ V10.12 falha garantia final gerente {_nome}/{_filial}: {_e}")
 
 for _nome_ger, _fil_ger, _login_ger in GERENTES_FIXOS_SGI_V1010:
     _v1011_final_force_manager_user(_login_ger, _nome_ger, _fil_ger)
@@ -14922,7 +14922,7 @@ Preparamos condições especiais para você comemorar com a gente.
 
 
 <script>
-// ===== V10.11: PDF só cards, CSM enviados detalhados, Yasmim fallback =====
+// ===== V10.12: PDF só cards, CSM enviados detalhados, Yasmim fallback =====
 (function(){
   const TAG='MDL_V1011_FREEZE_CARDS_CSM_YASMIM';
   const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
@@ -15037,7 +15037,102 @@ Preparamos condições especiais para você comemorar com a gente.
   function restoreHist1011(){try{document.getElementById('detailScreen')?.classList.add('hidden'); document.getElementById('mainScreen')?.classList.remove('hidden'); if(typeof setMainTab==='function') setMainTab('historico'); if(window._histMode) window._histMode='comissao'; if(typeof renderHistoricoComissaoResults==='function') renderHistoricoComissaoResults();}catch(e){}}
   window.abrirTelaComissionamentoAtual=async function(){const ent=selectedEnt1011(); if(!ent){toast('Nenhum usuário/filial encontrado.','warn');return;} toast('Montando cards da tela congelada...','info'); const html=await captureCardsOnly1011(ent); restoreHist1011(); if(!html||html.length<80){toast('Não consegui montar os cards.','warn');return;} print1011('Comissionamento '+(ent.nome||ent.filial||''),`<div class="mdl-freeze-page">${html}</div>`);};
   window.congelarTodasTelasComissionamentoPDF=async function(){const ents=allEnts1011(); if(!ents.length){toast('Nenhuma tela para congelar.','warn');return;} toast(`Montando ${ents.length} página(s) só com cards...`,'info'); const pages=[]; for(const ent of ents){const html=await captureCardsOnly1011(ent); if(html&&html.length>80) pages.push(`<div class="mdl-freeze-page">${html}</div>`); await sleep(50);} restoreHist1011(); if(!pages.length){toast('Não consegui montar nenhuma tela.','warn');return;} print1011(`Fechamento comissionamento ${typeof mesAtualComissao==='function'?mesAtualComissao():''} · ${pages.length} tela(s)`,pages.join(''));};
-  console.log('[V10.11] hotfix ativo:', TAG);
+  console.log('[V10.12] hotfix ativo:', TAG);
+})();
+</script>
+
+
+<script>
+/* ===== V10.12: congelamento com CSS real, resumo/CSM master click robusto ===== */
+(function(){
+  const TAG='V10.12_FREEZE_CSS_MASTER_CSM';
+  const esc=(window.esc)||function(s){return String(s??'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]))};
+  const sleep=(window.sleep)||function(ms){return new Promise(r=>setTimeout(r,ms))};
+  function filialNorm(f){return String(f||'').toUpperCase().trim().replace(/^FILIAL\s*0*/,'F').replace(/^0+/,'F')}
+  function dtOnly(x){const s=String(x||''); if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10); const m=s.match(/(\d{2})\/(\d{2})\/(\d{4})/); if(m) return `${m[3]}-${m[2]}-${m[1]}`; return ''}
+  function todayISO(){try{return new Date().toLocaleDateString('sv-SE',{timeZone:'America/Sao_Paulo'})}catch(e){return new Date().toISOString().slice(0,10)}}
+  function isReatLog(x){const blob=String(`${x?.titulo||''}|${x?.tipo||''}|${x?.parcela||''}|${x?.cliente_key||''}|${x?.cobranca_key||''}|${x?.origem||''}|${x?.categoria||''}`).toUpperCase(); return blob.includes('REATIV')||blob.includes('REATIF')||blob.includes('SEM_MOVIMENTO')||blob.includes('CLIENTE_SEM_MOVIMENTO')}
+  function reatKey(x){return String(x?.cliente_key||'') || String(x?.cobranca_key||'') || String(x?.parcela||'') || `${x?.filial||''}|${x?.cliente||x?.nome||''}|${x?.telefone||x?.whatsapp||''}`}
+  function logDate(x){return String(x?.server_time||x?.created_at||x?.criado_em||x?.data_hora||x?.data||x?.server_date||'').replace('T',' ').slice(0,19)}
+  function logsReatToday(){const hoje=todayISO(); const logs=(Array.isArray(window.COB_LOGS)?window.COB_LOGS:[]); return logs.filter(x=>isReatLog(x) && (dtOnly(x.server_date)||dtOnly(x.server_time)||dtOnly(x.created_at)||dtOnly(x.criado_em)||dtOnly(x.data)||dtOnly(x.data_hora))===hoje)}
+  window.mdlV1012OpenEnviadosReativacao=function(){
+    const logs=logsReatToday().sort((a,b)=>String(logDate(b)).localeCompare(String(logDate(a))));
+    const stats={}; logs.forEach(x=>{const k=reatKey(x); stats[k]=(stats[k]||0)+1});
+    const rows=logs.map(x=>{const k=reatKey(x); return `<div class="row-item"><div class="row-top" style="grid-template-columns:1.15fr .85fr .7fr .45fr"><div><div class="name">${esc(x.cliente||x.nome||'Cliente')}</div><div class="small muted">${esc(filialNorm(x.filial)||'')} · ${esc(x.telefone||x.whatsapp||'')} · ${esc(k||'-')}</div></div><div><strong>${esc(x.destino_nome||x.usuario||x.login||x.responsavel||'')}</strong><div class="small muted">Quem enviou</div></div><div><strong>${esc(logDate(x)||'-')}</strong><div class="small muted">Data/hora do envio</div></div><div><strong>${Number(stats[k]||1)}</strong><div class="small muted">Qtd. envios</div></div></div></div>`}).join('') || '<div class="empty">Nenhum cliente sem movimento enviado hoje.</div>';
+    let modal=document.getElementById('mdlV1012ReatModal');
+    if(!modal){modal=document.createElement('div'); modal.id='mdlV1012ReatModal'; modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:100000;display:flex;align-items:flex-start;justify-content:center;padding:6vh 20px;overflow:auto'; document.body.appendChild(modal)}
+    modal.innerHTML=`<div class="glass panel" style="max-width:1180px;width:100%;border-color:rgba(52,211,153,.35)"><div class="section-head"><div><h2>📨 Enviados hoje · Clientes sem movimento</h2><div class="hint">Master: mostra todos os clientes acionados hoje, quem enviou, data/hora e contador. Cliente volta após 30 dias sem compra.</div></div><button class="btn soft" onclick="document.getElementById('mdlV1012ReatModal').remove()">Fechar</button></div><div class="tableish">${rows}</div></div>`;
+  };
+  function patchEnviadosCards(){try{
+    document.querySelectorAll('.kpi,.metric,.stat-card,.mini-card,.glass,.panel').forEach(el=>{
+      const t=(el.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
+      if(t.length>260) return;
+      if(t.includes('enviados') && t.includes('hoje')){
+        el.style.cursor='pointer'; el.title='Clique para ver clientes sem movimento enviados hoje';
+        el.onclick=function(ev){try{ev.preventDefault();ev.stopPropagation()}catch(e){} window.mdlV1012OpenEnviadosReativacao(); return false;};
+        if(!el.querySelector('.mdl-v1012-click')) el.insertAdjacentHTML('beforeend','<div class="small muted mdl-v1012-click" style="color:#34d399;font-weight:900">🔎 Clique para abrir</div>');
+      }
+    });
+  }catch(e){console.warn(TAG,'patch card',e)}}
+  document.addEventListener('click',function(ev){
+    if(ev.target && ev.target.closest && ev.target.closest('#mdlV1012ReatModal')) return;
+    const path=(ev.composedPath?ev.composedPath():[]);
+    for(const node of path){
+      if(!node || node===document || node===window || !node.textContent) continue;
+      const txt=String(node.textContent||'').replace(/\s+/g,' ').trim().toLowerCase();
+      if(txt.length<220 && txt.includes('enviados') && txt.includes('hoje')){try{ev.preventDefault();ev.stopPropagation()}catch(e){} window.mdlV1012OpenEnviadosReativacao(); return false;}
+    }
+  },true);
+  setTimeout(patchEnviadosCards,700); setInterval(patchEnviadosCards,3500);
+
+  function allEnts(){
+    try{if(typeof window.mdlV109AllComissaoEntities==='function') return window.mdlV109AllComissaoEntities()}catch(e){}
+    let ents=[]; try{ents=ents.concat(flattenVendedores()||[])}catch(e){} try{ents=ents.concat(flattenFiliais()||[])}catch(e){} try{ents=ents.concat(crediaristaEntities()||[])}catch(e){} try{const t=thirdChargeEntity(); if(t) ents.push(t)}catch(e){}
+    const seen=new Set(); return ents.filter(Boolean).filter(e=>{const k=`${e.type||''}|${e.filial||''}|${e.login||e.nome||''}`; if(seen.has(k)) return false; seen.add(k); return true;});
+  }
+  function entKey(e){try{return (typeof _v48EntKey==='function')?_v48EntKey(e):`${e.type||''}|${e.filial||''}|${e.login||e.nome||''}`}catch(err){return `${e.type||''}|${e.filial||''}|${e.login||e.nome||''}`}}
+  function selectedEnt(){const val=document.getElementById('histComCurrentEntity')?.value||''; const ents=allEnts(); return ents.find(e=>entKey(e)===val)||ents[0]||null}
+  function appStyles(){
+    let css='';
+    try{css += Array.from(document.querySelectorAll('style')).map(s=>s.innerHTML||'').join('\n')}catch(e){}
+    css += `\nbody{margin:0;background:#080a0f;color:#f4f6fb;font-family:Inter,Segoe UI,Arial,sans-serif;padding:14px}.print-toolbar{position:sticky;top:0;z-index:99;background:#111827;border:1px solid #334155;border-radius:14px;padding:10px;margin:0 0 12px;display:flex;gap:8px;align-items:center;justify-content:space-between}.print-toolbar button{padding:10px 14px;border:0;border-radius:10px;font-weight:900;cursor:pointer}.mdl-freeze-page{page-break-after:always;break-after:page;margin:0 auto 18px;max-width:1320px}.mdl-freeze-page:last-child{page-break-after:auto;break-after:auto}.cards-only-v1012 .accordion,.cards-only-v1012 .logs-list,.cards-only-v1012 .faixa-block,.cards-only-v1012 .reat-tabs,.cards-only-v1012 .export-actions,.cards-only-v1012 [id*="reat"],.cards-only-v1012 [id*="aniv"]{display:none!important}.cards-only-v1012 .detail-top{display:grid!important;grid-template-columns:1fr 1fr!important;gap:18px!important}.cards-only-v1012 .back-row button,.cards-only-v1012 .toast,.cards-only-v1012 .modal,.cards-only-v1012 .phone-modal{display:none!important}.cards-only-v1012 img{max-width:100%!important;height:auto}.freeze-header-card{margin-bottom:12px}@media print{body{background:#fff!important;color:#111!important;padding:0}.print-toolbar{display:none!important}.mdl-freeze-page{margin:0!important;page-break-after:always;break-after:page}.mdl-freeze-page:last-child{page-break-after:auto;break-after:auto}.glass,.panel,.metric,.accordion,.row-item{box-shadow:none!important}}`;
+    return css;
+  }
+  function cleanCardsOnly(raw){
+    const tmp=document.createElement('div'); tmp.innerHTML=String(raw||'');
+    tmp.querySelectorAll('.back-row button,.toast,.modal,.phone-modal,script,style').forEach(e=>e.remove());
+    tmp.querySelectorAll('.accordion,.glass.panel').forEach(sec=>{const t=(sec.textContent||'').toLowerCase(); if(t.includes('relatório de cobranças')||t.includes('relatorio de cobranças')||t.includes('recebimentos por faixa')||t.includes('clientes sem movimento')||t.includes('aniversariantes do dia')||t.includes('lista individual de aniversário')) sec.remove();});
+    tmp.querySelectorAll('.logs-list,.faixa-block,.reat-tabs,.log-pager,.export-actions').forEach(e=>e.remove());
+    const header=tmp.querySelector('.back-row');
+    const top=tmp.querySelector('.detail-top') || tmp.querySelector('.detail-grid') || tmp.querySelector('.detail-layout');
+    let html='';
+    if(header) html+=`<div class="freeze-header-card">${header.innerHTML}</div>`;
+    if(top) html+=top.outerHTML; else html+=tmp.innerHTML;
+    return `<div class="snap-sheet detail-clone cards-only-v1012">${html}</div>`;
+  }
+  async function capture(ent){
+    try{
+      if(ent && (ent.is_gerente||ent.type==='gerente') && ent.filial) ent={type:'filial',filial:ent.filial,nome:(typeof filialLabel==='function'?filialLabel(ent.filial):ent.filial)};
+      if(ent?.type==='terceiro'||ent?.is_terceiro){ if(typeof renderTerceiroDetail==='function') renderTerceiroDetail(ent); else if(typeof openThirdChargePanel==='function') openThirdChargePanel(); }
+      else if(ent?.type==='crediarista'||ent?.is_crediarista){ if(typeof openCrediaristaPanel==='function') openCrediaristaPanel(ent.login||'',ent.filial||'',ent.nome||''); }
+      else if(typeof openEntity==='function') openEntity(ent);
+      await sleep(220);
+      const raw=document.getElementById('detailScreen')?.innerHTML||'';
+      if(raw && raw.length>80) return cleanCardsOnly(raw);
+    }catch(e){console.warn(TAG,'capture detail',e)}
+    try{return cleanCardsOnly((typeof snapshotEntityHTML==='function'?snapshotEntityHTML(ent):''))}catch(e){return ''}
+  }
+  function restoreHist(){try{document.getElementById('detailScreen')?.classList.add('hidden'); document.getElementById('mainScreen')?.classList.remove('hidden'); if(typeof setMainTab==='function') setMainTab('historico'); if(window._histMode) window._histMode='comissao'; if(typeof renderHistoricoComissaoResults==='function') renderHistoricoComissaoResults(); setTimeout(patchEnviadosCards,300);}catch(e){}}
+  function printWindow(title,body){
+    const w=window.open('about:blank','_blank'); if(!w){toast('Pop-up bloqueado pelo navegador.','warn');return;}
+    const baseHref=location.href.split('?')[0];
+    w.document.open();
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><base href="${baseHref}"><title>${esc(title)}</title><style>${appStyles()}</style></head><body><div class="print-toolbar"><strong>${esc(title)}</strong><div><button onclick="window.print()">🖨️ Salvar PDF / Imprimir</button><button onclick="window.close()">Fechar</button></div></div>${body}</body></html>`);
+    w.document.close();
+  }
+  window.abrirTelaComissionamentoAtual=async function(){const ent=selectedEnt(); if(!ent){toast('Nenhum usuário/filial encontrado.','warn');return;} toast('Montando tela congelada igual aos cards do dashboard...','info'); const html=await capture(ent); restoreHist(); if(!html||html.length<80){toast('Não consegui montar os cards.','warn');return;} printWindow('Comissionamento '+(ent.nome||ent.filial||''),`<div class="mdl-freeze-page">${html}</div>`);};
+  window.congelarTodasTelasComissionamentoPDF=async function(){const ents=allEnts(); if(!ents.length){toast('Nenhuma tela para congelar.','warn');return;} toast(`Montando ${ents.length} página(s) com cards...`,'info'); const pages=[]; for(const ent of ents){const html=await capture(ent); if(html&&html.length>80) pages.push(`<div class="mdl-freeze-page">${html}</div>`); await sleep(80);} restoreHist(); if(!pages.length){toast('Não consegui montar nenhuma tela.','warn');return;} printWindow(`Fechamento comissionamento ${typeof mesAtualComissao==='function'?mesAtualComissao():''} · ${pages.length} tela(s)`,pages.join(''));};
+  console.log('[V10.12] hotfix ativo:', TAG);
 })();
 </script>
 

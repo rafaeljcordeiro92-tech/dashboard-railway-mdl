@@ -1,4 +1,4 @@
-# VERSAO: RAILWAY_SCHEDULER_MDL_V45_RESUMO_ASYNC_NDJSON_FIX
+# VERSAO: RAILWAY_SCHEDULER_MDL_V46_RESUMO_ASYNC_NDJSON_FIX
 import json
 import os
 import sys
@@ -73,7 +73,7 @@ _force_main_boot = True
 _force_sales_after_main = False
 
 STATE = {
-    'version': 'V45_RESUMO_ASYNC_NDJSON_FIX',
+    'version': 'V46_RESUMO_ASYNC_NDJSON_FIX',
     'started_at': None,
     'updated_at': None,
     'scheduler': 'starting',
@@ -321,7 +321,7 @@ def _force_summary_worker():
 
 
 def force_summary_now():
-    # V44: não deixa a requisição HTTP presa enquanto monta o resumo e chama a API do Telegram.
+    # V46: não deixa a requisição HTTP presa enquanto monta o resumo e chama a API do Telegram.
     threading.Thread(target=_force_summary_worker, daemon=True).start()
     return True, 'Resumo Telegram enfileirado. Confira o grupo e o log em alguns segundos.'
 
@@ -377,7 +377,7 @@ def start_http_panel():
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log('VERSAO V44: resumo Telegram assíncrono + monitor de logs estável')
+log('VERSAO V46: resumo Telegram V29 logs do dia + monitor estável')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
