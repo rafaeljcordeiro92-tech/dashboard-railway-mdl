@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_7_RATEIO_MES_CREDIARISTA_FIX
+# VERSAO: DASH2_0_V10_8_LOGIN_MASTER_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,8 +34,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.7"
-DASHBOARD_BUILD_TAG = "DASH2_0_V10_7_RATEIO_MES_CREDIARISTA_FIX"
+DASHBOARD_BUILD_VERSION = "V10.8"
+DASHBOARD_BUILD_TAG = "DASH2_0_V10_8_LOGIN_MASTER_FIX"
 
 def now_brasilia():
     return datetime.now(APP_TZ)
@@ -14379,6 +14379,69 @@ Preparamos condições especiais para você comemorar com a gente.
   }catch(e){console.warn('[V10.2] falha meta diária strict',e)}
 })();
 
+</script>
+
+<script>
+// ===== V10.8 HOTFIX: login Master à prova de erro de renderização =====
+(function(){
+  function _mdlVal(id){ try { return String((document.getElementById(id)||{}).value||'').trim(); } catch(e){ return ''; } }
+  function _mdlMsg(txt){ try { const m=document.getElementById('loginMsg'); if(m) m.textContent = txt || ''; } catch(e){} }
+  function _showShellMaster(){
+    try { document.body.classList.add('master-view'); document.body.classList.remove('diretor-view'); } catch(e){}
+    try { document.getElementById('loginScreen')?.classList.add('hidden'); } catch(e){}
+    try { document.getElementById('app')?.classList.remove('hidden'); } catch(e){}
+    try { document.getElementById('kpis')?.classList.remove('hidden'); } catch(e){}
+    try { document.getElementById('masterTabs')?.classList.remove('hidden'); } catch(e){}
+    try { if(window.userBadge) window.userBadge.textContent='👑 Master'; } catch(e){}
+    try { window.mainTab = window.mainTab || 'inicio'; } catch(e){}
+  }
+  async function _abrirMasterSeguro(){
+    window.usuarioAtual = {tipo:'master', nome:'Master', roleLabel:'Master'};
+    try { if(typeof saveSession === 'function') saveSession(); } catch(e){}
+    _showShellMaster();
+    try {
+      if(typeof abrirApp === 'function') { await abrirApp(); return true; }
+    } catch(e) {
+      console.error('V10.8: abrirApp falhou, usando abertura segura do Master', e);
+    }
+    _showShellMaster();
+    try { if(typeof renderKPIs === 'function') renderKPIs(); } catch(e){ console.error('V10.8 renderKPIs', e); }
+    try { if(typeof renderTopMural === 'function') renderTopMural(); } catch(e){ console.error('V10.8 renderTopMural', e); }
+    try { if(typeof setMainTab === 'function') { setMainTab('inicio'); return true; } } catch(e){ console.error('V10.8 setMainTab inicio', e); }
+    try { if(typeof renderInicioTab === 'function') { renderInicioTab(); return true; } } catch(e){ console.error('V10.8 renderInicioTab', e); }
+    try {
+      const host=document.getElementById('listSection') || document.getElementById('inicioSection') || document.getElementById('mainScreen');
+      if(host) host.innerHTML='<div class="glass panel"><h2>Dashboard aberto em modo seguro</h2><div class="hint">O login entrou, mas algum bloco da tela inicial falhou ao renderizar. Avise o suporte e envie o console/log.</div></div>';
+    } catch(e){}
+    return true;
+  }
+  async function _loginMasterV108(ev){
+    try { if(ev && ev.preventDefault) ev.preventDefault(); if(ev && ev.stopPropagation) ev.stopPropagation(); } catch(e){}
+    const u=_mdlVal('loginUser').toLowerCase();
+    const s=_mdlVal('loginPass');
+    _mdlMsg('');
+    const lm=(typeof LOGIN_MASTER !== 'undefined' ? String(LOGIN_MASTER) : 'master').toLowerCase();
+    const sm=(typeof SENHA_MASTER !== 'undefined' ? String(SENHA_MASTER) : 'mdladm01');
+    if(u===lm && s===sm){ await _abrirMasterSeguro(); return false; }
+    try { if(typeof window.mdlLoginV94 === 'function') return window.mdlLoginV94(ev); } catch(e){ console.error('V10.8 fallback mdlLoginV94', e); }
+    try { if(typeof window.fazerLogin === 'function' && window.fazerLogin !== _loginMasterV108) return window.fazerLogin(ev); } catch(e){ console.error('V10.8 fallback fazerLogin', e); }
+    _mdlMsg('Login ou senha inválidos.');
+    return false;
+  }
+  window.mdlLoginMasterV108 = _loginMasterV108;
+  window.fazerLogin = _loginMasterV108;
+  function _bind(){
+    try {
+      const b=document.getElementById('loginBtn') || document.querySelector('[data-login-btn]') || document.querySelector('#loginScreen .btn.primary');
+      if(b){ b.onclick=_loginMasterV108; b.addEventListener('click', _loginMasterV108, true); }
+      const p=document.getElementById('loginPass');
+      if(p && !p.__mdl_v108_bound){ p.__mdl_v108_bound=true; p.addEventListener('keydown', function(e){ if(e.key==='Enter') _loginMasterV108(e); }, true); }
+    } catch(e){ console.error('V10.8 bind login', e); }
+  }
+  _bind();
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _bind); else setTimeout(_bind, 0);
+  setTimeout(_bind, 800);
+})();
 </script>
 </body>
 </html>
