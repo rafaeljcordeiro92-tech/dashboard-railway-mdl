@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_22_GERENTES_FILIAL_TOTAL_FIX
+# VERSAO: DASH2_0_V10_23_GERENTES_REC_FILIAL_TOTAL_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,7 +34,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.22"
+DASHBOARD_BUILD_VERSION = "V10.23"
 DASHBOARD_BUILD_TAG = "DASH2_0_V10_20_RELATORIOS_JULHO_FTP_FIX"
 
 def now_brasilia():
@@ -16074,6 +16074,169 @@ Preparamos condições especiais para você comemorar com a gente.
   }catch(e){console.warn('[V10.22] hotfix gerente filial falhou',e)}
 })();
 </script>
+
+
+<script>
+// ===== V10.23: gerente logado usa RECEBIMENTOS da FILIAL inteira, sem chave/login individual =====
+// Corrige YASMIM/GERF4: ao entrar com login de gerente, a tela é Filial F4 e a meta/faixas
+// somam todos os recebimentos da F4 (Cibele + crediarista + gerente + demais origens da filial).
+(function(){
+  const TAG='[V10.23 gerente recebimentos filial total]';
+  try{
+    function norm(v){try{return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,' ').trim().toUpperCase()}catch(e){return String(v||'').trim().toUpperCase()}}
+    function fil(v){
+      v=String(v||'').trim().toUpperCase();
+      if(/^0?\d+$/.test(v)) return 'F'+Number(v);
+      if(/^F0\d+$/.test(v)) return 'F'+Number(v.replace(/^F0*/,''));
+      const m=v.match(/GER\s*F?\s*(\d+)/i)||v.match(/\bF\s*(\d+)\b/i);
+      return m?'F'+Number(m[1]):v;
+    }
+    function cred(login){try{login=String(login||'').toLowerCase(); return CREDS&&CREDS[login]?CREDS[login]:null}catch(e){return null}}
+    function isGerUser(u){return !!(u && (u.is_gerente || String(u.tipo||'').toLowerCase()==='gerente' || /GERENTE/i.test(String(u.tipo||'')) || /\(\s*GER\s*F?\s*\d+\s*\)/i.test(String(u.nome||''))))}
+    function gerFilialFrom(ref){
+      let f=fil(ref?.filial||'');
+      const c=cred(ref?.login||'');
+      if((!f||!/^F\d+$/.test(f)) && c) f=fil(c.filial||'');
+      if((!f||!/^F\d+$/.test(f)) && /\(\s*GER/i.test(String(ref?.nome||''))) f=fil(ref.nome||'');
+      if((!f||!/^F\d+$/.test(f)) && window.usuarioAtual && isGerUser(usuarioAtual)) f=fil(usuarioAtual.filial||'');
+      return f;
+    }
+    function shouldForceFilial(ref){
+      try{
+        if(window.usuarioAtual && isGerUser(usuarioAtual)){
+          const fu=fil(usuarioAtual.filial||'');
+          const fr=gerFilialFrom(ref||{});
+          if(fu && (!fr || fr===fu || String(ref?.type||'').toLowerCase()==='filial')) return true;
+        }
+        if(ref && (ref.is_gerente || String(ref.type||'').toLowerCase()==='gerente')) return true;
+        if(ref && /\(\s*GER\s*F?\s*\d+\s*\)/i.test(String(ref.nome||ref.vendedor||''))) return true;
+        const c=cred(ref?.login||''); if(c && isGerUser(c)) return true;
+      }catch(e){}
+      return false;
+    }
+    function filialEnt(ref){
+      const f=gerFilialFrom(ref||{}) || fil(ref?.filial||'');
+      return {type:'filial',filial:f,nome:(typeof filialLabel==='function'?filialLabel(f):f),is_gerente:true,perc_filial:100};
+    }
+    function rowFil(r){return fil(r?.filial||r?.filial_vendedor||r?.loja||r?.origem_filial||'')}
+    function recKey(r){return [norm(r?.cliente||r?.nome||''),String(r?.titulo||'').trim(),String(r?.parcela||'').trim(),String(r?.pagamento||'').trim(),String(Number(r?.pago||0))].join('|')}
+    function addBuckets(dst, src, f){
+      ['grave','alerta','atencao'].forEach(fx=>{
+        const seen=new Set(dst[fx].map(recKey));
+        (src?.[fx]||[]).forEach(r0=>{
+          const r=Object.assign({},r0||{});
+          if(f && !rowFil(r)) r.filial=f;
+          const k=recKey(r);
+          if(!seen.has(k)){seen.add(k); dst[fx].push(r)}
+        });
+      });
+    }
+    function keyLooksFilial(k,f){
+      const kk=String(k||'').toUpperCase();
+      return kk===f || kk.endsWith('_'+f) || kk.includes('_'+f+'_') || kk.includes(' '+f+' ') || kk.includes('GER'+f) || kk.includes('GER'+f.replace('F',''));
+    }
+    function recebimentosFilialTotal(f){
+      f=fil(f); const out={grave:[],alerta:[],atencao:[]};
+      // 1) Fonte principal fixa por vendedor/filial.
+      try{Object.entries(RECEBIMENTOS||{}).forEach(([k,b])=>{
+        let use=keyLooksFilial(k,f);
+        if(!use){ for(const fx of ['grave','alerta','atencao']){ if((b?.[fx]||[]).some(r=>rowFil(r)===f)){use=true; break;} } }
+        if(use) addBuckets(out,b,f);
+      })}catch(e){console.warn(TAG,'RECEBIMENTOS',e)}
+      // 2) Conciliados/quitados: inclui qualquer linha da filial, mesmo se a chave for usuário/crediarista.
+      try{Object.entries(RECEBIMENTOS_CONCILIADOS||{}).forEach(([k,b])=>{
+        let use=keyLooksFilial(k,f);
+        if(!use){ for(const fx of ['grave','alerta','atencao']){ if((b?.[fx]||[]).some(r=>rowFil(r)===f)){use=true; break;} } }
+        if(use) addBuckets(out,b,f);
+      })}catch(e){console.warn(TAG,'CONCILIADOS',e)}
+      // 3) Crediaristas da filial.
+      try{Object.entries(RECEBIMENTOS_CREDIARISTA||{}).forEach(([login,b])=>{
+        const c=cred(login); let use=(c && fil(c.filial||'')===f) || keyLooksFilial(login,f);
+        if(!use){ for(const fx of ['grave','alerta','atencao']){ if((b?.[fx]||[]).some(r=>rowFil(r)===f)){use=true; break;} } }
+        if(use) addBuckets(out,b,f);
+      })}catch(e){console.warn(TAG,'CREDIARISTA',e)}
+      ['grave','alerta','atencao'].forEach(fx=>out[fx].sort((a,b)=>Number(b.pago||0)-Number(a.pago||0)));
+      return out;
+    }
+    function sumFx(src,fx){try{return (src?.[fx]||[]).reduce((a,b)=>a+Number(b.pago||0),0)}catch(e){return 0}}
+    function recalc(m, rec){
+      try{
+        m.grave.rec=sumFx(rec,'grave'); m.alerta.rec=sumFx(rec,'alerta'); m.atencao.rec=sumFx(rec,'atencao');
+        const gA=Number(m.grave?.alvo||0), aA=Number(m.alerta?.alvo||0), tA=Number(m.atencao?.alvo||0);
+        m.grave.perc=gA>0?(m.grave.rec/gA*100):0; m.alerta.perc=aA>0?(m.alerta.rec/aA*100):0; m.atencao.perc=tA>0?(m.atencao.rec/tA*100):0;
+        const cfg=m.cfg||{}; const sw=Number(cfg.peso_grave||0)+Number(cfg.peso_alerta||0)+Number(cfg.peso_atencao||0)||1;
+        m.geral=((Math.min(m.grave.perc,100)*Number(cfg.peso_grave||0))+(Math.min(m.alerta.perc,100)*Number(cfg.peso_alerta||0))+(Math.min(m.atencao.perc,100)*Number(cfg.peso_atencao||0)))/sw;
+      }catch(e){console.warn(TAG,'recalc',e)}
+      return m;
+    }
+
+    const oldGet=(typeof getRecebimentos==='function')?getRecebimentos:null;
+    if(oldGet && !window._getRecebimentosV1023Wrapped){
+      window._getRecebimentosV1023Wrapped=true;
+      getRecebimentos=window.getRecebimentos=function(ent){
+        try{ if(shouldForceFilial(ent) || String(ent?.type||'').toLowerCase()==='filial'){
+          const f=gerFilialFrom(ent||{}) || fil(ent?.filial||'');
+          const full=recebimentosFilialTotal(f);
+          const fullTotal=sumFx(full,'grave')+sumFx(full,'alerta')+sumFx(full,'atencao');
+          // Se for filial normal, só substitui quando achou base maior/igual; se for gerente logado, sempre usa full.
+          if(shouldForceFilial(ent) || fullTotal>0) return full;
+        }}catch(e){console.warn(TAG,'getRecebimentos full',e)}
+        return oldGet.apply(this,arguments);
+      };
+    }
+
+    const oldCalc=(typeof calcMeta==='function')?calcMeta:null;
+    if(oldCalc && !window._calcMetaV1023Wrapped){
+      window._calcMetaV1023Wrapped=true;
+      calcMeta=window.calcMeta=function(ent){
+        try{ if(shouldForceFilial(ent) || String(ent?.type||'').toLowerCase()==='filial'){
+          const fe=filialEnt(ent||{});
+          const m=oldCalc.call(this,fe);
+          return recalc(m,recebimentosFilialTotal(fe.filial));
+        }}catch(e){console.warn(TAG,'calcMeta full',e)}
+        return oldCalc.apply(this,arguments);
+      };
+    }
+
+    const oldOpen=(typeof openEntity==='function')?openEntity:null;
+    if(oldOpen && !window._openEntityV1023Wrapped){
+      window._openEntityV1023Wrapped=true;
+      openEntity=window.openEntity=function(ref){
+        try{ if(shouldForceFilial(ref)){
+          const fe=filialEnt(ref||{});
+          window.currentDetailRef={type:'filial',filial:fe.filial,nome:fe.nome,is_gerente:true};
+          return oldOpen.call(this,{type:'filial',filial:fe.filial,nome:fe.nome,is_gerente:true});
+        }}catch(e){console.warn(TAG,'openEntity full',e)}
+        return oldOpen.apply(this,arguments);
+      };
+    }
+
+    const oldAbrir=(typeof abrirApp==='function')?abrirApp:null;
+    if(oldAbrir && !window._abrirAppV1023Wrapped){
+      window._abrirAppV1023Wrapped=true;
+      abrirApp=window.abrirApp=async function(){
+        try{ if(usuarioAtual && usuarioAtual.tipo!=='master' && !usuarioAtual.is_viewer && isGerUser(usuarioAtual)){
+          usuarioAtual.is_gerente=true; usuarioAtual.type='filial'; usuarioAtual.filial=gerFilialFrom(usuarioAtual);
+          document.body.classList.add('user-light-view','gerente-filial-view');
+          loginScreen?.classList.add('hidden'); app?.classList.remove('hidden');
+          try{document.getElementById('kpis')?.classList.add('hidden'); masterTabs?.classList.add('hidden'); mainFilters?.classList.add('hidden'); topMural?.classList.add('hidden')}catch(e){}
+          const fe=filialEnt(usuarioAtual);
+          userBadge.textContent=`🏬 ${fe.filial}`;
+          document.getElementById('mainScreen')?.classList.add('hidden'); detailScreen?.classList.remove('hidden');
+          if(typeof window.openEntity==='function') window.openEntity(fe);
+          setTimeout(()=>{try{tentarAtualizarOnlineDepoisLogin()}catch(e){}},80);
+          return;
+        }}catch(e){console.warn(TAG,'abrirApp full',e)}
+        return oldAbrir.apply(this,arguments);
+      };
+    }
+
+    try{window.DASHBOARD_BUILD_VERSION='V10.23'}catch(e){}
+    console.log(TAG,'ativo: login gerente usa recebimentos/cobranças/meta da filial inteira');
+  }catch(e){console.warn('[V10.23] hotfix falhou',e)}
+})();
+</script>
+
 </body>
 </html>
 """
@@ -16986,7 +17149,7 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
         print(f'⚠️ V10.19: erro checando mensagens_log.json: {e_msglog}')
 
     try:
-        _dashboard_ver = json.dumps({'updated_at': now_brasilia().isoformat(), 'updated_at_label': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'), 'timezone': 'America/Sao_Paulo', 'scope': 'dashboard_full', 'upload_mode': 'v10.21_atomic_relatorios_datados_rec_f4_fix'}, ensure_ascii=False).encode('utf-8')
+        _dashboard_ver = json.dumps({'updated_at': now_brasilia().isoformat(), 'updated_at_label': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'), 'timezone': 'America/Sao_Paulo', 'scope': 'dashboard_full', 'upload_mode': 'v10.23_gerentes_rec_filial_total_fix'}, ensure_ascii=False).encode('utf-8')
         _ftp_upload_bytes_v1019('dashboard_version.json', _dashboard_ver, label='dashboard_version.json')
     except Exception as e_ver_ftp:
         print(f'⚠️ Erro enviando arquivos de versão: {e_ver_ftp}')
@@ -17016,3 +17179,5 @@ driver.quit()
 # MDL_V10_21_REC_F4_CSM_LIGHT_FIX: cria /relatorios/AAAA-MM/ com cópias datadas e relatorios_version.json.
 
 # MDL_V10_22_GERENTES_FILIAL_TOTAL_FIX: gerente/GERFx abre e calcula sempre como filial completa.
+
+# MDL_V10_23_GERENTES_REC_FILIAL_TOTAL_FIX: gerente logado usa recebimentos/meta da filial inteira, sem chave/login individual.
