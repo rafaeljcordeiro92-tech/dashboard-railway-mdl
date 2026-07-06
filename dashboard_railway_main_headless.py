@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_19_FTP_ATOMICO_LOGIN_FIX
+# VERSAO: DASH2_0_V10_20_RELATORIOS_JULHO_FTP_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,8 +34,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.19"
-DASHBOARD_BUILD_TAG = "DASH2_0_V10_19_FTP_ATOMICO_LOGIN_FIX"
+DASHBOARD_BUILD_VERSION = "V10.20"
+DASHBOARD_BUILD_TAG = "DASH2_0_V10_20_RELATORIOS_JULHO_FTP_FIX"
 
 def now_brasilia():
     return datetime.now(APP_TZ)
@@ -15497,7 +15497,7 @@ Preparamos condições especiais para você comemorar com a gente.
   window.abrirClientesSemMovimentoPaginaLeve=function(){const rows=currentRowsScope(); const w=window.open('about:blank','_blank'); if(!w){toast('Pop-up bloqueado.','warn');return;} const data=rows.map(r=>({idx:r._idx,cliente:r.cliente,filial:r.filial,cidade:r.cidade,dias:r.dias_sem_movimento,ultimo:r.ultimo_movimento,owner:(r._owner||ownerInfo(r)||{}).label||'',telefones:r.telefones||[],sent:isSentRow(r)})); const js=JSON.stringify(data).replace(/<\//g,'<\\/'); w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Clientes sem movimento</title><style>body{margin:0;background:#080a0f;color:#f4f6fb;font-family:Inter,Arial,sans-serif;padding:18px}.top{position:sticky;top:0;background:#111827;border:1px solid #334155;border-radius:16px;padding:14px;margin-bottom:14px}input{width:100%;padding:12px;border-radius:12px;border:1px solid #334155;background:#06080c;color:#fff}.row{display:grid;grid-template-columns:1.4fr .8fr .5fr auto;gap:12px;align-items:center;background:#111827;border:1px solid #293241;border-radius:14px;padding:12px;margin:8px 0}.muted{color:#94a3b8;font-size:12px}.wa{background:#15803d;color:white;border:0;border-radius:999px;padding:10px 14px;font-weight:900}.sent{opacity:.55}</style></head><body><div class="top"><h2>🧡 Clientes sem movimento · página leve</h2><div class="muted">Esta página abre separada para não pesar o dashboard principal. Total: <span id="total"></span></div><input id="q" placeholder="Buscar cliente, cidade, responsável" oninput="render()"></div><div id="list"></div><script>const rows=${js};function esc(s){return String(s??'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]))}function render(){const q=(document.getElementById('q').value||'').toLowerCase();const arr=rows.filter(r=>!q||JSON.stringify(r).toLowerCase().includes(q));document.getElementById('total').textContent=arr.length+' / '+rows.length;document.getElementById('list').innerHTML=arr.slice(0,300).map(r=>'<div class="row '+(r.sent?'sent':'')+'"><div><b>'+esc(r.cliente)+'</b><div class="muted">'+esc(r.filial)+' · '+esc(r.cidade)+' · '+esc(r.dias)+' dias · último '+esc(r.ultimo)+'</div></div><div><b>'+esc(r.owner)+'</b><div class="muted">Responsável</div></div><div>'+(r.sent?'✅ Enviado':'Pendente')+'</div><div>'+(r.telefones||[]).map(t=>'<button class="wa" onclick="window.opener&&window.opener.abrirWhatsReativacao('+r.idx+',\''+String(t).replace(/\D/g,'')+'\')">Whats '+esc(t)+'</button>').join(' ')+'</div></div>').join('')+(arr.length>300?'<div class="muted">Mostrando 300 primeiros. Use busca para filtrar.</div>':'')}</scr`+`ipt></body></html>`); w.document.close();};
   function patchCSMPageButton(){try{const box=document.getElementById('reativacaoSection')||document.querySelector('[data-tab="reativacao"]')||document.body; if(!box||document.getElementById('btnCSMLeve1013')) return; const h=[...document.querySelectorAll('h2,h3,.section-head')].find(x=>String(x.textContent||'').toLowerCase().includes('clientes sem movimento')); if(h){h.insertAdjacentHTML('afterend','<button id="btnCSMLeve1013" class="btn soft" style="margin:8px 0" onclick="abrirClientesSemMovimentoPaginaLeve()">🧡 Abrir clientes sem movimento em página leve</button>')}}catch(e){}}
   setTimeout(patchCSMPageButton,1200); setInterval(patchCSMPageButton,4000);
-  console.log('[V10.19] hotfix ativo:', TAG);
+  console.log('[V10.20] hotfix ativo:', TAG);
 })();
 </script>
 
@@ -15572,7 +15572,7 @@ Preparamos condições especiais para você comemorar com a gente.
 <script>
 (function(){
   const TAG='MDL_V1016_CSM_10_DIA_CREDIARISTA_FIX';
-  try{ window.DASHBOARD_BUILD_VERSION='V10.19'; }catch(e){}
+  try{ window.DASHBOARD_BUILD_VERSION='V10.20'; }catch(e){}
 
   // Evita que a aba Clientes sem movimento pese o dashboard principal: abre página leve direto.
   try{
@@ -15735,7 +15735,7 @@ Preparamos condições especiais para você comemorar com a gente.
     }
   }catch(e){console.warn(TAG,'override comissão clique WhatsApp V10.17',e)}
 
-  console.log('[V10.19] hotfix ativo:', TAG);
+  console.log('[V10.20] hotfix ativo:', TAG);
 })();
 </script>
 
@@ -16275,7 +16275,7 @@ if MODO_TESTE_LOCAL:
 
 if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
     print('\n📤 Enviando arquivos para o servidor FTP...')
-    print('🛡️ V10.19: upload FTP seguro por arquivo + HTML temporário/rename para não deixar login quebrado.')
+    print('🛡️ V10.20: upload FTP seguro + arquivo relatorios_version.json + cópias datadas em /relatorios/YYYY-MM/.')
 
     _FTP_TIMEOUT_V1019 = int(os.getenv('FTP_UPLOAD_TIMEOUT', '35') or '35')
     _ftp_ok_v1019 = []
@@ -16372,6 +16372,103 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
                         ftp.close()
                 except Exception:
                     pass
+
+
+    # V10.20: pastas datadas de relatórios no FTP.
+    # Mantém os arquivos fixos na raiz para o dashboard continuar lendo normalmente,
+    # e cria cópias em /relatorios/AAAA-MM/ para consulta histórica.
+    _RELATORIOS_MANIFEST_V1020 = {
+        'updated_at': now_brasilia().isoformat(),
+        'updated_at_label': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'),
+        'month': now_brasilia().strftime('%Y-%m'),
+        'date': now_brasilia().strftime('%Y-%m-%d'),
+        'version': 'V10.20',
+        'base_dir': '/colaborador/relatorios/' + now_brasilia().strftime('%Y-%m') + '/',
+        'files': []
+    }
+
+    def _ftp_ensure_rel_dir_v1020(ftp, rel_dir):
+        """Cria/cwd para um diretório relativo ao FTP_DIR, aceitando barras."""
+        ftp.cwd(FTP_DIR)
+        parts = [p for p in str(rel_dir or '').replace('\\', '/').split('/') if p]
+        for p in parts:
+            try:
+                ftp.cwd(p)
+            except Exception:
+                try:
+                    ftp.mkd(p)
+                except Exception:
+                    pass
+                ftp.cwd(p)
+
+    def _ftp_upload_bytes_to_dir_v1020(rel_dir, remote_name, data_bytes, atomic=False, label=None):
+        label = label or (str(rel_dir).rstrip('/') + '/' + remote_name)
+        ftp = None
+        tmp_name = f'.tmp_{remote_name}' if atomic else remote_name
+        try:
+            ftp = _ftp_conectar_v1019()
+            _ftp_ensure_rel_dir_v1020(ftp, rel_dir)
+            if atomic:
+                try:
+                    ftp.delete(tmp_name)
+                except Exception:
+                    pass
+            ftp.storbinary(f'STOR {tmp_name}', BytesIO(data_bytes), blocksize=65536)
+            if atomic:
+                try:
+                    ftp.rename(tmp_name, remote_name)
+                except Exception:
+                    try:
+                        ftp.delete(remote_name)
+                    except Exception:
+                        pass
+                    ftp.rename(tmp_name, remote_name)
+            _ftp_ok_v1019.append(str(rel_dir).rstrip('/') + '/' + remote_name)
+            print(f'✅ FTP V10.20: {label} enviado')
+            return True
+        except Exception as e:
+            _ftp_fail_v1019.append((str(rel_dir).rstrip('/') + '/' + remote_name, str(e)))
+            print(f'⚠️ FTP V10.20 falhou em {label}: {e}')
+            return False
+        finally:
+            try:
+                if ftp:
+                    ftp.quit()
+            except Exception:
+                try:
+                    if ftp:
+                        ftp.close()
+                except Exception:
+                    pass
+
+    def _ftp_upload_file_to_dir_v1020(local_path, rel_dir, remote_name=None, atomic=False, label=None, manifest_kind=None):
+        try:
+            local_path = str(local_path)
+            remote_name = remote_name or os.path.basename(local_path)
+            with open(local_path, 'rb') as fh:
+                ok = _ftp_upload_bytes_to_dir_v1020(rel_dir, remote_name, fh.read(), atomic=atomic, label=label or remote_name)
+            if ok:
+                _RELATORIOS_MANIFEST_V1020['files'].append({
+                    'kind': manifest_kind or label or remote_name,
+                    'path': (str(rel_dir).strip('/') + '/' + remote_name).lstrip('/'),
+                    'name': remote_name,
+                    'bytes': os.path.getsize(local_path) if os.path.exists(local_path) else None,
+                })
+            return ok
+        except Exception as e:
+            _ftp_fail_v1019.append((remote_name or str(local_path), str(e)))
+            print(f'⚠️ FTP V10.20 não conseguiu arquivar {local_path}: {e}')
+            return False
+
+    def _safe_ext_v1020(path, default_ext='.json'):
+        ext = os.path.splitext(str(path or ''))[1].lower()
+        if ext in ('.xls', '.xlsx', '.json', '.csv', '.html', '.txt', '.zip'):
+            return ext
+        return default_ext
+
+    def _nome_datado_v1020(prefixo, local_path, default_ext='.json'):
+        stamp = now_brasilia().strftime('%Y-%m-%d_%H%M%S')
+        return f"{prefixo}_{stamp}{_safe_ext_v1020(local_path, default_ext)}"
 
     # 1) Primeiro recupera o dashboard online. Sobe em arquivo temporário e só troca no final.
     _ftp_upload_file_v1019(html_path, 'dashboard_vendedores.html', atomic=True, label='dashboard_vendedores.html (HTML atômico)')
@@ -16480,6 +16577,66 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
     except Exception as e_q_ftp:
         print(f'⚠️ Erro ao enviar quitados 180d ao FTP: {e_q_ftp}')
 
+
+    # V10.20: publica também o relatório principal do Contas a Receber e cópias datadas.
+    try:
+        _mes_rel_v1020 = now_brasilia().strftime('%Y-%m')
+        _rel_dir_mes_v1020 = f'relatorios/{_mes_rel_v1020}'
+
+        # Arquivo fixo na raiz para fácil localização no WebFTP.
+        if 'caminho' in globals() and caminho and os.path.exists(caminho):
+            _ftp_upload_file_v1019(caminho, 'contas_receber_principal.xls', label='contas_receber_principal.xls')
+            _ftp_upload_file_to_dir_v1020(
+                caminho,
+                _rel_dir_mes_v1020,
+                _nome_datado_v1020('contas_receber_principal', caminho, '.xls'),
+                label='relatorio datado contas_receber_principal',
+                manifest_kind='contas_receber_principal'
+            )
+
+        if quitados_180_info.get('xlsx_path') and os.path.exists(quitados_180_info['xlsx_path']):
+            _ftp_upload_file_to_dir_v1020(
+                quitados_180_info['xlsx_path'],
+                _rel_dir_mes_v1020,
+                _nome_datado_v1020('quitados_180d_contas_receber', quitados_180_info['xlsx_path'], '.xlsx'),
+                label='relatorio datado quitados_180d xlsx',
+                manifest_kind='quitados_180d_xlsx'
+            )
+        if quitados_180_info.get('json_path') and os.path.exists(quitados_180_info['json_path']):
+            _ftp_upload_file_to_dir_v1020(
+                quitados_180_info['json_path'],
+                _rel_dir_mes_v1020,
+                _nome_datado_v1020('quitados_180d_contas_receber', quitados_180_info['json_path'], '.json'),
+                label='relatorio datado quitados_180d json',
+                manifest_kind='quitados_180d_json'
+            )
+
+        # Históricos em JSON que explicam os valores do mês no dashboard.
+        _hist_paths_v1020 = [
+            (RECEBIMENTOS_MENSAL_PATH, 'historico_recebimentos_mensais', 'historico_recebimentos_mensais'),
+            (_hist_dash_path, 'historico_dashboard', 'historico_dashboard'),
+            (COMISSAO_HIST_PATH, 'historico_comissao_cobranca', 'historico_comissao_cobranca'),
+            (_fechamento_path, 'fechamentos_mensais', 'fechamentos_mensais'),
+        ]
+        for _p_hist, _prefix_hist, _kind_hist in _hist_paths_v1020:
+            if _p_hist and os.path.exists(_p_hist):
+                _ftp_upload_file_to_dir_v1020(
+                    _p_hist,
+                    _rel_dir_mes_v1020,
+                    _nome_datado_v1020(_prefix_hist, _p_hist, '.json'),
+                    label=f'relatorio datado {_prefix_hist}',
+                    manifest_kind=_kind_hist
+                )
+
+        # Manifesto facilita saber o que foi gerado em cada execução.
+        _RELATORIOS_MANIFEST_V1020['generated_count'] = len(_RELATORIOS_MANIFEST_V1020.get('files', []))
+        _manifest_bytes_v1020 = json.dumps(_RELATORIOS_MANIFEST_V1020, ensure_ascii=False, indent=2).encode('utf-8')
+        _ftp_upload_bytes_v1019('relatorios_version.json', _manifest_bytes_v1020, label='relatorios_version.json')
+        _ftp_upload_bytes_to_dir_v1020(_rel_dir_mes_v1020, 'relatorios_version.json', _manifest_bytes_v1020, atomic=True, label='relatorios/YYYY-MM/relatorios_version.json')
+        print(f"📦 V10.20 relatórios datados: {len(_RELATORIOS_MANIFEST_V1020.get('files', []))} arquivo(s) em /colaborador/{_rel_dir_mes_v1020}/")
+    except Exception as e_rel_v1020:
+        print(f'⚠️ V10.20 erro criando/publicando relatórios datados: {e_rel_v1020}')
+
     print('ℹ️ MAIN: não publica metas_vendas/margens/sales_version; pacote de vendas é exclusivo do sales worker.')
 
     try:
@@ -16494,7 +16651,7 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
         print(f'⚠️ V10.19: erro checando mensagens_log.json: {e_msglog}')
 
     try:
-        _dashboard_ver = json.dumps({'updated_at': now_brasilia().isoformat(), 'updated_at_label': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'), 'timezone': 'America/Sao_Paulo', 'scope': 'dashboard_full', 'upload_mode': 'v10.19_atomic'}, ensure_ascii=False).encode('utf-8')
+        _dashboard_ver = json.dumps({'updated_at': now_brasilia().isoformat(), 'updated_at_label': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'), 'timezone': 'America/Sao_Paulo', 'scope': 'dashboard_full', 'upload_mode': 'v10.20_atomic_relatorios_datados'}, ensure_ascii=False).encode('utf-8')
         _ftp_upload_bytes_v1019('dashboard_version.json', _dashboard_ver, label='dashboard_version.json')
     except Exception as e_ver_ftp:
         print(f'⚠️ Erro enviando arquivos de versão: {e_ver_ftp}')
@@ -16504,7 +16661,7 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
         for _nome_fail, _erro_fail in _ftp_fail_v1019[:8]:
             print(f'   - {_nome_fail}: {_erro_fail}')
     else:
-        print('✅ Upload FTP V10.19 concluído sem falhas → https://moveisdolar.com.br/colaborador/')
+        print('✅ Upload FTP V10.20 concluído sem falhas → https://moveisdolar.com.br/colaborador/')
 else:
     print('\nℹ️ FTP não configurado. Envie manualmente:')
     print(f'   {html_path} → {FTP_DIR}/dashboard_vendedores.html')
@@ -16520,3 +16677,5 @@ driver.quit()
 # MDL_V102_META_DIARIA_JS_STRICT: renderização do mural ignora precalc antigo e valida no navegador.
 
 # MDL_V103_CREDIARISTA_FREEZE_FIX
+
+# MDL_V10_20_RELATORIOS_JULHO_FTP_FIX: cria /relatorios/AAAA-MM/ com cópias datadas e relatorios_version.json.
