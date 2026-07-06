@@ -34,7 +34,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.30"
+DASHBOARD_BUILD_VERSION = "V10.31"
 DASHBOARD_BUILD_TAG = "DASH2_0_V10_20_RELATORIOS_JULHO_FTP_FIX"
 
 def now_brasilia():
@@ -16729,7 +16729,7 @@ Preparamos condições especiais para você comemorar com a gente.
       };
     }
     window.mdlV1027AggregateFilialRecebimentos=aggregateFilial;
-    try{window.DASHBOARD_BUILD_VERSION='V10.30'}catch(e){}
+    try{window.DASHBOARD_BUILD_VERSION='V10.31'}catch(e){}
     console.log(TAG,'ativo: gerente agrega recebimentos de vendedor + crediarista + GERFx da filial inteira');
   }catch(e){console.warn('[V10.28] hotfix falhou',e)}
 })();
@@ -16920,7 +16920,7 @@ Preparamos condições especiais para você comemorar com a gente.
         <div class="senhas-table-wrap"><table class="senhas-table"><thead><tr><th>Filial</th><th>Login fixo</th><th>Nome do gerente atual</th><th>Status</th><th>Nova senha</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div>
       </div>`;
     };
-    try{window.DASHBOARD_BUILD_VERSION='V10.30'}catch(e){}
+    try{window.DASHBOARD_BUILD_VERSION='V10.31'}catch(e){}
     console.log(TAG,'ativo: gerente usa entidade única da filial + tabela de gerentes em linha');
   }catch(e){console.warn('[V10.28] hotfix falhou',e)}
 })();
@@ -17017,7 +17017,7 @@ Preparamos condições especiais para você comemorar com a gente.
         return oldAbrir29.apply(this,arguments);
       };
     }
-    try{window.DASHBOARD_BUILD_VERSION='V10.30'}catch(e){}
+    try{window.DASHBOARD_BUILD_VERSION='V10.31'}catch(e){}
     console.log(TAG,'ativo: login gerente usa a mesma fonte do Master > Por Filial');
   }catch(e){console.warn('[V10.29] hotfix falhou',e)}
 })();
@@ -17140,9 +17140,161 @@ Preparamos condições especiais para você comemorar com a gente.
       };
     }
 
-    try{window.DASHBOARD_BUILD_VERSION='V10.30'}catch(e){}
+    try{window.DASHBOARD_BUILD_VERSION='V10.31'}catch(e){}
     console.log(TAG,'ativo: gerentefXX renderiza via mesma chamada do Master > Por Filial');
   }catch(e){console.warn('[V10.30] hotfix falhou',e)}
+})();
+
+
+// ===== V10.31: FILIAL soma recebimentos de vendedores + crediaristas + gerente pela base quitados =====
+// Motivo: Master/Filial e login gerentefXX estavam divergindo quando títulos pagos vinham com origem
+// crediaristafXX_01 ou origem não cadastrada como vendedor ativo. Agora a fonte oficial da FILIAL é:
+// quitados do mês atual + todos os buckets RECEBIMENTOS/CONCILIADOS que sejam da filial, deduplicados por título/parcela/pagamento/valor.
+(function(){
+  const TAG='[V10.31 recebimentos filial completo]';
+  try{
+    function fil31(v){
+      const s=String(v||'').trim().toUpperCase();
+      if(!s) return '';
+      let m=s.match(/^F\s*0*(\d+)$/i); if(m) return 'F'+Number(m[1]);
+      if(/^0?\d+$/.test(s)) return 'F'+Number(s);
+      m=s.match(/GERENTE\s*F?\s*0*(\d+)/i) || s.match(/GER\s*F?\s*0*(\d+)/i) || s.match(/GERF\s*0*(\d+)/i) || s.match(/CREDIARISTA\s*F?\s*0*(\d+)/i) || s.match(/CREDIARISTAF\s*0*(\d+)/i) || s.match(/\bF\s*0*(\d+)\b/i) || s.match(/F0*(\d+)/i);
+      return m ? 'F'+Number(m[1]) : '';
+    }
+    function pad31(f){const n=String(fil31(f)).replace(/\D/g,''); return n?String(Number(n)).padStart(2,'0'):'';}
+    function loginGer31(f){const p=pad31(f); return p?'gerentef'+p:'';}
+    function norm31(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim();}
+    function mesAtual31(){const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+    function dtIso31(v){try{ if(typeof dateOnlyISO==='function') return dateOnlyISO(v); }catch(e){}; const s=String(v||'').trim(); let m=s.match(/(\d{2})\/(\d{2})\/(\d{4})/); if(m) return `${m[3]}-${m[2]}-${m[1]}`; m=s.match(/(\d{4})-(\d{2})-(\d{2})/); if(m) return `${m[1]}-${m[2]}-${m[3]}`; return '';}
+    function pagamentoMesAtual31(r){const iso=dtIso31(r?.pagamento||r?.data_pagamento||r?.dt_pagamento||r?.data||''); return iso && iso.slice(0,7)===mesAtual31();}
+    function faixa31(r){
+      const raw=norm31(r?.faixa||r?.bucket||r?.classificacao||'');
+      if(raw.includes('GRAVE')) return 'grave';
+      if(raw.includes('ALERTA')) return 'alerta';
+      if(raw.includes('ATEN')) return 'atencao';
+      const d=Number(r?.dias_atraso_pagamento ?? r?.dias ?? r?.dias_atraso ?? 0);
+      if(d>=60) return 'grave';
+      if(d>=30) return 'alerta';
+      return 'atencao';
+    }
+    function buildNomeFilialMap31(){
+      const map={};
+      function add(nome,login,filial){
+        const f=fil31(filial); if(!f) return;
+        [nome,login,`${nome||''}_${f}`,`${login||''}_${f}`].forEach(k=>{const nk=norm31(k); if(nk) map[nk]=f;});
+      }
+      try{(typeof flattenVendedores==='function'?flattenVendedores():[]).forEach(v=>add(v.nome,v.login,v.filial));}catch(e){}
+      try{(typeof crediaristaEntities==='function'?crediaristaEntities():[]).forEach(v=>add(v.nome,v.login,v.filial));}catch(e){}
+      try{Object.values(AUTH_STATE?.users||{}).forEach(u=>add(u.nome,u.login,u.filial));}catch(e){}
+      try{['F1','F2','F3','F4','F5','F6','F8','F9'].forEach(f=>add('GERENTE '+f,loginGer31(f),f));}catch(e){}
+      return map;
+    }
+    let _nomeFilialCache31=null;
+    function filialByTexto31(v){
+      const raw=String(v||''); if(!raw) return '';
+      const f0=fil31(raw); if(f0) return f0;
+      const low=raw.toLowerCase();
+      let m=low.match(/crediaristaf0*(\d+)/) || low.match(/gerentef0*(\d+)/); if(m) return 'F'+Number(m[1]);
+      const n=norm31(raw);
+      if(!_nomeFilialCache31) _nomeFilialCache31=buildNomeFilialMap31();
+      if(_nomeFilialCache31[n]) return _nomeFilialCache31[n];
+      // tenta conter nome/login dentro do texto, útil para "YASMIM ... (GERF4" e similares
+      for(const [k,f] of Object.entries(_nomeFilialCache31)){ if(k && (n===k || n.includes(k) || k.includes(n))) return f; }
+      return '';
+    }
+    function rowFil31(r){
+      const directs=[r?.filial,r?.filial_vendedor,r?.filial_origem,r?.origem_filial,r?.filial_base,r?.loja,r?.unidade,r?.empresa];
+      for(const d of directs){const f=fil31(d); if(f) return f;}
+      const vals=[r?.vendedor,r?.origem,r?.cobrador,r?.usuario,r?.login,r?.owner,r?.owner_key,r?.usuario_key,r?.destino_login,r?.destino_nome,r?.responsavel,r?.nome_responsavel];
+      for(const v of vals){const f=filialByTexto31(v); if(f) return f;}
+      return '';
+    }
+    function rowKey31(r){return [norm31(r?.cliente||r?.nome||''),String(r?.titulo||'').trim(),String(r?.parcela||'').trim(),dtIso31(r?.pagamento||r?.data_pagamento||''),String(Number(r?.pago||r?.recebido||0).toFixed(2))].join('|');}
+    function addRow31(out,r0,f,fxForced){
+      if(!r0) return;
+      const rf=rowFil31(r0);
+      if(f && rf && rf!==f) return;
+      const fx=fxForced||faixa31(r0); if(!out[fx]) return;
+      const r={...(r0||{})};
+      r.filial = rf || f || r.filial || '';
+      r.faixa = fx;
+      if(r.pago==null && r.recebido!=null) r.pago=Number(r.recebido||0);
+      if(!Number(r.pago||0)) return;
+      const k=rowKey31(r);
+      if(!out.__seen.has(k)){out.__seen.add(k); out[fx].push(r);}
+    }
+    function addBucket31(out,bucket,f){['grave','alerta','atencao'].forEach(fx=>(bucket?.[fx]||[]).forEach(r=>addRow31(out,r,f,fx)));}
+    function keyLooksFilial31(k,b,f){
+      const p=pad31(f); const n=String(Number(p)||''); const kk=String(k||'').toUpperCase();
+      const patterns=[f,'F'+p,'_'+f,'_F'+p,'GER'+f,'GERF'+n,'GERF'+p,'GER '+f,'GER F'+p,'GERENTEF'+p,'CREDIARISTAF'+p,'CREDIARISTA'+f];
+      if(patterns.some(x=>x && kk.includes(x))) return true;
+      const fk=filialByTexto31(k); if(fk===f) return true;
+      for(const fx of ['grave','alerta','atencao']){ if((b?.[fx]||[]).some(r=>rowFil31(r)===f)) return true; }
+      return false;
+    }
+    function filialOfRef31(ref){
+      let f='';
+      try{f=fil31(ref?.filial)||filialByTexto31(ref?.login)||filialByTexto31(ref?.nome)}catch(e){}
+      try{if(!f && window.usuarioAtual && usuarioAtual.tipo!=='master') f=fil31(usuarioAtual.filial)||filialByTexto31(usuarioAtual.login)||filialByTexto31(usuarioAtual.nome)}catch(e){}
+      return /^F\d+$/.test(f)?f:'';
+    }
+    function isFilialContext31(ent){
+      try{if(ent && String(ent.type||'').toLowerCase()==='filial') return true;}catch(e){}
+      try{if(ent && (/^gerentef\d{2}$/i.test(String(ent.login||'')) || /gerente/i.test(String(ent.tipo||'')) || ent.is_gerente || ent.is_fixed_gerente)) return true;}catch(e){}
+      try{if(window.usuarioAtual && usuarioAtual.tipo!=='master' && (/^gerentef\d{2}$/i.test(String(usuarioAtual.login||'')) || usuarioAtual.is_gerente || /gerente/i.test(String(usuarioAtual.tipo||'')))) return true;}catch(e){}
+      return false;
+    }
+    const prevGet31=(typeof getRecebimentos==='function')?getRecebimentos:null;
+    window.mdlV1031RecebimentosFilial=function(f){
+      f=fil31(f); const out={grave:[],alerta:[],atencao:[],__seen:new Set()};
+      // 1) Fonte mais completa: quitados 180d do mês atual.
+      try{(QUITADOS_180||[]).forEach(q=>{ if(pagamentoMesAtual31(q) && rowFil31(q)===f) addRow31(out,q,f); });}catch(e){console.warn(TAG,'quitados',e)}
+      // 2) Buckets já publicados pelo backend/conciliados. Mantém compatibilidade com logs manuais.
+      try{Object.entries(RECEBIMENTOS||{}).forEach(([k,b])=>{if(keyLooksFilial31(k,b,f)) addBucket31(out,b,f);});}catch(e){console.warn(TAG,'RECEBIMENTOS',e)}
+      try{Object.entries(RECEBIMENTOS_CONCILIADOS||{}).forEach(([k,b])=>{if(keyLooksFilial31(k,b,f)) addBucket31(out,b,f);});}catch(e){console.warn(TAG,'CONCILIADOS',e)}
+      try{Object.entries(RECEBIMENTOS_CREDIARISTA||{}).forEach(([k,b])=>{if(keyLooksFilial31(k,b,f)) addBucket31(out,b,f);});}catch(e){console.warn(TAG,'CREDIARISTA',e)}
+      try{if(prevGet31){(typeof flattenVendedores==='function'?flattenVendedores():[]).forEach(v=>{if(fil31(v.filial)===f) addBucket31(out,prevGet31.call(this,v),f)});}}catch(e){}
+      try{if(prevGet31){(typeof crediaristaEntities==='function'?crediaristaEntities():[]).forEach(v=>{if(fil31(v.filial)===f) addBucket31(out,prevGet31.call(this,v),f)});}}catch(e){}
+      ['grave','alerta','atencao'].forEach(fx=>out[fx].sort((a,b)=>Number(b.pago||b.recebido||0)-Number(a.pago||a.recebido||0)));
+      delete out.__seen;
+      return out;
+    };
+    function sums31(src){return {grave:(src.grave||[]).reduce((a,b)=>a+Number(b.pago||b.recebido||0),0),alerta:(src.alerta||[]).reduce((a,b)=>a+Number(b.pago||b.recebido||0),0),atencao:(src.atencao||[]).reduce((a,b)=>a+Number(b.pago||b.recebido||0),0)};}
+    function officialEnt31(f){
+      f=fil31(f); const base={type:'filial',filial:f,nome:(typeof filialLabel==='function'?filialLabel(f):f),...(FILIAIS?.[f]||{})};
+      const rec=window.mdlV1031RecebimentosFilial(f); const s=sums31(rec);
+      return {...base,grave_rec:Math.round(s.grave*100)/100,alerta_rec:Math.round(s.alerta*100)/100,atencao_rec:Math.round(s.atencao*100)/100};
+    }
+    if(prevGet31){
+      getRecebimentos=window.getRecebimentos=function(ent){
+        try{const f=filialOfRef31(ent||{}); if(f && (String(ent?.type||'')==='filial' || isFilialContext31(ent||{}))) return window.mdlV1031RecebimentosFilial(f);}catch(e){console.warn(TAG,'getRecebimentos',e)}
+        return prevGet31.apply(this,arguments);
+      };
+    }
+    const prevCalc31=(typeof calcMeta==='function')?calcMeta:null;
+    if(prevCalc31){
+      calcMeta=window.calcMeta=function(ent){
+        try{const f=filialOfRef31(ent||{}); if(f && (String(ent?.type||'')==='filial' || isFilialContext31(ent||{}))) return prevCalc31.call(this,officialEnt31(f));}catch(e){console.warn(TAG,'calcMeta',e)}
+        return prevCalc31.apply(this,arguments);
+      };
+    }
+    const prevRenderRec31=(typeof renderRecebimentos==='function')?renderRecebimentos:null;
+    if(prevRenderRec31){
+      renderRecebimentos=window.renderRecebimentos=function(ent){
+        try{const f=filialOfRef31(ent||{}); if(f && (String(ent?.type||'')==='filial' || isFilialContext31(ent||{}))) return prevRenderRec31.call(this,officialEnt31(f));}catch(e){console.warn(TAG,'renderRecebimentos',e)}
+        return prevRenderRec31.apply(this,arguments);
+      };
+    }
+    const prevOpen31=(typeof openEntity==='function')?openEntity:null;
+    if(prevOpen31){
+      openEntity=window.openEntity=function(ent){
+        try{const f=filialOfRef31(ent||{}); if(f && isFilialContext31(ent||{})){return prevOpen31.call(this,officialEnt31(f));}}catch(e){console.warn(TAG,'openEntity',e)}
+        return prevOpen31.apply(this,arguments);
+      };
+    }
+    try{window.DASHBOARD_BUILD_VERSION='V10.31'}catch(e){}
+    console.log(TAG,'ativo: filial soma quitados de vendedores + crediaristas + gerente');
+  }catch(e){console.warn('[V10.31] hotfix falhou',e)}
 })();
 
 </script>
