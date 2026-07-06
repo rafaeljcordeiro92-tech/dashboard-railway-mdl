@@ -34,7 +34,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.27"
+DASHBOARD_BUILD_VERSION = "V10.28"
 DASHBOARD_BUILD_TAG = "DASH2_0_V10_20_RELATORIOS_JULHO_FTP_FIX"
 
 def now_brasilia():
@@ -16571,11 +16571,11 @@ Preparamos condições especiais para você comemorar com a gente.
 })();
 
 
-// ===== V10.27: recebimentos de gerente = união total da filial por origem/login =====
+// ===== V10.28: recebimentos de gerente = união total da filial por origem/login =====
 // Regra: qualquer login gerentefXX ou usuário tipo Gerente deve enxergar a filial inteira.
 // O cálculo não depende do nome do gerente; ele agrega vendedor, crediarista e origens com GERFx/Fxx.
 (function(){
-  const TAG='[V10.27 gerente recebimentos filial agregado]';
+  const TAG='[V10.28 gerente recebimentos filial agregado]';
   try{
     function strip(v){try{return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')}catch(e){return String(v||'')}}
     function norm(v){return strip(v).replace(/[^a-z0-9]+/gi,' ').trim().toUpperCase()}
@@ -16729,9 +16729,200 @@ Preparamos condições especiais para você comemorar com a gente.
       };
     }
     window.mdlV1027AggregateFilialRecebimentos=aggregateFilial;
-    try{window.DASHBOARD_BUILD_VERSION='V10.27'}catch(e){}
+    try{window.DASHBOARD_BUILD_VERSION='V10.28'}catch(e){}
     console.log(TAG,'ativo: gerente agrega recebimentos de vendedor + crediarista + GERFx da filial inteira');
-  }catch(e){console.warn('[V10.27] hotfix falhou',e)}
+  }catch(e){console.warn('[V10.28] hotfix falhou',e)}
+})();
+
+
+// ===== V10.28: gerentes em linha + fonte única de meta/recebimentos da filial =====
+(function(){
+  const TAG='[V10.28 gerente fonte única filial]';
+  try{
+    function strip28(s){try{return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')}catch(e){return String(s||'')}}
+    function norm28(s){return strip28(s).replace(/[^a-z0-9]+/gi,' ').trim().toUpperCase()}
+    function fil28(v){
+      const s=String(v||'').trim().toUpperCase();
+      if(!s) return '';
+      if(/^0?\d+$/.test(s)) return 'F'+Number(s);
+      let m=s.match(/^F0*(\d+)$/); if(m) return 'F'+Number(m[1]);
+      m=s.match(/GER\s*F?\s*0*(\d+)/i)||s.match(/CREDIARISTA\s*F?\s*0*(\d+)/i)||s.match(/\bF\s*0*(\d+)\b/i)||s.match(/F0*(\d+)/i);
+      return m?'F'+Number(m[1]):s;
+    }
+    function gerLogin28(f){const n=String(fil28(f)).replace(/\D/g,''); return n?'gerentef'+String(Number(n)).padStart(2,'0'):''}
+    function isGerLogin28(login){return /^gerentef\d{2}$/.test(String(login||'').toLowerCase())}
+    function loginFilial28(login){const m=String(login||'').toLowerCase().match(/^gerentef(\d{2})$/); return m?'F'+Number(m[1]):''}
+    function inferFilial28(ent){
+      let f='';
+      try{ if(ent?.type==='filial' && ent?.filial) return fil28(ent.filial); }catch(e){}
+      try{ if(ent?.login && isGerLogin28(ent.login)) return loginFilial28(ent.login); }catch(e){}
+      try{ if(ent?.filial) f=fil28(ent.filial); }catch(e){}
+      try{ if(!f && ent?.nome){const m=String(ent.nome||'').match(/\(\s*GER\s*F?\s*0*(\d+)/i); if(m) f='F'+Number(m[1]);} }catch(e){}
+      try{ if(!f && window.usuarioAtual && usuarioAtual.tipo!=='master'){ if(isGerLogin28(usuarioAtual.login)) f=loginFilial28(usuarioAtual.login); else if(usuarioAtual.filial) f=fil28(usuarioAtual.filial); } }catch(e){}
+      return /^F\d+$/.test(f)?f:'';
+    }
+    function isGerenteContext28(ent){
+      try{ if(ent?.type==='filial') return true; }catch(e){}
+      try{ if(ent?.login && isGerLogin28(ent.login)) return true; }catch(e){}
+      try{ if(ent && (ent.is_gerente || /gerente/i.test(String(ent.tipo||'')) || /\(\s*GER/i.test(String(ent.nome||'')))) return true; }catch(e){}
+      try{ if(window.usuarioAtual && usuarioAtual.tipo!=='master' && !usuarioAtual.is_viewer && (isGerLogin28(usuarioAtual.login)||usuarioAtual.is_gerente||/gerente/i.test(String(usuarioAtual.tipo||'')))) return true; }catch(e){}
+      return false;
+    }
+    function sum28(src,fx){try{return (src?.[fx]||[]).reduce((a,b)=>a+Number(b.pago||b.recebido||0),0)}catch(e){return 0}}
+    function officialFilialEntity28(f){
+      f=fil28(f);
+      let base=null;
+      try{base=(typeof flattenFiliais==='function'?flattenFiliais():[]).find(x=>fil28(x.filial)===f)||null}catch(e){}
+      if(!base){try{base={type:'filial',filial:f,nome:(typeof filialLabel==='function'?filialLabel(f):f),...(FILIAIS?.[f]||{})}}catch(e){base={type:'filial',filial:f,nome:f}}}
+      const ent={...base,type:'filial',filial:f,nome:(typeof filialLabel==='function'?filialLabel(f):f),login:gerLogin28(f),is_gerente:true,is_fixed_gerente:true,perc_filial:100};
+      try{
+        const src=(typeof window.mdlV1028AggregateFilialRecebimentos==='function'?window.mdlV1028AggregateFilialRecebimentos(f):(typeof window.mdlV1027AggregateFilialRecebimentos==='function'?window.mdlV1027AggregateFilialRecebimentos(f):null));
+        if(src){ent.grave_rec=sum28(src,'grave'); ent.alerta_rec=sum28(src,'alerta'); ent.atencao_rec=sum28(src,'atencao');}
+      }catch(e){}
+      return ent;
+    }
+    function filialByOrigem28(v){
+      const raw=String(v||'').trim(); if(!raw) return '';
+      let f=fil28(raw); if(/^F\d+$/.test(f)) return f;
+      const low=raw.toLowerCase();
+      if(isGerLogin28(low)) return loginFilial28(low);
+      let m=raw.match(/\(\s*GER\s*F?\s*0*(\d+)/i)||raw.match(/GER\s*F?\s*0*(\d+)/i)||raw.match(/crediarista\s*f?0*(\d+)/i)||raw.match(/crediaristaf0*(\d+)/i);
+      if(m) return 'F'+Number(m[1]);
+      const n=norm28(raw);
+      try{
+        const creds=AUTH_STATE?.users||CREDS||{};
+        for(const [lg,u] of Object.entries(creds||{})){
+          if(!u) continue;
+          if(String(lg||'').toLowerCase()===low || String(u.login||'').toLowerCase()===low || norm28(u.nome||'')===n || norm28(u.login||'')===n){
+            const ff=fil28(u.filial||''); if(/^F\d+$/.test(ff)) return ff;
+          }
+        }
+      }catch(e){}
+      try{
+        const all=[...(typeof flattenVendedores==='function'?flattenVendedores():[]), ...(typeof crediaristaEntities==='function'?crediaristaEntities():[])];
+        for(const u of all){
+          if(!u) continue;
+          if(String(u.login||'').toLowerCase()===low || norm28(u.nome||'')===n || norm28(u.login||'')===n){const ff=fil28(u.filial||''); if(/^F\d+$/.test(ff)) return ff;}
+        }
+      }catch(e){}
+      return '';
+    }
+    function rowFilial28(r){
+      const direct=[r?.filial,r?.filial_vendedor,r?.filial_origem,r?.origem_filial,r?.loja,r?.filial_base].map(fil28).find(x=>/^F\d+$/.test(x));
+      if(direct) return direct;
+      const vals=[r?.origem,r?.vendedor,r?.cobrador,r?.usuario,r?.login,r?.owner,r?.owner_key,r?.usuario_key,r?.destino_login,r?.responsavel,r?.nome_responsavel];
+      for(const v of vals){const f=filialByOrigem28(v); if(/^F\d+$/.test(f)) return f;}
+      return '';
+    }
+    function recKey28(r){return [norm28(r?.cliente||r?.nome||''),String(r?.titulo||'').trim(),String(r?.parcela||'').trim(),String(r?.vencimento||'').trim(),String(r?.pagamento||'').trim(),String(Number(r?.pago||r?.recebido||0))].join('|')}
+    const prevGet28=(typeof getRecebimentos==='function')?getRecebimentos:null;
+    function addBucket28(dst,src,f){
+      ['grave','alerta','atencao'].forEach(fx=>{
+        const seen=new Set((dst[fx]||[]).map(recKey28));
+        (src?.[fx]||[]).forEach(r0=>{
+          const r={...(r0||{})};
+          const rf=rowFilial28(r);
+          if(f && rf && rf!==f) return;
+          if(f && !rf) r.filial=f;
+          const k=recKey28(r);
+          if(!seen.has(k)){seen.add(k); dst[fx].push(r)}
+        });
+      });
+    }
+    function keyOrBucketIsFilial28(k,b,f){
+      const n=String(fil28(f)).replace(/\D/g,''); const pad=String(Number(n)||0).padStart(2,'0'); const kk=String(k||'').toUpperCase();
+      const vars=[f,'F'+pad,'_'+f,'_F'+pad,'GER'+f,'GERF'+n,'GERF'+pad,'GER '+f,'GER F'+pad,'CREDIARISTAF'+pad,'CREDIARISTA'+f,'GERENTEF'+pad];
+      if(vars.some(v=>kk.includes(v))) return true;
+      for(const fx of ['grave','alerta','atencao']){ if((b?.[fx]||[]).some(r=>rowFilial28(r)===f)) return true; }
+      return false;
+    }
+    window.mdlV1028AggregateFilialRecebimentos=function(f){
+      f=fil28(f); const out={grave:[],alerta:[],atencao:[]};
+      try{ if(prevGet28) addBucket28(out,prevGet28.call(this,{type:'filial',filial:f,nome:(typeof filialLabel==='function'?filialLabel(f):f)}),f); }catch(e){}
+      try{Object.entries(RECEBIMENTOS||{}).forEach(([k,b])=>{if(keyOrBucketIsFilial28(k,b,f)) addBucket28(out,b,f)})}catch(e){}
+      try{Object.entries(RECEBIMENTOS_CONCILIADOS||{}).forEach(([k,b])=>{if(keyOrBucketIsFilial28(k,b,f)) addBucket28(out,b,f)})}catch(e){}
+      try{Object.entries(RECEBIMENTOS_CREDIARISTA||{}).forEach(([k,b])=>{if(keyOrBucketIsFilial28(k,b,f)) addBucket28(out,b,f)})}catch(e){}
+      try{Object.entries(RECEBIMENTOS_TERCEIRO||{}).forEach(([k,b])=>{if(keyOrBucketIsFilial28(k,b,f)) addBucket28(out,b,f)})}catch(e){}
+      try{(typeof flattenVendedores==='function'?flattenVendedores():[]).forEach(v=>{if(fil28(v.filial)===f && prevGet28) addBucket28(out,prevGet28.call(this,v),f)})}catch(e){}
+      try{(typeof crediaristaEntities==='function'?crediaristaEntities():[]).forEach(v=>{if(fil28(v.filial)===f && prevGet28) addBucket28(out,prevGet28.call(this,v),f)})}catch(e){}
+      ['grave','alerta','atencao'].forEach(fx=>out[fx].sort((a,b)=>Number(b.pago||b.recebido||0)-Number(a.pago||a.recebido||0)));
+      return out;
+    };
+    if(prevGet28){
+      getRecebimentos=window.getRecebimentos=function(ent){
+        try{const f=inferFilial28(ent||{}); if(f && isGerenteContext28(ent||{})) return window.mdlV1028AggregateFilialRecebimentos(f);}catch(e){console.warn(TAG,'getRec',e)}
+        return prevGet28.apply(this,arguments);
+      };
+    }
+    const prevCalc28=(typeof calcMeta==='function')?calcMeta:null;
+    if(prevCalc28){
+      calcMeta=window.calcMeta=function(ent){
+        try{
+          const f=inferFilial28(ent||{});
+          if(f && isGerenteContext28(ent||{})){
+            const base=officialFilialEntity28(f);
+            return prevCalc28.call(this,base);
+          }
+        }catch(e){console.warn(TAG,'calcMeta',e)}
+        return prevCalc28.apply(this,arguments);
+      };
+    }
+    const prevRecRender28=(typeof renderRecebimentos==='function')?renderRecebimentos:null;
+    if(prevRecRender28){
+      renderRecebimentos=window.renderRecebimentos=function(ent){
+        try{const f=inferFilial28(ent||{}); if(f && isGerenteContext28(ent||{})) return prevRecRender28.call(this,officialFilialEntity28(f));}catch(e){console.warn(TAG,'renderRec',e)}
+        return prevRecRender28.apply(this,arguments);
+      };
+    }
+    const prevOpen28=(typeof openEntity==='function')?openEntity:null;
+    if(prevOpen28){
+      openEntity=window.openEntity=function(ent){
+        try{const f=inferFilial28(ent||{}); if(f && isGerenteContext28(ent||{})){const base=officialFilialEntity28(f); window.currentDetailRef={type:'filial',filial:f,nome:base.nome,login:gerLogin28(f)}; return prevOpen28.call(this,base);}}catch(e){console.warn(TAG,'openEntity',e)}
+        return prevOpen28.apply(this,arguments);
+      };
+    }
+    const prevAbrir28=(typeof abrirApp==='function')?abrirApp:null;
+    if(prevAbrir28){
+      abrirApp=window.abrirApp=async function(){
+        try{
+          if(window.usuarioAtual && usuarioAtual.tipo!=='master' && !usuarioAtual.is_viewer && isGerenteContext28(usuarioAtual)){
+            const f=inferFilial28(usuarioAtual); if(f){
+              usuarioAtual={...usuarioAtual,type:'filial',filial:f,login:gerLogin28(f),is_gerente:true,is_fixed_gerente:true};
+              document.body.classList.add('user-light-view','gerente-filial-view');
+              loginScreen?.classList.add('hidden'); app?.classList.remove('hidden');
+              try{document.getElementById('kpis')?.classList.add('hidden'); masterTabs?.classList.add('hidden'); mainFilters?.classList.add('hidden'); topMural?.classList.add('hidden')}catch(e){}
+              if(userBadge) userBadge.textContent=`🏬 ${f}`;
+              document.getElementById('mainScreen')?.classList.add('hidden'); detailScreen?.classList.remove('hidden');
+              openEntity(officialFilialEntity28(f));
+              setTimeout(()=>{try{tentarAtualizarOnlineDepoisLogin()}catch(e){}},80);
+              return;
+            }
+          }
+        }catch(e){console.warn(TAG,'abrirApp',e)}
+        return prevAbrir28.apply(this,arguments);
+      };
+    }
+    // Gerentes por filial em linha, não em cards grandes.
+    window.renderGerentesFiliaisPanel=function(){
+      const rows=(typeof gerentesFiliaisFixos==='function'?gerentesFiliaisFixos():['F1','F2','F3','F4','F5','F6','F8','F9'].map(f=>({filial:f,login:gerLogin28(f),nome:'GERENTE '+f,must_change_password:true}))).map(g=>{
+        const dom=(typeof _senhaDomKey==='function'?_senhaDomKey(g.login):String(g.login).replace(/\W/g,'_'));
+        return `<tr>
+          <td><strong>${esc(g.filial)}</strong><div class="small muted">Conta fixa da filial</div></td>
+          <td><code>${esc(g.login)}</code></td>
+          <td><input id="ger_nome_${dom}" value="${esc(g.nome||('GERENTE '+g.filial))}" placeholder="Nome do gerente atual" style="min-width:280px;width:100%"></td>
+          <td>${g.must_change_password?'<span class="mini-chip warn">Precisa trocar</span>':'<span class="mini-chip ok">Ativa</span>'}</td>
+          <td><input id="ger_pwd_${dom}" placeholder="Nova senha" style="min-width:160px;width:100%"></td>
+          <td><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" onclick="adminSalvarGerenteFilial('${g.login}')">💾 Salvar</button><button class="btn soft" onclick="adminMarcarTroca('${g.login}')">🔁 Exigir troca</button></div><div class="small muted" id="ger_msg_${dom}" style="margin-top:6px"></div></td>
+        </tr>`;
+      }).join('');
+      return `<div class="glass panel" style="margin-bottom:14px;border-color:rgba(59,130,246,.35)">
+        <div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">🏬 Gerentes por filial</h2><div class="hint">Acesso fixo por filial. Troque só o nome do gerente atual; o login continua o mesmo e sempre abre a filial inteira.</div></div></div>
+        <div class="senhas-table-wrap"><table class="senhas-table"><thead><tr><th>Filial</th><th>Login fixo</th><th>Nome do gerente atual</th><th>Status</th><th>Nova senha</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div>
+      </div>`;
+    };
+    try{window.DASHBOARD_BUILD_VERSION='V10.28'}catch(e){}
+    console.log(TAG,'ativo: gerente usa entidade única da filial + tabela de gerentes em linha');
+  }catch(e){console.warn('[V10.28] hotfix falhou',e)}
 })();
 
 </script>
