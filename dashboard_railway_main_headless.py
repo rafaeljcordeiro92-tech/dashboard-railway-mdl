@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_21_REC_F4_CSM_LIGHT_FIX
+# VERSAO: DASH2_0_V10_22_GERENTES_FILIAL_TOTAL_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,7 +34,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.21"
+DASHBOARD_BUILD_VERSION = "V10.22"
 DASHBOARD_BUILD_TAG = "DASH2_0_V10_20_RELATORIOS_JULHO_FTP_FIX"
 
 def now_brasilia():
@@ -15905,6 +15905,175 @@ Preparamos condições especiais para você comemorar com a gente.
 })();
 </script>
 
+
+<script>
+// ===== V10.22: gerente/GERFx sempre enxerga FILIAL completa =====
+// Regra MDL: nomes com (GER) ou usuários marcados como gerente não recebem painel individual de vendedor.
+// Ao logar como gerente, tudo deve ser da filial inteira: recebimentos, cobranças, vendas, serviços e comissões.
+(function(){
+  const TAG='[V10.22 gerente=filial]';
+  try{
+    function normTxt(v){
+      try{return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,' ').trim().toUpperCase()}
+      catch(e){return String(v||'').trim().toUpperCase()}
+    }
+    function fil(v){
+      v=String(v||'').trim().toUpperCase();
+      if(/^0?\d+$/.test(v)) return 'F'+Number(v);
+      if(/^F0\d+$/.test(v)) return 'F'+Number(v.replace(/^F0*/,''));
+      const m=v.match(/GER\s*F?\s*(\d+)/i) || v.match(/\bF\s*(\d+)\b/i);
+      return m ? ('F'+Number(m[1])) : v;
+    }
+    function isGerName(v){ return /\(\s*GER\s*F?\s*\d+\s*\)/i.test(String(v||'')) || /\bGERENTE\b/i.test(String(v||'')); }
+    function credByLogin(login){
+      try{login=String(login||'').toLowerCase(); return (CREDS&&CREDS[login])?CREDS[login]:null}catch(e){return null}
+    }
+    function isGerRef(ref){
+      try{
+        if(!ref) return false;
+        if(ref.is_gerente || String(ref.type||'').toLowerCase()==='gerente') return true;
+        if(isGerName(ref.nome||ref.vendedor||'')) return true;
+        const c=credByLogin(ref.login||'');
+        if(c && c.is_gerente) return true;
+        const n=normTxt(ref.nome||ref.vendedor||'');
+        if(CREDS){
+          for(const u of Object.values(CREDS)){
+            if(u && u.is_gerente && n && normTxt(u.nome)===n) return true;
+          }
+        }
+      }catch(e){}
+      return false;
+    }
+    function gerenteFilial(ref){
+      try{
+        let f=fil(ref?.filial||'');
+        if(!f && ref && isGerName(ref.nome||ref.vendedor||'')) f=fil(ref.nome||ref.vendedor||'');
+        const c=credByLogin(ref?.login||'');
+        if((!f || !/^F\d+$/.test(f)) && c) f=fil(c.filial||'');
+        if((!f || !/^F\d+$/.test(f)) && CREDS){
+          const n=normTxt(ref?.nome||ref?.vendedor||'');
+          for(const u of Object.values(CREDS)){
+            if(u && u.is_gerente && n && normTxt(u.nome)===n){f=fil(u.filial||''); break;}
+          }
+        }
+        return f;
+      }catch(e){return fil(ref?.filial||'')}
+    }
+    function filialEnt(ref){
+      const f=gerenteFilial(ref);
+      let ent=null;
+      try{ ent=(typeof flattenFiliais==='function'?(flattenFiliais()||[]):[]).find(x=>fil(x.filial)===f); }catch(e){}
+      if(!ent) ent={type:'filial',filial:f,nome:(typeof filialLabel==='function'?filialLabel(f):f),is_gerente:true,perc_filial:100};
+      ent.type='filial'; ent.is_gerente=true; ent.nome=(typeof filialLabel==='function'?filialLabel(f):(ent.nome||f)); ent.filial=f; ent.perc_filial=100;
+      return ent;
+    }
+    window.mdlV1022GerenteEhFilial = function(ref){return isGerRef(ref)?filialEnt(ref):ref};
+
+    if(typeof findEntity==='function' && !window._findEntityV1022Wrapped){
+      window._findEntityV1022Wrapped=true;
+      const oldFind=findEntity;
+      findEntity=window.findEntity=function(ref){
+        try{ if(isGerRef(ref)) return filialEnt(ref); }catch(e){}
+        return oldFind.apply(this,arguments);
+      };
+    }
+
+    if(typeof getRecebimentos==='function' && !window._getRecebimentosV1022Wrapped){
+      window._getRecebimentosV1022Wrapped=true;
+      const oldGetRec=getRecebimentos;
+      getRecebimentos=window.getRecebimentos=function(ent){
+        try{ if(isGerRef(ent)) return oldGetRec.call(this,filialEnt(ent)); }catch(e){}
+        return oldGetRec.apply(this,arguments);
+      };
+    }
+
+    if(typeof getClientesEnt==='function' && !window._getClientesEntV1022Wrapped){
+      window._getClientesEntV1022Wrapped=true;
+      const oldGetCli=getClientesEnt;
+      getClientesEnt=window.getClientesEnt=function(ent){
+        try{ if(isGerRef(ent)) return oldGetCli.call(this,filialEnt(ent)); }catch(e){}
+        return oldGetCli.apply(this,arguments);
+      };
+    }
+
+    if(typeof getCobradosHoje==='function' && !window._getCobradosHojeV1022Wrapped){
+      window._getCobradosHojeV1022Wrapped=true;
+      const oldCobrados=getCobradosHoje;
+      getCobradosHoje=window.getCobradosHoje=function(ent){
+        try{ if(isGerRef(ent)) return oldCobrados.call(this,filialEnt(ent)); }catch(e){}
+        return oldCobrados.apply(this,arguments);
+      };
+    }
+
+    if(typeof calcMeta==='function' && !window._calcMetaV1022Wrapped){
+      window._calcMetaV1022Wrapped=true;
+      const oldCalc=calcMeta;
+      calcMeta=window.calcMeta=function(ent){
+        try{ if(isGerRef(ent)) return oldCalc.call(this,filialEnt(ent)); }catch(e){}
+        return oldCalc.apply(this,arguments);
+      };
+    }
+
+    if(typeof openEntity==='function' && !window._openEntityV1022Wrapped){
+      window._openEntityV1022Wrapped=true;
+      const oldOpen=openEntity;
+      openEntity=window.openEntity=function(ref){
+        try{
+          if(isGerRef(ref)){
+            const ent=filialEnt(ref);
+            window.currentDetailRef={type:'filial',filial:ent.filial,nome:ent.nome,login:String(ref?.login||'')};
+            return oldOpen.call(this,{type:'filial',filial:ent.filial,nome:ent.nome,login:String(ref?.login||'')});
+          }
+        }catch(e){console.warn(TAG,'openEntity gerente->filial',e)}
+        return oldOpen.apply(this,arguments);
+      };
+    }
+
+    if(typeof abrirApp==='function' && !window._abrirAppV1022Wrapped){
+      window._abrirAppV1022Wrapped=true;
+      const oldAbrir=abrirApp;
+      abrirApp=window.abrirApp=async function(){
+        try{
+          if(usuarioAtual && usuarioAtual.tipo!=='master' && !usuarioAtual.is_viewer && isGerRef(usuarioAtual)){
+            usuarioAtual.is_gerente=true;
+            usuarioAtual.type='filial';
+            usuarioAtual.filial=gerenteFilial(usuarioAtual);
+            document.body.classList.add('user-light-view','gerente-filial-view');
+            loginScreen?.classList.add('hidden');
+            app?.classList.remove('hidden');
+            try{document.getElementById('kpis')?.classList.add('hidden')}catch(e){}
+            try{masterTabs?.classList.add('hidden'); mainFilters?.classList.add('hidden'); topMural?.classList.add('hidden')}catch(e){}
+            const ent=filialEnt(usuarioAtual);
+            userBadge.textContent=`🏬 ${ent.filial}`;
+            document.getElementById('mainScreen')?.classList.add('hidden');
+            detailScreen?.classList.remove('hidden');
+            if(typeof window.openEntity==='function') window.openEntity({type:'filial',filial:ent.filial,nome:ent.nome,login:usuarioAtual.login});
+            setTimeout(()=>{try{tentarAtualizarOnlineDepoisLogin()}catch(e){}},80);
+            return;
+          }
+        }catch(e){console.warn(TAG,'abrirApp gerente leve',e)}
+        return oldAbrir.apply(this,arguments);
+      };
+    }
+
+    // Garante que cartões/listas nunca abram gerente como vendedor individual.
+    document.addEventListener('click',function(ev){
+      try{
+        const row=ev.target?.closest?.('[data-ent],[data-ref],[onclick]');
+        if(!row) return;
+        const txt=String(row.textContent||'');
+        if(!isGerName(txt)) return;
+        const mf=txt.match(/GER\s*F?\s*(\d+)/i);
+        const f=mf?('F'+Number(mf[1])):'';
+        if(f){ ev.preventDefault(); ev.stopPropagation(); window.openEntity({type:'filial',filial:f,nome:(typeof filialLabel==='function'?filialLabel(f):f),is_gerente:true}); return false; }
+      }catch(e){}
+    },true);
+
+    try{ window.DASHBOARD_BUILD_VERSION='V10.22'; }catch(e){}
+    console.log(TAG,'ativo: gerente/GERFx usa painel integral da filial');
+  }catch(e){console.warn('[V10.22] hotfix gerente filial falhou',e)}
+})();
+</script>
 </body>
 </html>
 """
@@ -16845,3 +17014,5 @@ driver.quit()
 # MDL_V103_CREDIARISTA_FREEZE_FIX
 
 # MDL_V10_21_REC_F4_CSM_LIGHT_FIX: cria /relatorios/AAAA-MM/ com cópias datadas e relatorios_version.json.
+
+# MDL_V10_22_GERENTES_FILIAL_TOTAL_FIX: gerente/GERFx abre e calcula sempre como filial completa.
