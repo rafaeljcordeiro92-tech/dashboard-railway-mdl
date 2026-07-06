@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_20_RELATORIOS_JULHO_FTP_FIX
+# VERSAO: DASH2_0_V10_21_REC_F4_CSM_LIGHT_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,7 +34,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.20"
+DASHBOARD_BUILD_VERSION = "V10.21"
 DASHBOARD_BUILD_TAG = "DASH2_0_V10_20_RELATORIOS_JULHO_FTP_FIX"
 
 def now_brasilia():
@@ -15497,7 +15497,90 @@ Preparamos condições especiais para você comemorar com a gente.
   window.abrirClientesSemMovimentoPaginaLeve=function(){const rows=currentRowsScope(); const w=window.open('about:blank','_blank'); if(!w){toast('Pop-up bloqueado.','warn');return;} const data=rows.map(r=>({idx:r._idx,cliente:r.cliente,filial:r.filial,cidade:r.cidade,dias:r.dias_sem_movimento,ultimo:r.ultimo_movimento,owner:(r._owner||ownerInfo(r)||{}).label||'',telefones:r.telefones||[],sent:isSentRow(r)})); const js=JSON.stringify(data).replace(/<\//g,'<\\/'); w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Clientes sem movimento</title><style>body{margin:0;background:#080a0f;color:#f4f6fb;font-family:Inter,Arial,sans-serif;padding:18px}.top{position:sticky;top:0;background:#111827;border:1px solid #334155;border-radius:16px;padding:14px;margin-bottom:14px}input{width:100%;padding:12px;border-radius:12px;border:1px solid #334155;background:#06080c;color:#fff}.row{display:grid;grid-template-columns:1.4fr .8fr .5fr auto;gap:12px;align-items:center;background:#111827;border:1px solid #293241;border-radius:14px;padding:12px;margin:8px 0}.muted{color:#94a3b8;font-size:12px}.wa{background:#15803d;color:white;border:0;border-radius:999px;padding:10px 14px;font-weight:900}.sent{opacity:.55}</style></head><body><div class="top"><h2>🧡 Clientes sem movimento · página leve</h2><div class="muted">Esta página abre separada para não pesar o dashboard principal. Total: <span id="total"></span></div><input id="q" placeholder="Buscar cliente, cidade, responsável" oninput="render()"></div><div id="list"></div><script>const rows=${js};function esc(s){return String(s??'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]))}function render(){const q=(document.getElementById('q').value||'').toLowerCase();const arr=rows.filter(r=>!q||JSON.stringify(r).toLowerCase().includes(q));document.getElementById('total').textContent=arr.length+' / '+rows.length;document.getElementById('list').innerHTML=arr.slice(0,300).map(r=>'<div class="row '+(r.sent?'sent':'')+'"><div><b>'+esc(r.cliente)+'</b><div class="muted">'+esc(r.filial)+' · '+esc(r.cidade)+' · '+esc(r.dias)+' dias · último '+esc(r.ultimo)+'</div></div><div><b>'+esc(r.owner)+'</b><div class="muted">Responsável</div></div><div>'+(r.sent?'✅ Enviado':'Pendente')+'</div><div>'+(r.telefones||[]).map(t=>'<button class="wa" onclick="window.opener&&window.opener.abrirWhatsReativacao('+r.idx+',\''+String(t).replace(/\D/g,'')+'\')">Whats '+esc(t)+'</button>').join(' ')+'</div></div>').join('')+(arr.length>300?'<div class="muted">Mostrando 300 primeiros. Use busca para filtrar.</div>':'')}</scr`+`ipt></body></html>`); w.document.close();};
   function patchCSMPageButton(){try{const box=document.getElementById('reativacaoSection')||document.querySelector('[data-tab="reativacao"]')||document.body; if(!box||document.getElementById('btnCSMLeve1013')) return; const h=[...document.querySelectorAll('h2,h3,.section-head')].find(x=>String(x.textContent||'').toLowerCase().includes('clientes sem movimento')); if(h){h.insertAdjacentHTML('afterend','<button id="btnCSMLeve1013" class="btn soft" style="margin:8px 0" onclick="abrirClientesSemMovimentoPaginaLeve()">🧡 Abrir clientes sem movimento em página leve</button>')}}catch(e){}}
   setTimeout(patchCSMPageButton,1200); setInterval(patchCSMPageButton,4000);
-  console.log('[V10.20] hotfix ativo:', TAG);
+
+  // ===== V10.21: gráfico/meta usa os mesmos recebimentos visíveis por faixa =====
+  // Corrige casos como F4/CIBELE: a lista "Recebimentos por faixa" mostrava pagamentos
+  // por origem YASMIM/crediarista, mas calcMeta ainda usava os campos antigos grave_rec/alerta_rec/atencao_rec.
+  try{
+    const _oldCalcMetaV1021 = (typeof calcMeta === 'function') ? calcMeta : null;
+    function _sumRecebV1021(src, fx){
+      try{return (src?.[fx]||[]).reduce((a,b)=>a+Number(b.pago||0),0)}catch(e){return 0}
+    }
+    function _recVisibleV1021(ent){
+      let src={grave:[],alerta:[],atencao:[]};
+      try{ if(typeof getRecebimentos==='function') src=getRecebimentos(ent)||src; }catch(e){}
+      let rec={grave:_sumRecebV1021(src,'grave'),alerta:_sumRecebV1021(src,'alerta'),atencao:_sumRecebV1021(src,'atencao')};
+      rec.total=rec.grave+rec.alerta+rec.atencao;
+
+      // Se a filial tem só 1 vendedor ativo não-gerente, o painel desse vendedor espelha a carteira da filial.
+      // Então o gráfico dele também deve usar os recebimentos visíveis da filial.
+      try{
+        if(ent && ent.type==='vendedor' && ent.filial && typeof flattenVendedores==='function'){
+          const nonGer=(flattenVendedores()||[]).filter(v=>String(v.filial||'').toUpperCase()===String(ent.filial||'').toUpperCase() && !v.is_gerente);
+          const same=nonGer.length===1 && (typeof normName==='function'?normName(nonGer[0].nome||'')===normName(ent.nome||''):String(nonGer[0].nome||'')===String(ent.nome||''));
+          if(same){
+            const fEnt={type:'filial',filial:ent.filial,nome:(typeof filialLabel==='function'?filialLabel(ent.filial):ent.filial)};
+            const fSrc=(typeof getRecebimentos==='function')?(getRecebimentos(fEnt)||{grave:[],alerta:[],atencao:[]}):{grave:[],alerta:[],atencao:[]};
+            const fRec={grave:_sumRecebV1021(fSrc,'grave'),alerta:_sumRecebV1021(fSrc,'alerta'),atencao:_sumRecebV1021(fSrc,'atencao')};
+            fRec.total=fRec.grave+fRec.alerta+fRec.atencao;
+            if(fRec.total>rec.total) rec=fRec;
+          }
+        }
+      }catch(e){}
+      return rec;
+    }
+    function _recalcPercV1021(m){
+      const cfg=m.cfg||{};
+      const gA=Number(m.grave?.alvo||0), aA=Number(m.alerta?.alvo||0), tA=Number(m.atencao?.alvo||0);
+      const gR=Number(m.grave?.rec||0), aR=Number(m.alerta?.rec||0), tR=Number(m.atencao?.rec||0);
+      m.grave.perc=gA>0?(gR/gA*100):0;
+      m.alerta.perc=aA>0?(aR/aA*100):0;
+      m.atencao.perc=tA>0?(tR/tA*100):0;
+      const sumW=Number(cfg.peso_grave||0)+Number(cfg.peso_alerta||0)+Number(cfg.peso_atencao||0)||1;
+      m.geral=((Math.min(m.grave.perc,100)*Number(cfg.peso_grave||0))+(Math.min(m.alerta.perc,100)*Number(cfg.peso_alerta||0))+(Math.min(m.atencao.perc,100)*Number(cfg.peso_atencao||0)))/sumW;
+      return m;
+    }
+    if(_oldCalcMetaV1021){
+      calcMeta = window.calcMeta = function(ent){
+        const m=_oldCalcMetaV1021(ent);
+        try{
+          const rec=_recVisibleV1021(ent||{});
+          const current=Number(m?.grave?.rec||0)+Number(m?.alerta?.rec||0)+Number(m?.atencao?.rec||0);
+          // Usa a lista detalhada como fonte única quando ela tem recebimentos do mês.
+          if(rec && rec.total>0 && Math.abs(rec.total-current)>0.009){
+            m.grave.rec=Number(rec.grave||0);
+            m.alerta.rec=Number(rec.alerta||0);
+            m.atencao.rec=Number(rec.atencao||0);
+            return _recalcPercV1021(m);
+          }
+        }catch(e){console.warn('V10.21 calcMeta visível',e)}
+        return m;
+      };
+    }
+
+    // Login comum: mantém fluxo direto para tela individual e evita montar áreas pesadas do Master.
+    const _oldAbrirAppV1021 = (typeof abrirApp==='function') ? abrirApp : null;
+    if(_oldAbrirAppV1021 && !window._abrirAppV1021Wrapped){
+      window._abrirAppV1021Wrapped=true;
+      abrirApp = window.abrirApp = async function(){
+        try{
+          const tipo=String(usuarioAtual?.tipo||'').toLowerCase();
+          if(tipo!=='master' && !usuarioAtual?.is_viewer){
+            document.body.classList.add('user-light-view');
+            try{document.getElementById('kpis')?.classList.add('hidden')}catch(e){}
+            try{masterTabs?.classList.add('hidden'); mainFilters?.classList.add('hidden'); topMural?.classList.add('hidden')}catch(e){}
+          }
+        }catch(e){}
+        return _oldAbrirAppV1021.apply(this,arguments);
+      };
+    }
+    const st=document.createElement('style');
+    st.textContent=`body.user-light-view #masterTabs,body.user-light-view #mainFilters,body.user-light-view #kpis,body.user-light-view #topMural,body.user-light-view #inicioSection,body.user-light-view #listSection,body.user-light-view #metaSection,body.user-light-view #servicesSection,body.user-light-view #logSection,body.user-light-view #avisosSection,body.user-light-view #telegramSection,body.user-light-view #senhasSection,body.user-light-view #histSection,body.user-light-view #reativacaoSection,body.user-light-view #aniversariantesSection{display:none!important}`;
+    document.head.appendChild(st);
+  }catch(e){console.warn(TAG,'hotfix V10.21 recebimentos visíveis / login leve',e)}
+
+  try{ window.DASHBOARD_BUILD_VERSION='V10.21'; }catch(e){}
+  console.log('[V10.21] hotfix ativo:', TAG);
 })();
 </script>
 
@@ -15572,7 +15655,7 @@ Preparamos condições especiais para você comemorar com a gente.
 <script>
 (function(){
   const TAG='MDL_V1016_CSM_10_DIA_CREDIARISTA_FIX';
-  try{ window.DASHBOARD_BUILD_VERSION='V10.20'; }catch(e){}
+  try{ window.DASHBOARD_BUILD_VERSION='V10.21'; }catch(e){}
 
   // Evita que a aba Clientes sem movimento pese o dashboard principal: abre página leve direto.
   try{
@@ -15735,7 +15818,90 @@ Preparamos condições especiais para você comemorar com a gente.
     }
   }catch(e){console.warn(TAG,'override comissão clique WhatsApp V10.17',e)}
 
-  console.log('[V10.20] hotfix ativo:', TAG);
+
+  // ===== V10.21: gráfico/meta usa os mesmos recebimentos visíveis por faixa =====
+  // Corrige casos como F4/CIBELE: a lista "Recebimentos por faixa" mostrava pagamentos
+  // por origem YASMIM/crediarista, mas calcMeta ainda usava os campos antigos grave_rec/alerta_rec/atencao_rec.
+  try{
+    const _oldCalcMetaV1021 = (typeof calcMeta === 'function') ? calcMeta : null;
+    function _sumRecebV1021(src, fx){
+      try{return (src?.[fx]||[]).reduce((a,b)=>a+Number(b.pago||0),0)}catch(e){return 0}
+    }
+    function _recVisibleV1021(ent){
+      let src={grave:[],alerta:[],atencao:[]};
+      try{ if(typeof getRecebimentos==='function') src=getRecebimentos(ent)||src; }catch(e){}
+      let rec={grave:_sumRecebV1021(src,'grave'),alerta:_sumRecebV1021(src,'alerta'),atencao:_sumRecebV1021(src,'atencao')};
+      rec.total=rec.grave+rec.alerta+rec.atencao;
+
+      // Se a filial tem só 1 vendedor ativo não-gerente, o painel desse vendedor espelha a carteira da filial.
+      // Então o gráfico dele também deve usar os recebimentos visíveis da filial.
+      try{
+        if(ent && ent.type==='vendedor' && ent.filial && typeof flattenVendedores==='function'){
+          const nonGer=(flattenVendedores()||[]).filter(v=>String(v.filial||'').toUpperCase()===String(ent.filial||'').toUpperCase() && !v.is_gerente);
+          const same=nonGer.length===1 && (typeof normName==='function'?normName(nonGer[0].nome||'')===normName(ent.nome||''):String(nonGer[0].nome||'')===String(ent.nome||''));
+          if(same){
+            const fEnt={type:'filial',filial:ent.filial,nome:(typeof filialLabel==='function'?filialLabel(ent.filial):ent.filial)};
+            const fSrc=(typeof getRecebimentos==='function')?(getRecebimentos(fEnt)||{grave:[],alerta:[],atencao:[]}):{grave:[],alerta:[],atencao:[]};
+            const fRec={grave:_sumRecebV1021(fSrc,'grave'),alerta:_sumRecebV1021(fSrc,'alerta'),atencao:_sumRecebV1021(fSrc,'atencao')};
+            fRec.total=fRec.grave+fRec.alerta+fRec.atencao;
+            if(fRec.total>rec.total) rec=fRec;
+          }
+        }
+      }catch(e){}
+      return rec;
+    }
+    function _recalcPercV1021(m){
+      const cfg=m.cfg||{};
+      const gA=Number(m.grave?.alvo||0), aA=Number(m.alerta?.alvo||0), tA=Number(m.atencao?.alvo||0);
+      const gR=Number(m.grave?.rec||0), aR=Number(m.alerta?.rec||0), tR=Number(m.atencao?.rec||0);
+      m.grave.perc=gA>0?(gR/gA*100):0;
+      m.alerta.perc=aA>0?(aR/aA*100):0;
+      m.atencao.perc=tA>0?(tR/tA*100):0;
+      const sumW=Number(cfg.peso_grave||0)+Number(cfg.peso_alerta||0)+Number(cfg.peso_atencao||0)||1;
+      m.geral=((Math.min(m.grave.perc,100)*Number(cfg.peso_grave||0))+(Math.min(m.alerta.perc,100)*Number(cfg.peso_alerta||0))+(Math.min(m.atencao.perc,100)*Number(cfg.peso_atencao||0)))/sumW;
+      return m;
+    }
+    if(_oldCalcMetaV1021){
+      calcMeta = window.calcMeta = function(ent){
+        const m=_oldCalcMetaV1021(ent);
+        try{
+          const rec=_recVisibleV1021(ent||{});
+          const current=Number(m?.grave?.rec||0)+Number(m?.alerta?.rec||0)+Number(m?.atencao?.rec||0);
+          // Usa a lista detalhada como fonte única quando ela tem recebimentos do mês.
+          if(rec && rec.total>0 && Math.abs(rec.total-current)>0.009){
+            m.grave.rec=Number(rec.grave||0);
+            m.alerta.rec=Number(rec.alerta||0);
+            m.atencao.rec=Number(rec.atencao||0);
+            return _recalcPercV1021(m);
+          }
+        }catch(e){console.warn('V10.21 calcMeta visível',e)}
+        return m;
+      };
+    }
+
+    // Login comum: mantém fluxo direto para tela individual e evita montar áreas pesadas do Master.
+    const _oldAbrirAppV1021 = (typeof abrirApp==='function') ? abrirApp : null;
+    if(_oldAbrirAppV1021 && !window._abrirAppV1021Wrapped){
+      window._abrirAppV1021Wrapped=true;
+      abrirApp = window.abrirApp = async function(){
+        try{
+          const tipo=String(usuarioAtual?.tipo||'').toLowerCase();
+          if(tipo!=='master' && !usuarioAtual?.is_viewer){
+            document.body.classList.add('user-light-view');
+            try{document.getElementById('kpis')?.classList.add('hidden')}catch(e){}
+            try{masterTabs?.classList.add('hidden'); mainFilters?.classList.add('hidden'); topMural?.classList.add('hidden')}catch(e){}
+          }
+        }catch(e){}
+        return _oldAbrirAppV1021.apply(this,arguments);
+      };
+    }
+    const st=document.createElement('style');
+    st.textContent=`body.user-light-view #masterTabs,body.user-light-view #mainFilters,body.user-light-view #kpis,body.user-light-view #topMural,body.user-light-view #inicioSection,body.user-light-view #listSection,body.user-light-view #metaSection,body.user-light-view #servicesSection,body.user-light-view #logSection,body.user-light-view #avisosSection,body.user-light-view #telegramSection,body.user-light-view #senhasSection,body.user-light-view #histSection,body.user-light-view #reativacaoSection,body.user-light-view #aniversariantesSection{display:none!important}`;
+    document.head.appendChild(st);
+  }catch(e){console.warn(TAG,'hotfix V10.21 recebimentos visíveis / login leve',e)}
+
+  try{ window.DASHBOARD_BUILD_VERSION='V10.21'; }catch(e){}
+  console.log('[V10.21] hotfix ativo:', TAG);
 })();
 </script>
 
@@ -16651,7 +16817,7 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
         print(f'⚠️ V10.19: erro checando mensagens_log.json: {e_msglog}')
 
     try:
-        _dashboard_ver = json.dumps({'updated_at': now_brasilia().isoformat(), 'updated_at_label': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'), 'timezone': 'America/Sao_Paulo', 'scope': 'dashboard_full', 'upload_mode': 'v10.20_atomic_relatorios_datados'}, ensure_ascii=False).encode('utf-8')
+        _dashboard_ver = json.dumps({'updated_at': now_brasilia().isoformat(), 'updated_at_label': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'), 'timezone': 'America/Sao_Paulo', 'scope': 'dashboard_full', 'upload_mode': 'v10.21_atomic_relatorios_datados_rec_f4_fix'}, ensure_ascii=False).encode('utf-8')
         _ftp_upload_bytes_v1019('dashboard_version.json', _dashboard_ver, label='dashboard_version.json')
     except Exception as e_ver_ftp:
         print(f'⚠️ Erro enviando arquivos de versão: {e_ver_ftp}')
@@ -16678,4 +16844,4 @@ driver.quit()
 
 # MDL_V103_CREDIARISTA_FREEZE_FIX
 
-# MDL_V10_20_RELATORIOS_JULHO_FTP_FIX: cria /relatorios/AAAA-MM/ com cópias datadas e relatorios_version.json.
+# MDL_V10_21_REC_F4_CSM_LIGHT_FIX: cria /relatorios/AAAA-MM/ com cópias datadas e relatorios_version.json.
