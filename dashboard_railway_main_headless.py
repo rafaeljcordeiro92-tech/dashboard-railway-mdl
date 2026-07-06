@@ -34,7 +34,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.28"
+DASHBOARD_BUILD_VERSION = "V10.29"
 DASHBOARD_BUILD_TAG = "DASH2_0_V10_20_RELATORIOS_JULHO_FTP_FIX"
 
 def now_brasilia():
@@ -16729,7 +16729,7 @@ Preparamos condições especiais para você comemorar com a gente.
       };
     }
     window.mdlV1027AggregateFilialRecebimentos=aggregateFilial;
-    try{window.DASHBOARD_BUILD_VERSION='V10.28'}catch(e){}
+    try{window.DASHBOARD_BUILD_VERSION='V10.29'}catch(e){}
     console.log(TAG,'ativo: gerente agrega recebimentos de vendedor + crediarista + GERFx da filial inteira');
   }catch(e){console.warn('[V10.28] hotfix falhou',e)}
 })();
@@ -16920,9 +16920,106 @@ Preparamos condições especiais para você comemorar com a gente.
         <div class="senhas-table-wrap"><table class="senhas-table"><thead><tr><th>Filial</th><th>Login fixo</th><th>Nome do gerente atual</th><th>Status</th><th>Nova senha</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div>
       </div>`;
     };
-    try{window.DASHBOARD_BUILD_VERSION='V10.28'}catch(e){}
+    try{window.DASHBOARD_BUILD_VERSION='V10.29'}catch(e){}
     console.log(TAG,'ativo: gerente usa entidade única da filial + tabela de gerentes em linha');
   }catch(e){console.warn('[V10.28] hotfix falhou',e)}
+})();
+
+
+// ===== V10.29: gerente fixo usa EXATAMENTE a mesma fonte da tela Master > Por Filial =====
+// O bug do F9 16% no Master e 15% no login gerentef09 acontecia porque, no contexto
+// do usuário logado, alguns buckets de recebimento da crediarista não entravam na soma.
+// A partir daqui, todo gerentefXX calcula meta/faixas usando a mesma chamada que o Master
+// usa ao abrir a Filial XX, apenas com usuário temporário de cálculo = master.
+(function(){
+  const TAG='[V10.29 gerente = fonte master filial]';
+  try{
+    function strip29(v){try{return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')}catch(e){return String(v||'')}}
+    function norm29(v){return strip29(v).replace(/[^a-z0-9]+/gi,' ').trim().toUpperCase()}
+    function fil29(v){
+      const s=String(v||'').trim().toUpperCase();
+      if(!s) return '';
+      if(/^0?\d+$/.test(s)) return 'F'+Number(s);
+      let m=s.match(/^F0*(\d+)$/); if(m) return 'F'+Number(m[1]);
+      m=s.match(/GER\s*F?\s*0*(\d+)/i)||s.match(/CREDIARISTA\s*F?\s*0*(\d+)/i)||s.match(/CREDIARISTAF0*(\d+)/i)||s.match(/\bF\s*0*(\d+)\b/i)||s.match(/F0*(\d+)/i);
+      return m?'F'+Number(m[1]):s;
+    }
+    function gerLogin29(f){const n=String(fil29(f)).replace(/\D/g,''); return n?'gerentef'+String(Number(n)).padStart(2,'0'):''}
+    function filialFromLogin29(login){const m=String(login||'').toLowerCase().match(/^gerentef(\d{2})$/); return m?'F'+Number(m[1]):''}
+    function isGerLogin29(login){return /^gerentef\d{2}$/.test(String(login||'').toLowerCase())}
+    function isGerCtx29(ent){
+      try{ if(ent && String(ent.type||'').toLowerCase()==='filial') return true; }catch(e){}
+      try{ if(ent && (isGerLogin29(ent.login)||ent.is_fixed_gerente||ent.is_gerente||/gerente/i.test(String(ent.tipo||''))||/\(\s*GER/i.test(String(ent.nome||'')))) return true; }catch(e){}
+      try{ if(window.usuarioAtual && usuarioAtual.tipo!=='master' && !usuarioAtual.is_viewer && (isGerLogin29(usuarioAtual.login)||usuarioAtual.is_fixed_gerente||usuarioAtual.is_gerente||/gerente/i.test(String(usuarioAtual.tipo||'')))) return true; }catch(e){}
+      return false;
+    }
+    function entFilial29(ent){
+      let f='';
+      try{ if(ent?.login && isGerLogin29(ent.login)) f=filialFromLogin29(ent.login); }catch(e){}
+      try{ if(!f && window.usuarioAtual && usuarioAtual.tipo!=='master' && isGerLogin29(usuarioAtual.login)) f=filialFromLogin29(usuarioAtual.login); }catch(e){}
+      try{ if(!f && ent?.filial) f=fil29(ent.filial); }catch(e){}
+      try{ if(!f && ent?.nome){ const m=String(ent.nome||'').match(/\(\s*GER\s*F?\s*0*(\d+)/i); if(m) f='F'+Number(m[1]); } }catch(e){}
+      try{ if(!f && window.usuarioAtual && usuarioAtual.filial) f=fil29(usuarioAtual.filial); }catch(e){}
+      return /^F\d+$/.test(f)?f:'';
+    }
+    function filialRef29(f){f=fil29(f); return {type:'filial',filial:f,nome:(typeof filialLabel==='function'?filialLabel(f):f),login:gerLogin29(f),is_gerente:true,is_fixed_gerente:true,perc_filial:100};}
+    function withMasterContext29(fn){
+      const oldUser=window.usuarioAtual;
+      try{
+        window.usuarioAtual={tipo:'master',login:'__calc_master__',nome:'Master',is_gerente:false,is_fixed_gerente:false};
+        return fn();
+      } finally { window.usuarioAtual=oldUser; }
+    }
+    const oldGet29=(typeof getRecebimentos==='function')?getRecebimentos:null;
+    if(oldGet29){
+      getRecebimentos=window.getRecebimentos=function(ent){
+        try{const f=entFilial29(ent||{}); if(f && isGerCtx29(ent||{})){ return withMasterContext29(()=>oldGet29.call(this,filialRef29(f))); }}catch(e){console.warn(TAG,'getRecebimentos',e)}
+        return oldGet29.apply(this,arguments);
+      };
+    }
+    const oldCalc29=(typeof calcMeta==='function')?calcMeta:null;
+    if(oldCalc29){
+      calcMeta=window.calcMeta=function(ent){
+        try{const f=entFilial29(ent||{}); if(f && isGerCtx29(ent||{})){ return withMasterContext29(()=>oldCalc29.call(this,filialRef29(f))); }}catch(e){console.warn(TAG,'calcMeta',e)}
+        return oldCalc29.apply(this,arguments);
+      };
+    }
+    const oldRenderRec29=(typeof renderRecebimentos==='function')?renderRecebimentos:null;
+    if(oldRenderRec29){
+      renderRecebimentos=window.renderRecebimentos=function(ent){
+        try{const f=entFilial29(ent||{}); if(f && isGerCtx29(ent||{})){ return withMasterContext29(()=>oldRenderRec29.call(this,filialRef29(f))); }}catch(e){console.warn(TAG,'renderRecebimentos',e)}
+        return oldRenderRec29.apply(this,arguments);
+      };
+    }
+    const oldOpen29=(typeof openEntity==='function')?openEntity:null;
+    if(oldOpen29){
+      openEntity=window.openEntity=function(ent){
+        try{const f=entFilial29(ent||{}); if(f && isGerCtx29(ent||{})){ window.currentDetailRef=filialRef29(f); return oldOpen29.call(this,filialRef29(f)); }}catch(e){console.warn(TAG,'openEntity',e)}
+        return oldOpen29.apply(this,arguments);
+      };
+    }
+    const oldAbrir29=(typeof abrirApp==='function')?abrirApp:null;
+    if(oldAbrir29){
+      abrirApp=window.abrirApp=async function(){
+        try{ if(window.usuarioAtual && usuarioAtual.tipo!=='master' && !usuarioAtual.is_viewer && isGerCtx29(usuarioAtual)){
+          const f=entFilial29(usuarioAtual); if(f){
+            usuarioAtual={...usuarioAtual,type:'filial',filial:f,login:gerLogin29(f),is_gerente:true,is_fixed_gerente:true};
+            document.body.classList.add('user-light-view','gerente-filial-view');
+            loginScreen?.classList.add('hidden'); app?.classList.remove('hidden');
+            try{document.getElementById('kpis')?.classList.add('hidden'); masterTabs?.classList.add('hidden'); mainFilters?.classList.add('hidden'); topMural?.classList.add('hidden')}catch(e){}
+            if(userBadge) userBadge.textContent=`🏬 ${f}`;
+            document.getElementById('mainScreen')?.classList.add('hidden'); detailScreen?.classList.remove('hidden');
+            openEntity(filialRef29(f));
+            setTimeout(()=>{try{tentarAtualizarOnlineDepoisLogin()}catch(e){}},80);
+            return;
+          }
+        }}catch(e){console.warn(TAG,'abrirApp',e)}
+        return oldAbrir29.apply(this,arguments);
+      };
+    }
+    try{window.DASHBOARD_BUILD_VERSION='V10.29'}catch(e){}
+    console.log(TAG,'ativo: login gerente usa a mesma fonte do Master > Por Filial');
+  }catch(e){console.warn('[V10.29] hotfix falhou',e)}
 })();
 
 </script>
