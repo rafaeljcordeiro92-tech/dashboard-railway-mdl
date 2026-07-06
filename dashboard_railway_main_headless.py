@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_18_GERENTES_FILIAIS_FTP_FIX
+# VERSAO: DASH2_0_V10_19_FTP_ATOMICO_LOGIN_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,8 +34,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.18"
-DASHBOARD_BUILD_TAG = "DASH2_0_V10_18_GERENTES_FILIAIS_FTP_FIX"
+DASHBOARD_BUILD_VERSION = "V10.19"
+DASHBOARD_BUILD_TAG = "DASH2_0_V10_19_FTP_ATOMICO_LOGIN_FIX"
 
 def now_brasilia():
     return datetime.now(APP_TZ)
@@ -3426,7 +3426,7 @@ for _, row in df_vend.iterrows():
 
 
 
-# ===== V10.18: helper de totais por filial antes do JS final =====
+# ===== V10.19: helper de totais por filial antes do JS final =====
 def _get_filial_totais_v1018(filial):
     """Retorna pendente/pago/total da filial sem depender da variável JS FILIAIS.
     Corrige o erro name 'FILIAIS' is not defined na criação dos logins de gerentes.
@@ -15497,7 +15497,7 @@ Preparamos condições especiais para você comemorar com a gente.
   window.abrirClientesSemMovimentoPaginaLeve=function(){const rows=currentRowsScope(); const w=window.open('about:blank','_blank'); if(!w){toast('Pop-up bloqueado.','warn');return;} const data=rows.map(r=>({idx:r._idx,cliente:r.cliente,filial:r.filial,cidade:r.cidade,dias:r.dias_sem_movimento,ultimo:r.ultimo_movimento,owner:(r._owner||ownerInfo(r)||{}).label||'',telefones:r.telefones||[],sent:isSentRow(r)})); const js=JSON.stringify(data).replace(/<\//g,'<\\/'); w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Clientes sem movimento</title><style>body{margin:0;background:#080a0f;color:#f4f6fb;font-family:Inter,Arial,sans-serif;padding:18px}.top{position:sticky;top:0;background:#111827;border:1px solid #334155;border-radius:16px;padding:14px;margin-bottom:14px}input{width:100%;padding:12px;border-radius:12px;border:1px solid #334155;background:#06080c;color:#fff}.row{display:grid;grid-template-columns:1.4fr .8fr .5fr auto;gap:12px;align-items:center;background:#111827;border:1px solid #293241;border-radius:14px;padding:12px;margin:8px 0}.muted{color:#94a3b8;font-size:12px}.wa{background:#15803d;color:white;border:0;border-radius:999px;padding:10px 14px;font-weight:900}.sent{opacity:.55}</style></head><body><div class="top"><h2>🧡 Clientes sem movimento · página leve</h2><div class="muted">Esta página abre separada para não pesar o dashboard principal. Total: <span id="total"></span></div><input id="q" placeholder="Buscar cliente, cidade, responsável" oninput="render()"></div><div id="list"></div><script>const rows=${js};function esc(s){return String(s??'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]))}function render(){const q=(document.getElementById('q').value||'').toLowerCase();const arr=rows.filter(r=>!q||JSON.stringify(r).toLowerCase().includes(q));document.getElementById('total').textContent=arr.length+' / '+rows.length;document.getElementById('list').innerHTML=arr.slice(0,300).map(r=>'<div class="row '+(r.sent?'sent':'')+'"><div><b>'+esc(r.cliente)+'</b><div class="muted">'+esc(r.filial)+' · '+esc(r.cidade)+' · '+esc(r.dias)+' dias · último '+esc(r.ultimo)+'</div></div><div><b>'+esc(r.owner)+'</b><div class="muted">Responsável</div></div><div>'+(r.sent?'✅ Enviado':'Pendente')+'</div><div>'+(r.telefones||[]).map(t=>'<button class="wa" onclick="window.opener&&window.opener.abrirWhatsReativacao('+r.idx+',\''+String(t).replace(/\D/g,'')+'\')">Whats '+esc(t)+'</button>').join(' ')+'</div></div>').join('')+(arr.length>300?'<div class="muted">Mostrando 300 primeiros. Use busca para filtrar.</div>':'')}</scr`+`ipt></body></html>`); w.document.close();};
   function patchCSMPageButton(){try{const box=document.getElementById('reativacaoSection')||document.querySelector('[data-tab="reativacao"]')||document.body; if(!box||document.getElementById('btnCSMLeve1013')) return; const h=[...document.querySelectorAll('h2,h3,.section-head')].find(x=>String(x.textContent||'').toLowerCase().includes('clientes sem movimento')); if(h){h.insertAdjacentHTML('afterend','<button id="btnCSMLeve1013" class="btn soft" style="margin:8px 0" onclick="abrirClientesSemMovimentoPaginaLeve()">🧡 Abrir clientes sem movimento em página leve</button>')}}catch(e){}}
   setTimeout(patchCSMPageButton,1200); setInterval(patchCSMPageButton,4000);
-  console.log('[V10.18] hotfix ativo:', TAG);
+  console.log('[V10.19] hotfix ativo:', TAG);
 })();
 </script>
 
@@ -15572,7 +15572,7 @@ Preparamos condições especiais para você comemorar com a gente.
 <script>
 (function(){
   const TAG='MDL_V1016_CSM_10_DIA_CREDIARISTA_FIX';
-  try{ window.DASHBOARD_BUILD_VERSION='V10.18'; }catch(e){}
+  try{ window.DASHBOARD_BUILD_VERSION='V10.19'; }catch(e){}
 
   // Evita que a aba Clientes sem movimento pese o dashboard principal: abre página leve direto.
   try{
@@ -15735,7 +15735,7 @@ Preparamos condições especiais para você comemorar com a gente.
     }
   }catch(e){console.warn(TAG,'override comissão clique WhatsApp V10.17',e)}
 
-  console.log('[V10.18] hotfix ativo:', TAG);
+  console.log('[V10.19] hotfix ativo:', TAG);
 })();
 </script>
 
@@ -16274,16 +16274,26 @@ if MODO_TESTE_LOCAL:
     print('🧪 MODO_TESTE_LOCAL=1 ativo: NÃO envia arquivos ao FTP de produção.')
 
 if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
-    try:
-        print('\n📤 Enviando arquivos para o servidor FTP...')
+    print('\n📤 Enviando arquivos para o servidor FTP...')
+    print('🛡️ V10.19: upload FTP seguro por arquivo + HTML temporário/rename para não deixar login quebrado.')
+
+    _FTP_TIMEOUT_V1019 = int(os.getenv('FTP_UPLOAD_TIMEOUT', '35') or '35')
+    _ftp_ok_v1019 = []
+    _ftp_fail_v1019 = []
+
+    def _ftp_conectar_v1019():
         ftp = ftplib.FTP()
-        ftp.connect(FTP_HOST, 21, timeout=90)  # V10.18: timeout maior para evitar falha em upload FTP
+        ftp.connect(FTP_HOST, 21, timeout=_FTP_TIMEOUT_V1019)
         ftp.login(FTP_USER, FTP_PASS)
         try:
-            ftp.sock.settimeout(90)
+            ftp.sock.settimeout(_FTP_TIMEOUT_V1019)
         except Exception:
             pass
         ftp.encoding = 'utf-8'
+        try:
+            ftp.set_pasv(True)
+        except Exception:
+            pass
         try:
             ftp.cwd(FTP_DIR)
         except Exception:
@@ -16292,137 +16302,209 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
             except Exception:
                 pass
             ftp.cwd(FTP_DIR)
-        with open(html_path, 'rb') as f_html:
-            ftp.storbinary('STOR dashboard_vendedores.html', f_html)
-        ftp.storbinary('STOR cobrancas_api.php', BytesIO(COBRANCAS_API_PHP.encode('utf-8')))
-        ftp.storbinary('STOR config_meta_api.php', BytesIO(CONFIG_META_API_PHP.encode('utf-8')))
-        ftp.storbinary('STOR mensagens_api.php', BytesIO(MESSAGES_API_PHP.encode('utf-8')))
-        ftp.storbinary('STOR credenciais_api.php', BytesIO(CREDENCIAIS_API_PHP.encode('utf-8')))
-        ftp.storbinary('STOR historico_api.php', BytesIO(HISTORICO_API_PHP.encode('utf-8')))
-        ftp.storbinary('STOR historico_comissionamento_api.php', BytesIO(HISTORICO_COMISSIONAMENTO_API_PHP.encode('utf-8')))
+        return ftp
+
+    def _ftp_upload_bytes_v1019(remote_name, data_bytes, atomic=False, label=None):
+        label = label or remote_name
+        ftp = None
+        tmp_name = f'.tmp_{remote_name}' if atomic else remote_name
         try:
-            # V9.5: config_meta.json salvo pelo dashboard/API é fonte de verdade no FTP.
-            # Se o main não conseguiu sincronizar do servidor, NÃO sobe default/local vazio por cima.
-            if _config_meta_loaded_from_remote or os.getenv('FORCE_UPLOAD_CONFIG_META','0') == '1':
-                with open(_config_meta_path, 'rb') as f_cfg:
-                    ftp.storbinary('STOR config_meta.json', f_cfg)
-                    print('✅ FTP: config_meta.json remoto preservado/enviado')
-            else:
-                print('🛡️ V9.7: config_meta.json do FTP não foi sobrescrito pelo main; configurações salvas no dashboard permanecem.')
-        except Exception as e_cfg_upload:
-            print(f'⚠️ V9.7: não enviei config_meta.json para evitar reset indevido: {e_cfg_upload}')
+            ftp = _ftp_conectar_v1019()
+            if atomic:
+                try:
+                    ftp.delete(tmp_name)
+                except Exception:
+                    pass
+            ftp.storbinary(f'STOR {tmp_name}', BytesIO(data_bytes), blocksize=65536)
+            if atomic:
+                try:
+                    ftp.rename(tmp_name, remote_name)
+                except Exception:
+                    # Alguns FTPs não sobrescrevem no rename. Só apaga o arquivo antigo depois
+                    # que o temporário já subiu inteiro, evitando HTML parcial no site.
+                    try:
+                        ftp.delete(remote_name)
+                    except Exception:
+                        pass
+                    ftp.rename(tmp_name, remote_name)
+            _ftp_ok_v1019.append(remote_name)
+            print(f'✅ FTP V10.19: {label} enviado')
+            return True
+        except Exception as e:
+            _ftp_fail_v1019.append((remote_name, str(e)))
+            print(f'⚠️ FTP V10.19 falhou em {label}: {e}')
+            return False
+        finally:
+            try:
+                if ftp:
+                    ftp.quit()
+            except Exception:
+                try:
+                    if ftp:
+                        ftp.close()
+                except Exception:
+                    pass
+
+    def _ftp_upload_file_v1019(local_path, remote_name, atomic=False, label=None):
         try:
-            with open(cred_state_path, 'rb') as f_credstate:
-                ftp.storbinary('STOR credenciais_dashboard.json', f_credstate)
+            with open(local_path, 'rb') as fh:
+                return _ftp_upload_bytes_v1019(remote_name, fh.read(), atomic=atomic, label=label or remote_name)
+        except Exception as e:
+            _ftp_fail_v1019.append((remote_name, str(e)))
+            print(f'⚠️ FTP V10.19 não conseguiu ler {local_path} para {remote_name}: {e}')
+            return False
+
+    def _ftp_remote_exists_v1019(remote_name):
+        ftp = None
+        try:
+            ftp = _ftp_conectar_v1019()
+            ftp.size(remote_name)
+            return True
         except Exception:
-            ftp.storbinary('STOR credenciais_dashboard.json', BytesIO(b'{"users":{},"director":{},"password_reset_requests":[]}'))
-        try:
-            with open(_hist_dash_path, 'rb') as f_hist:
-                ftp.storbinary('STOR historico_dashboard.json', f_hist)
-        except Exception:
-            ftp.storbinary('STOR historico_dashboard.json', BytesIO(b'{"dates":{},"months_closed":{}}'))
-        try:
-            with open(COMISSAO_HIST_PATH, 'rb') as f_ch:
-                ftp.storbinary('STOR historico_comissao_cobranca.json', f_ch)
-        except Exception:
-            ftp.storbinary('STOR historico_comissao_cobranca.json', BytesIO(b'{"months":{}}'))
-        try:
-            with open(_fechamento_path, 'rb') as f_fech:
-                ftp.storbinary('STOR fechamentos_mensais.json', f_fech)
-        except Exception:
-            ftp.storbinary('STOR fechamentos_mensais.json', BytesIO(b'{"months":{}}'))
-        try:
-            if os.path.exists(RECEBIMENTOS_MENSAL_PATH):
-                with open(RECEBIMENTOS_MENSAL_PATH, 'rb') as f_hrm:
-                    ftp.storbinary('STOR historico_recebimentos_mensais.json', f_hrm)
-                print('✅ FTP: historico_recebimentos_mensais.json enviado')
-        except Exception as e_hrm_ftp:
-            print(f'⚠️ Erro enviando historico_recebimentos_mensais.json: {e_hrm_ftp}')
-        try:
-            _csm_path = os.path.join(pasta, 'clientes_sem_movimento.json')
-            _ani_path = os.path.join(pasta, 'aniversariantes_dia.json')
-            _csm_seen_path = os.path.join(pasta, 'clientes_sem_movimento_seen.json')
-            _csm_base_path = os.path.join(pasta, 'clientes_sem_movimento_base.json')
-            _listas_forcadas = _baixou_listas_pesadas_v95()
+            return False
+        finally:
+            try:
+                if ftp:
+                    ftp.quit()
+            except Exception:
+                try:
+                    if ftp:
+                        ftp.close()
+                except Exception:
+                    pass
 
-            # V9.5: em deploy comum, não sobrescreve listas remotas com JSON vazio/local incompleto.
-            if os.path.exists(_csm_path) and (_listas_forcadas or _json_has_items_v95(_csm_path, ('clientes',))):
-                with open(_csm_path, 'rb') as f_csm:
-                    ftp.storbinary('STOR clientes_sem_movimento.json', f_csm)
-                    print('✅ FTP: clientes_sem_movimento.json enviado')
-            else:
-                print('🛡️ V9.5: pulando clientes_sem_movimento.json para não zerar lista do FTP')
+    # 1) Primeiro recupera o dashboard online. Sobe em arquivo temporário e só troca no final.
+    _ftp_upload_file_v1019(html_path, 'dashboard_vendedores.html', atomic=True, label='dashboard_vendedores.html (HTML atômico)')
 
-            if os.path.exists(_ani_path) and (_listas_forcadas or _json_has_items_v95(_ani_path, ('dados','clientes'))):
-                with open(_ani_path, 'rb') as f_ani:
-                    ftp.storbinary('STOR aniversariantes_dia.json', f_ani)
-                    print('✅ FTP: aniversariantes_dia.json enviado')
-            else:
-                print('🛡️ V9.5: pulando aniversariantes_dia.json para não zerar lista do FTP')
+    # 2) APIs pequenas e essenciais.
+    _ftp_upload_bytes_v1019('cobrancas_api.php', COBRANCAS_API_PHP.encode('utf-8'), label='cobrancas_api.php')
+    _ftp_upload_bytes_v1019('config_meta_api.php', CONFIG_META_API_PHP.encode('utf-8'), label='config_meta_api.php')
+    _ftp_upload_bytes_v1019('mensagens_api.php', MESSAGES_API_PHP.encode('utf-8'), label='mensagens_api.php')
+    _ftp_upload_bytes_v1019('credenciais_api.php', CREDENCIAIS_API_PHP.encode('utf-8'), label='credenciais_api.php')
+    _ftp_upload_bytes_v1019('historico_api.php', HISTORICO_API_PHP.encode('utf-8'), label='historico_api.php')
+    _ftp_upload_bytes_v1019('historico_comissionamento_api.php', HISTORICO_COMISSIONAMENTO_API_PHP.encode('utf-8'), label='historico_comissionamento_api.php')
 
-            if os.path.exists(_csm_seen_path) and (_listas_forcadas or _json_has_items_v95(_csm_seen_path, ('seen',))):
-                with open(_csm_seen_path, 'rb') as f_csm_seen:
-                    ftp.storbinary('STOR clientes_sem_movimento_seen.json', f_csm_seen)
-                    print('✅ FTP: clientes_sem_movimento_seen.json enviado')
-            else:
-                print('🛡️ V9.5: pulando clientes_sem_movimento_seen.json vazio/local')
+    # 3) Config/credenciais/histórico. Mantém as proteções já existentes para não zerar config/listas.
+    try:
+        if _config_meta_loaded_from_remote or os.getenv('FORCE_UPLOAD_CONFIG_META','0') == '1':
+            _ftp_upload_file_v1019(_config_meta_path, 'config_meta.json', label='config_meta.json')
+        else:
+            print('🛡️ V9.7/V10.19: config_meta.json do FTP não foi sobrescrito pelo main.')
+    except Exception as e_cfg_upload:
+        print(f'⚠️ V10.19: não enviei config_meta.json para evitar reset indevido: {e_cfg_upload}')
 
-            if os.path.exists(_csm_base_path) and (_listas_forcadas or _json_has_items_v95(_csm_base_path, ('clientes',))):
-                with open(_csm_base_path, 'rb') as f_csm_base:
-                    ftp.storbinary('STOR clientes_sem_movimento_base.json', f_csm_base)
-                    print('✅ FTP: clientes_sem_movimento_base.json enviado')
-            else:
-                print('🛡️ V9.5: pulando clientes_sem_movimento_base.json para não zerar base do FTP')
+    try:
+        if os.path.exists(cred_state_path):
+            _ftp_upload_file_v1019(cred_state_path, 'credenciais_dashboard.json', label='credenciais_dashboard.json')
+        else:
+            _ftp_upload_bytes_v1019('credenciais_dashboard.json', b'{"users":{},"director":{},"password_reset_requests":[]}', label='credenciais_dashboard.json default')
+    except Exception as e_cred:
+        print(f'⚠️ V10.19: erro credenciais_dashboard.json: {e_cred}')
 
-            # V10.16: mantém no FTP o lote do dia e o histórico diário completo da base.
-            _csm_lote_path = os.path.join(pasta, 'clientes_sem_movimento_lote_diario.json')
-            _csm_hist_dia = os.path.join(pasta, f"clientes_sem_movimento_historico_{now_brasilia().strftime('%Y-%m-%d')}.json")
-            if os.path.exists(_csm_lote_path) and _json_has_items_v95(_csm_lote_path, ('clientes',)):
-                with open(_csm_lote_path, 'rb') as f_csm_lote:
-                    ftp.storbinary('STOR clientes_sem_movimento_lote_diario.json', f_csm_lote)
-                    print('✅ FTP: clientes_sem_movimento_lote_diario.json enviado')
-            if os.path.exists(_csm_hist_dia) and _json_has_items_v95(_csm_hist_dia, ('clientes','base_clientes')):
-                with open(_csm_hist_dia, 'rb') as f_csm_hist:
-                    ftp.storbinary(f"STOR clientes_sem_movimento_historico_{now_brasilia().strftime('%Y-%m-%d')}.json", f_csm_hist)
-                    print('✅ FTP: clientes_sem_movimento_historico do dia enviado')
-            _dup_path = os.path.join(pasta, 'relatorio_duplicidades_carteira.json')
-            if os.path.exists(_dup_path):
-                with open(_dup_path, 'rb') as f_dup:
-                    ftp.storbinary('STOR relatorio_duplicidades_carteira.json', f_dup)
-        except Exception as e_extra_ftp:
-            print(f'⚠️ Erro ao enviar extras dashboard 2.0 ao FTP: {e_extra_ftp}')
+    try:
+        if os.path.exists(_hist_dash_path):
+            _ftp_upload_file_v1019(_hist_dash_path, 'historico_dashboard.json', label='historico_dashboard.json')
+        else:
+            _ftp_upload_bytes_v1019('historico_dashboard.json', b'{"dates":{},"months_closed":{}}', label='historico_dashboard.json default')
+    except Exception as e_hist:
+        print(f'⚠️ V10.19: erro historico_dashboard.json: {e_hist}')
 
-        try:
-            if quitados_180_info.get('json_path') and os.path.exists(quitados_180_info['json_path']):
-                with open(quitados_180_info['json_path'], 'rb') as f_q_json:
-                    ftp.storbinary('STOR quitados_180d_contas_receber.json', f_q_json)
-            if quitados_180_info.get('xlsx_path') and os.path.exists(quitados_180_info['xlsx_path']):
-                with open(quitados_180_info['xlsx_path'], 'rb') as f_q_xlsx:
-                    ftp.storbinary('STOR quitados_180d_contas_receber.xlsx', f_q_xlsx)
-        except Exception as e_q_ftp:
-            print(f'⚠️ Erro ao enviar quitados 180d ao FTP: {e_q_ftp}')
+    try:
+        if os.path.exists(COMISSAO_HIST_PATH):
+            _ftp_upload_file_v1019(COMISSAO_HIST_PATH, 'historico_comissao_cobranca.json', label='historico_comissao_cobranca.json')
+        else:
+            _ftp_upload_bytes_v1019('historico_comissao_cobranca.json', b'{"months":{}}', label='historico_comissao_cobranca.json default')
+    except Exception as e_ch:
+        print(f'⚠️ V10.19: erro historico_comissao_cobranca.json: {e_ch}')
 
-        # Pacote de vendas/margem/rentabilidade/serviços/diária fica exclusivo do dashboard_sales_worker_headless.py.
-        # Isso evita o navegador misturar arquivos de horários diferentes.
-        print('ℹ️ MAIN: não publica metas_vendas/margens/sales_version; pacote de vendas é exclusivo do sales worker.')
-        try:
-            ftp.size('cobrancas_log.json')
-        except Exception:
-            ftp.storbinary('STOR cobrancas_log.json', BytesIO(b'[]'))
-        try:
-            ftp.size('mensagens_log.json')
-        except Exception:
-            ftp.storbinary('STOR mensagens_log.json', BytesIO(b'[]'))
-        try:
-            _dashboard_ver = json.dumps({'updated_at': now_brasilia().isoformat(), 'updated_at_label': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'), 'timezone': 'America/Sao_Paulo', 'scope': 'dashboard_full'}, ensure_ascii=False).encode('utf-8')
-            ftp.storbinary('STOR dashboard_version.json', BytesIO(_dashboard_ver))
-            # sales_version.json é exclusivo do dashboard_sales_worker_headless.py para sincronizar vendas/margens/serviços juntos.
-        except Exception as e_ver_ftp:
-            print(f'⚠️ Erro enviando arquivos de versão: {e_ver_ftp}')
-        ftp.quit()
-        print('✅ Upload concluído → https://moveisdolar.com.br/colaborador/')
-    except Exception as e:
-        print(f'⚠️ Erro no upload FTP: {e} — arquivos foram gerados localmente no Railway, mas podem não ter sido publicados no site. Tente novamente ou rode o main de novo.')
+    try:
+        if os.path.exists(_fechamento_path):
+            _ftp_upload_file_v1019(_fechamento_path, 'fechamentos_mensais.json', label='fechamentos_mensais.json')
+        else:
+            _ftp_upload_bytes_v1019('fechamentos_mensais.json', b'{"months":{}}', label='fechamentos_mensais.json default')
+    except Exception as e_fech:
+        print(f'⚠️ V10.19: erro fechamentos_mensais.json: {e_fech}')
+
+    try:
+        if os.path.exists(RECEBIMENTOS_MENSAL_PATH):
+            _ftp_upload_file_v1019(RECEBIMENTOS_MENSAL_PATH, 'historico_recebimentos_mensais.json', label='historico_recebimentos_mensais.json')
+    except Exception as e_hrm_ftp:
+        print(f'⚠️ Erro enviando historico_recebimentos_mensais.json: {e_hrm_ftp}')
+
+    # 4) Listas pesadas: só sobe quando a execução realmente baixou/gerou ou quando há dados locais válidos.
+    try:
+        _csm_path = os.path.join(pasta, 'clientes_sem_movimento.json')
+        _ani_path = os.path.join(pasta, 'aniversariantes_dia.json')
+        _csm_seen_path = os.path.join(pasta, 'clientes_sem_movimento_seen.json')
+        _csm_base_path = os.path.join(pasta, 'clientes_sem_movimento_base.json')
+        _listas_forcadas = _baixou_listas_pesadas_v95()
+
+        if os.path.exists(_csm_path) and (_listas_forcadas or _json_has_items_v95(_csm_path, ('clientes',))):
+            _ftp_upload_file_v1019(_csm_path, 'clientes_sem_movimento.json', label='clientes_sem_movimento.json')
+        else:
+            print('🛡️ V9.5/V10.19: pulando clientes_sem_movimento.json para não zerar lista do FTP')
+
+        if os.path.exists(_ani_path) and (_listas_forcadas or _json_has_items_v95(_ani_path, ('dados','clientes'))):
+            _ftp_upload_file_v1019(_ani_path, 'aniversariantes_dia.json', label='aniversariantes_dia.json')
+        else:
+            print('🛡️ V9.5/V10.19: pulando aniversariantes_dia.json para não zerar lista do FTP')
+
+        if os.path.exists(_csm_seen_path) and (_listas_forcadas or _json_has_items_v95(_csm_seen_path, ('seen',))):
+            _ftp_upload_file_v1019(_csm_seen_path, 'clientes_sem_movimento_seen.json', label='clientes_sem_movimento_seen.json')
+        else:
+            print('🛡️ V9.5/V10.19: pulando clientes_sem_movimento_seen.json vazio/local')
+
+        if os.path.exists(_csm_base_path) and (_listas_forcadas or _json_has_items_v95(_csm_base_path, ('clientes',))):
+            _ftp_upload_file_v1019(_csm_base_path, 'clientes_sem_movimento_base.json', label='clientes_sem_movimento_base.json')
+        else:
+            print('🛡️ V9.5/V10.19: pulando clientes_sem_movimento_base.json para não zerar base do FTP')
+
+        _csm_lote_path = os.path.join(pasta, 'clientes_sem_movimento_lote_diario.json')
+        _csm_hist_dia = os.path.join(pasta, f"clientes_sem_movimento_historico_{now_brasilia().strftime('%Y-%m-%d')}.json")
+        if os.path.exists(_csm_lote_path) and _json_has_items_v95(_csm_lote_path, ('clientes',)):
+            _ftp_upload_file_v1019(_csm_lote_path, 'clientes_sem_movimento_lote_diario.json', label='clientes_sem_movimento_lote_diario.json')
+        if os.path.exists(_csm_hist_dia) and _json_has_items_v95(_csm_hist_dia, ('clientes','base_clientes')):
+            _ftp_upload_file_v1019(_csm_hist_dia, f"clientes_sem_movimento_historico_{now_brasilia().strftime('%Y-%m-%d')}.json", label='clientes_sem_movimento_historico do dia')
+
+        _dup_path = os.path.join(pasta, 'relatorio_duplicidades_carteira.json')
+        if os.path.exists(_dup_path):
+            _ftp_upload_file_v1019(_dup_path, 'relatorio_duplicidades_carteira.json', label='relatorio_duplicidades_carteira.json')
+    except Exception as e_extra_ftp:
+        print(f'⚠️ Erro ao enviar extras dashboard 2.0 ao FTP: {e_extra_ftp}')
+
+    try:
+        if quitados_180_info.get('json_path') and os.path.exists(quitados_180_info['json_path']):
+            _ftp_upload_file_v1019(quitados_180_info['json_path'], 'quitados_180d_contas_receber.json', label='quitados_180d_contas_receber.json')
+        if quitados_180_info.get('xlsx_path') and os.path.exists(quitados_180_info['xlsx_path']):
+            _ftp_upload_file_v1019(quitados_180_info['xlsx_path'], 'quitados_180d_contas_receber.xlsx', label='quitados_180d_contas_receber.xlsx')
+    except Exception as e_q_ftp:
+        print(f'⚠️ Erro ao enviar quitados 180d ao FTP: {e_q_ftp}')
+
+    print('ℹ️ MAIN: não publica metas_vendas/margens/sales_version; pacote de vendas é exclusivo do sales worker.')
+
+    try:
+        if not _ftp_remote_exists_v1019('cobrancas_log.json'):
+            _ftp_upload_bytes_v1019('cobrancas_log.json', b'[]', label='cobrancas_log.json inicial')
+    except Exception as e_coblog:
+        print(f'⚠️ V10.19: erro checando cobrancas_log.json: {e_coblog}')
+    try:
+        if not _ftp_remote_exists_v1019('mensagens_log.json'):
+            _ftp_upload_bytes_v1019('mensagens_log.json', b'[]', label='mensagens_log.json inicial')
+    except Exception as e_msglog:
+        print(f'⚠️ V10.19: erro checando mensagens_log.json: {e_msglog}')
+
+    try:
+        _dashboard_ver = json.dumps({'updated_at': now_brasilia().isoformat(), 'updated_at_label': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'), 'timezone': 'America/Sao_Paulo', 'scope': 'dashboard_full', 'upload_mode': 'v10.19_atomic'}, ensure_ascii=False).encode('utf-8')
+        _ftp_upload_bytes_v1019('dashboard_version.json', _dashboard_ver, label='dashboard_version.json')
+    except Exception as e_ver_ftp:
+        print(f'⚠️ Erro enviando arquivos de versão: {e_ver_ftp}')
+
+    if _ftp_fail_v1019:
+        print(f'⚠️ Upload FTP V10.19 finalizado com {len(_ftp_fail_v1019)} falha(s). HTML/API essenciais já foram tentados primeiro.')
+        for _nome_fail, _erro_fail in _ftp_fail_v1019[:8]:
+            print(f'   - {_nome_fail}: {_erro_fail}')
+    else:
+        print('✅ Upload FTP V10.19 concluído sem falhas → https://moveisdolar.com.br/colaborador/')
 else:
     print('\nℹ️ FTP não configurado. Envie manualmente:')
     print(f'   {html_path} → {FTP_DIR}/dashboard_vendedores.html')
