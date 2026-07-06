@@ -34,7 +34,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.29"
+DASHBOARD_BUILD_VERSION = "V10.30"
 DASHBOARD_BUILD_TAG = "DASH2_0_V10_20_RELATORIOS_JULHO_FTP_FIX"
 
 def now_brasilia():
@@ -16729,7 +16729,7 @@ Preparamos condições especiais para você comemorar com a gente.
       };
     }
     window.mdlV1027AggregateFilialRecebimentos=aggregateFilial;
-    try{window.DASHBOARD_BUILD_VERSION='V10.29'}catch(e){}
+    try{window.DASHBOARD_BUILD_VERSION='V10.30'}catch(e){}
     console.log(TAG,'ativo: gerente agrega recebimentos de vendedor + crediarista + GERFx da filial inteira');
   }catch(e){console.warn('[V10.28] hotfix falhou',e)}
 })();
@@ -16920,7 +16920,7 @@ Preparamos condições especiais para você comemorar com a gente.
         <div class="senhas-table-wrap"><table class="senhas-table"><thead><tr><th>Filial</th><th>Login fixo</th><th>Nome do gerente atual</th><th>Status</th><th>Nova senha</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div>
       </div>`;
     };
-    try{window.DASHBOARD_BUILD_VERSION='V10.29'}catch(e){}
+    try{window.DASHBOARD_BUILD_VERSION='V10.30'}catch(e){}
     console.log(TAG,'ativo: gerente usa entidade única da filial + tabela de gerentes em linha');
   }catch(e){console.warn('[V10.28] hotfix falhou',e)}
 })();
@@ -17017,9 +17017,132 @@ Preparamos condições especiais para você comemorar com a gente.
         return oldAbrir29.apply(this,arguments);
       };
     }
-    try{window.DASHBOARD_BUILD_VERSION='V10.29'}catch(e){}
+    try{window.DASHBOARD_BUILD_VERSION='V10.30'}catch(e){}
     console.log(TAG,'ativo: login gerente usa a mesma fonte do Master > Por Filial');
   }catch(e){console.warn('[V10.29] hotfix falhou',e)}
+})();
+
+
+// ===== V10.30: gerente fixo renderiza e calcula pela MESMA chamada do Master > Por Filial =====
+// Correção definitiva para diferença Master F9=16% x login gerentef09=15%.
+// Ao abrir login gerentefXX, a tela é montada temporariamente como Master na entidade Filial FXX.
+// Assim calcMeta(), getRecebimentos() e renderRecebimentos() usam a mesma fonte do botão Por Filial do Master.
+(function(){
+  const TAG='[V10.30 gerente render master filial]';
+  try{
+    function fil30(v){
+      const s=String(v||'').trim().toUpperCase();
+      if(!s) return '';
+      if(/^0?\d+$/.test(s)) return 'F'+Number(s);
+      let m=s.match(/^F0*(\d+)$/); if(m) return 'F'+Number(m[1]);
+      m=s.match(/GER\s*F?\s*0*(\d+)/i)||s.match(/CREDIARISTA\s*F?\s*0*(\d+)/i)||s.match(/CREDIARISTAF0*(\d+)/i)||s.match(/\bF\s*0*(\d+)\b/i)||s.match(/F0*(\d+)/i);
+      return m?'F'+Number(m[1]):s;
+    }
+    function isGerLogin30(login){return /^gerentef\d{2}$/.test(String(login||'').toLowerCase())}
+    function loginFilial30(login){const m=String(login||'').toLowerCase().match(/^gerentef(\d{2})$/); return m?'F'+Number(m[1]):''}
+    function gerLogin30(f){const n=String(fil30(f)).replace(/\D/g,''); return n?'gerentef'+String(Number(n)).padStart(2,'0'):''}
+    function isManager30(u){
+      try{return !!(u && (isGerLogin30(u.login)||u.is_fixed_gerente||u.is_gerente||/gerente/i.test(String(u.tipo||''))||/\(\s*GER/i.test(String(u.nome||''))))}catch(e){return false}
+    }
+    function filialFrom30(ref){
+      let f='';
+      try{if(ref && ref.login && isGerLogin30(ref.login)) f=loginFilial30(ref.login)}catch(e){}
+      try{if(!f && window.usuarioAtual && usuarioAtual.tipo!=='master' && isGerLogin30(usuarioAtual.login)) f=loginFilial30(usuarioAtual.login)}catch(e){}
+      try{if(!f && ref && ref.filial) f=fil30(ref.filial)}catch(e){}
+      try{if(!f && ref && ref.nome){const m=String(ref.nome||'').match(/\(\s*GER\s*F?\s*0*(\d+)/i); if(m) f='F'+Number(m[1])}}catch(e){}
+      try{if(!f && window.usuarioAtual && usuarioAtual.tipo!=='master' && isManager30(usuarioAtual) && usuarioAtual.filial) f=fil30(usuarioAtual.filial)}catch(e){}
+      return /^F\d+$/.test(f)?f:'';
+    }
+    function filialRef30(f){
+      f=fil30(f);
+      let nome=f;
+      try{ if(typeof filialLabel==='function') nome=filialLabel(f); }catch(e){}
+      return {type:'filial',filial:f,nome:nome,login:gerLogin30(f),is_gerente:true,is_fixed_gerente:true,perc_filial:100};
+    }
+    function isGerenteContext30(ent){
+      try{if(ent && String(ent.type||'').toLowerCase()==='filial') return true}catch(e){}
+      try{if(isManager30(ent)) return true}catch(e){}
+      try{if(window.usuarioAtual && usuarioAtual.tipo!=='master' && !usuarioAtual.is_viewer && isManager30(usuarioAtual)) return true}catch(e){}
+      return false;
+    }
+    function withMaster30(fn){
+      const old=window.usuarioAtual;
+      try{window.usuarioAtual={tipo:'master',login:'__v1030_master_calc__',nome:'Master'}; return fn();}
+      finally{window.usuarioAtual=old;}
+    }
+
+    const baseGet30=(typeof getRecebimentos==='function')?getRecebimentos:null;
+    const baseCalc30=(typeof calcMeta==='function')?calcMeta:null;
+    const baseRenderRec30=(typeof renderRecebimentos==='function')?renderRecebimentos:null;
+    const baseOpen30=(typeof openEntity==='function')?openEntity:null;
+    const baseAbrir30=(typeof abrirApp==='function')?abrirApp:null;
+
+    if(baseGet30){
+      getRecebimentos=window.getRecebimentos=function(ent){
+        try{const f=filialFrom30(ent||{}); if(f && isGerenteContext30(ent||{})) return withMaster30(()=>baseGet30.call(this,filialRef30(f)));}
+        catch(e){console.warn(TAG,'getRecebimentos',e)}
+        return baseGet30.apply(this,arguments);
+      };
+    }
+    if(baseCalc30){
+      calcMeta=window.calcMeta=function(ent){
+        try{const f=filialFrom30(ent||{}); if(f && isGerenteContext30(ent||{})) return withMaster30(()=>baseCalc30.call(this,filialRef30(f)));}
+        catch(e){console.warn(TAG,'calcMeta',e)}
+        return baseCalc30.apply(this,arguments);
+      };
+    }
+    if(baseRenderRec30){
+      renderRecebimentos=window.renderRecebimentos=function(ent){
+        try{const f=filialFrom30(ent||{}); if(f && isGerenteContext30(ent||{})) return withMaster30(()=>baseRenderRec30.call(this,filialRef30(f)));}
+        catch(e){console.warn(TAG,'renderRecebimentos',e)}
+        return baseRenderRec30.apply(this,arguments);
+      };
+    }
+    if(baseOpen30){
+      openEntity=window.openEntity=function(ent){
+        try{
+          const f=filialFrom30(ent||{});
+          if(f && isGerenteContext30(ent||{})){
+            const fr=filialRef30(f);
+            window.currentDetailRef=fr;
+            return withMaster30(()=>baseOpen30.call(this,fr));
+          }
+        }catch(e){console.warn(TAG,'openEntity',e)}
+        return baseOpen30.apply(this,arguments);
+      };
+    }
+    if(baseAbrir30){
+      abrirApp=window.abrirApp=async function(){
+        try{
+          if(window.usuarioAtual && usuarioAtual.tipo!=='master' && !usuarioAtual.is_viewer && isManager30(usuarioAtual)){
+            const realUser={...usuarioAtual};
+            const f=filialFrom30(realUser);
+            if(f){
+              const fr=filialRef30(f);
+              // Mantém login fixo ativo, mas renderiza a página como o Master renderiza a Filial.
+              usuarioAtual={...realUser,type:'filial',filial:f,login:gerLogin30(f),is_gerente:true,is_fixed_gerente:true};
+              document.body.classList.add('user-light-view','gerente-filial-view');
+              loginScreen?.classList.add('hidden'); app?.classList.remove('hidden');
+              try{document.getElementById('kpis')?.classList.add('hidden'); masterTabs?.classList.add('hidden'); mainFilters?.classList.add('hidden'); topMural?.classList.add('hidden')}catch(e){}
+              if(userBadge) userBadge.textContent=`🏬 ${f}`;
+              document.getElementById('mainScreen')?.classList.add('hidden'); detailScreen?.classList.remove('hidden');
+              if(baseOpen30) withMaster30(()=>baseOpen30.call(this,fr));
+              window.currentDetailRef=fr;
+              // Depois de montar a tela, restaura o usuário real para permissões/botões/logs.
+              usuarioAtual={...realUser,type:'filial',filial:f,login:gerLogin30(f),is_gerente:true,is_fixed_gerente:true};
+              setTimeout(()=>{try{tentarAtualizarOnlineDepoisLogin()}catch(e){}},80);
+              console.log(TAG,'renderizado igual Master > Por Filial',f);
+              return;
+            }
+          }
+        }catch(e){console.warn(TAG,'abrirApp',e)}
+        return baseAbrir30.apply(this,arguments);
+      };
+    }
+
+    try{window.DASHBOARD_BUILD_VERSION='V10.30'}catch(e){}
+    console.log(TAG,'ativo: gerentefXX renderiza via mesma chamada do Master > Por Filial');
+  }catch(e){console.warn('[V10.30] hotfix falhou',e)}
 })();
 
 </script>
