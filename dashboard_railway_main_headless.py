@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_17_COMISSAO_CLICK_WHATSAPP_FIX
+# VERSAO: DASH2_0_V10_18_GERENTES_FILIAIS_FTP_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,8 +34,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.17"
-DASHBOARD_BUILD_TAG = "DASH2_0_V10_17_COMISSAO_CLICK_WHATSAPP_FIX"
+DASHBOARD_BUILD_VERSION = "V10.18"
+DASHBOARD_BUILD_TAG = "DASH2_0_V10_18_GERENTES_FILIAIS_FTP_FIX"
 
 def now_brasilia():
     return datetime.now(APP_TZ)
@@ -3425,6 +3425,30 @@ for _, row in df_vend.iterrows():
     linhas_txt.append(f"{login_fin} | {nome_exib} | {senha_atual} | {filial} | {tipo}")
 
 
+
+# ===== V10.18: helper de totais por filial antes do JS final =====
+def _get_filial_totais_v1018(filial):
+    """Retorna pendente/pago/total da filial sem depender da variável JS FILIAIS.
+    Corrige o erro name 'FILIAIS' is not defined na criação dos logins de gerentes.
+    """
+    try:
+        _filial = str(filial or '').strip().upper()
+        if 'df_vend' in globals() and getattr(df_vend, 'empty', True) is False:
+            _sub = df_vend[df_vend.get('filial_vendedor').astype(str).str.upper() == _filial]
+            if not _sub.empty:
+                _pend = float(_sub.get('pendente', 0).sum() or 0)
+                _pago = float(_sub.get('pago', 0).sum() or 0)
+                _total = float(_sub.get('total', 0).sum() or _pend)
+                return {'pendente': _pend, 'pago': _pago, 'total': _total}
+    except Exception:
+        pass
+    try:
+        if 'filiais_js' in globals() and isinstance(filiais_js, dict):
+            return filiais_js.get(str(filial or '').strip().upper(), {}) or {}
+    except Exception:
+        pass
+    return {'pendente': 0.0, 'pago': 0.0, 'total': 0.0}
+
 # ===== V10.10: garantir acessos de GERENTES vindos do SGI/Controle de Metas =====
 # Alguns gerentes aparecem no SGI apenas na meta de vendas como "NOME (GERF4)" e
 # podem não ter carteira de cobrança no relatório de contas a receber. Mesmo assim
@@ -3453,7 +3477,7 @@ def _ensure_gerente_access_v1010(nome_ger, filial_ger, login_sugerido):
         senha_ini = creds_salvas.get(f"{login_fin}_{filial_ger}") or creds_salvas.get(login_fin) or (login_fin.upper() + str(random.randint(100,999)))
         senha_atual = estado_ant.get("password") or senha_ini
         precisa_trocar = bool(estado_ant.get("must_change_password", senha_atual == senha_ini))
-        fil = FILIAIS.get(filial_ger, {}) if isinstance(FILIAIS, dict) else {}
+        fil = _get_filial_totais_v1018(filial_ger)
         credenciais[login_fin] = {
             "senha": senha_atual, "senha_inicial": senha_ini, "nome": nome_ger,
             "filial": filial_ger, "is_gerente": True,
@@ -3667,7 +3691,7 @@ def _v1011_final_force_manager_user(_login, _nome, _filial):
         }
         cred_state.setdefault('users', {})[_login] = _u
         auth_users[_login] = _u
-        _fil = FILIAIS.get(_filial, {}) if isinstance(FILIAIS, dict) else {}
+        _fil = _get_filial_totais_v1018(_filial)
         credenciais[_login] = {
             'senha': _pwd, 'senha_inicial': _u.get('initial_password') or _pwd,
             'nome': _nome, 'filial': _filial, 'is_gerente': True,
@@ -15473,7 +15497,7 @@ Preparamos condições especiais para você comemorar com a gente.
   window.abrirClientesSemMovimentoPaginaLeve=function(){const rows=currentRowsScope(); const w=window.open('about:blank','_blank'); if(!w){toast('Pop-up bloqueado.','warn');return;} const data=rows.map(r=>({idx:r._idx,cliente:r.cliente,filial:r.filial,cidade:r.cidade,dias:r.dias_sem_movimento,ultimo:r.ultimo_movimento,owner:(r._owner||ownerInfo(r)||{}).label||'',telefones:r.telefones||[],sent:isSentRow(r)})); const js=JSON.stringify(data).replace(/<\//g,'<\\/'); w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Clientes sem movimento</title><style>body{margin:0;background:#080a0f;color:#f4f6fb;font-family:Inter,Arial,sans-serif;padding:18px}.top{position:sticky;top:0;background:#111827;border:1px solid #334155;border-radius:16px;padding:14px;margin-bottom:14px}input{width:100%;padding:12px;border-radius:12px;border:1px solid #334155;background:#06080c;color:#fff}.row{display:grid;grid-template-columns:1.4fr .8fr .5fr auto;gap:12px;align-items:center;background:#111827;border:1px solid #293241;border-radius:14px;padding:12px;margin:8px 0}.muted{color:#94a3b8;font-size:12px}.wa{background:#15803d;color:white;border:0;border-radius:999px;padding:10px 14px;font-weight:900}.sent{opacity:.55}</style></head><body><div class="top"><h2>🧡 Clientes sem movimento · página leve</h2><div class="muted">Esta página abre separada para não pesar o dashboard principal. Total: <span id="total"></span></div><input id="q" placeholder="Buscar cliente, cidade, responsável" oninput="render()"></div><div id="list"></div><script>const rows=${js};function esc(s){return String(s??'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]))}function render(){const q=(document.getElementById('q').value||'').toLowerCase();const arr=rows.filter(r=>!q||JSON.stringify(r).toLowerCase().includes(q));document.getElementById('total').textContent=arr.length+' / '+rows.length;document.getElementById('list').innerHTML=arr.slice(0,300).map(r=>'<div class="row '+(r.sent?'sent':'')+'"><div><b>'+esc(r.cliente)+'</b><div class="muted">'+esc(r.filial)+' · '+esc(r.cidade)+' · '+esc(r.dias)+' dias · último '+esc(r.ultimo)+'</div></div><div><b>'+esc(r.owner)+'</b><div class="muted">Responsável</div></div><div>'+(r.sent?'✅ Enviado':'Pendente')+'</div><div>'+(r.telefones||[]).map(t=>'<button class="wa" onclick="window.opener&&window.opener.abrirWhatsReativacao('+r.idx+',\''+String(t).replace(/\D/g,'')+'\')">Whats '+esc(t)+'</button>').join(' ')+'</div></div>').join('')+(arr.length>300?'<div class="muted">Mostrando 300 primeiros. Use busca para filtrar.</div>':'')}</scr`+`ipt></body></html>`); w.document.close();};
   function patchCSMPageButton(){try{const box=document.getElementById('reativacaoSection')||document.querySelector('[data-tab="reativacao"]')||document.body; if(!box||document.getElementById('btnCSMLeve1013')) return; const h=[...document.querySelectorAll('h2,h3,.section-head')].find(x=>String(x.textContent||'').toLowerCase().includes('clientes sem movimento')); if(h){h.insertAdjacentHTML('afterend','<button id="btnCSMLeve1013" class="btn soft" style="margin:8px 0" onclick="abrirClientesSemMovimentoPaginaLeve()">🧡 Abrir clientes sem movimento em página leve</button>')}}catch(e){}}
   setTimeout(patchCSMPageButton,1200); setInterval(patchCSMPageButton,4000);
-  console.log('[V10.17] hotfix ativo:', TAG);
+  console.log('[V10.18] hotfix ativo:', TAG);
 })();
 </script>
 
@@ -15548,7 +15572,7 @@ Preparamos condições especiais para você comemorar com a gente.
 <script>
 (function(){
   const TAG='MDL_V1016_CSM_10_DIA_CREDIARISTA_FIX';
-  try{ window.DASHBOARD_BUILD_VERSION='V10.16'; }catch(e){}
+  try{ window.DASHBOARD_BUILD_VERSION='V10.18'; }catch(e){}
 
   // Evita que a aba Clientes sem movimento pese o dashboard principal: abre página leve direto.
   try{
@@ -15711,7 +15735,7 @@ Preparamos condições especiais para você comemorar com a gente.
     }
   }catch(e){console.warn(TAG,'override comissão clique WhatsApp V10.17',e)}
 
-  console.log('[V10.17] hotfix ativo:', TAG);
+  console.log('[V10.18] hotfix ativo:', TAG);
 })();
 </script>
 
@@ -16253,8 +16277,12 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
     try:
         print('\n📤 Enviando arquivos para o servidor FTP...')
         ftp = ftplib.FTP()
-        ftp.connect(FTP_HOST, 21, timeout=30)
+        ftp.connect(FTP_HOST, 21, timeout=90)  # V10.18: timeout maior para evitar falha em upload FTP
         ftp.login(FTP_USER, FTP_PASS)
+        try:
+            ftp.sock.settimeout(90)
+        except Exception:
+            pass
         ftp.encoding = 'utf-8'
         try:
             ftp.cwd(FTP_DIR)
@@ -16394,7 +16422,7 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
         ftp.quit()
         print('✅ Upload concluído → https://moveisdolar.com.br/colaborador/')
     except Exception as e:
-        print(f'⚠️ Erro no upload FTP: {e}')
+        print(f'⚠️ Erro no upload FTP: {e} — arquivos foram gerados localmente no Railway, mas podem não ter sido publicados no site. Tente novamente ou rode o main de novo.')
 else:
     print('\nℹ️ FTP não configurado. Envie manualmente:')
     print(f'   {html_path} → {FTP_DIR}/dashboard_vendedores.html')
