@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_23_GERENTES_REC_FILIAL_TOTAL_FIX
+# VERSAO: DASH2_0_V10_24_GER_DINAMICO_SEM_NOME_FIXO_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,7 +34,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.23"
+DASHBOARD_BUILD_VERSION = "V10.24"
 DASHBOARD_BUILD_TAG = "DASH2_0_V10_20_RELATORIOS_JULHO_FTP_FIX"
 
 def now_brasilia():
@@ -3449,20 +3449,60 @@ def _get_filial_totais_v1018(filial):
         pass
     return {'pendente': 0.0, 'pago': 0.0, 'total': 0.0}
 
-# ===== V10.10: garantir acessos de GERENTES vindos do SGI/Controle de Metas =====
-# Alguns gerentes aparecem no SGI apenas na meta de vendas como "NOME (GERF4)" e
-# podem não ter carteira de cobrança no relatório de contas a receber. Mesmo assim
-# precisam de login no dashboard, sempre apontando para o painel da FILIAL inteira.
-GERENTES_FIXOS_SGI_V1010 = [
-    ("SANDY OLIVEIRA DA SILVA", "F1", "sandy"),
-    ("GERENTE F2", "F2", "gerente"),
-    ("EVA MARIA RODRIGUES DE ALMEIDA", "F3", "eva"),
-    ("YASMIM OLIVEIRA SANTOS", "F4", "yasmim"),
-    ("GRACIELLE DE FATIMA MARCONDES", "F5", "gracielle"),
-    ("VALDECI DA COSTA", "F6", "valdeci"),
-    ("JEANE PEREIRA MACHADO", "F8", "jeane"),
-    ("AMANDA SCHVIK DE OLIVEIRA", "F9", "amanda"),
-]
+# ===== V10.24: garantir acessos de GERENTES de forma DINÂMICA =====
+# Regra oficial MDL:
+#   - Se o nome vindo do SGI/Metas tiver tag (GERFx), esse usuário é GERENTE da filial Fx.
+#   - O acesso/cobranças/recebimentos/vendas/serviços/comissão do gerente é sempre da FILIAL inteira.
+#   - Não existe regra travada por nome específico (ex.: Yasmim). Se trocar o gerente, basta o novo nome vir como (GERFx).
+#   - O login sugerido é o primeiro nome normalizado, mas se o Master já alterou login/senha no dashboard,
+#     _buscar_login_existente_por_nome_filial preserva o acesso existente.
+
+def _v1024_login_sugerido_gerente(nome_ger, filial_ger):
+    login = normalizar_login(limpar_nome_display(nome_ger))
+    return login or f"gerente_{str(filial_ger or '').lower()}"
+
+
+def _v1024_coletar_gerentes_dinamicos_sgi():
+    ger = {}
+
+    def add(nome, filial):
+        nome_limpo = limpar_nome_display(nome)
+        filial = str(filial or '').strip().upper()
+        if not nome_limpo or not filial or filial == 'FDEP':
+            return
+        chave = f"{_v23_norm_name_key(nome_limpo)}_{filial}"
+        ger[chave] = (nome_limpo, filial, _v1024_login_sugerido_gerente(nome_limpo, filial))
+
+    # 1) Carteira/relatório principal: nome com (GERFx) ou linha já marcada como gerente.
+    try:
+        if 'df_vend' in globals() and getattr(df_vend, 'empty', True) is False:
+            for _, _r in df_vend.iterrows():
+                _nome = str(_r.get('nome_exibicao', _r.get('vendedor', '')) or '')
+                _filial = str(_r.get('filial_vendedor', '') or '').upper()
+                _is_ger = bool(_r.get('is_gerente')) or bool(re.search(r"\(\s*GER\s*F\s*\d+\s*\)", _nome, flags=re.I))
+                if _is_ger:
+                    if not _filial:
+                        _filial, _ = extrair_filial_nome(_nome)
+                    add(_nome, _filial)
+    except Exception as _e:
+        print(f"⚠️ V10.24 falha lendo gerentes do df_vend: {_e}")
+
+    # 2) Metas de vendas/serviços: quando alguém aparece como NOME (GERFx), cria/atualiza acesso automaticamente.
+    try:
+        for _u in (_usuarios_vendas_auto or []):
+            if _u.get('is_gerente'):
+                add(_u.get('nome'), _u.get('filial'))
+    except Exception as _e:
+        print(f"⚠️ V10.24 falha lendo gerentes das metas: {_e}")
+
+    return list(ger.values())
+
+
+GERENTES_FIXOS_SGI_V1010 = _v1024_coletar_gerentes_dinamicos_sgi()
+if GERENTES_FIXOS_SGI_V1010:
+    print('✅ V10.24 gerentes dinâmicos por (GERFx): ' + '; '.join([f"{n} ({f}) login={l}" for n, f, l in GERENTES_FIXOS_SGI_V1010]))
+else:
+    print('ℹ️ V10.24: nenhum gerente dinâmico (GERFx) encontrado nesta execução.')
 
 def _ensure_gerente_access_v1010(nome_ger, filial_ger, login_sugerido):
     try:
@@ -15223,15 +15263,10 @@ Preparamos condições especiais para você comemorar com a gente.
   function sentStats1011(){const out={}; for(const x of reatLogs1011()){const k=logKey1011(x); if(!k) continue; const dt=logDt1011(x); const d=logIsoDate1011(x); const st=out[k]||(out[k]={qtd:0,ultimo:'',primeiro:'',ultimo_iso:'',logs:[]}); st.qtd++; st.logs.push(x); if(!st.primeiro || dt<st.primeiro) st.primeiro=dt; if(!st.ultimo || dt>st.ultimo){st.ultimo=dt; st.ultimo_iso=d;} } return out;}
   window.mdlV1011SentStatsReat=sentStats1011;
 
-  // Fallback visual/de login para gerente que trocou de vendedora para gerente.
-  function ensureYasmim1011(){try{
-    const login='yasmim';
-    const user={login,password:'YASMIM123',initial_password:'YASMIM123',must_change_password:true,nome:'YASMIM OLIVEIRA SANTOS',filial:'F4',is_gerente:true,is_terceiro:false,is_crediarista:false,is_viewer:false,status_operacional:'ativo',access_disabled:false,participa_cobrancas:true,participa_sem_movimento:true,participa_aniversariantes:true,participa_murais:true,email_recuperacao:'sac@moveisdolar.com.br'};
-    window.CREDS=window.CREDS||{}; window.AUTH_STATE=window.AUTH_STATE||{}; AUTH_STATE.users=AUTH_STATE.users||{};
-    if(!CREDS[login]) CREDS[login]={senha:user.password,senha_inicial:user.initial_password,nome:user.nome,filial:user.filial,is_gerente:true,pendente:0,pago:0,total:0,perc_filial:100,status_operacional:'ativo',access_disabled:false,participa_cobrancas:true,participa_sem_movimento:true,participa_aniversariantes:true,participa_murais:true};
-    if(!AUTH_STATE.users[login]) AUTH_STATE.users[login]=user;
-  }catch(e){console.warn(TAG,'ensureYasmim',e)}}
-  ensureYasmim1011();
+  // V10.24: removido fallback por nome fixo. Gerente agora vem somente da regra dinâmica (GERFx)
+  // publicada no AUTH_STATE/CREDS pelo backend. Se trocar gerente, basta o novo nome vir no SGI como (GERFx).
+  function ensureGerenteDinamico1011(){return true;}
+  ensureGerenteDinamico1011();
 
   // Lista completa de enviados hoje no Master: cliente, quem enviou, data/hora, contador.
   window.mdlV1011OpenEnviadosReativacao=function(filialFiltro=''){
@@ -16077,11 +16112,11 @@ Preparamos condições especiais para você comemorar com a gente.
 
 
 <script>
-// ===== V10.23: gerente logado usa RECEBIMENTOS da FILIAL inteira, sem chave/login individual =====
+// ===== V10.24: gerente logado usa RECEBIMENTOS da FILIAL inteira, sem chave/login individual =====
 // Corrige YASMIM/GERF4: ao entrar com login de gerente, a tela é Filial F4 e a meta/faixas
 // somam todos os recebimentos da F4 (Cibele + crediarista + gerente + demais origens da filial).
 (function(){
-  const TAG='[V10.23 gerente recebimentos filial total]';
+  const TAG='[V10.24 gerente recebimentos filial total]';
   try{
     function norm(v){try{return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,' ').trim().toUpperCase()}catch(e){return String(v||'').trim().toUpperCase()}}
     function fil(v){
@@ -16231,9 +16266,9 @@ Preparamos condições especiais para você comemorar com a gente.
       };
     }
 
-    try{window.DASHBOARD_BUILD_VERSION='V10.23'}catch(e){}
+    try{window.DASHBOARD_BUILD_VERSION='V10.24'}catch(e){}
     console.log(TAG,'ativo: login gerente usa recebimentos/cobranças/meta da filial inteira');
-  }catch(e){console.warn('[V10.23] hotfix falhou',e)}
+  }catch(e){console.warn('[V10.24] hotfix falhou',e)}
 })();
 </script>
 
@@ -17180,4 +17215,6 @@ driver.quit()
 
 # MDL_V10_22_GERENTES_FILIAL_TOTAL_FIX: gerente/GERFx abre e calcula sempre como filial completa.
 
-# MDL_V10_23_GERENTES_REC_FILIAL_TOTAL_FIX: gerente logado usa recebimentos/meta da filial inteira, sem chave/login individual.
+# MDL_V10_24_GER_DINAMICO_SEM_NOME_FIXO_FIX: gerente logado usa recebimentos/meta da filial inteira, sem chave/login individual.
+
+# MDL_V10_24_GER_DINAMICO_SEM_NOME_FIXO_FIX: regra dinâmica por (GERFx), sem gerente travado por nome.
