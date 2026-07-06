@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_24_GER_DINAMICO_SEM_NOME_FIXO_FIX
+# VERSAO: DASH2_0_V10_25_GERENTES_FIXOS_POR_FILIAL_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,7 +34,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.24"
+DASHBOARD_BUILD_VERSION = "V10.25"
 DASHBOARD_BUILD_TAG = "DASH2_0_V10_20_RELATORIOS_JULHO_FTP_FIX"
 
 def now_brasilia():
@@ -3753,6 +3753,126 @@ def _v1011_final_force_manager_user(_login, _nome, _filial):
 
 for _nome_ger, _fil_ger, _login_ger in GERENTES_FIXOS_SGI_V1010:
     _v1011_final_force_manager_user(_login_ger, _nome_ger, _fil_ger)
+
+# ===== V10.25: GERENTES FIXOS POR FILIAL (sem depender do nome vir no relatório) =====
+# Regra nova MDL:
+#   - O acesso principal do gerente é sempre GERENTE F1/F2/F3... por filial.
+#   - Login fixo: gerentef01, gerentef02, gerentef03, gerentef04, gerentef05, gerentef06, gerentef08, gerentef09.
+#   - O nome da pessoa atual pode ser salvo pelo Master em Senhas > Gerentes por filial.
+#   - Se o SGI trouxer alguém com (GERF#), usamos esse nome como sugestão, mas o login fixo continua.
+#   - Assim, ao trocar gerente, não some login e não depende da meta/vendedor aparecer no relatório.
+GERENTES_FILIAIS_FIXAS_V1025 = ['F1','F2','F3','F4','F5','F6','F8','F9']
+GERENTES_DINAMICOS_POR_FILIAL_V1025 = {}
+try:
+    for _nome_din, _fil_din, _login_din in (GERENTES_FIXOS_SGI_V1010 or []):
+        _fil_din = str(_fil_din or '').strip().upper()
+        if _fil_din:
+            GERENTES_DINAMICOS_POR_FILIAL_V1025[_fil_din] = limpar_nome_display(_nome_din)
+except Exception:
+    GERENTES_DINAMICOS_POR_FILIAL_V1025 = {}
+
+def _login_gerente_filial_v1025(filial):
+    _fil = str(filial or '').strip().upper()
+    _num = re.sub(r'\D+', '', _fil)
+    if not _num:
+        return 'gerentef'
+    return f"gerentef{int(_num):02d}"
+
+def _nome_gerente_filial_v1025(filial):
+    _fil = str(filial or '').strip().upper()
+    _login = _login_gerente_filial_v1025(_fil)
+    try:
+        # 1) Nome salvo manualmente pelo Master no próprio usuário fixo.
+        _old = ((cred_state.get('users') or {}).get(_login) or {}) if isinstance(cred_state, dict) else {}
+        _nome_old = limpar_nome_display(_old.get('nome') or '')
+        if _nome_old and not re.fullmatch(r'GERENTE\s+' + re.escape(_fil), _nome_old, flags=re.I):
+            return _nome_old
+    except Exception:
+        pass
+    try:
+        # 2) Mapa dedicado, caso exista em versões futuras.
+        _map = cred_state.get('gerentes_filiais') or {}
+        _cfg = _map.get(_fil) or {}
+        _nome_cfg = limpar_nome_display(_cfg.get('nome') or '') if isinstance(_cfg, dict) else ''
+        if _nome_cfg:
+            return _nome_cfg
+    except Exception:
+        pass
+    try:
+        # 3) Nome detectado automaticamente no SGI/metas por (GERF#).
+        _nome_din = limpar_nome_display(GERENTES_DINAMICOS_POR_FILIAL_V1025.get(_fil) or '')
+        if _nome_din:
+            return _nome_din
+    except Exception:
+        pass
+    return f"GERENTE {_fil}"
+
+def _ensure_gerente_filial_fixo_v1025(filial):
+    try:
+        _filial = str(filial or '').strip().upper()
+        _login = _login_gerente_filial_v1025(_filial)
+        _nome = _nome_gerente_filial_v1025(_filial)
+        _old = ((cred_state.get('users') or {}).get(_login) or {}) if isinstance(cred_state, dict) else {}
+        _pwd = _old.get('password') or creds_salvas.get(f"{_login}_{_filial}") or creds_salvas.get(_login) or (_login.upper() + '123')
+        _must = bool(_old.get('must_change_password', not bool(_old.get('password'))))
+        _fil = _get_filial_totais_v1018(_filial)
+        _u = {
+            **_old,
+            'login': _login,
+            'password': _pwd,
+            'initial_password': _old.get('initial_password') or _pwd,
+            'must_change_password': _must,
+            'nome': _nome,
+            'filial': _filial,
+            'is_gerente': True,
+            'is_gerente_filial_fixo': True,
+            'is_terceiro': False,
+            'is_crediarista': False,
+            'is_viewer': False,
+            'email_recuperacao': EMAIL_RECUPERACAO,
+            'status_operacional': str(_old.get('status_operacional') or 'ativo'),
+            'access_disabled': bool(_old.get('access_disabled', False)),
+            'participa_cobrancas': bool(_old.get('participa_cobrancas', True)),
+            'participa_sem_movimento': bool(_old.get('participa_sem_movimento', True)),
+            'participa_aniversariantes': bool(_old.get('participa_aniversariantes', True)),
+            'participa_murais': bool(_old.get('participa_murais', True)),
+        }
+        cred_state.setdefault('users', {})[_login] = _u
+        auth_users[_login] = _u
+        credenciais[_login] = {
+            'senha': _pwd,
+            'senha_inicial': _u.get('initial_password') or _pwd,
+            'nome': _nome,
+            'filial': _filial,
+            'is_gerente': True,
+            'is_gerente_filial_fixo': True,
+            'pendente': round(float(_fil.get('pendente', 0) or 0), 2),
+            'pago': round(float(_fil.get('pago', 0) or 0), 2),
+            'total': round(float(_fil.get('total', _fil.get('pendente', 0)) or 0), 2),
+            'perc_filial': 100.0,
+            'status_operacional': _u.get('status_operacional','ativo'),
+            'access_disabled': bool(_u.get('access_disabled', False)),
+            'participa_cobrancas': bool(_u.get('participa_cobrancas', True)),
+            'participa_sem_movimento': bool(_u.get('participa_sem_movimento', True)),
+            'participa_aniversariantes': bool(_u.get('participa_aniversariantes', True)),
+            'participa_murais': bool(_u.get('participa_murais', True)),
+        }
+        linha = f"{_login} | {_nome} | {_pwd} | {_filial} | GERENTE-FILIAL"
+        linhas_txt[:] = [x for x in linhas_txt if not str(x).startswith(_login + ' | ')]
+        linhas_txt.append(linha)
+        _k = _colab_status_key_py(_nome, _filial, True)
+        _st_prev = (_status_map_final.get(_k) or {}) if isinstance(_status_map_final, dict) else {}
+        _st = _colab_default_status_py(_login, _nome, _filial, True)
+        _st.update(_st_prev)
+        _st.update({'login': _login, 'nome': _nome, 'filial': _filial, 'tipo': 'Gerente', 'status': _u.get('status_operacional','ativo')})
+        _status_map_final[_k] = _st
+        cred_state.setdefault('gerentes_filiais', {})[_filial] = {'login': _login, 'nome': _nome, 'filial': _filial, 'updated_by': 'V10.25'}
+        print(f"✅ V10.25 gerente fixo da filial garantido: {_filial} login={_login} nome={_nome}")
+    except Exception as _e:
+        print(f"⚠️ V10.25 falha garantindo gerente fixo {filial}: {_e}")
+
+for _filial_fixa_v1025 in GERENTES_FILIAIS_FIXAS_V1025:
+    _ensure_gerente_filial_fixo_v1025(_filial_fixa_v1025)
 
 cred_state["colaborador_status"] = _status_map_final
 cred_state["director"] = {
@@ -12060,6 +12180,49 @@ async function adminSalvarStatusColaborador(login){
   }
 }
 
+function gerentesFiliaisFixos(){
+  const filiais=['F1','F2','F3','F4','F5','F6','F8','F9'];
+  const users=AUTH_STATE?.users||{};
+  return filiais.map(f=>{
+    const n=String(f).replace(/\D/g,'');
+    const login='gerentef'+String(Number(n)).padStart(2,'0');
+    const u=users[login]||{};
+    return {filial:f,login,nome:u.nome||('GERENTE '+f),password:u.password||'',must_change_password:!!u.must_change_password,user:u};
+  });
+}
+function renderGerentesFiliaisPanel(){
+  const rows=gerentesFiliaisFixos().map(g=>{
+    const dom=_senhaDomKey(g.login);
+    return `<tr>
+      <td><strong>${esc(g.filial)}</strong><div class="small muted">Conta fixa da filial</div></td>
+      <td><code>${esc(g.login)}</code></td>
+      <td><input id="ger_nome_${dom}" value="${esc(g.nome)}" placeholder="Nome do gerente atual"></td>
+      <td>${g.must_change_password?'<span class="mini-chip warn">Precisa trocar</span>':'<span class="mini-chip ok">Ativa</span>'}</td>
+      <td><input id="ger_pwd_${dom}" placeholder="Nova senha"></td>
+      <td style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn primary" onclick="adminSalvarGerenteFilial('${g.login}')">💾 Salvar</button><button class="btn soft" onclick="adminMarcarTroca('${g.login}')">🔁 Exigir troca</button></td>
+    </tr>`;
+  }).join('');
+  return `<div class="glass panel" style="margin-bottom:14px;border-color:rgba(59,130,246,.35)">
+    <div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">🏬 Gerentes por filial</h2><div class="hint">Acesso fixo por filial. Troque só o nome do gerente atual; o login continua o mesmo e sempre abre a filial inteira.</div></div></div>
+    <div class="senhas-table-wrap"><table class="senhas-table"><thead><tr><th>Filial</th><th>Login fixo</th><th>Nome do gerente atual</th><th>Status</th><th>Nova senha</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div>
+  </div>`;
+}
+async function adminSalvarGerenteFilial(login){
+  const dom=_senhaDomKey(login);
+  const nome=(document.getElementById(`ger_nome_${dom}`)?.value||'').trim();
+  const senha=(document.getElementById(`ger_pwd_${dom}`)?.value||'').trim();
+  if(!nome){toast('Informe o nome do gerente atual.','warn'); return;}
+  try{
+    const fd=new FormData(); fd.append('action','admin_update_user_name'); fd.append('login',login); fd.append('nome',nome);
+    const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json();
+    if(!j.ok) throw new Error(j.error||'erro_nome');
+    if(senha){
+      if(senha.length<4){toast('Senha deve ter pelo menos 4 caracteres. Nome foi salvo.','warn');}
+      else{const fd2=new FormData(); fd2.append('action','admin_set_password'); fd2.append('login',login); fd2.append('new_password',senha); fd2.append('must_change_password','0'); await fetch(API_CRED,{method:'POST',body:fd2});}
+    }
+    await carregarCredenciaisOnline(); renderSenhasTab(); toast('Gerente da filial salvo. Rode o dashboard para recalcular/publicar tudo.','success');
+  }catch(e){toast('Não consegui salvar gerente da filial.','warn')}
+}
 function renderSenhasTab(){
   const users=Object.values(AUTH_STATE?.users||{}).sort((a,b)=>String(a.nome||'').localeCompare(String(b.nome||''),'pt-BR'));
   const reqs=[...(AUTH_STATE?.password_reset_requests||[])].reverse();
@@ -12099,6 +12262,7 @@ function renderSenhasTab(){
     </div>`).join('')}</div>`:''}
   </div>
   <div class="glass panel admin-accounts-line" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">👑 Contas administrativas</h2><div class="hint">Contas administrativas em linha para caber melhor na tela.</div></div></div><div class="senhas-table-wrap"><table class="senhas-table"><thead><tr><th>Usuário</th><th>Login atual</th><th>Alterar login</th><th>Filial</th><th>Tipo</th><th>Status</th><th>Senha ativa atual</th><th>Nova senha</th><th>Ações</th></tr></thead><tbody>${renderSenhaRow(AUTH_STATE?.director||{login:'diretorcomercial',nome:'Diretor Comercial',must_change_password:true}, true)}</tbody></table></div></div>
+  ${renderGerentesFiliaisPanel()}
   <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">➕ Criar usuário de acesso</h2><div class="hint">Aqui você cria apenas o login/senha de acesso. Depois vá em Metas > Crediaristas configuráveis para vincular esse usuário à filial/base e ao percentual.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Login</label><input id="newUserLogin" placeholder="ex: crediaristaf08"></div><div class="input-card"><label>Nome</label><input id="newUserNome" placeholder="ex: CREDIARISTAF08"></div><div class="input-card"><label>Filial</label><input id="newUserFilial" placeholder="ex: F8"></div><div class="input-card"><label>Senha inicial</label><input id="newUserSenha" placeholder="mín. 4 caracteres"></div></div><div class="form-grid bonus" style="margin-top:10px"><div class="input-card"><label>Tipo</label><select id="newUserTipo"><option value="crediarista">Crediarista</option><option value="cobranca">Cobrança</option></select></div></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="adminCriarUsuarioCobranca()">💾 Criar usuário</button></div><div id="newUserMsg" class="note" style="margin-top:10px"></div></div>
   ${renderColaboradorStatusPanel(users)}
   <div class="section-head"><div><h2>👥 Usuários do dashboard</h2><div class="hint">Visualização em linha para conferir login, senha ativa, status e alterar rapidamente.</div></div></div>
@@ -16266,7 +16430,7 @@ Preparamos condições especiais para você comemorar com a gente.
       };
     }
 
-    try{window.DASHBOARD_BUILD_VERSION='V10.24'}catch(e){}
+    try{window.DASHBOARD_BUILD_VERSION='V10.25'}catch(e){}
     console.log(TAG,'ativo: login gerente usa recebimentos/cobranças/meta da filial inteira');
   }catch(e){console.warn('[V10.24] hotfix falhou',e)}
 })();
@@ -16686,6 +16850,40 @@ if ($action === 'admin_change_login') {
   }
   save_all($file, $data);
   echo json_encode(['ok'=>true,'old_login'=>$old,'new_login'=>$new,'data'=>$data], JSON_UNESCAPED_UNICODE); exit;
+}
+if ($action === 'admin_update_user_name') {
+  ensure_colab_status($data);
+  $login = strtolower(trim($_POST['login'] ?? ''));
+  $nome = trim((string)($_POST['nome'] ?? ''));
+  if (!$login || !$nome) { echo json_encode(['ok'=>false,'error'=>'dados_invalidos']); exit; }
+  $ref = resolve_login_ref($data, $login);
+  if (!$ref || $ref['type'] !== 'user') { echo json_encode(['ok'=>false,'error'=>'login_nao_encontrado']); exit; }
+  $key = $ref['key'];
+  $oldNome = $data['users'][$key]['nome'] ?? $login;
+  $data['users'][$key]['nome'] = $nome;
+  $data['users'][$key]['nome_atualizado_em'] = date('c');
+  $filial = strtoupper(trim((string)($data['users'][$key]['filial'] ?? '')));
+  if (!empty($data['users'][$key]['is_gerente'])) {
+    if (!isset($data['gerentes_filiais']) || !is_array($data['gerentes_filiais'])) $data['gerentes_filiais'] = [];
+    $data['gerentes_filiais'][$filial] = ['login'=>$key,'nome'=>$nome,'filial'=>$filial,'updated_at'=>date('c')];
+  }
+  $sk = colab_status_key($nome, $filial, !empty($data['users'][$key]['is_gerente']));
+  $data['colaborador_status'][$sk] = [
+    'login'=>$key, 'nome'=>$nome, 'filial'=>$filial,
+    'tipo'=>!empty($data['users'][$key]['is_gerente'])?'Gerente':(!empty($data['users'][$key]['is_crediarista'])?'Crediarista':(!empty($data['users'][$key]['is_terceiro'])?'Cobrança terceiro':'Vendedor')),
+    'status'=>$data['users'][$key]['status_operacional'] ?? 'ativo',
+    'participa_cobrancas'=>$data['users'][$key]['participa_cobrancas'] ?? true,
+    'participa_sem_movimento'=>$data['users'][$key]['participa_sem_movimento'] ?? true,
+    'participa_aniversariantes'=>$data['users'][$key]['participa_aniversariantes'] ?? true,
+    'participa_murais'=>$data['users'][$key]['participa_murais'] ?? true,
+    'data_entrada'=>$data['users'][$key]['data_entrada'] ?? '',
+    'data_saida'=>$data['users'][$key]['data_saida'] ?? '',
+    'substituto'=>$data['users'][$key]['substituto'] ?? '',
+    'obs'=>$data['users'][$key]['obs'] ?? '',
+    'updated_at'=>date('c')
+  ];
+  save_all($file, $data);
+  echo json_encode(['ok'=>true,'data'=>$data,'old_nome'=>$oldNome,'new_nome'=>$nome], JSON_UNESCAPED_UNICODE); exit;
 }
 if ($action === 'change_password') {
   $login = strtolower(trim($_POST['login'] ?? '')); $current = strval($_POST['current_password'] ?? ''); $new = strval($_POST['new_password'] ?? '');
@@ -17218,3 +17416,5 @@ driver.quit()
 # MDL_V10_24_GER_DINAMICO_SEM_NOME_FIXO_FIX: gerente logado usa recebimentos/meta da filial inteira, sem chave/login individual.
 
 # MDL_V10_24_GER_DINAMICO_SEM_NOME_FIXO_FIX: regra dinâmica por (GERFx), sem gerente travado por nome.
+
+# MDL_V10_25_GERENTES_FIXOS_POR_FILIAL_FIX: logins fixos gerentef01..gerentef09, nome atual editável pelo Master.
