@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_15_PRINT_CSM_STANDALONE_FIX
+# VERSAO: DASH2_0_V10_17_COMISSAO_CLICK_WHATSAPP_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,8 +34,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.15"
-DASHBOARD_BUILD_TAG = "DASH2_0_V10_15_PRINT_CSM_STANDALONE_FIX"
+DASHBOARD_BUILD_VERSION = "V10.17"
+DASHBOARD_BUILD_TAG = "DASH2_0_V10_17_COMISSAO_CLICK_WHATSAPP_FIX"
 
 def now_brasilia():
     return datetime.now(APP_TZ)
@@ -1978,7 +1978,7 @@ def _clicar_gerar_relatorio_principal():
 
 def _tentar_download_direto_xls_contas(url_atual=None):
     """
-    V10.15: Railway/Chrome headless às vezes abre a URL /impressao?formato=xls,
+    V10.16: Railway/Chrome headless às vezes abre a URL /impressao?formato=xls,
     mas não grava o anexo no /tmp. Quando isso acontecer, baixa o mesmo XLS
     diretamente com urllib usando os cookies da sessão Selenium.
     """
@@ -2029,7 +2029,7 @@ def _tentar_download_direto_xls_contas(url_atual=None):
         if cookies:
             headers["Cookie"] = "; ".join(cookies)
 
-        print(f"🌐 V10.15 fallback: baixando XLS direto da URL do SGI: {url_dl}")
+        print(f"🌐 V10.16 fallback: baixando XLS direto da URL do SGI: {url_dl}")
         req = _urlreq.Request(url_dl, headers=headers, method="GET")
         ctx = _ssl_mod._create_unverified_context()
         with _urlreq.urlopen(req, timeout=180, context=ctx) as resp:
@@ -2037,20 +2037,20 @@ def _tentar_download_direto_xls_contas(url_atual=None):
             ctype = resp.headers.get("Content-Type", "")
 
         if not data or len(data) < 200:
-            print(f"⚠️ V10.15 fallback direto retornou arquivo pequeno/vazio: {len(data or b'')} bytes")
+            print(f"⚠️ V10.16 fallback direto retornou arquivo pequeno/vazio: {len(data or b'')} bytes")
             return None
         inicio = data[:120].lstrip().lower()
         # Se SGI devolveu tela HTML de login/erro, não usa como XLS.
         if (inicio.startswith(b"<!doctype") or inicio.startswith(b"<html")) and b"<table" not in data[:5000].lower():
-            print(f"⚠️ V10.15 fallback direto recebeu HTML sem tabela. content-type={ctype} bytes={len(data)}")
+            print(f"⚠️ V10.16 fallback direto recebeu HTML sem tabela. content-type={ctype} bytes={len(data)}")
             return None
 
         with open(destino, "wb") as fh:
             fh.write(data)
-        print(f"✅ V10.15 fallback direto OK: {destino} ({len(data)} bytes, content-type={ctype})")
+        print(f"✅ V10.16 fallback direto OK: {destino} ({len(data)} bytes, content-type={ctype})")
         return destino
     except Exception as e:
-        print(f"⚠️ V10.15 fallback download direto falhou: {e}")
+        print(f"⚠️ V10.16 fallback download direto falhou: {e}")
         return None
 
 
@@ -2068,7 +2068,7 @@ def _ler_contas_receber_xls(caminho):
     try:
         tabelas = pd.read_html(caminho, decimal=',', thousands='.')
         if tabelas:
-            print(f"✅ V10.15 leitura via read_html: {len(tabelas)} tabela(s)")
+            print(f"✅ V10.16 leitura via read_html: {len(tabelas)} tabela(s)")
             return tabelas[0]
     except Exception as e:
         erros.append(f"read_html: {e}")
@@ -7209,6 +7209,159 @@ def carregar_clientes_sem_movimento_local():
             actionable.append(rr)
 
     print(f"🧡 Clientes sem movimento V9.2: {len(actionable)} acionável(is) de {len(final_com_key)} na base | novos={novos_count} pendentes_sem_envio={pendentes_count} retorno_{cooldown_dias}d={retorno_count} aguardando_reenvio={aguardando_count}")
+
+    # ===== V10.16: lote diário leve — máximo 10 clientes por usuário por dia =====
+    # Mantém a BASE completa arquivada no FTP, mas publica no dashboard apenas o lote do dia.
+    # Se o main rodar de novo depois que alguém enviou WhatsApp, o lote do dia é reaproveitado,
+    # evitando liberar mais 10 no mesmo dia para o mesmo usuário.
+    actionable_sem_limite_v1016 = list(actionable)
+    csm_lote_path_v1016 = os.path.join(pasta, 'clientes_sem_movimento_lote_diario.json')
+    csm_hist_path_v1016 = os.path.join(pasta, f"clientes_sem_movimento_historico_{now_brasilia().strftime('%Y-%m-%d')}.json")
+    hoje_lote_v1016 = now_brasilia().strftime('%Y-%m-%d')
+    max_por_usuario_v1016 = int(os.getenv('CSM_MAX_CLIENTES_USUARIO_DIA', '10') or '10')
+
+    def _js_hash_py_v1016(txt):
+        h = 0
+        for ch in str(txt or ''):
+            h = ((h << 5) - h + ord(ch)) & 0xffffffff
+            if h >= 0x80000000:
+                h -= 0x100000000
+        return h
+
+    def _reat_user_key_py_v1016(nome, filial):
+        return f"{_colab_norm_key_py(nome)}_{str(filial or '').upper()}"
+
+    def _reat_destinatarios_filial_py_v1016(filial):
+        filial = str(filial or '').upper().strip()
+        arr = []
+        try:
+            for login_u, u in (auth_users or {}).items():
+                if not isinstance(u, dict):
+                    continue
+                if str(u.get('filial') or '').upper().strip() != filial:
+                    continue
+                if bool(u.get('is_terceiro')) or bool(u.get('is_crediarista')) or bool(u.get('is_viewer')):
+                    continue
+                if bool(u.get('access_disabled')) or str(u.get('status_operacional') or 'ativo').lower() in {'inativo','bloqueado','desligado'}:
+                    continue
+                if u.get('participa_sem_movimento') is False:
+                    continue
+                nome_u = str(u.get('nome') or login_u or '').strip()
+                if not nome_u:
+                    continue
+                if bool(u.get('is_gerente')):
+                    item = {'tipo':'gerente','nome':nome_u,'login':str(login_u).lower(),'filial':filial,'key':f'GERENTE_{filial}','label':f'Gerente {filial}'}
+                else:
+                    item = {'tipo':'vendedor','nome':nome_u,'login':str(login_u).lower(),'filial':filial,'key':_reat_user_key_py_v1016(nome_u, filial),'label':f'{nome_u} ({filial})'}
+                if item['key'] not in {x.get('key') for x in arr}:
+                    arr.append(item)
+        except Exception:
+            pass
+        if not arr:
+            arr = [{'tipo':'filial','nome':f'FILIAL {filial}','login':'','filial':filial,'key':f'GERENTE_{filial}','label':f'Filial {filial}'}]
+        return arr
+
+    def _owner_row_py_v1016(r):
+        filial = str((r or {}).get('filial') or 'F1').upper().strip()
+        arr = _reat_destinatarios_filial_py_v1016(filial)
+        raw = f"{str((r or {}).get('codigo') or '')}|{str((r or {}).get('cliente') or '')}|{filial}"
+        return arr[abs(_js_hash_py_v1016(raw)) % len(arr)] if arr else {'key':f'GERENTE_{filial}','label':f'Filial {filial}','filial':filial}
+
+    def _annot_owner_py_v1016(r):
+        rr = dict(r or {})
+        ow = _owner_row_py_v1016(rr)
+        rr['_owner_key_py'] = ow.get('key','')
+        rr['_owner_nome_py'] = ow.get('nome','')
+        rr['_owner_login_py'] = ow.get('login','')
+        rr['_owner_label_py'] = ow.get('label','')
+        return rr
+
+    def _load_lote_diario_v1016():
+        for path in [csm_lote_path_v1016]:
+            try:
+                if os.path.exists(path):
+                    with open(path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    if isinstance(data, dict) and data.get('data') == hoje_lote_v1016:
+                        return data
+            except Exception:
+                pass
+        try:
+            data = _ftp_json('clientes_sem_movimento_lote_diario.json', None)
+            if isinstance(data, dict) and data.get('data') == hoje_lote_v1016:
+                return data
+        except Exception:
+            pass
+        return None
+
+    _atual_por_key_v1016 = {}
+    for _r in actionable_sem_limite_v1016:
+        try:
+            for _k in _csm_all_keys_row(_r):
+                if _k:
+                    _atual_por_key_v1016[str(_k)] = _r
+        except Exception:
+            pass
+    _lote_reusado_v1016 = False
+    _lote_ant_v1016 = _load_lote_diario_v1016()
+    if isinstance(_lote_ant_v1016, dict) and isinstance(_lote_ant_v1016.get('clientes'), list) and _lote_ant_v1016.get('clientes'):
+        lote_rows = []
+        for oldr in _lote_ant_v1016.get('clientes') or []:
+            atual = None
+            try:
+                for kk in _csm_all_keys_row(oldr):
+                    atual = _atual_por_key_v1016.get(str(kk))
+                    if atual:
+                        break
+            except Exception:
+                atual = None
+            base_r = dict(atual or oldr)
+            # preserva o responsável do lote original para o usuário não perder a lista do dia
+            for kk in ['_owner_key_py','_owner_nome_py','_owner_login_py','_owner_label_py']:
+                if oldr.get(kk):
+                    base_r[kk] = oldr.get(kk)
+            lote_rows.append(base_r)
+        actionable = lote_rows
+        _lote_reusado_v1016 = True
+        print(f"🧡 V10.16: lote diário CSM reaproveitado ({len(actionable)} cliente(s)); não libero novos no mesmo dia.")
+    else:
+        por_owner = {}
+        for r in actionable_sem_limite_v1016:
+            rr = _annot_owner_py_v1016(r)
+            ok = rr.get('_owner_key_py') or 'SEM_OWNER'
+            por_owner.setdefault(ok, []).append(rr)
+        lote_rows = []
+        for ok, arr in sorted(por_owner.items()):
+            # prioriza mais tempo sem compra, depois nome, mas só 10 para cada usuário/gerente
+            arr = sorted(arr, key=lambda x: (-int(x.get('dias_sem_movimento') or 0), str(x.get('cliente') or '')))
+            lote_rows.extend(arr[:max_por_usuario_v1016])
+        actionable = sorted(lote_rows, key=lambda x: (str(x.get('filial','')), str(x.get('_owner_key_py','')), -int(x.get('dias_sem_movimento') or 0), str(x.get('cliente',''))))
+        print(f"🧡 V10.16: lote diário CSM criado com limite {max_por_usuario_v1016}/usuário: {len(actionable)} de {len(actionable_sem_limite_v1016)} acionáveis.")
+
+    _por_owner_count_v1016 = {}
+    for _r in actionable:
+        _ok = str(_r.get('_owner_key_py') or _owner_row_py_v1016(_r).get('key') or 'SEM_OWNER')
+        _por_owner_count_v1016[_ok] = _por_owner_count_v1016.get(_ok, 0) + 1
+    try:
+        _lote_payload_v1016 = {
+            'data': hoje_lote_v1016,
+            'gerado_em': now_brasilia().isoformat(),
+            'versao': DASHBOARD_BUILD_VERSION,
+            'limite_por_usuario_dia': max_por_usuario_v1016,
+            'lote_reusado': _lote_reusado_v1016,
+            'acionaveis_sem_limite': len(actionable_sem_limite_v1016),
+            'publicados_no_dashboard': len(actionable),
+            'por_usuario': _por_owner_count_v1016,
+            'clientes': actionable,
+        }
+        with open(csm_lote_path_v1016, 'w', encoding='utf-8') as f_lote:
+            json.dump(_lote_payload_v1016, f_lote, ensure_ascii=False, indent=2)
+        with open(csm_hist_path_v1016, 'w', encoding='utf-8') as f_hist_csm:
+            json.dump({**_lote_payload_v1016, 'base_total_arquivada': len(final_com_key), 'base_clientes': final_com_key}, f_hist_csm, ensure_ascii=False, indent=2)
+        print(f"💾 V10.16 lote/histórico CSM salvo: {os.path.basename(csm_lote_path_v1016)} + {os.path.basename(csm_hist_path_v1016)}")
+    except Exception as e:
+        print(f"⚠️ V10.16 não consegui salvar lote/histórico CSM: {e}")
+
     _seen_new = []
     for r in final_com_key:
         try:
@@ -7233,6 +7386,10 @@ def carregar_clientes_sem_movimento_local():
         "pendentes_sem_envio_total":pendentes_count,
         "retorno_30d_total":retorno_count,
         "aguardando_reenvio_total":aguardando_count,
+        "acionaveis_sem_limite_total":len(actionable_sem_limite_v1016) if 'actionable_sem_limite_v1016' in locals() else len(actionable),
+        "limite_por_usuario_dia":max_por_usuario_v1016 if 'max_por_usuario_v1016' in locals() else 10,
+        "lote_diario_reusado":bool(_lote_reusado_v1016) if '_lote_reusado_v1016' in locals() else False,
+        "publicados_no_dashboard":len(actionable),
         "seen_total":len(seen_union),
         "cooldown_dias":cooldown_dias,
         "gerado_em":now_brasilia().isoformat()
@@ -15243,9 +15400,9 @@ Preparamos condições especiais para você comemorar com a gente.
 
 
 <script>
-/* ===== V10.15: impressão 1 página + enviados CSM + download direto Contas a Receber ===== */
+/* ===== V10.16: impressão 1 página + enviados CSM + download direto Contas a Receber ===== */
 (function(){
-  const TAG='V10.15_DOWNLOAD_DIRETO_CONTAS_PRINT_CSM';
+  const TAG='V10.16_DOWNLOAD_DIRETO_CONTAS_PRINT_CSM';
   const esc=(window.esc)||function(s){return String(s??'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]))};
   const sleep=(window.sleep)||function(ms){return new Promise(r=>setTimeout(r,ms))};
   function logsArr(){try{return (typeof COB_LOGS!=='undefined' && Array.isArray(COB_LOGS))?COB_LOGS:(Array.isArray(window.COB_LOGS)?window.COB_LOGS:[])}catch(e){return []}}
@@ -15316,15 +15473,15 @@ Preparamos condições especiais para você comemorar com a gente.
   window.abrirClientesSemMovimentoPaginaLeve=function(){const rows=currentRowsScope(); const w=window.open('about:blank','_blank'); if(!w){toast('Pop-up bloqueado.','warn');return;} const data=rows.map(r=>({idx:r._idx,cliente:r.cliente,filial:r.filial,cidade:r.cidade,dias:r.dias_sem_movimento,ultimo:r.ultimo_movimento,owner:(r._owner||ownerInfo(r)||{}).label||'',telefones:r.telefones||[],sent:isSentRow(r)})); const js=JSON.stringify(data).replace(/<\//g,'<\\/'); w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Clientes sem movimento</title><style>body{margin:0;background:#080a0f;color:#f4f6fb;font-family:Inter,Arial,sans-serif;padding:18px}.top{position:sticky;top:0;background:#111827;border:1px solid #334155;border-radius:16px;padding:14px;margin-bottom:14px}input{width:100%;padding:12px;border-radius:12px;border:1px solid #334155;background:#06080c;color:#fff}.row{display:grid;grid-template-columns:1.4fr .8fr .5fr auto;gap:12px;align-items:center;background:#111827;border:1px solid #293241;border-radius:14px;padding:12px;margin:8px 0}.muted{color:#94a3b8;font-size:12px}.wa{background:#15803d;color:white;border:0;border-radius:999px;padding:10px 14px;font-weight:900}.sent{opacity:.55}</style></head><body><div class="top"><h2>🧡 Clientes sem movimento · página leve</h2><div class="muted">Esta página abre separada para não pesar o dashboard principal. Total: <span id="total"></span></div><input id="q" placeholder="Buscar cliente, cidade, responsável" oninput="render()"></div><div id="list"></div><script>const rows=${js};function esc(s){return String(s??'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]))}function render(){const q=(document.getElementById('q').value||'').toLowerCase();const arr=rows.filter(r=>!q||JSON.stringify(r).toLowerCase().includes(q));document.getElementById('total').textContent=arr.length+' / '+rows.length;document.getElementById('list').innerHTML=arr.slice(0,300).map(r=>'<div class="row '+(r.sent?'sent':'')+'"><div><b>'+esc(r.cliente)+'</b><div class="muted">'+esc(r.filial)+' · '+esc(r.cidade)+' · '+esc(r.dias)+' dias · último '+esc(r.ultimo)+'</div></div><div><b>'+esc(r.owner)+'</b><div class="muted">Responsável</div></div><div>'+(r.sent?'✅ Enviado':'Pendente')+'</div><div>'+(r.telefones||[]).map(t=>'<button class="wa" onclick="window.opener&&window.opener.abrirWhatsReativacao('+r.idx+',\''+String(t).replace(/\D/g,'')+'\')">Whats '+esc(t)+'</button>').join(' ')+'</div></div>').join('')+(arr.length>300?'<div class="muted">Mostrando 300 primeiros. Use busca para filtrar.</div>':'')}</scr`+`ipt></body></html>`); w.document.close();};
   function patchCSMPageButton(){try{const box=document.getElementById('reativacaoSection')||document.querySelector('[data-tab="reativacao"]')||document.body; if(!box||document.getElementById('btnCSMLeve1013')) return; const h=[...document.querySelectorAll('h2,h3,.section-head')].find(x=>String(x.textContent||'').toLowerCase().includes('clientes sem movimento')); if(h){h.insertAdjacentHTML('afterend','<button id="btnCSMLeve1013" class="btn soft" style="margin:8px 0" onclick="abrirClientesSemMovimentoPaginaLeve()">🧡 Abrir clientes sem movimento em página leve</button>')}}catch(e){}}
   setTimeout(patchCSMPageButton,1200); setInterval(patchCSMPageButton,4000);
-  console.log('[V10.15] hotfix ativo:', TAG);
+  console.log('[V10.17] hotfix ativo:', TAG);
 })();
 </script>
 
 
 <script>
-/* ===== V10.15: CSM fora do dashboard + impressão comissionamento 1 página mais legível ===== */
+/* ===== V10.16: CSM fora do dashboard + impressão comissionamento 1 página mais legível ===== */
 (function(){
-  const TAG='V10.15_PRINT_CSM_STANDALONE';
+  const TAG='V10.16_PRINT_CSM_STANDALONE';
   const esc=(window.esc)||function(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))};
   const sleep=(window.sleep)||function(ms){return new Promise(r=>setTimeout(r,ms))};
   function isAdmin(){try{return !!(usuarioAtual && (usuarioAtual.tipo==='master'||usuarioAtual.is_viewer||String(usuarioAtual.tipo||'').toLowerCase().includes('diretor')))}catch(e){return false}}
@@ -15362,7 +15519,7 @@ Preparamos condições especiais para você comemorar com a gente.
     const box=window.reativacaoSection||document.getElementById('reativacaoSection');
     if(!box) return;
     const rows=rowsScope(); const enviados=rows.filter(isSent).length; const baseMeta=(window.CLIENTES_SEM_MOVIMENTO_META||{}); const totalBase=Number(baseMeta.base_total||rows.length||0);
-    box.innerHTML=`<div class="section-head"><div><h2>🧡 Clientes sem movimento +45 dias <span class="note" style="color:#f59e0b">${esc(window.DASHBOARD_BUILD_VERSION||'V10.15')}</span></h2><div class="hint">Para manter o dashboard leve, esta lista abre em uma página separada.</div></div></div><div class="kpis" style="margin-bottom:14px">${typeof makeKpi==='function'?makeKpi('Para acionar',String(rows.length),'var(--amber-400)','Página leve separada'):''}${typeof makeKpi==='function'?makeKpi('Enviados hoje',String(enviados),'var(--green)','Clique e abra a página leve'):''}${typeof makeKpi==='function'?makeKpi('Base total',String(totalBase),'var(--blue)','Sem carregar no dashboard'):''}</div><div class="glass panel" style="border-color:rgba(52,211,153,.35);max-width:780px"><h3>🚀 Abrir lista em página leve</h3><div class="hint">A lista pesada não será montada dentro do dashboard. Use a nova aba para buscar, filtrar e enviar WhatsApp.</div><button class="btn primary" style="margin-top:14px" onclick="abrirClientesSemMovimentoStandalone()">🧡 Abrir clientes sem movimento em nova aba</button></div>`;
+    box.innerHTML=`<div class="section-head"><div><h2>🧡 Clientes sem movimento +45 dias <span class="note" style="color:#f59e0b">${esc(window.DASHBOARD_BUILD_VERSION||'V10.16')}</span></h2><div class="hint">Para manter o dashboard leve, esta lista abre em uma página separada.</div></div></div><div class="kpis" style="margin-bottom:14px">${typeof makeKpi==='function'?makeKpi('Para acionar',String(rows.length),'var(--amber-400)','Página leve separada'):''}${typeof makeKpi==='function'?makeKpi('Enviados hoje',String(enviados),'var(--green)','Clique e abra a página leve'):''}${typeof makeKpi==='function'?makeKpi('Base total',String(totalBase),'var(--blue)','Sem carregar no dashboard'):''}</div><div class="glass panel" style="border-color:rgba(52,211,153,.35);max-width:780px"><h3>🚀 Abrir lista em página leve</h3><div class="hint">A lista pesada não será montada dentro do dashboard. Use a nova aba para buscar, filtrar e enviar WhatsApp.</div><button class="btn primary" style="margin-top:14px" onclick="abrirClientesSemMovimentoStandalone()">🧡 Abrir clientes sem movimento em nova aba</button></div>`;
   };
   // Intercepta clique na aba Clientes sem movimento para abrir a página leve direto.
   document.addEventListener('click',function(ev){
@@ -15384,9 +15541,180 @@ Preparamos condições especiais para você comemorar com a gente.
   function printWindow(title,body){const w=window.open('about:blank','_blank'); if(!w){try{toast('Pop-up bloqueado pelo navegador.','warn')}catch(e){} return;} const baseHref=location.href.split('?')[0]; w.document.open(); w.document.write(`<!doctype html><html><head><meta charset="utf-8"><base href="${baseHref}"><title>${esc(title)}</title><style>${appCss()}</style></head><body><div class="print-toolbar"><strong>${esc(title)}</strong><div><button onclick="window.print()">🖨️ Salvar PDF / Imprimir</button><button onclick="window.close()">Fechar</button></div></div>${body}</body></html>`); w.document.close();}
   window.abrirTelaComissionamentoAtual=async function(){const ent=selectedEnt(); if(!ent){try{toast('Nenhum usuário/filial encontrado.','warn')}catch(e){} return;} try{toast('Montando impressão em 1 folha...','info')}catch(e){} const html=await capture(ent); restoreHist(); if(!html||html.length<80){try{toast('Não consegui montar os cards.','warn')}catch(e){} return;} printWindow('Comissionamento '+(ent.nome||ent.filial||''),`<div class="mdl-freeze-page">${html}</div>`)};
   window.congelarTodasTelasComissionamentoPDF=async function(){const ents=allEnts(); if(!ents.length){try{toast('Nenhuma tela para congelar.','warn')}catch(e){} return;} const pages=[]; for(const ent of ents){const html=await capture(ent); if(html&&html.length>80) pages.push(`<div class="mdl-freeze-page">${html}</div>`); await sleep(70)} restoreHist(); if(!pages.length){try{toast('Não consegui montar nenhuma tela.','warn')}catch(e){} return;} printWindow(`Fechamento comissionamento ${typeof mesAtualComissao==='function'?mesAtualComissao():''} · ${pages.length} tela(s)`,pages.join(''))};
-  console.log('[V10.15] hotfix ativo:',TAG);
+  console.log('[V10.16] hotfix ativo:',TAG);
 })();
 </script>
+
+<script>
+(function(){
+  const TAG='MDL_V1016_CSM_10_DIA_CREDIARISTA_FIX';
+  try{ window.DASHBOARD_BUILD_VERSION='V10.16'; }catch(e){}
+
+  // Evita que a aba Clientes sem movimento pese o dashboard principal: abre página leve direto.
+  try{
+    const oldSet = window.setMainTab;
+    window.setMainTab = function(tab){
+      if(String(tab||'')==='reativacao'){
+        try{ if(typeof abrirClientesSemMovimentoStandalone==='function') abrirClientesSemMovimentoStandalone(); else if(typeof abrirClientesSemMovimentoPaginaLeve==='function') abrirClientesSemMovimentoPaginaLeve(); }catch(e){ console.warn(TAG,'abrir CSM leve',e); }
+        return;
+      }
+      return oldSet ? oldSet.apply(this, arguments) : undefined;
+    };
+  }catch(e){console.warn(TAG,'wrap setMainTab',e)}
+
+  // Modal enviados hoje: usa logs reais primeiro, e depois cruza com a lista/linhas do usuário.
+  function esc2(s){try{return (typeof esc==='function')?esc(s):String(s??'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]))}catch(e){return String(s??'')}}
+  function todayBRISO(){try{return new Date().toLocaleDateString('sv-SE',{timeZone:'America/Sao_Paulo'})}catch(e){return new Date().toISOString().slice(0,10)}}
+  function dtOnly2(x){const s=String(x||''); if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10); const m=s.match(/(\d{2})\/(\d{2})\/(\d{4})/); return m?`${m[3]}-${m[2]}-${m[1]}`:''}
+  function logDt2(x){return String(x?.server_time||x?.created_at||x?.criado_em||x?.data_hora||x?.data||x?.server_date||'').replace('T',' ').slice(0,19)}
+  function isReat2(x){const blob=String(`${x?.titulo||''}|${x?.tipo||''}|${x?.acao||''}|${x?.parcela||''}|${x?.cliente_key||''}|${x?.cobranca_key||''}|${x?.origem||''}|${x?.categoria||''}`).toUpperCase(); return blob.includes('REATIV')||blob.includes('REATIF')||blob.includes('SEM_MOVIMENTO')||blob.includes('CLIENTE_SEM_MOVIMENTO')}
+  function logKey2(x){let k=String(x?.cliente_key||x?.cobranca_key||'').trim(); if(k) return k; const p=String(x?.parcela||''); const m=p.match(/CLIENTE_SEM_MOVIMENTO\|(.+?)(?:\|[A-Z0-9_]+)?$/); return m?m[1]:`${x?.filial||''}|${x?.cliente||x?.nome||''}|${x?.telefone||x?.whatsapp||''}`}
+  function allLogs2(){try{return (typeof COB_LOGS!=='undefined' && Array.isArray(COB_LOGS))?COB_LOGS:(Array.isArray(window.COB_LOGS)?window.COB_LOGS:[])}catch(e){return []}}
+  function reatLogsToday2(){const hoje=todayBRISO(); return allLogs2().filter(x=>isReat2(x) && (dtOnly2(x.server_date)||dtOnly2(x.server_time)||dtOnly2(x.created_at)||dtOnly2(x.criado_em)||dtOnly2(x.data)||dtOnly2(x.data_hora))===hoje)}
+  function rowKey2(r){try{return (typeof reativacaoClienteKey==='function'?reativacaoClienteKey(r):'') || String(r?._reat_js_key||r?._csm_key||r?.cliente_key||'')}catch(e){return String(r?._reat_js_key||r?._csm_key||r?.cliente_key||'')}}
+  function ownerKeyCurrent2(){try{ if(!window.currentDetailRef) return ''; const e=window.currentDetailRef; const f=String(e.filial||'').toUpperCase(); if(e.type==='filial') return 'FILIAL:'+f; if(e.type==='gerente'||e.is_gerente) return 'GERENTE_'+f; if(typeof reatUserKeyFromNome==='function') return reatUserKeyFromNome(e.nome||e.login||'',f); return String(e.nome||e.login||'').toUpperCase()+'_'+f; }catch(e){return ''}}
+  function rowsScope2(){try{ if(window.currentDetailRef && document.getElementById('detailScreen') && !document.getElementById('detailScreen').classList.contains('hidden') && typeof reativacaoRowsParaEnt==='function') return reativacaoRowsParaEnt(window.currentDetailRef)||[]; }catch(e){} try{ return (typeof reativacaoRowsPermitidas==='function' && window.usuarioAtual && usuarioAtual.tipo!=='master') ? (reativacaoRowsPermitidas()||[]) : ((typeof CLIENTES_SEM_MOVIMENTO!=='undefined'?CLIENTES_SEM_MOVIMENTO:window.CLIENTES_SEM_MOVIMENTO)||[]); }catch(e){return []}}
+  window.mdlV1016OpenEnviadosReativacao=function(){
+    const logs=reatLogsToday2();
+    const rows=(rowsScope2()||[]).map((r,i)=>({...r,_idx:(r._idx??i)}));
+    const allowedKeys=new Set(); rows.forEach(r=>{const k=rowKey2(r); if(k) allowedKeys.add(k); try{(r._reat_keys||[]).forEach(x=>allowedKeys.add(String(x)))}catch(e){}});
+    const ck=ownerKeyCurrent2();
+    let filtered=logs.filter(x=>{
+      if(!ck) return true;
+      const f=String(window.currentDetailRef?.filial||'').toUpperCase();
+      if(String(ck).startsWith('FILIAL:')) return String(x.filial||'').toUpperCase()===f;
+      if(String(x.owner_key||'')===ck || String(x.usuario_key||'')===ck) return true;
+      if(allowedKeys.size){ const lk=logKey2(x); if(allowedKeys.has(lk) || [...allowedKeys].some(k=>String(x.parcela||'').includes(k))) return true; }
+      const usuario=String(x.usuario||x.login||x.destino_nome||'').toUpperCase();
+      const nome=String(window.currentDetailRef?.nome||window.currentDetailRef?.login||'').toUpperCase();
+      return nome && usuario.includes(nome.split(' ')[0]);
+    });
+    const stats={};
+    let items=filtered.sort((a,b)=>String(logDt2(b)).localeCompare(String(logDt2(a)))).map(x=>{const k=logKey2(x); stats[k]=(stats[k]||0)+1; return {cliente:x.cliente||x.nome||'Cliente',filial:x.filial||'',telefone:x.telefone||x.whatsapp||'',quem:x.destino_nome||x.usuario||x.login||x.responsavel||'',data:logDt2(x),qtd:stats[k]||1,key:k};});
+    if(!items.length){
+      // fallback visual: linhas do lote que o próprio dashboard marcou como enviadas hoje
+      const hoje=todayBRISO();
+      items=rows.filter(r=>{try{return typeof isReativacaoEnviadaHoje==='function' && isReativacaoEnviadaHoje(r)}catch(e){return false}}).map(r=>({cliente:r.cliente||'',filial:r.filial||'',telefone:(r.telefones||[]).join(', '),quem:(r._owner?.label||r._owner_label_py||''),data:r._reat_ultimo_envio||hoje,qtd:Number(r._reat_qtd_envios||1),key:rowKey2(r)}));
+    }
+    const html=items.map(x=>`<div class="row-item"><div class="row-top" style="grid-template-columns:1.15fr .85fr .7fr .45fr"><div><div class="name">${esc2(x.cliente||'Cliente')}</div><div class="small muted">${esc2(x.filial||'')} · ${esc2(x.telefone||'')} · ${esc2(x.key||'-')}</div></div><div><strong>${esc2(x.quem||'-')}</strong><div class="small muted">Quem enviou</div></div><div><strong>${esc2(x.data||'-')}</strong><div class="small muted">Data/hora do envio</div></div><div><strong>${Number(x.qtd||1)}</strong><div class="small muted">Qtd. envios</div></div></div></div>`).join('') || '<div class="empty">Nenhum cliente sem movimento enviado hoje.</div>';
+    let modal=document.getElementById('mdlV1016ReatModal'); if(!modal){modal=document.createElement('div'); modal.id='mdlV1016ReatModal'; modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:100000;display:flex;align-items:flex-start;justify-content:center;padding:6vh 20px;overflow:auto'; document.body.appendChild(modal)}
+    modal.innerHTML=`<div class="glass panel" style="max-width:1180px;width:100%;border-color:rgba(52,211,153,.35)"><div class="section-head"><div><h2>📨 Enviados hoje · Clientes sem movimento</h2><div class="hint">Mostra cliente, responsável, data/hora e contador. Regra: até 10 clientes por usuário/dia; retorno após 30 dias sem compra.</div></div><button class="btn soft" onclick="document.getElementById('mdlV1016ReatModal').remove()">Fechar</button></div><div class="tableish">${html}</div></div>`;
+  };
+  window.mdlV1013OpenEnviadosReativacao=window.mdlV1016OpenEnviadosReativacao;
+  window.mdlV1012OpenEnviadosReativacao=window.mdlV1016OpenEnviadosReativacao;
+  window.mdlV1011OpenEnviadosReativacao=window.mdlV1016OpenEnviadosReativacao;
+  document.addEventListener('click',function(ev){const node=ev.target&&ev.target.closest&&ev.target.closest('.reat-tab,.acc-hint,.kpi,.metric,.stat-card,.mini-card'); if(!node) return; const t=String(node.textContent||'').replace(/\s+/g,' ').toLowerCase(); if(t.includes('enviados')&&t.includes('hoje')){try{ev.preventDefault();ev.stopPropagation();ev.stopImmediatePropagation()}catch(e){} window.mdlV1016OpenEnviadosReativacao(); return false;}},true);
+
+  // Comissão crediarista/cobrança terceiro V10.17:
+  // REGRA CORRETA: só comissiona recebimento se existir clique/registro de WhatsApp
+  // de cobrança feito por aquele usuário antes do pagamento. Origem do recebimento
+  // serve para auditoria/exibição, mas NÃO libera comissão sozinha.
+  try{
+    function _v1017Norm(s){try{return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim()}catch(e){return String(s||'').toUpperCase().trim()}}
+    function _v1017Digits(s){return String(s||'').replace(/\D/g,'')}
+    function _v1017Phones(x){
+      const arr=[];
+      try{ if(Array.isArray(x.telefones)) arr.push(...x.telefones); }catch(e){}
+      ['telefone','whatsapp','fone','celular','contato'].forEach(k=>{if(x&&x[k]) arr.push(x[k])});
+      return arr.flatMap(v=>String(v||'').split(/[;,|/]+/)).map(_v1017Digits).filter(d=>d.length>=8);
+    }
+    function _v1017LogDt(x){return dateOnlyISO(x?.server_time||x?.criado_em||x?.created_at||x?.data||x?.server_date||x?.dt||'')}
+    function _v1017PayDt(r){return dateOnlyISO(r?.pagamento||r?.data_pagamento||r?.pagto||r?.data||'')}
+    function _v1017IsCobrancaLog(x){
+      const titulo=String(x?.titulo||'').toUpperCase();
+      const tipo=String(x?.tipo||x?.acao||x?.categoria||'').toUpperCase();
+      const raw=(titulo+' '+tipo+' '+String(x?.parcela||'')).toUpperCase();
+      if(raw.includes('REAT')||raw.includes('ANIVERS')||raw.includes('CLIENTES_SEM_MOVIMENTO')) return false;
+      return true;
+    }
+    function _v1017UserMatchesLog(x, ent, isCred){
+      const login=String(ent?.login||'').toLowerCase();
+      const nome=_v1017Norm(ent?.nome||'');
+      const filial=String(ent?.filial||'').toUpperCase();
+      const vals=[x?.usuario,x?.login,x?.destino_nome,x?.responsavel,x?.owner_key,x?.usuario_key,x?.destino_login].map(v=>String(v||''));
+      const low=vals.map(v=>v.toLowerCase()).join(' | ');
+      const norm=vals.map(_v1017Norm).join(' | ');
+      const fLog=String(x?.filial||'').toUpperCase();
+      if(isCred){
+        if(login && low.includes(login)) return true;
+        if(nome && norm.includes(nome)) return true;
+        if(filial && fLog===filial && /CREDIARISTA/i.test(String(x?.destino_tipo||x?.tipo_usuario||''))) return true;
+        return false;
+      }
+      const cobLogin=String(COBRANCA10_LOGIN||'cobranca10').toLowerCase();
+      const cobNome=_v1017Norm(COBRANCA10_NOME||'Cobrança10');
+      return low.includes(cobLogin)||low.includes('cobranca10')||norm.includes(cobNome)||norm.includes('COBRANCA10');
+    }
+    function _v1017LogMatchesRow(log, row){
+      try{
+        const k1=cobrancaRowKey(row), k2=key3Cob(row);
+        const lk1=cobrancaRowKey(log), lk2=key3Cob(log);
+        if(k1 && lk1 && k1===lk1) return true;
+        if(k2 && lk2 && k2===lk2) return true;
+      }catch(e){}
+      const cRow=_v1017Norm(row?.cliente||row?.nome||'');
+      const cLog=_v1017Norm(log?.cliente||log?.nome||'');
+      const titRow=String(row?.titulo||'').trim();
+      const titLog=String(log?.titulo||'').trim();
+      const parcRow=String(row?.parcela||'').trim();
+      const parcLog=String(log?.parcela||'').trim();
+      if(cRow && cLog && cRow===cLog && titRow && titLog && titRow===titLog) return true;
+      if(cRow && cLog && cRow===cLog && parcRow && parcLog && parcRow===parcLog) return true;
+      const phRow=_v1017Phones(row), phLog=_v1017Phones(log);
+      if(cRow && cLog && cRow===cLog && phRow.length && phLog.some(p=>phRow.includes(p))) return true;
+      if(titRow && titLog && titRow===titLog && parcRow && parcLog && parcRow===parcLog) return true;
+      return false;
+    }
+    function _v1017CommissionData(ent){
+      const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista');
+      const baseCfg=isCred?entityConfig({type:'vendedor',nome:ent.nome,filial:ent.filial}):entityConfig({type:'vendedor',nome:COBRANCA10_NOME,filial:'FTER'});
+      const cfg=commissionCfg(baseCfg); const policy=(isCred?(cfg.camp_cob_crediarista||[]):(cfg.camp_cobranca_terceiro||[]));
+      const policyOk=Array.isArray(policy)&&policy.length?policy:(isCred?defaultCampCrediarista():defaultCampTerceiro());
+      const byFaixa={atencao:{pct:0,cobrado:0,recebido:0,comissao:0},alerta:{pct:0,cobrado:0,recebido:0,comissao:0},grave:{pct:0,cobrado:0,recebido:0,comissao:0}};
+      policyOk.forEach(r=>{const fx=String(r.faixa||'').toLowerCase(); if(byFaixa[fx]) byFaixa[fx].pct=Number(String(r.pct||0).replace(',','.'))||0});
+      const mesAtual=dateOnlyISO(new Date()).slice(0,7);
+      const logsUsuario=(COB_LOGS||[]).filter(x=>_v1017IsCobrancaLog(x)&&_v1017UserMatchesLog(x,ent,isCred));
+      const srcCli=isCred?(CLIENTES_CREDIARISTA?.[String(ent.login||'').toLowerCase()]||{grave:[],alerta:[],atencao:[]}):(CLIENTES_TERCEIRO||{grave:[],alerta:[],atencao:[]});
+      const srcRec=getRecebimentos(ent)||{grave:[],alerta:[],atencao:[]};
+      function temCliqueAntesPagamento(row, payISO){
+        return logsUsuario.some(l=>{
+          if(!_v1017LogMatchesRow(l,row)) return false;
+          const ldt=_v1017LogDt(l);
+          // Se o log não tiver data, aceita só como evidência de clique; se tiver, precisa ser antes/igual ao pagamento.
+          return !ldt || !payISO || ldt<=payISO;
+        });
+      }
+      ['atencao','alerta','grave'].forEach(fx=>{
+        byFaixa[fx].cobrado=(srcCli?.[fx]||[]).filter(r=>temCliqueAntesPagamento(r,'')).length;
+        (srcRec?.[fx]||[]).forEach(r=>{
+          const payISO=_v1017PayDt(r); const pagMes=String(payISO||'').slice(0,7);
+          if(pagMes!==mesAtual) return;
+          if(temCliqueAntesPagamento(r,payISO)){byFaixa[fx].recebido+=Number(r.pago||0)}
+        });
+        byFaixa[fx].comissao=byFaixa[fx].recebido*(byFaixa[fx].pct/100);
+      });
+      const total=Object.values(byFaixa).reduce((a,b)=>a+Number(b.comissao||0),0);
+      return {isCred,byFaixa,total,totalPrevisto:total,
+        recebidoAtencao:byFaixa.atencao.recebido, recebidoAlerta:byFaixa.alerta.recebido, recebidoGrave:byFaixa.grave.recebido,
+        comissaoAtencao:byFaixa.atencao.comissao, comissaoAlerta:byFaixa.alerta.comissao, comissaoGrave:byFaixa.grave.comissao,
+        pctAtencao:byFaixa.atencao.pct, pctAlerta:byFaixa.alerta.pct, pctGrave:byFaixa.grave.pct};
+    }
+    window.mdlV1017CommissionData=_v1017CommissionData;
+    renderTerceiroCommission = window.renderTerceiroCommission = function(ent){
+      const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista');
+      const cs=_v1017CommissionData(ent); const byFaixa=cs.byFaixa||{}; const total=Number(cs.total||0);
+      const item=(t,v,s='')=>`<div class="commission-item unlocked ${s}"><div class="k">${t}</div><div class="v">${v}</div></div>`;
+      return `<div class="glass panel commission-card"><h3>💵 ${isCred?'Comissão crediarista':'Comissão cobrança terceiro'} <span class="note">· só títulos clicados no WhatsApp pelo usuário e pagos depois</span></h3><div class="commission-grid">${item('Atenção %',String((byFaixa.atencao?.pct||0).toFixed(2)).replace('.',',')+'%')}${item('Alerta %',String((byFaixa.alerta?.pct||0).toFixed(2)).replace('.',',')+'%')}${item('Grave %',String((byFaixa.grave?.pct||0).toFixed(2)).replace('.',',')+'%')}${item('Recebido atenção',R(byFaixa.atencao?.recebido||0))}${item('Recebido alerta',R(byFaixa.alerta?.recebido||0))}${item('Recebido grave',R(byFaixa.grave?.recebido||0))}${item('Comissão atenção',R(byFaixa.atencao?.comissao||0))}${item('Comissão alerta',R(byFaixa.alerta?.comissao||0))}${item('Comissão grave',R(byFaixa.grave?.comissao||0))}${item('Total previsto',R(total||0),'total-final')}</div><div class="commission-note">${esc2(CONFIG_META?.comissao_pagamento_texto||'A comissão reinicia a cada mês e o pagamento é previsto para o dia 25 do mês seguinte.')}</div></div>`;
+    };
+    if(typeof _v103CobCommissionSummary==='function'){
+      _v103CobCommissionSummary = window._v103CobCommissionSummary = function(ent){return _v1017CommissionData(ent)};
+    }
+  }catch(e){console.warn(TAG,'override comissão clique WhatsApp V10.17',e)}
+
+  console.log('[V10.17] hotfix ativo:', TAG);
+})();
+</script>
+
 </body>
 </html>
 """
@@ -16017,6 +16345,18 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
                     print('✅ FTP: clientes_sem_movimento_base.json enviado')
             else:
                 print('🛡️ V9.5: pulando clientes_sem_movimento_base.json para não zerar base do FTP')
+
+            # V10.16: mantém no FTP o lote do dia e o histórico diário completo da base.
+            _csm_lote_path = os.path.join(pasta, 'clientes_sem_movimento_lote_diario.json')
+            _csm_hist_dia = os.path.join(pasta, f"clientes_sem_movimento_historico_{now_brasilia().strftime('%Y-%m-%d')}.json")
+            if os.path.exists(_csm_lote_path) and _json_has_items_v95(_csm_lote_path, ('clientes',)):
+                with open(_csm_lote_path, 'rb') as f_csm_lote:
+                    ftp.storbinary('STOR clientes_sem_movimento_lote_diario.json', f_csm_lote)
+                    print('✅ FTP: clientes_sem_movimento_lote_diario.json enviado')
+            if os.path.exists(_csm_hist_dia) and _json_has_items_v95(_csm_hist_dia, ('clientes','base_clientes')):
+                with open(_csm_hist_dia, 'rb') as f_csm_hist:
+                    ftp.storbinary(f"STOR clientes_sem_movimento_historico_{now_brasilia().strftime('%Y-%m-%d')}.json", f_csm_hist)
+                    print('✅ FTP: clientes_sem_movimento_historico do dia enviado')
             _dup_path = os.path.join(pasta, 'relatorio_duplicidades_carteira.json')
             if os.path.exists(_dup_path):
                 with open(_dup_path, 'rb') as f_dup:
