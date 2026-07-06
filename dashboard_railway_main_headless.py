@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_25_GERENTES_FIXOS_POR_FILIAL_FIX
+# VERSAO: DASH2_0_V10_26_GERENTES_FIXOS_LAYOUT_DUP_REC_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,7 +34,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.25"
+DASHBOARD_BUILD_VERSION = "V10.26"
 DASHBOARD_BUILD_TAG = "DASH2_0_V10_20_RELATORIOS_JULHO_FTP_FIX"
 
 def now_brasilia():
@@ -3873,6 +3873,49 @@ def _ensure_gerente_filial_fixo_v1025(filial):
 
 for _filial_fixa_v1025 in GERENTES_FILIAIS_FIXAS_V1025:
     _ensure_gerente_filial_fixo_v1025(_filial_fixa_v1025)
+
+# ===== V10.26: remove duplicidade de gerentes nominais antigos =====
+# Depois que existem os logins fixos gerentef01..gerentef09, os logins antigos
+# criados pelo nome do gerente (sandy/eva/valdeci/etc.) não devem mais aparecer
+# nas telas de Senhas/Status nem autenticar como painel separado. A conta oficial
+# do gerente passa a ser sempre a conta fixa da filial.
+try:
+    _fixed_logins_v1026 = {_login_gerente_filial_v1025(f) for f in GERENTES_FILIAIS_FIXAS_V1025}
+    _removed_legacy_mgr_v1026 = []
+    _users_v1026 = cred_state.get('users') or {}
+    for _lg, _u in list(_users_v1026.items()):
+        _login_l = str(_lg or '').strip().lower()
+        if _login_l in _fixed_logins_v1026:
+            continue
+        if _login_l in {str(LOGIN_DIRETOR).lower(), str(LOGIN_MASTER).lower()}:
+            continue
+        _is_mgr = bool((_u or {}).get('is_gerente')) or str((_u or {}).get('tipo') or '').lower() == 'gerente'
+        _is_special = bool((_u or {}).get('is_crediarista') or (_u or {}).get('is_terceiro') or (_u or {}).get('is_viewer'))
+        _fil = str((_u or {}).get('filial') or '').strip().upper()
+        if _is_mgr and (not _is_special) and _fil in GERENTES_FILIAIS_FIXAS_V1025:
+            _removed_legacy_mgr_v1026.append(f"{_login_l}/{_fil}")
+            try: del _users_v1026[_lg]
+            except Exception: pass
+            try: auth_users.pop(_login_l, None)
+            except Exception: pass
+            try: credenciais.pop(_login_l, None)
+            except Exception: pass
+            try:
+                linhas_txt[:] = [x for x in linhas_txt if not str(x).lower().startswith(_login_l + ' | ')]
+            except Exception:
+                pass
+    # Limpa também duplicidades da tabela de status operacional pelo login antigo.
+    try:
+        _status_map_final = {
+            k:v for k,v in (_status_map_final or {}).items()
+            if not (str((v or {}).get('login') or '').strip().lower() in {x.split('/')[0] for x in _removed_legacy_mgr_v1026})
+        }
+    except Exception:
+        pass
+    if _removed_legacy_mgr_v1026:
+        print('🧹 V10.26 gerentes nominais antigos ocultados/removidos: ' + '; '.join(_removed_legacy_mgr_v1026))
+except Exception as _e:
+    print(f'⚠️ V10.26 falha limpeza gerentes duplicados: {_e}')
 
 cred_state["colaborador_status"] = _status_map_final
 cred_state["director"] = {
@@ -12128,10 +12171,19 @@ function renderHistoricoTab(){
   setHistMode(window._histMode||'daily');
 }
 
+function isLegacyGerenteNominalV1026(u){
+  try{
+    const login=String(u?.login||'').toLowerCase();
+    if(!u || u.is_viewer || u.is_terceiro || u.is_crediarista) return false;
+    if(/^gerentef\d{2}$/.test(login)) return false;
+    const tipo=String(u?.tipo||'').toLowerCase();
+    return !!(u.is_gerente || tipo==='gerente' || tipo.includes('gerente'));
+  }catch(e){return false}
+}
 function colabBool(u,k,def=true){return u && Object.prototype.hasOwnProperty.call(u,k) ? !!u[k] : def}
 function colabStatusBadge(u){const st=String(u?.status_operacional||'ativo').toLowerCase(); return st==='inativo'?'<span class="mini-chip" style="background:#450a0a;color:#fecaca;border:1px solid #991b1b">Inativo</span>':'<span class="mini-chip" style="background:#052e16;color:#bbf7d0;border:1px solid #166534">Ativo</span>'}
 function renderColaboradorStatusPanel(users){
-  const normalUsers=(users||[]).filter(u=>u && !u.is_viewer);
+  const normalUsers=(users||[]).filter(u=>u && !u.is_viewer && !isLegacyGerenteNominalV1026(u));
   const options=normalUsers.map(u=>`<option value="${esc(u.login||'')}">${esc(u.nome||u.login||'')} ${u.filial?`- ${esc(u.filial)}`:''}</option>`).join('');
   return `<div class="glass panel" style="margin-bottom:14px;border-color:rgba(34,197,94,.28)">
     <div class="section-head" style="margin:0 0 10px"><div><h2 style="font-size:18px">👥 Status operacional dos colaboradores</h2><div class="hint">Use quando alguém sair, entrar ou trocar de função. Inativo não acessa e, na próxima geração, sai do rateio de cobrança. A data de saída é só histórico/controle interno. As flags controlam em quais murais/listas ele participa.</div></div></div>
@@ -12191,20 +12243,26 @@ function gerentesFiliaisFixos(){
   });
 }
 function renderGerentesFiliaisPanel(){
-  const rows=gerentesFiliaisFixos().map(g=>{
+  const cards=gerentesFiliaisFixos().map(g=>{
     const dom=_senhaDomKey(g.login);
-    return `<tr>
-      <td><strong>${esc(g.filial)}</strong><div class="small muted">Conta fixa da filial</div></td>
-      <td><code>${esc(g.login)}</code></td>
-      <td><input id="ger_nome_${dom}" value="${esc(g.nome)}" placeholder="Nome do gerente atual"></td>
-      <td>${g.must_change_password?'<span class="mini-chip warn">Precisa trocar</span>':'<span class="mini-chip ok">Ativa</span>'}</td>
-      <td><input id="ger_pwd_${dom}" placeholder="Nova senha"></td>
-      <td style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn primary" onclick="adminSalvarGerenteFilial('${g.login}')">💾 Salvar</button><button class="btn soft" onclick="adminMarcarTroca('${g.login}')">🔁 Exigir troca</button></td>
-    </tr>`;
+    return `<div class="ger-filial-card">
+      <div class="ger-filial-head"><div><strong>${esc(g.filial)}</strong><div class="small muted">Conta fixa da filial</div></div><code>${esc(g.login)}</code></div>
+      <div class="form-grid bonus" style="margin-top:10px">
+        <div class="input-card"><label>Nome do gerente atual</label><input id="ger_nome_${dom}" value="${esc(g.nome)}" placeholder="Nome do gerente atual"></div>
+        <div class="input-card"><label>Status</label>${g.must_change_password?'<span class="mini-chip warn">Precisa trocar</span>':'<span class="mini-chip ok">Ativa</span>'}</div>
+        <div class="input-card"><label>Nova senha</label><input id="ger_pwd_${dom}" placeholder="Nova senha"></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <button class="btn primary" onclick="adminSalvarGerenteFilial('${g.login}')">💾 Salvar</button>
+        <button class="btn soft" onclick="adminMarcarTroca('${g.login}')">🔁 Exigir troca</button>
+      </div>
+      <div class="small muted" id="ger_msg_${dom}" style="margin-top:6px"></div>
+    </div>`;
   }).join('');
   return `<div class="glass panel" style="margin-bottom:14px;border-color:rgba(59,130,246,.35)">
     <div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">🏬 Gerentes por filial</h2><div class="hint">Acesso fixo por filial. Troque só o nome do gerente atual; o login continua o mesmo e sempre abre a filial inteira.</div></div></div>
-    <div class="senhas-table-wrap"><table class="senhas-table"><thead><tr><th>Filial</th><th>Login fixo</th><th>Nome do gerente atual</th><th>Status</th><th>Nova senha</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <style>.ger-filial-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}.ger-filial-card{background:rgba(15,23,42,.55);border:1px solid rgba(148,163,184,.22);border-radius:18px;padding:14px}.ger-filial-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.ger-filial-card code{font-weight:900;color:#bfdbfe;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.25);border-radius:999px;padding:4px 8px}.ger-filial-card input{width:100%;min-width:0}</style>
+    <div class="ger-filial-grid">${cards}</div>
   </div>`;
 }
 async function adminSalvarGerenteFilial(login){
@@ -12224,7 +12282,7 @@ async function adminSalvarGerenteFilial(login){
   }catch(e){toast('Não consegui salvar gerente da filial.','warn')}
 }
 function renderSenhasTab(){
-  const users=Object.values(AUTH_STATE?.users||{}).sort((a,b)=>String(a.nome||'').localeCompare(String(b.nome||''),'pt-BR'));
+  const users=Object.values(AUTH_STATE?.users||{}).filter(u=>!isLegacyGerenteNominalV1026(u)).sort((a,b)=>String(a.nome||'').localeCompare(String(b.nome||''),'pt-BR'));
   const reqs=[...(AUTH_STATE?.password_reset_requests||[])].reverse();
   const resets=reqs.filter(r=>String(r.status||'pendente')==='pendente');
   const resolved=reqs.filter(r=>String(r.status||'pendente')==='resolvido');
@@ -16430,10 +16488,88 @@ Preparamos condições especiais para você comemorar com a gente.
       };
     }
 
-    try{window.DASHBOARD_BUILD_VERSION='V10.25'}catch(e){}
+    try{window.DASHBOARD_BUILD_VERSION='V10.26'}catch(e){}
     console.log(TAG,'ativo: login gerente usa recebimentos/cobranças/meta da filial inteira');
   }catch(e){console.warn('[V10.24] hotfix falhou',e)}
 })();
+
+// ===== V10.26: gerente fixo usa exatamente a filial do Master + tela Senhas sem duplicidades =====
+(function(){
+  const TAG='[V10.26 gerente fixo filial]';
+  try{
+    function norm(v){try{return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/gi,' ').trim().toUpperCase()}catch(e){return String(v||'').trim().toUpperCase()}}
+    function fil(v){v=String(v||'').trim().toUpperCase(); if(/^0?\d+$/.test(v)) return 'F'+Number(v); if(/^F0\d+$/.test(v)) return 'F'+Number(v.replace(/^F0*/,'')); const m=v.match(/GER\s*F?\s*(\d+)/i)||v.match(/\bF\s*(\d+)\b/i); return m?'F'+Number(m[1]):v;}
+    function isFixedGerLogin(login){return /^gerentef\d{2}$/.test(String(login||'').toLowerCase())}
+    function fixedGerFilial(login){const m=String(login||'').toLowerCase().match(/^gerentef(\d{2})$/); return m?'F'+Number(m[1]):''}
+    function cred(login){try{return (CREDS||{})[String(login||'').toLowerCase()]||null}catch(e){return null}}
+    function isGerUser(u){try{return !!(u && (u.is_gerente || isFixedGerLogin(u.login) || /gerente/i.test(String(u.tipo||'')) || /\(\s*GER\s*F?\s*\d+\s*\)/i.test(String(u.nome||''))))}catch(e){return false}}
+    function filialFrom(ref){let f=''; try{if(ref?.login && isFixedGerLogin(ref.login)) f=fixedGerFilial(ref.login); if(!f && ref?.filial) f=fil(ref.filial); const c=cred(ref?.login||''); if(!f && c) f=fil(c.filial); if(!f && window.usuarioAtual && isGerUser(usuarioAtual)) f=fil(usuarioAtual.filial||fixedGerFilial(usuarioAtual.login));}catch(e){} return f;}
+    function isGerenteContext(ref){try{return !!(window.usuarioAtual && usuarioAtual.tipo!=='master' && !usuarioAtual.is_viewer && isGerUser(usuarioAtual)) || !!(ref && (ref.is_gerente||String(ref.type||'').toLowerCase()==='gerente'||isFixedGerLogin(ref.login)||/\(\s*GER/i.test(String(ref.nome||''))))}catch(e){return false}}
+    function filialRef(f){return {type:'filial',filial:f,nome:(typeof filialLabel==='function'?filialLabel(f):f),is_gerente:true,perc_filial:100}}
+    function sumRec(b,fx){try{return (b?.[fx]||[]).reduce((a,r)=>a+Number(r.pago||r.recebido||0),0)}catch(e){return 0}}
+    function recalcMetaFromRec(m,rec){try{['grave','alerta','atencao'].forEach(fx=>{m[fx]=m[fx]||{}; m[fx].rec=sumRec(rec,fx); const alvo=Number(m[fx].alvo||0); m[fx].perc=alvo>0?(m[fx].rec/alvo*100):0;}); const cfg=m.cfg||{}; const sw=Number(cfg.peso_grave||0)+Number(cfg.peso_alerta||0)+Number(cfg.peso_atencao||0)||1; m.geral=((Math.min(Number(m.grave.perc||0),100)*Number(cfg.peso_grave||0))+(Math.min(Number(m.alerta.perc||0),100)*Number(cfg.peso_alerta||0))+(Math.min(Number(m.atencao.perc||0),100)*Number(cfg.peso_atencao||0)))/sw;}catch(e){console.warn(TAG,'recalc',e)} return m;}
+
+    const prevGet=typeof getRecebimentos==='function'?getRecebimentos:null;
+    if(prevGet && !window._getRecV1026Wrapped){
+      window._getRecV1026Wrapped=true;
+      getRecebimentos=window.getRecebimentos=function(ent){
+        try{
+          const f=filialFrom(ent||{});
+          if(f && isGerenteContext(ent)) return prevGet.call(this, filialRef(f));
+        }catch(e){console.warn(TAG,'getRec gerente',e)}
+        return prevGet.apply(this,arguments);
+      };
+    }
+    const prevCalc=typeof calcMeta==='function'?calcMeta:null;
+    if(prevCalc && !window._calcMetaV1026Wrapped){
+      window._calcMetaV1026Wrapped=true;
+      calcMeta=window.calcMeta=function(ent){
+        try{
+          const f=filialFrom(ent||{});
+          if(f && isGerenteContext(ent)){
+            const fr=filialRef(f);
+            const m=prevCalc.call(this,fr);
+            const rec=(typeof getRecebimentos==='function')?getRecebimentos(fr):null;
+            return recalcMetaFromRec(m,rec);
+          }
+        }catch(e){console.warn(TAG,'calc gerente',e)}
+        return prevCalc.apply(this,arguments);
+      };
+    }
+    const prevOpen=typeof openEntity==='function'?openEntity:null;
+    if(prevOpen && !window._openEntityV1026Wrapped){
+      window._openEntityV1026Wrapped=true;
+      openEntity=window.openEntity=function(ref){
+        try{const f=filialFrom(ref||{}); if(f && isGerenteContext(ref)){window.currentDetailRef=filialRef(f); return prevOpen.call(this,filialRef(f));}}catch(e){console.warn(TAG,'open gerente',e)}
+        return prevOpen.apply(this,arguments);
+      };
+    }
+    const prevAbrir=typeof abrirApp==='function'?abrirApp:null;
+    if(prevAbrir && !window._abrirAppV1026Wrapped){
+      window._abrirAppV1026Wrapped=true;
+      abrirApp=window.abrirApp=async function(){
+        try{
+          if(usuarioAtual && usuarioAtual.tipo!=='master' && !usuarioAtual.is_viewer && isGerUser(usuarioAtual)){
+            const f=filialFrom(usuarioAtual);
+            usuarioAtual.is_gerente=true; usuarioAtual.type='filial'; usuarioAtual.filial=f;
+            document.body.classList.add('user-light-view','gerente-filial-view');
+            loginScreen?.classList.add('hidden'); app?.classList.remove('hidden');
+            try{document.getElementById('kpis')?.classList.add('hidden'); masterTabs?.classList.add('hidden'); mainFilters?.classList.add('hidden'); topMural?.classList.add('hidden')}catch(e){}
+            userBadge.textContent=`🏬 ${f}`;
+            document.getElementById('mainScreen')?.classList.add('hidden'); detailScreen?.classList.remove('hidden');
+            if(typeof window.openEntity==='function') window.openEntity(filialRef(f));
+            setTimeout(()=>{try{tentarAtualizarOnlineDepoisLogin()}catch(e){}},80);
+            return;
+          }
+        }catch(e){console.warn(TAG,'abrir gerente',e)}
+        return prevAbrir.apply(this,arguments);
+      };
+    }
+    try{window.DASHBOARD_BUILD_VERSION='V10.26'}catch(e){}
+    console.log(TAG,'ativo: gerentes fixos sem duplicidade e recebimento igual filial do Master');
+  }catch(e){console.warn('[V10.26] hotfix falhou',e)}
+})();
+
 </script>
 
 </body>
