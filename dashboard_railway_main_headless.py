@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_35_RECEBIMENTOS_FILIAL_CLIENTES_FIL_FIX
+# VERSAO: DASH2_0_V10_36_COBLOGS_BOOT_FILIAL_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,7 +34,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.35"
+DASHBOARD_BUILD_VERSION = "V10.36"
 DASHBOARD_BUILD_TAG = "DASH2_0_V10_20_RELATORIOS_JULHO_FTP_FIX"
 
 def now_brasilia():
@@ -7739,6 +7739,10 @@ js_crediaristas_map = json.dumps(CREDIARISTAS_CONFIG, ensure_ascii=False)
 js_destaque = json.dumps(destaque_semana or {}, ensure_ascii=False)
 js_hist_dash = json.dumps(hist_dash, ensure_ascii=False)
 js_quitados_180 = json.dumps((quitados_180_info.get('dados') or {}).get('quitados', []), ensure_ascii=False)
+try:
+    js_cobrancas_logs_boot = json.dumps(_ftp_json('cobrancas_log.json', []), ensure_ascii=False)
+except Exception:
+    js_cobrancas_logs_boot = '[]'
 js_hist_recebimentos_mensais = json.dumps(HIST_RECEBIMENTOS_MENSAIS, ensure_ascii=False)
 js_clientes_sem_movimento = json.dumps(clientes_sem_movimento_js, ensure_ascii=False)
 js_clientes_sem_movimento_meta = json.dumps(clientes_sem_movimento_meta_py, ensure_ascii=False)
@@ -9057,7 +9061,7 @@ async function tentarAtualizarOnlineDepoisLogin(){
 let usuarioAtual=null;
 let mainTab='vendedores';
 let filtroFilial='TODAS';
-let COB_LOGS=[];
+let COB_LOGS=__JS_COB_LOGS_BOOT__||[]; try{window.COB_LOGS=COB_LOGS}catch(e){}
 let phoneContext=null;
 let MSGS=[];
 let currentDetailRef=null;
@@ -17719,7 +17723,7 @@ Preparamos condições especiais para você comemorar com a gente.
     };
     // Reabre a tela se o gerente/filial já estiver vendo o detalhe quando a nova regra carregar.
     try{if(detailScreen && !detailScreen.classList.contains('hidden') && currentDetailRef){const f=filialRef34(currentDetailRef); if(f) setTimeout(()=>openEntity({type:'filial',filial:f,nome:(typeof filialLabel==='function'?filialLabel(f):f)}),120);}}catch(e){}
-    try{window.DASHBOARD_BUILD_VERSION='V10.35'}catch(e){}
+    try{window.DASHBOARD_BUILD_VERSION='V10.36'}catch(e){}
     console.log(TAG,'ativo: Master e login gerente usam a mesma soma, incluindo AMANDA_F9/crediaristaf09 mesmo quando título veio F90/FDEP');
   }catch(e){console.warn('[V10.34] hotfix falhou',e)}
 })();
@@ -17862,9 +17866,116 @@ Preparamos condições especiais para você comemorar com a gente.
       return prevRenderRec35?prevRenderRec35.apply(this,arguments):'';
     };
     try{if(detailScreen && !detailScreen.classList.contains('hidden') && currentDetailRef){const f=filialRef35(currentDetailRef); if(f) setTimeout(()=>openEntity({type:'filial',filial:f,nome:(typeof filialLabel==='function'?filialLabel(f):f)}),120);}}catch(e){}
-    try{window.DASHBOARD_BUILD_VERSION='V10.35'}catch(e){}
+    try{window.DASHBOARD_BUILD_VERSION='V10.36'}catch(e){}
     console.log(TAG,'ativo: inclui CLIENTES_FIL com pago do mês; Ramon/Amanda F9 entra igual no Master e no gerentef09');
   }catch(e){console.warn('[V10.35] hotfix falhou',e)}
+})();
+
+
+// ===== V10.36: logs de cobrança embutidos + gerente/filial sempre recalcula com COB_LOGS do FTP =====
+// Motivo: Master via navegador podia ter localStorage/API com logs de cobrança; login gerentefXX podia abrir sem esses logs,
+// perdendo títulos conciliados como RAMON/AMANDA na F9. Agora o HTML já nasce com cobrancas_log.json do FTP e recalcula antes de renderizar.
+(function(){
+  try{
+    const TAG='[V10.36 coblogs boot filial]';
+    try{ if(Array.isArray(COB_LOGS)) { window.COB_LOGS=COB_LOGS; console.log(TAG,'COB_LOGS boot',COB_LOGS.length); } }catch(e){}
+    function fil36(v){
+      const s=String(v||'').toUpperCase().trim();
+      let m=s.match(/GERENTEF\s*0*(\d+)/i)||s.match(/CREDIARISTAF\s*0*(\d+)/i)||s.match(/GERF\s*0*(\d+)/i)||s.match(/\bF\s*0*(\d{1,2})\b/i)||s.match(/^F0*(\d{1,2})$/i)||s.match(/FILIAL\s*0*(\d{1,2})/i);
+      return m?'F'+Number(m[1]):'';
+    }
+    function pad36(f){const n=String(f||'').replace(/\D/g,''); return n?String(Number(n)).padStart(2,'0'):''}
+    function norm36(v){try{return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim()}catch(e){return String(v||'').toUpperCase().trim()}}
+    function filialNome36(raw){
+      const n=norm36(raw); if(!n) return '';
+      try{for(const [lg,c] of Object.entries(CREDS||{})){ if(!c) continue; const cf=fil36(c.filial); if(!cf) continue; const vals=[lg,c.nome,c.login,c.usuario]; for(const v of vals){const vn=norm36(v); if(vn && (n===vn || n.includes(vn) || vn.includes(n))) return cf; } }}catch(e){}
+      try{for(const [f,arr] of Object.entries(TODOS||{})){ for(const r of (arr||[])){ const vn=norm36(r?.nome||r?.login||''); if(vn && (n===vn || n.includes(vn) || vn.includes(n))) return fil36(f); } }}catch(e){}
+      try{for(const row of (CREDIARISTAS_CONFIG||[])){ const cf=fil36(row?.filial); if(!cf) continue; for(const v of [row?.login,row?.nome]){const vn=norm36(v); if(vn && (n===vn || n.includes(vn) || vn.includes(n))) return cf;} }}catch(e){}
+      return '';
+    }
+    function filialRef36(ent){
+      let f='';
+      try{f=fil36(ent?.filial)||fil36(ent?.login)||fil36(ent?.nome)||filialNome36(ent?.login)||filialNome36(ent?.nome);}catch(e){}
+      try{if(!f && window.usuarioAtual && usuarioAtual.tipo!=='master') f=fil36(usuarioAtual.filial)||fil36(usuarioAtual.login)||fil36(usuarioAtual.nome)||filialNome36(usuarioAtual.login)||filialNome36(usuarioAtual.nome);}catch(e){}
+      return /^F\d+$/.test(f)?f:'';
+    }
+    function isFilialCtx36(ent){
+      try{if(ent && String(ent.type||'').toLowerCase()==='filial') return true;}catch(e){}
+      try{if(ent && (/^gerentef\d{2}$/i.test(String(ent.login||'')) || /gerente/i.test(String(ent.tipo||'')) || ent.is_gerente || ent.is_fixed_gerente || ent.is_gerente_filial_fixo)) return true;}catch(e){}
+      try{if(window.usuarioAtual && usuarioAtual.tipo!=='master' && (/^gerentef\d{2}$/i.test(String(usuarioAtual.login||'')) || usuarioAtual.is_gerente || usuarioAtual.is_gerente_filial_fixo || /gerente/i.test(String(usuarioAtual.tipo||'')))) return true;}catch(e){}
+      return false;
+    }
+    function rebuild36(){
+      try{
+        // garante que cache local não sobrescreva o FTP embutido com lista menor
+        const cache=localStorage.getItem('mdl_cobrancas_log_cache');
+        if(cache){
+          const local=JSON.parse(cache)||[];
+          if(Array.isArray(local) && local.length){
+            const key=x=>String(x.id||'') || [x.cliente,x.titulo,x.parcela,x.telefone,x.server_time||x.criado_em||x.data].map(v=>String(v||'')).join('|');
+            const seen=new Set((COB_LOGS||[]).map(key));
+            local.forEach(x=>{const k=key(x); if(k && !seen.has(k)){COB_LOGS.push(x); seen.add(k);}});
+          }
+        }
+      }catch(e){}
+      try{ if(typeof getQuitadosConciliados==='function') RECEBIMENTOS_CONCILIADOS=getQuitadosConciliados()||{}; }catch(e){console.warn(TAG,'rebuild conciliados',e)}
+      try{window.COB_LOGS=COB_LOGS}catch(e){}
+      return RECEBIMENTOS_CONCILIADOS||{};
+    }
+    // Reconstrói uma vez ao carregar, antes de qualquer clique/login.
+    rebuild36();
+
+    // Se existir a fonte V10.35, envelopa para sempre recalcular com os logs atuais antes da soma.
+    const oldFonte36=(typeof window.mdlV1035RecebimentosFilial==='function')?window.mdlV1035RecebimentosFilial:null;
+    if(oldFonte36 && !window._mdlV1036FonteWrapped){
+      window._mdlV1036FonteWrapped=true;
+      window.mdlV1036RecebimentosFilial=function(f){rebuild36(); return oldFonte36.call(this,f);};
+      window.mdlV1035RecebimentosFilial=window.mdlV1036RecebimentosFilial;
+      window.mdlV1034RecebimentosFilial=window.mdlV1036RecebimentosFilial;
+      window.mdlV1032RecebimentosFilial=window.mdlV1036RecebimentosFilial;
+      window.mdlV1031RecebimentosFilial=window.mdlV1036RecebimentosFilial;
+    }
+    // Corrige entidade oficial para usar a fonte envelopada.
+    if(typeof window.mdlV1035OfficialFilialEnt==='function' && !window._mdlV1036OfficialWrapped){
+      window._mdlV1036OfficialWrapped=true;
+      window.mdlV1036OfficialFilialEnt=function(f){
+        f=fil36(f); const base={type:'filial',filial:f,nome:(typeof filialLabel==='function'?filialLabel(f):f),...(FILIAIS?.[f]||{})};
+        const src=(typeof window.mdlV1036RecebimentosFilial==='function'?window.mdlV1036RecebimentosFilial(f):window.mdlV1035RecebimentosFilial(f));
+        const sum=fx=>(src?.[fx]||[]).reduce((a,b)=>a+Number(b.pago||b.recebido||0),0);
+        return {...base,grave_rec:Math.round(sum('grave')*100)/100,alerta_rec:Math.round(sum('alerta')*100)/100,atencao_rec:Math.round(sum('atencao')*100)/100};
+      };
+      window.mdlV1035OfficialFilialEnt=window.mdlV1036OfficialFilialEnt;
+    }
+    // Garante que getRecebimentos/render/calcMeta dos gerentes usem a fonte oficial depois do rebuild.
+    const oldGet36=(typeof getRecebimentos==='function')?getRecebimentos:null;
+    if(oldGet36 && !window._mdlV1036GetWrapped){
+      window._mdlV1036GetWrapped=true;
+      getRecebimentos=window.getRecebimentos=function(ent){
+        try{const f=filialRef36(ent||{}); if(f && isFilialCtx36(ent||{})) return (typeof window.mdlV1036RecebimentosFilial==='function'?window.mdlV1036RecebimentosFilial(f):oldGet36.apply(this,arguments));}catch(e){console.warn(TAG,'getRecebimentos',e)}
+        return oldGet36.apply(this,arguments);
+      };
+    }
+    const oldCalc36=(typeof calcMeta==='function')?calcMeta:null;
+    if(oldCalc36 && !window._mdlV1036CalcWrapped){
+      window._mdlV1036CalcWrapped=true;
+      calcMeta=window.calcMeta=function(ent){
+        try{const f=filialRef36(ent||{}); if(f && isFilialCtx36(ent||{}) && typeof window.mdlV1036OfficialFilialEnt==='function') return oldCalc36.call(this,window.mdlV1036OfficialFilialEnt(f));}catch(e){console.warn(TAG,'calcMeta',e)}
+        return oldCalc36.apply(this,arguments);
+      };
+    }
+    const oldRender36=(typeof renderRecebimentos==='function')?renderRecebimentos:null;
+    if(oldRender36 && !window._mdlV1036RenderWrapped){
+      window._mdlV1036RenderWrapped=true;
+      renderRecebimentos=window.renderRecebimentos=function(ent){
+        try{const f=filialRef36(ent||{}); if(f && isFilialCtx36(ent||{})){ rebuild36(); return oldRender36.call(this,{type:'filial',filial:f,nome:(typeof filialLabel==='function'?filialLabel(f):f),login:'gerentef'+pad36(f),is_gerente:true,is_fixed_gerente:true}); }}catch(e){console.warn(TAG,'renderRecebimentos',e)}
+        return oldRender36.apply(this,arguments);
+      };
+    }
+    // Quando o usuário for gerente e a tela já estiver aberta, reabre uma vez com a fonte já conciliada.
+    try{setTimeout(()=>{try{if(usuarioAtual && usuarioAtual.tipo!=='master' && isFilialCtx36(usuarioAtual)){const f=filialRef36(usuarioAtual); if(f && typeof openEntity==='function') openEntity({type:'filial',filial:f,nome:(typeof filialLabel==='function'?filialLabel(f):f),login:'gerentef'+pad36(f)});}}catch(e){}},900);}catch(e){}
+    try{window.DASHBOARD_BUILD_VERSION='V10.36'}catch(e){}
+    console.log(TAG,'ativo: cobrancas_log.json vem embutido no HTML e gerente/filial recalcula antes da tela');
+  }catch(e){console.warn('[V10.36] hotfix falhou',e)}
 })();
 
 </script>
@@ -17899,6 +18010,7 @@ repls = {
     '__JS_DESTAQUE__': js_destaque,
     '__JS_HIST_DASH__': js_hist_dash,
     '__JS_QUITADOS_180__': js_quitados_180,
+    '__JS_COB_LOGS_BOOT__': js_cobrancas_logs_boot,
     '__JS_HIST_RECEBIMENTOS_MENSAIS__': js_hist_recebimentos_mensais,
     '__JS_CLIENTES_SEM_MOVIMENTO__': '[]',  # V9.6: lazy-load do JSON no navegador para não pesar o HTML
     '__JS_CLIENTES_SEM_MOVIMENTO_BASE__': '[]',  # V9.6: base completa fica no FTP, não embutida no HTML
@@ -18851,3 +18963,5 @@ driver.quit()
 # MDL_V10_24_GER_DINAMICO_SEM_NOME_FIXO_FIX: regra dinâmica por (GERFx), sem gerente travado por nome.
 
 # MDL_V10_25_GERENTES_FIXOS_POR_FILIAL_FIX: logins fixos gerentef01..gerentef09, nome atual editável pelo Master.
+
+# MDL_V10_36_COBLOGS_BOOT_FILIAL_FIX: embute cobrancas_log.json no HTML e força gerente/filial recalcular recebimentos conciliados antes de renderizar.
