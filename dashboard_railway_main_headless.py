@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_32_QUITADOS_VENDEDOR_ERP_FILIAL_FIX
+# VERSAO: DASH2_0_V10_33_SYNC_CONCILIADOS_GERENTE_FILIAL_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,7 +34,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.32"
+DASHBOARD_BUILD_VERSION = "V10.33"
 DASHBOARD_BUILD_TAG = "DASH2_0_V10_20_RELATORIOS_JULHO_FTP_FIX"
 
 def now_brasilia():
@@ -17447,6 +17447,113 @@ Preparamos condições especiais para você comemorar com a gente.
     try{window.DASHBOARD_BUILD_VERSION='V10.32'}catch(e){}
     console.log(TAG,'ativo: vendedor_erp/crediaristafXX_YY dos quitados agora entra na filial inteira');
   }catch(e){console.warn('[V10.32] hotfix falhou',e)}
+})();
+
+
+// ===== V10.33: gerente/filial reprocessa após carregar logs de cobrança =====
+(function(){
+  try{
+    const TAG='[V10.33 sync recebimentos gerente/filial]';
+    function fil33(v){
+      const s=String(v||'').toUpperCase().trim();
+      let m=s.match(/GERENTEF\s*0*(\d+)/i)||s.match(/CREDIARISTAF\s*0*(\d+)/i)||s.match(/GERF\s*0*(\d+)/i)||s.match(/\bF\s*0*(\d+)\b/i)||s.match(/^F0*(\d+)$/i);
+      return m?'F'+Number(m[1]):'';
+    }
+    function isGerenteFilial33(){
+      try{return !!(usuarioAtual && usuarioAtual.tipo!=='master' && (usuarioAtual.is_gerente || /^gerentef\d{2}$/i.test(String(usuarioAtual.login||''))));}catch(e){return false}
+    }
+    function refFilialAtual33(){
+      try{
+        const f=fil33(currentDetailRef?.filial)||fil33(usuarioAtual?.filial)||fil33(usuarioAtual?.login)||fil33(usuarioAtual?.nome);
+        if(f) return {type:'filial',filial:f,nome:(typeof filialLabel==='function'?filialLabel(f):f),login:String(usuarioAtual?.login||'')};
+      }catch(e){}
+      return null;
+    }
+    function refreshDetail33(label=''){
+      try{
+        if(detailScreen && !detailScreen.classList.contains('hidden') && (currentDetailRef || isGerenteFilial33())){
+          const ref = isGerenteFilial33() ? refFilialAtual33() : currentDetailRef;
+          if(ref){
+            console.log(TAG,'reabrindo tela após sync',label,ref);
+            openEntity(ref);
+          }
+        }
+      }catch(e){console.warn(TAG,'refreshDetail',e)}
+    }
+    function rebuildConciliados33(){
+      try{
+        if(typeof getQuitadosConciliados==='function'){
+          RECEBIMENTOS_CONCILIADOS = getQuitadosConciliados() || {};
+          console.log(TAG,'conciliados recalculados', RECEBIMENTOS_CONCILIADOS);
+        }
+      }catch(e){console.warn(TAG,'rebuildConciliados',e)}
+    }
+
+    // Quando carregar os logs online, recalcula os quitados conciliados e reabre a tela do gerente.
+    const prevCarregarCob33=(typeof carregarCobrancasOnline==='function')?carregarCobrancasOnline:null;
+    if(prevCarregarCob33 && !window._mdlV1033CobWrapped){
+      window._mdlV1033CobWrapped=true;
+      carregarCobrancasOnline=window.carregarCobrancasOnline=async function(){
+        const r=await prevCarregarCob33.apply(this,arguments);
+        rebuildConciliados33();
+        refreshDetail33('cobrancasOnline');
+        return r;
+      };
+    }
+
+    // No login do gerente, antes de abrir a tela, espera os logs de cobrança/conciliados.
+    // Isso evita abrir F9/F4 com 17% e depois o Master mostrar 18%.
+    const prevAbrirApp33=(typeof abrirApp==='function')?abrirApp:null;
+    if(prevAbrirApp33 && !window._mdlV1033AbrirWrapped){
+      window._mdlV1033AbrirWrapped=true;
+      abrirApp=window.abrirApp=async function(){
+        try{
+          if(isGerenteFilial33()){
+            const msg=document.getElementById('loginMsg');
+            if(msg) msg.textContent='Sincronizando recebimentos da filial...';
+            await Promise.race([
+              Promise.allSettled([
+                (typeof carregarCobrancasOnline==='function'?carregarCobrancasOnline():Promise.resolve()),
+                (typeof carregarConfigOnline==='function'?carregarConfigOnline():Promise.resolve()),
+                (typeof carregarCredenciaisOnline==='function'?carregarCredenciaisOnline():Promise.resolve())
+              ]),
+              new Promise(resolve=>setTimeout(resolve,4200))
+            ]);
+            rebuildConciliados33();
+          }
+        }catch(e){console.warn(TAG,'pré-sync abrirApp',e)}
+        const out=await prevAbrirApp33.apply(this,arguments);
+        try{setTimeout(()=>{rebuildConciliados33(); refreshDetail33('abrirApp pós-sync');},650)}catch(e){}
+        return out;
+      };
+    }
+
+    // Garante que a atualização online pós-login também atualize usuário comum/gerente, não só Master.
+    const prevAtual33=(typeof tentarAtualizarOnlineDepoisLogin==='function')?tentarAtualizarOnlineDepoisLogin:null;
+    if(prevAtual33 && !window._mdlV1033AtualWrapped){
+      window._mdlV1033AtualWrapped=true;
+      tentarAtualizarOnlineDepoisLogin=window.tentarAtualizarOnlineDepoisLogin=async function(){
+        const out=await prevAtual33.apply(this,arguments);
+        rebuildConciliados33();
+        refreshDetail33('pós-login');
+        return out;
+      };
+    }
+
+    // Se a fonte V10.32 existir, força recalcular conciliados antes de montar os recebimentos da filial.
+    if(typeof window.mdlV1032RecebimentosFilial==='function' && !window._mdlV1033RecWrapped){
+      window._mdlV1033RecWrapped=true;
+      const oldRec33=window.mdlV1032RecebimentosFilial;
+      window.mdlV1032RecebimentosFilial=function(f){
+        rebuildConciliados33();
+        return oldRec33.call(this,f);
+      };
+      window.mdlV1031RecebimentosFilial=window.mdlV1032RecebimentosFilial;
+    }
+
+    try{window.DASHBOARD_BUILD_VERSION='V10.33'}catch(e){}
+    console.log(TAG,'ativo: login de gerente espera conciliados e re-renderiza com logs de cobrança');
+  }catch(e){console.warn('[V10.33] hotfix falhou',e)}
 })();
 
 </script>
