@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_37_FILIAL_OWNER_FIRST_RECEBIMENTOS_FIX
+# VERSAO: DASH2_0_V10_38_CSM_30_ROTATIVO_RECENTE_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,7 +34,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.37"
+DASHBOARD_BUILD_VERSION = "V10.38"
 DASHBOARD_BUILD_TAG = "DASH2_0_V10_20_RELATORIOS_JULHO_FTP_FIX"
 
 def now_brasilia():
@@ -7437,15 +7437,20 @@ def carregar_clientes_sem_movimento_local():
 
     print(f"🧡 Clientes sem movimento V9.2: {len(actionable)} acionável(is) de {len(final_com_key)} na base | novos={novos_count} pendentes_sem_envio={pendentes_count} retorno_{cooldown_dias}d={retorno_count} aguardando_reenvio={aguardando_count}")
 
-    # ===== V10.16: lote diário leve — máximo 10 clientes por usuário por dia =====
-    # Mantém a BASE completa arquivada no FTP, mas publica no dashboard apenas o lote do dia.
-    # Se o main rodar de novo depois que alguém enviou WhatsApp, o lote do dia é reaproveitado,
-    # evitando liberar mais 10 no mesmo dia para o mesmo usuário.
+    # ===== V10.38: lote diário rotativo — máximo configurável por usuário por dia =====
+    # Regra MDL:
+    # - BASE completa continua arquivada no FTP;
+    # - dashboard publica somente o lote leve do dia;
+    # - padrão agora: 30 clientes por usuário/dia;
+    # - prioridade: clientes mais recentes sem compra primeiro;
+    # - quem apareceu no lote e não foi acionado vai para o final da fila no próximo dia;
+    # - cliente acionado só volta após REATIVACAO_REENVIO_DIAS, padrão 30 dias, se ainda não comprou.
     actionable_sem_limite_v1016 = list(actionable)
     csm_lote_path_v1016 = os.path.join(pasta, 'clientes_sem_movimento_lote_diario.json')
     csm_hist_path_v1016 = os.path.join(pasta, f"clientes_sem_movimento_historico_{now_brasilia().strftime('%Y-%m-%d')}.json")
+    csm_fila_path_v1038 = os.path.join(pasta, 'clientes_sem_movimento_fila.json')
     hoje_lote_v1016 = now_brasilia().strftime('%Y-%m-%d')
-    max_por_usuario_v1016 = int(os.getenv('CSM_MAX_CLIENTES_USUARIO_DIA', '10') or '10')
+    max_por_usuario_v1016 = int(os.getenv('CSM_MAX_CLIENTES_USUARIO_DIA', '30') or '30')
 
     def _js_hash_py_v1016(txt):
         h = 0
@@ -7521,6 +7526,29 @@ def carregar_clientes_sem_movimento_local():
             pass
         return None
 
+    def _load_fila_csm_v1038():
+        data = None
+        try:
+            if os.path.exists(csm_fila_path_v1038):
+                with open(csm_fila_path_v1038, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+        except Exception:
+            data = None
+        if not isinstance(data, dict):
+            try:
+                data = _ftp_json('clientes_sem_movimento_fila.json', None)
+            except Exception:
+                data = None
+        if not isinstance(data, dict):
+            data = {}
+        data.setdefault('por_cliente', {})
+        data.setdefault('por_usuario', {})
+        return data
+
+    _fila_state_v1038 = _load_fila_csm_v1038()
+    _fila_cliente_v1038 = _fila_state_v1038.setdefault('por_cliente', {})
+    _fila_usuario_v1038 = _fila_state_v1038.setdefault('por_usuario', {})
+
     _atual_por_key_v1016 = {}
     for _r in actionable_sem_limite_v1016:
         try:
@@ -7550,7 +7578,7 @@ def carregar_clientes_sem_movimento_local():
             lote_rows.append(base_r)
         actionable = lote_rows
         _lote_reusado_v1016 = True
-        print(f"🧡 V10.16: lote diário CSM reaproveitado ({len(actionable)} cliente(s)); não libero novos no mesmo dia.")
+        print(f"🧡 V10.38: lote diário CSM reaproveitado ({len(actionable)} cliente(s)); não libero novos no mesmo dia.")
     else:
         por_owner = {}
         for r in actionable_sem_limite_v1016:
@@ -7558,12 +7586,60 @@ def carregar_clientes_sem_movimento_local():
             ok = rr.get('_owner_key_py') or 'SEM_OWNER'
             por_owner.setdefault(ok, []).append(rr)
         lote_rows = []
+        por_owner_stats = {}
         for ok, arr in sorted(por_owner.items()):
-            # prioriza mais tempo sem compra, depois nome, mas só 10 para cada usuário/gerente
-            arr = sorted(arr, key=lambda x: (-int(x.get('dias_sem_movimento') or 0), str(x.get('cliente') or '')))
-            lote_rows.extend(arr[:max_por_usuario_v1016])
-        actionable = sorted(lote_rows, key=lambda x: (str(x.get('filial','')), str(x.get('_owner_key_py','')), -int(x.get('dias_sem_movimento') or 0), str(x.get('cliente',''))))
-        print(f"🧡 V10.16: lote diário CSM criado com limite {max_por_usuario_v1016}/usuário: {len(actionable)} de {len(actionable_sem_limite_v1016)} acionáveis.")
+            def _rank_row_csm_v1038(x):
+                try:
+                    keys = [str(k) for k in _csm_all_keys_row(x) if k]
+                except Exception:
+                    keys = [str(x.get('_csm_key') or _csm_key_row(x) or '')]
+                hist = {}
+                for kk in keys:
+                    h = _fila_cliente_v1038.get(kk)
+                    if isinstance(h, dict):
+                        hist = h
+                        break
+                ultimo_lote = str(hist.get('ultimo_lote') or '0000-00-00')
+                qtd_lotes = int(hist.get('qtd_lotes') or 0)
+                dias_sm = int(float(str(x.get('dias_sem_movimento') or 999999).replace(',', '.') or 999999))
+                # prioridade: quem nunca/menos apareceu; dentro disso, mais recente sem compra primeiro; sorteio estável do dia para não ficar sempre alfabético.
+                hday = abs(_js_hash_py_v1016(f"{hoje_lote_v1016}|{ok}|{keys[0] if keys else ''}"))
+                return (ultimo_lote, qtd_lotes, dias_sm, hday)
+            arr = sorted(arr, key=_rank_row_csm_v1038)
+            escolhidos = arr[:max_por_usuario_v1016]
+            lote_rows.extend(escolhidos)
+            por_owner_stats[ok] = {'base_acionavel': len(arr), 'selecionados': len(escolhidos)}
+            for rr in escolhidos:
+                try:
+                    keys_rr = [str(k) for k in _csm_all_keys_row(rr) if k]
+                except Exception:
+                    keys_rr = [str(rr.get('_csm_key') or _csm_key_row(rr) or '')]
+                for kk in keys_rr:
+                    if not kk:
+                        continue
+                    st = _fila_cliente_v1038.setdefault(kk, {})
+                    st['ultimo_lote'] = hoje_lote_v1016
+                    st['qtd_lotes'] = int(st.get('qtd_lotes') or 0) + 1
+                    st['owner_key'] = ok
+                    st['filial'] = str(rr.get('filial') or '')
+                    st['cliente'] = str(rr.get('cliente') or '')
+                    st['dias_sem_movimento'] = int(float(str(rr.get('dias_sem_movimento') or 0).replace(',', '.') or 0))
+            u = _fila_usuario_v1038.setdefault(ok, {})
+            u['ultimo_lote'] = hoje_lote_v1016
+            u['selecionados_ultimo_lote'] = len(escolhidos)
+            u['base_acionavel_ultimo_lote'] = len(arr)
+        actionable = sorted(lote_rows, key=lambda x: (str(x.get('filial','')), str(x.get('_owner_key_py','')), int(x.get('dias_sem_movimento') or 999999), str(x.get('cliente',''))))
+        _fila_state_v1038['gerado_em'] = now_brasilia().isoformat()
+        _fila_state_v1038['versao'] = DASHBOARD_BUILD_VERSION
+        _fila_state_v1038['regra'] = '30_por_usuario_dia_rotativo_recente_primeiro_nao_acionado_vai_final_fila_reenvio_30d'
+        _fila_state_v1038['limite_por_usuario_dia'] = max_por_usuario_v1016
+        try:
+            with open(csm_fila_path_v1038, 'w', encoding='utf-8') as f_fila:
+                json.dump(_fila_state_v1038, f_fila, ensure_ascii=False, indent=2)
+            print(f"💾 V10.38 fila CSM salva: {os.path.basename(csm_fila_path_v1038)} ({len(_fila_cliente_v1038)} chave(s))")
+        except Exception as e:
+            print(f"⚠️ V10.38 não consegui salvar fila CSM: {e}")
+        print(f"🧡 V10.38: lote diário CSM criado com limite {max_por_usuario_v1016}/usuário, rotativo recente→antigo: {len(actionable)} de {len(actionable_sem_limite_v1016)} acionáveis.")
 
     _por_owner_count_v1016 = {}
     for _r in actionable:
@@ -7574,6 +7650,7 @@ def carregar_clientes_sem_movimento_local():
             'data': hoje_lote_v1016,
             'gerado_em': now_brasilia().isoformat(),
             'versao': DASHBOARD_BUILD_VERSION,
+            'regra': '30_por_usuario_dia_rotativo_recente_primeiro_nao_acionado_vai_final_fila_reenvio_30d',
             'limite_por_usuario_dia': max_por_usuario_v1016,
             'lote_reusado': _lote_reusado_v1016,
             'acionaveis_sem_limite': len(actionable_sem_limite_v1016),
@@ -7585,9 +7662,9 @@ def carregar_clientes_sem_movimento_local():
             json.dump(_lote_payload_v1016, f_lote, ensure_ascii=False, indent=2)
         with open(csm_hist_path_v1016, 'w', encoding='utf-8') as f_hist_csm:
             json.dump({**_lote_payload_v1016, 'base_total_arquivada': len(final_com_key), 'base_clientes': final_com_key}, f_hist_csm, ensure_ascii=False, indent=2)
-        print(f"💾 V10.16 lote/histórico CSM salvo: {os.path.basename(csm_lote_path_v1016)} + {os.path.basename(csm_hist_path_v1016)}")
+        print(f"💾 V10.38 lote/histórico CSM salvo: {os.path.basename(csm_lote_path_v1016)} + {os.path.basename(csm_hist_path_v1016)}")
     except Exception as e:
-        print(f"⚠️ V10.16 não consegui salvar lote/histórico CSM: {e}")
+        print(f"⚠️ V10.38 não consegui salvar lote/histórico CSM: {e}")
 
     _seen_new = []
     for r in final_com_key:
@@ -19038,6 +19115,9 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
             _ftp_upload_file_v1019(_csm_lote_path, 'clientes_sem_movimento_lote_diario.json', label='clientes_sem_movimento_lote_diario.json')
         if os.path.exists(_csm_hist_dia) and _json_has_items_v95(_csm_hist_dia, ('clientes','base_clientes')):
             _ftp_upload_file_v1019(_csm_hist_dia, f"clientes_sem_movimento_historico_{now_brasilia().strftime('%Y-%m-%d')}.json", label='clientes_sem_movimento_historico do dia')
+        _csm_fila_path = os.path.join(pasta, 'clientes_sem_movimento_fila.json')
+        if os.path.exists(_csm_fila_path) and _json_has_items_v95(_csm_fila_path, ('por_cliente','por_usuario')):
+            _ftp_upload_file_v1019(_csm_fila_path, 'clientes_sem_movimento_fila.json', label='clientes_sem_movimento_fila.json')
 
         _dup_path = os.path.join(pasta, 'relatorio_duplicidades_carteira.json')
         if os.path.exists(_dup_path):
