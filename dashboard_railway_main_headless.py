@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_36_COBLOGS_BOOT_FILIAL_FIX
+# VERSAO: DASH2_0_V10_37_FILIAL_OWNER_FIRST_RECEBIMENTOS_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,7 +34,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.36"
+DASHBOARD_BUILD_VERSION = "V10.37"
 DASHBOARD_BUILD_TAG = "DASH2_0_V10_20_RELATORIOS_JULHO_FTP_FIX"
 
 def now_brasilia():
@@ -17978,6 +17978,206 @@ Preparamos condições especiais para você comemorar com a gente.
   }catch(e){console.warn('[V10.36] hotfix falhou',e)}
 })();
 
+
+// ===== V10.37: recebimentos da filial por RESPONSÁVEL primeiro (corrige crediaristaf09_01 / Amanda / Joyce) =====
+// Regra oficial: para painel de FILIAL/GERENTE, o dono do recebimento manda.
+// Se o título vier com filial F90/F99/FDEP, mas vendedor_erp/origem/cobrador/usuário for crediaristaf09_01,
+// AMANDA_F9, JOYCE_F9, ADRIANA_F9 etc., ele entra na filial F9. Isso força o individual do gerente
+// a usar exatamente a mesma composição visual que o Master quando abre a filial.
+(function(){
+  try{
+    const TAG='[V10.37 owner-first recebimentos filial]';
+    function norm37(v){
+      try{return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim();}
+      catch(e){return String(v||'').toUpperCase().trim();}
+    }
+    function pad37(f){const n=String(f||'').replace(/\D/g,''); return n?String(Number(n)).padStart(2,'0'):'';}
+    function fil37(v){
+      const raw=String(v||'').trim(); const up=raw.toUpperCase(); const low=raw.toLowerCase();
+      let m=low.match(/crediaristaf\s*0*(\d{1,2})/) || low.match(/gerentef\s*0*(\d{1,2})/) || low.match(/gerf\s*0*(\d{1,2})/);
+      if(m) return 'F'+Number(m[1]);
+      m=up.match(/\bF\s*0*(\d{1,2})\b/) || up.match(/^F0*(\d{1,2})$/) || up.match(/FILIAL\s*0*(\d{1,2})/) || up.match(/LOJA\s*0*(\d{1,2})/);
+      if(m) return 'F'+Number(m[1]);
+      return '';
+    }
+    function isDeposito37(f){return /^F(90|99|100)$/.test(String(f||'').toUpperCase()) || /FDEP|DEPOSITO|DEP[ÓO]SITO/.test(String(f||'').toUpperCase());}
+    function mapNomeFilial37(raw){
+      const n=norm37(raw); if(!n) return '';
+      const direct=fil37(raw); if(direct) return direct;
+      try{
+        for(const [lg,c] of Object.entries(CREDS||{})){
+          if(!c) continue; const cf=fil37(c.filial); if(!cf) continue;
+          for(const v of [lg,c.login,c.usuario,c.nome]){
+            const vn=norm37(v); if(vn && (n===vn || n.includes(vn) || vn.includes(n))) return cf;
+          }
+        }
+      }catch(e){}
+      try{
+        for(const [f,arr] of Object.entries(TODOS||{})){
+          const cf=fil37(f); if(!cf) continue;
+          for(const r of (arr||[])){
+            const vn=norm37(r?.nome||r?.login||r?.usuario||'');
+            if(vn && (n===vn || n.includes(vn) || vn.includes(n))) return cf;
+          }
+        }
+      }catch(e){}
+      try{
+        for(const row of (CREDIARISTAS_CONFIG||[])){
+          const cf=fil37(row?.filial); if(!cf) continue;
+          for(const v of [row?.login,row?.nome]){
+            const vn=norm37(v); if(vn && (n===vn || n.includes(vn) || vn.includes(n))) return cf;
+          }
+        }
+      }catch(e){}
+      return '';
+    }
+    function ownerFil37(r){
+      const vals=[
+        r?.vendedor_erp,r?.vendedor,r?.origem,r?.cobrador,r?.usuario,r?.login,r?.owner,r?.owner_key,
+        r?.usuario_key,r?.destino_login,r?.destino_nome,r?.responsavel,r?.nome_responsavel,r?.operador,
+        r?.funcionario,r?.vendedor_nome,r?.consultor,r?.cobrador_nome,r?.quem_enviou
+      ];
+      for(const v of vals){const f=mapNomeFilial37(v); if(f) return f;}
+      return '';
+    }
+    function directFil37(r){
+      const vals=[r?.filial,r?.filial_vendedor,r?.filial_origem,r?.origem_filial,r?.filial_base,r?.loja,r?.unidade,r?.empresa,r?.filial_label,r?.filial_nome];
+      for(const v of vals){const f=fil37(v); if(f) return f;}
+      return '';
+    }
+    function rowFil37(r){
+      const of=ownerFil37(r); const df=directFil37(r);
+      // Dono/responsável manda quando existir, principalmente se a filial original for depósito/F90/F99/FDEP.
+      // Isso corrige títulos de crediarista/gerente que vieram como depósito mas já pertencem a uma loja.
+      if(of) return of;
+      return df;
+    }
+    function keyFil37(k,b){
+      const f=mapNomeFilial37(k); if(f) return f;
+      try{for(const fx of ['grave','alerta','atencao']){for(const r of (b?.[fx]||[])){const rf=rowFil37(r); if(rf) return rf;}}}catch(e){}
+      return '';
+    }
+    function iso37(v){
+      try{
+        if(!v) return ''; const s=String(v).trim();
+        let m=s.match(/^(\d{2})\/(\d{2})\/(\d{4})/); if(m) return `${m[3]}-${m[2]}-${m[1]}`;
+        m=s.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+        const d=new Date(s.replace(' ','T')); if(!isNaN(d)) return d.toISOString().slice(0,10);
+      }catch(e){}
+      return '';
+    }
+    function mesAtual37(){try{return (new Date()).toISOString().slice(0,7)}catch(e){return ''}}
+    function isMes37(r){const d=iso37(r?.pagamento||r?.data_pagamento||r?.dt_pagamento||r?.data||r?.server_time||''); const ym=mesAtual37(); return !!(d && ym && d.slice(0,7)===ym);}
+    function faixa37(r){
+      let fx=String(r?.faixa||'').toLowerCase();
+      if(fx.includes('grave')) return 'grave'; if(fx.includes('alert')) return 'alerta'; if(fx.includes('aten')) return 'atencao';
+      const dias=Number(r?.dias_atraso_pagamento ?? r?.dias_atraso ?? r?.dias ?? 0);
+      if(dias>=60) return 'grave'; if(dias>=30) return 'alerta'; if(dias>=15) return 'atencao'; return '';
+    }
+    function rowKey37(r){
+      const titulo=String(r?.titulo||r?.lancamento||'').trim();
+      const parcela=String(r?.parcela||'').trim();
+      const cliente=norm37(r?.cliente||r?.nome||'');
+      const pag=iso37(r?.pagamento||r?.data_pagamento||r?.data||'');
+      const val=String(Number(r?.pago||r?.recebido||0).toFixed(2));
+      return [cliente,titulo,parcela,pag,val].join('|');
+    }
+    function normaliza37(r0,f,fxForced,forceFilial){
+      const r={...(r0||{})};
+      const owner=ownerFil37(r), direct=directFil37(r);
+      r.filial = forceFilial ? f : (owner||direct||f||'');
+      r.faixa = fxForced || faixa37(r);
+      if(r.pago==null && r.recebido!=null) r.pago=Number(r.recebido||0);
+      if(r.recebido==null && r.pago!=null) r.recebido=Number(r.pago||0);
+      if(r.dias==null || Number(r.dias||0)===0) r.dias=Number(r.dias_atraso_pagamento ?? r.dias_atraso ?? r.dias ?? 0);
+      if(!r.vendedor) r.vendedor=r.vendedor_erp||r.origem||r.cobrador||r.usuario||r.destino_nome||r.login||r.responsavel||'';
+      if(!r.pagamento && r.data_pagamento) r.pagamento=r.data_pagamento;
+      return r;
+    }
+    function add37(out,r0,f,fxForced,forceFilial){
+      if(!r0) return; const valor=Number(r0.pago||r0.recebido||0); if(!valor) return;
+      const rf=rowFil37(r0);
+      if(!forceFilial && f && rf && rf!==f) return;
+      const r=normaliza37(r0,f,fxForced,!!forceFilial);
+      const fx=r.faixa; if(!out[fx]) return;
+      const key=rowKey37(r); if(!key || out.__seen.has(key)) return;
+      out.__seen.add(key); out[fx].push(r);
+    }
+    function addBucket37(out,b,f,forceFilial){['grave','alerta','atencao'].forEach(fx=>(b?.[fx]||[]).forEach(r=>add37(out,r,f,fx,!!forceFilial)));}
+    function sourceFilial37(f){
+      f=fil37(f); const out={grave:[],alerta:[],atencao:[],__seen:new Set()};
+      // 1) Base da carteira da própria filial com pago do mês, sempre forçada para a filial aberta.
+      try{const b=CLIENTES_FIL?.[f]||{}; ['grave','alerta','atencao'].forEach(fx=>(b?.[fx]||[]).forEach(r=>{if(isMes37(r)) add37(out,r,f,fx,true);}));}catch(e){console.warn(TAG,'CLIENTES_FIL',e)}
+      // 2) Quitados 180d: aqui o responsável vem primeiro. crediaristaf09_01/Amanda/Joyce entram na F9 mesmo se filial original for F90/F99/FDEP.
+      try{(QUITADOS_180||[]).forEach(q=>{if(isMes37(q) && rowFil37(q)===f) add37(out,q,f,null,false);});}catch(e){console.warn(TAG,'QUITADOS_180',e)}
+      // 3) Buckets já montados pelo backend: se a chave ou as linhas pertencem à filial, força entrar na filial.
+      const buckets=[['RECEBIMENTOS',RECEBIMENTOS],['RECEBIMENTOS_CREDIARISTA',RECEBIMENTOS_CREDIARISTA],['RECEBIMENTOS_CONCILIADOS',RECEBIMENTOS_CONCILIADOS]];
+      buckets.forEach(([label,obj])=>{try{Object.entries(obj||{}).forEach(([k,b])=>{const fk=keyFil37(k,b); if(fk===f) addBucket37(out,b,f,true);});}catch(e){console.warn(TAG,label,e)}});
+      // 4) Fallback de vendedores da filial, caso algum recebido esteja só na carteira individual.
+      try{(TODOS?.[f]||[]).forEach(v=>{const b=CLIENTES_VEND?.[v?.nome]||{}; ['grave','alerta','atencao'].forEach(fx=>(b?.[fx]||[]).forEach(r=>{if(isMes37(r)) add37(out,r,f,fx,true);}));});}catch(e){console.warn(TAG,'CLIENTES_VEND fallback',e)}
+      ['grave','alerta','atencao'].forEach(fx=>out[fx].sort((a,b)=>Number(b.pago||b.recebido||0)-Number(a.pago||a.recebido||0)));
+      delete out.__seen;
+      return out;
+    }
+    function sums37(src){return {grave:(src.grave||[]).reduce((a,b)=>a+Number(b.pago||b.recebido||0),0),alerta:(src.alerta||[]).reduce((a,b)=>a+Number(b.pago||b.recebido||0),0),atencao:(src.atencao||[]).reduce((a,b)=>a+Number(b.pago||b.recebido||0),0)};}
+    function officialEnt37(f){
+      f=fil37(f); const base={type:'filial',filial:f,nome:(typeof filialLabel==='function'?filialLabel(f):f),...(FILIAIS?.[f]||{})};
+      const s=sums37(sourceFilial37(f));
+      return {...base,grave_rec:Math.round(s.grave*100)/100,alerta_rec:Math.round(s.alerta*100)/100,atencao_rec:Math.round(s.atencao*100)/100};
+    }
+    function filialCtx37(ent){
+      try{let f=fil37(ent?.filial)||fil37(ent?.login)||fil37(ent?.nome)||mapNomeFilial37(ent?.login)||mapNomeFilial37(ent?.nome); if(f) return f;}catch(e){}
+      try{if(window.usuarioAtual && usuarioAtual.tipo!=='master'){let f=fil37(usuarioAtual.filial)||fil37(usuarioAtual.login)||fil37(usuarioAtual.nome)||mapNomeFilial37(usuarioAtual.login)||mapNomeFilial37(usuarioAtual.nome); if(f) return f;}}catch(e){}
+      return '';
+    }
+    function isFilialEntity37(ent){
+      try{if(ent && String(ent.type||'').toLowerCase()==='filial') return true;}catch(e){}
+      try{if(ent && (/^gerentef\d{2}$/i.test(String(ent.login||'')) || ent.is_gerente || ent.is_fixed_gerente || ent.is_gerente_filial_fixo || /gerente/i.test(String(ent.tipo||'')))) return true;}catch(e){}
+      try{if(window.usuarioAtual && usuarioAtual.tipo!=='master' && (/^gerentef\d{2}$/i.test(String(usuarioAtual.login||'')) || usuarioAtual.is_gerente || usuarioAtual.is_gerente_filial_fixo || /gerente/i.test(String(usuarioAtual.tipo||'')))) return true;}catch(e){}
+      return false;
+    }
+    function calcMeta37(ent){
+      const cfg=(typeof entityConfig==='function'?entityConfig(ent):CONFIG_META)||{};
+      const gPend=Number(ent.grave_pend||0), aPend=Number(ent.alerta_pend||0), tPend=Number(ent.atencao_pend||0);
+      const gRec=Number(ent.grave_rec||0), aRec=Number(ent.alerta_rec||0), tRec=Number(ent.atencao_rec||0);
+      const gAlvo=gPend*Number(cfg.grave_pct||0)/100, aAlvo=aPend*Number(cfg.alerta_pct||0)/100, tAlvo=tPend*Number(cfg.atencao_pct||0)/100;
+      const gPerc=gAlvo>0?(gRec/gAlvo*100):0, aPerc=aAlvo>0?(aRec/aAlvo*100):0, tPerc=tAlvo>0?(tRec/tAlvo*100):0;
+      const sumW=Number(cfg.peso_grave||0)+Number(cfg.peso_alerta||0)+Number(cfg.peso_atencao||0)||1;
+      const geral=((Math.min(gPerc,100)*Number(cfg.peso_grave||0))+(Math.min(aPerc,100)*Number(cfg.peso_alerta||0))+(Math.min(tPerc,100)*Number(cfg.peso_atencao||0)))/sumW;
+      return {cfg,grave:{pend:gPend,rec:gRec,alvo:gAlvo,perc:gPerc},alerta:{pend:aPend,rec:aRec,alvo:aAlvo,perc:aPerc},atencao:{pend:tPend,rec:tRec,alvo:tAlvo,perc:tPerc},geral};
+    }
+    window.mdlV1037RecebimentosFilial=sourceFilial37;
+    window.mdlV1036RecebimentosFilial=sourceFilial37;
+    window.mdlV1035RecebimentosFilial=sourceFilial37;
+    window.mdlV1037OfficialFilialEnt=officialEnt37;
+    window.mdlV1036OfficialFilialEnt=officialEnt37;
+    window.mdlV1035OfficialFilialEnt=officialEnt37;
+    const prevGet37=(typeof getRecebimentos==='function')?getRecebimentos:null;
+    if(prevGet37){getRecebimentos=window.getRecebimentos=function(ent){try{const f=filialCtx37(ent||{}); if(f && isFilialEntity37(ent||{})) return sourceFilial37(f);}catch(e){console.warn(TAG,'getRecebimentos',e)} return prevGet37.apply(this,arguments);};}
+    const prevCalc37=(typeof calcMeta==='function')?calcMeta:null;
+    if(prevCalc37){calcMeta=window.calcMeta=function(ent){try{const f=filialCtx37(ent||{}); if(f && isFilialEntity37(ent||{})) return calcMeta37(officialEnt37(f));}catch(e){console.warn(TAG,'calcMeta',e)} return prevCalc37.apply(this,arguments);};}
+    const prevRender37=(typeof renderRecebimentos==='function')?renderRecebimentos:null;
+    renderRecebimentos=window.renderRecebimentos=function(ent){
+      try{
+        const f=filialCtx37(ent||{}); if(f && isFilialEntity37(ent||{})){
+          const src=sourceFilial37(f); let out='';
+          ['grave','alerta','atencao'].forEach(fx=>{
+            const arr=src[fx]||[]; const label=fx==='grave'?'Grave':fx==='alerta'?'Alerta':'Atenção';
+            if(!arr.length){out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>Sem recebimentos</span></div></div>`; return;}
+            out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${arr.length} títulos · ${R(arr.reduce((a,b)=>a+Number(b.pago||b.recebido||0),0))}</span></div><div class="tableish">${arr.slice(0,220).map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · Parcela ${esc(r.parcela||'')}</div></div><div><strong>${esc(r.pagamento||'')}</strong><div class="small muted">Pagamento</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${R(r.pago||r.recebido||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${esc(r.vendedor||'')}</strong><div class="small muted">Origem</div></div></div></div>`).join('')}</div></div>`;
+          });
+          return out;
+        }
+      }catch(e){console.warn(TAG,'renderRecebimentos',e)}
+      return prevRender37?prevRender37.apply(this,arguments):'';
+    };
+    // Se a tela individual de gerente já abriu, reabre com a fonte nova para atualizar o percentual e a lista.
+    try{setTimeout(()=>{try{if(window.usuarioAtual && usuarioAtual.tipo!=='master' && isFilialEntity37(usuarioAtual)){const f=filialCtx37(usuarioAtual); if(f && typeof openEntity==='function') openEntity({type:'filial',filial:f,nome:(typeof filialLabel==='function'?filialLabel(f):f),login:'gerentef'+pad37(f),is_gerente:true,is_fixed_gerente:true});}}catch(e){}},750);}catch(e){}
+    try{window.DASHBOARD_BUILD_VERSION='V10.37'}catch(e){}
+    try{console.log(TAG,'ativo', Object.fromEntries(['F1','F2','F3','F4','F5','F6','F8','F9'].map(f=>[f,sums37(sourceFilial37(f))])));}catch(e){console.log(TAG,'ativo');}
+  }catch(e){console.warn('[V10.37] hotfix falhou',e)}
+})();
+
 </script>
 
 </body>
@@ -18965,3 +19165,5 @@ driver.quit()
 # MDL_V10_25_GERENTES_FIXOS_POR_FILIAL_FIX: logins fixos gerentef01..gerentef09, nome atual editável pelo Master.
 
 # MDL_V10_36_COBLOGS_BOOT_FILIAL_FIX: embute cobrancas_log.json no HTML e força gerente/filial recalcular recebimentos conciliados antes de renderizar.
+
+# MDL_V10_37_FILIAL_OWNER_FIRST_RECEBIMENTOS_FIX: responsável/origem/crediarista manda sobre F90/F99/FDEP na soma da filial/gerente.
