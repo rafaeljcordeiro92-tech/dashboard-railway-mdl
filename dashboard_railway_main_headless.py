@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_33_SYNC_CONCILIADOS_GERENTE_FILIAL_FIX
+# VERSAO: DASH2_0_V10_34_FONTE_UNICA_RECEBIMENTOS_FILIAL_GERENTE_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,7 +34,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.33"
+DASHBOARD_BUILD_VERSION = "V10.34"
 DASHBOARD_BUILD_TAG = "DASH2_0_V10_20_RELATORIOS_JULHO_FTP_FIX"
 
 def now_brasilia():
@@ -17554,6 +17554,174 @@ Preparamos condições especiais para você comemorar com a gente.
     try{window.DASHBOARD_BUILD_VERSION='V10.33'}catch(e){}
     console.log(TAG,'ativo: login de gerente espera conciliados e re-renderiza com logs de cobrança');
   }catch(e){console.warn('[V10.33] hotfix falhou',e)}
+})();
+
+
+// ===== V10.34: fonte ÚNICA definitiva de recebimentos por filial =====
+// Corrige divergência Master x login gerente: a filial precisa considerar também buckets já
+// rateados/conciliados por login da própria filial (ex.: AMANDA_F9, crediaristaf09_01), mesmo
+// quando o título original veio do F90/F99/FDEP. A chave/bucket da filial prevalece sobre o
+// campo filial original do título para montagem do painel da filial.
+(function(){
+  const TAG='[V10.34 fonte única recebimentos filial]';
+  try{
+    function fil34(v){
+      const s=String(v||'').trim().toUpperCase();
+      if(!s) return '';
+      let m=s.match(/^F\s*0*(\d+)$/i); if(m) return 'F'+Number(m[1]);
+      if(/^0?\d+$/.test(s)) return 'F'+Number(s);
+      m=s.match(/FILIAL\s*0*(\d+)/i)||s.match(/GERENTE\s*F?\s*0*(\d+)/i)||s.match(/GER\s*F?\s*0*(\d+)/i)||s.match(/GERF\s*0*(\d+)/i)||s.match(/GERENTEF\s*0*(\d+)/i)||s.match(/CREDIARISTA\s*F?\s*0*(\d+)/i)||s.match(/CREDIARISTAF\s*0*(\d+)/i)||s.match(/\bF\s*0*(\d+)\b/i)||s.match(/F0*(\d+)/i);
+      return m?'F'+Number(m[1]):'';
+    }
+    function pad34(f){const n=String(fil34(f)).replace(/\D/g,''); return n?String(Number(n)).padStart(2,'0'):'';}
+    function norm34(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim();}
+    function dtIso34(v){try{if(typeof dateOnlyISO==='function') return dateOnlyISO(v);}catch(e){} const s=String(v||'').trim(); let m=s.match(/(\d{2})\/(\d{2})\/(\d{4})/); if(m) return `${m[3]}-${m[2]}-${m[1]}`; m=s.match(/(\d{4})-(\d{2})-(\d{2})/); if(m) return `${m[1]}-${m[2]}-${m[3]}`; return '';}
+    function mesAtual34(){try{if(typeof mesAtualComissao==='function') return mesAtualComissao();}catch(e){} const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}
+    function isMesAtual34(r){const iso=dtIso34(r?.pagamento||r?.data_pagamento||r?.dt_pagamento||r?.data||''); return iso && iso.slice(0,7)===mesAtual34();}
+    function faixa34(r){
+      const raw=norm34(r?.faixa||r?.bucket||r?.classificacao||'');
+      if(raw.includes('GRAVE')) return 'grave';
+      if(raw.includes('ALERTA')) return 'alerta';
+      if(raw.includes('ATEN')) return 'atencao';
+      const d=Number(r?.dias_atraso_pagamento ?? r?.dias_atraso ?? r?.dias ?? 0);
+      if(d>=60) return 'grave';
+      if(d>=30) return 'alerta';
+      return 'atencao';
+    }
+    function loginGer34(f){const p=pad34(f); return p?'gerentef'+p:'';}
+    function loginCred34(f){const p=pad34(f); return p?'crediaristaf'+p+'_01':'';}
+    function buildMap34(){
+      const map={};
+      function add(nome,login,filial){
+        const f=fil34(filial); if(!f) return;
+        [nome,login,`${nome||''}_${f}`,`${login||''}_${f}`,`${nome||''} (${f})`,`${nome||''} GER${f}`].forEach(k=>{const nk=norm34(k); if(nk) map[nk]=f;});
+      }
+      try{(typeof flattenVendedores==='function'?flattenVendedores():[]).forEach(v=>add(v.nome,v.login,v.filial));}catch(e){}
+      try{Object.entries(CREDS||{}).forEach(([login,u])=>add(u?.nome||login,login,u?.filial));}catch(e){}
+      try{Object.values(AUTH_STATE?.users||{}).forEach(u=>add(u?.nome,u?.login,u?.filial));}catch(e){}
+      try{(typeof getCrediaristasConfig==='function'?getCrediaristasConfig():[]).forEach(v=>add(v.nome||v.login,v.login,v.filial));}catch(e){}
+      try{['F1','F2','F3','F4','F5','F6','F8','F9'].forEach(f=>{add('GERENTE '+f,loginGer34(f),f); add('CREDIARISTA '+f,loginCred34(f),f); add(loginCred34(f),loginCred34(f),f);});}catch(e){}
+      return map;
+    }
+    let _map34=null;
+    function filialByTexto34(v){
+      const raw=String(v||''); if(!raw) return '';
+      const f0=fil34(raw); if(f0) return f0;
+      const low=raw.toLowerCase(); let m=low.match(/crediaristaf0*(\d+)/)||low.match(/gerentef0*(\d+)/); if(m) return 'F'+Number(m[1]);
+      const n=norm34(raw); if(!_map34) _map34=buildMap34();
+      if(_map34[n]) return _map34[n];
+      for(const [k,f] of Object.entries(_map34)){ if(k && (n===k || n.includes(k) || k.includes(n))) return f; }
+      return '';
+    }
+    function rowFil34(r){
+      const direct=[r?.filial,r?.filial_vendedor,r?.filial_origem,r?.origem_filial,r?.filial_base,r?.loja,r?.unidade,r?.empresa,r?.filial_label];
+      for(const d of direct){const f=fil34(d); if(f) return f;}
+      const vals=[r?.vendedor_erp,r?.vendedor,r?.origem,r?.cobrador,r?.usuario,r?.login,r?.owner,r?.owner_key,r?.usuario_key,r?.destino_login,r?.destino_nome,r?.responsavel,r?.nome_responsavel,r?.operador,r?.funcionario];
+      for(const v of vals){const f=filialByTexto34(v); if(f) return f;}
+      return '';
+    }
+    function keyLooksFilial34(k,b,f){
+      f=fil34(f); const p=pad34(f); const n=String(Number(p)||''); const kk=String(k||'').toUpperCase(); const kn=norm34(k);
+      const pats=[f,'F'+p,'_'+f,'_F'+p,'GER'+f,'GERF'+n,'GERF'+p,'GER '+f,'GER F'+p,'GERENTEF'+p,'GERENTEF'+n,'CREDIARISTAF'+p,'CREDIARISTAF'+n,'CREDIARISTA'+f,loginCred34(f).toUpperCase(),loginGer34(f).toUpperCase()].filter(Boolean);
+      if(pats.some(x=>kk.includes(x) || kn.includes(norm34(x)))) return true;
+      const fk=filialByTexto34(k); if(fk===f) return true;
+      try{for(const fx of ['grave','alerta','atencao']){ if((b?.[fx]||[]).some(r=>rowFil34(r)===f)) return true; }}catch(e){}
+      return false;
+    }
+    function rowKey34(r){
+      return [norm34(r?.cliente||r?.nome||''),String(r?.titulo||'').trim(),String(r?.parcela||'').trim(),dtIso34(r?.pagamento||r?.data_pagamento||''),String(Number(r?.pago||r?.recebido||0).toFixed(2))].join('|');
+    }
+    function normRow34(r0,f,fxForced,forceFilial=false){
+      const r={...(r0||{})};
+      r.filial = forceFilial ? f : (rowFil34(r)||f||'');
+      r.faixa = fxForced || faixa34(r);
+      if(r.pago==null && r.recebido!=null) r.pago=Number(r.recebido||0);
+      if(r.dias==null || Number(r.dias||0)===0) r.dias=Number(r.dias_atraso_pagamento ?? r.dias_atraso ?? r.dias ?? 0);
+      if(!r.vendedor) r.vendedor=r.vendedor_erp||r.origem||r.cobrador||r.usuario||r.destino_nome||r.login||'';
+      if(!r.pagamento && r.data_pagamento) r.pagamento=r.data_pagamento;
+      return r;
+    }
+    function add34(out,r0,f,fxForced,forceFilial=false){
+      if(!r0) return;
+      const rf=rowFil34(r0);
+      // Quando a linha veio de um bucket da filial (RECEBIMENTOS/CONCILIADOS), a chave do bucket manda.
+      // Assim F90/F99/FDEP já rateado para AMANDA_F9 ou crediaristaf09_01 entra na F9.
+      if(!forceFilial && f && rf && rf!==f) return;
+      const r=normRow34(r0,f,fxForced,forceFilial);
+      const fx=r.faixa; if(!out[fx] || !Number(r.pago||0)) return;
+      const k=rowKey34(r);
+      if(!out.__seen.has(k)){out.__seen.add(k); out[fx].push(r);}
+    }
+    function addBucket34(out,b,f,forceFilial=false){['grave','alerta','atencao'].forEach(fx=>(b?.[fx]||[]).forEach(r=>add34(out,r,f,fx,forceFilial)));}
+    function sums34(src){return {grave:(src.grave||[]).reduce((a,b)=>a+Number(b.pago||b.recebido||0),0),alerta:(src.alerta||[]).reduce((a,b)=>a+Number(b.pago||b.recebido||0),0),atencao:(src.atencao||[]).reduce((a,b)=>a+Number(b.pago||b.recebido||0),0)};}
+    window.mdlV1034RecebimentosFilial=function(f){
+      f=fil34(f); const out={grave:[],alerta:[],atencao:[],__seen:new Set()};
+      // 1) Base direta: títulos quitados do mês cuja filial original já é a filial.
+      try{(QUITADOS_180||[]).forEach(q=>{if(isMesAtual34(q) && rowFil34(q)===f) add34(out,q,f,null,false);});}catch(e){console.warn(TAG,'QUITADOS_180',e)}
+      // 2) Base rateada/backend: a chave do bucket é a fonte de verdade para a filial.
+      try{Object.entries(RECEBIMENTOS||{}).forEach(([k,b])=>{if(keyLooksFilial34(k,b,f)) addBucket34(out,b,f,true);});}catch(e){console.warn(TAG,'RECEBIMENTOS',e)}
+      try{Object.entries(RECEBIMENTOS_CREDIARISTA||{}).forEach(([k,b])=>{if(keyLooksFilial34(k,b,f)) addBucket34(out,b,f,true);});}catch(e){console.warn(TAG,'CREDIARISTA',e)}
+      // 3) Conciliação por clique WhatsApp: crediaristaf09_01/gerentef09 também manda para F9, mesmo se q.filial=F90.
+      try{Object.entries(RECEBIMENTOS_CONCILIADOS||{}).forEach(([k,b])=>{if(keyLooksFilial34(k,b,f)) addBucket34(out,b,f,true);});}catch(e){console.warn(TAG,'CONCILIADOS',e)}
+      ['grave','alerta','atencao'].forEach(fx=>out[fx].sort((a,b)=>Number(b.pago||b.recebido||0)-Number(a.pago||a.recebido||0)));
+      delete out.__seen;
+      return out;
+    };
+    // Compatibilidade: qualquer hotfix antigo que chamar V10.31/V10.32 cai na fonte nova.
+    window.mdlV1031RecebimentosFilial = window.mdlV1034RecebimentosFilial;
+    window.mdlV1032RecebimentosFilial = window.mdlV1034RecebimentosFilial;
+    window.mdlV1034OfficialFilialEnt=function(f){
+      f=fil34(f); const base={type:'filial',filial:f,nome:(typeof filialLabel==='function'?filialLabel(f):f),...(FILIAIS?.[f]||{})};
+      const s=sums34(window.mdlV1034RecebimentosFilial(f));
+      return {...base,grave_rec:Math.round(s.grave*100)/100,alerta_rec:Math.round(s.alerta*100)/100,atencao_rec:Math.round(s.atencao*100)/100};
+    };
+    function filialRef34(ent){
+      let f='';
+      try{f=fil34(ent?.filial)||filialByTexto34(ent?.login)||filialByTexto34(ent?.nome);}catch(e){}
+      try{if(!f && window.usuarioAtual && usuarioAtual.tipo!=='master') f=fil34(usuarioAtual.filial)||filialByTexto34(usuarioAtual.login)||filialByTexto34(usuarioAtual.nome);}catch(e){}
+      return /^F\d+$/.test(f)?f:'';
+    }
+    function isFilialCtx34(ent){
+      try{if(ent && String(ent.type||'').toLowerCase()==='filial') return true;}catch(e){}
+      try{if(ent && (/^gerentef\d{2}$/i.test(String(ent.login||'')) || /gerente/i.test(String(ent.tipo||'')) || ent.is_gerente || ent.is_fixed_gerente)) return true;}catch(e){}
+      try{if(window.usuarioAtual && usuarioAtual.tipo!=='master' && (/^gerentef\d{2}$/i.test(String(usuarioAtual.login||'')) || usuarioAtual.is_gerente || /gerente/i.test(String(usuarioAtual.tipo||'')))) return true;}catch(e){}
+      return false;
+    }
+    function calcMetaPure34(ent){
+      const cfg=(typeof entityConfig==='function'?entityConfig(ent):CONFIG_META)||{};
+      const gPend=Number(ent.grave_pend||0), aPend=Number(ent.alerta_pend||0), tPend=Number(ent.atencao_pend||0);
+      const gRec=Number(ent.grave_rec||0), aRec=Number(ent.alerta_rec||0), tRec=Number(ent.atencao_rec||0);
+      const gAlvo=gPend*Number(cfg.grave_pct||0)/100, aAlvo=aPend*Number(cfg.alerta_pct||0)/100, tAlvo=tPend*Number(cfg.atencao_pct||0)/100;
+      const gPerc=gAlvo>0?(gRec/gAlvo*100):0, aPerc=aAlvo>0?(aRec/aAlvo*100):0, tPerc=tAlvo>0?(tRec/tAlvo*100):0;
+      const sumW=Number(cfg.peso_grave||0)+Number(cfg.peso_alerta||0)+Number(cfg.peso_atencao||0)||1;
+      const geral=((Math.min(gPerc,100)*Number(cfg.peso_grave||0))+(Math.min(aPerc,100)*Number(cfg.peso_alerta||0))+(Math.min(tPerc,100)*Number(cfg.peso_atencao||0)))/sumW;
+      return {cfg,grave:{pend:gPend,rec:gRec,alvo:gAlvo,perc:gPerc},alerta:{pend:aPend,rec:aRec,alvo:aAlvo,perc:aPerc},atencao:{pend:tPend,rec:tRec,alvo:tAlvo,perc:tPerc},geral};
+    }
+    const prevGet34=(typeof getRecebimentos==='function')?getRecebimentos:null;
+    if(prevGet34){getRecebimentos=window.getRecebimentos=function(ent){try{const f=filialRef34(ent||{}); if(f && isFilialCtx34(ent||{})) return window.mdlV1034RecebimentosFilial(f);}catch(e){console.warn(TAG,'getRecebimentos',e)} return prevGet34.apply(this,arguments);};}
+    const prevCalc34=(typeof calcMeta==='function')?calcMeta:null;
+    if(prevCalc34){calcMeta=window.calcMeta=function(ent){try{const f=filialRef34(ent||{}); if(f && isFilialCtx34(ent||{})) return calcMetaPure34(window.mdlV1034OfficialFilialEnt(f));}catch(e){console.warn(TAG,'calcMeta',e)} return prevCalc34.apply(this,arguments);};}
+    const prevRenderRec34=(typeof renderRecebimentos==='function')?renderRecebimentos:null;
+    renderRecebimentos=window.renderRecebimentos=function(ent){
+      try{
+        const f=filialRef34(ent||{});
+        if(f && isFilialCtx34(ent||{})){
+          const src=window.mdlV1034RecebimentosFilial(f); let out='';
+          ['grave','alerta','atencao'].forEach(fx=>{
+            const arr=src[fx]||[]; const label=fx==='grave'?'Grave':fx==='alerta'?'Alerta':'Atenção';
+            if(!arr.length){out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>Sem recebimentos</span></div></div>`; return;}
+            out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${arr.length} títulos · ${R(arr.reduce((a,b)=>a+Number(b.pago||b.recebido||0),0))}</span></div><div class="tableish">${arr.slice(0,120).map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · Parcela ${esc(r.parcela||'')}</div></div><div><strong>${esc(r.pagamento||'')}</strong><div class="small muted">Pagamento</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${R(r.pago||r.recebido||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${esc(r.vendedor||'')}</strong><div class="small muted">Origem</div></div></div></div>`).join('')}</div></div>`;
+          });
+          return out;
+        }
+      }catch(e){console.warn(TAG,'renderRecebimentos',e)}
+      return prevRenderRec34?prevRenderRec34.apply(this,arguments):'';
+    };
+    // Reabre a tela se o gerente/filial já estiver vendo o detalhe quando a nova regra carregar.
+    try{if(detailScreen && !detailScreen.classList.contains('hidden') && currentDetailRef){const f=filialRef34(currentDetailRef); if(f) setTimeout(()=>openEntity({type:'filial',filial:f,nome:(typeof filialLabel==='function'?filialLabel(f):f)}),120);}}catch(e){}
+    try{window.DASHBOARD_BUILD_VERSION='V10.34'}catch(e){}
+    console.log(TAG,'ativo: Master e login gerente usam a mesma soma, incluindo AMANDA_F9/crediaristaf09 mesmo quando título veio F90/FDEP');
+  }catch(e){console.warn('[V10.34] hotfix falhou',e)}
 })();
 
 </script>
