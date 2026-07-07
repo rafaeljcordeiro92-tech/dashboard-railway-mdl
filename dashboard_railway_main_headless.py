@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_27_GERENTES_RECEBIMENTOS_FILIAL_AGREGADO_FIX
+# VERSAO: DASH2_0_V10_32_QUITADOS_VENDEDOR_ERP_FILIAL_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,7 +34,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.31"
+DASHBOARD_BUILD_VERSION = "V10.32"
 DASHBOARD_BUILD_TAG = "DASH2_0_V10_20_RELATORIOS_JULHO_FTP_FIX"
 
 def now_brasilia():
@@ -17295,6 +17295,158 @@ Preparamos condições especiais para você comemorar com a gente.
     try{window.DASHBOARD_BUILD_VERSION='V10.31'}catch(e){}
     console.log(TAG,'ativo: filial soma quitados de vendedores + crediaristas + gerente');
   }catch(e){console.warn('[V10.31] hotfix falhou',e)}
+})();
+
+
+
+// ===== V10.32: QUITADOS vendedor_erp entra na filial + gerente usa a mesma fonte =====
+// Problema visto na F9: títulos pagos por crediarista/vendedor vinham no QUITADOS_180 com
+// campo vendedor_erp, mas o classificador JS não olhava esse campo. Assim o Master/filial
+// podia mostrar uma soma e o login gerentefXX outra. Agora a fonte da filial considera:
+// filial explícita, vendedor_erp, vendedor/origem/cobrador/login e logins crediaristafXX_YY.
+(function(){
+  const TAG='[V10.32 quitados vendedor_erp filial]';
+  try{
+    function fil32(v){
+      const s=String(v||'').trim().toUpperCase();
+      if(!s) return '';
+      let m=s.match(/^F\s*0*(\d+)$/i); if(m) return 'F'+Number(m[1]);
+      if(/^0?\d+$/.test(s)) return 'F'+Number(s);
+      m=s.match(/FILIAL\s*0*(\d+)/i) || s.match(/GERENTE\s*F?\s*0*(\d+)/i) || s.match(/GER\s*F?\s*0*(\d+)/i) || s.match(/GERF\s*0*(\d+)/i) || s.match(/CREDIARISTA\s*F?\s*0*(\d+)/i) || s.match(/CREDIARISTAF\s*0*(\d+)/i) || s.match(/GERENTEF\s*0*(\d+)/i) || s.match(/\bF\s*0*(\d+)\b/i) || s.match(/F0*(\d+)/i);
+      return m ? 'F'+Number(m[1]) : '';
+    }
+    function pad32(f){const n=String(fil32(f)).replace(/\D/g,''); return n?String(Number(n)).padStart(2,'0'):'';}
+    function loginGer32(f){const p=pad32(f); return p?'gerentef'+p:'';}
+    function loginCred32(f){const p=pad32(f); return p?'crediaristaf'+p+'_01':'';}
+    function norm32(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim();}
+    function mesAtual32(){try{if(typeof mesAtualComissao==='function') return mesAtualComissao();}catch(e){} const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+    function dtIso32(v){try{ if(typeof dateOnlyISO==='function') return dateOnlyISO(v); }catch(e){} const s=String(v||'').trim(); let m=s.match(/(\d{2})\/(\d{2})\/(\d{4})/); if(m) return `${m[3]}-${m[2]}-${m[1]}`; m=s.match(/(\d{4})-(\d{2})-(\d{2})/); if(m) return `${m[1]}-${m[2]}-${m[3]}`; return '';}
+    function pagamentoMesAtual32(r){const iso=dtIso32(r?.pagamento||r?.data_pagamento||r?.dt_pagamento||r?.data||''); return iso && iso.slice(0,7)===mesAtual32();}
+    function faixa32(r){
+      const raw=norm32(r?.faixa||r?.bucket||r?.classificacao||'');
+      if(raw.includes('GRAVE')) return 'grave';
+      if(raw.includes('ALERTA')) return 'alerta';
+      if(raw.includes('ATEN')) return 'atencao';
+      const d=Number(r?.dias_atraso_pagamento ?? r?.dias_atraso ?? r?.dias ?? 0);
+      if(d>=60) return 'grave';
+      if(d>=30) return 'alerta';
+      return 'atencao';
+    }
+    function buildNomeFilialMap32(){
+      const map={};
+      function add(nome,login,filial){
+        const f=fil32(filial); if(!f) return;
+        [nome,login,`${nome||''}_${f}`,`${login||''}_${f}`,`${nome||''} (${f})`].forEach(k=>{const nk=norm32(k); if(nk) map[nk]=f;});
+      }
+      try{(typeof flattenVendedores==='function'?flattenVendedores():[]).forEach(v=>add(v.nome,v.login,v.filial));}catch(e){}
+      try{(typeof getCrediaristasConfig==='function'?getCrediaristasConfig():[]).forEach(v=>add(v.nome||v.login,v.login,v.filial));}catch(e){}
+      try{(typeof crediaristaEntities==='function'?crediaristaEntities():[]).forEach(v=>add(v.nome,v.login,v.filial));}catch(e){}
+      try{Object.values(AUTH_STATE?.users||{}).forEach(u=>add(u.nome,u.login,u.filial));}catch(e){}
+      try{['F1','F2','F3','F4','F5','F6','F8','F9'].forEach(f=>{add('GERENTE '+f,loginGer32(f),f); add('CREDIARISTA '+f,loginCred32(f),f); add(loginCred32(f),loginCred32(f),f);});}catch(e){}
+      return map;
+    }
+    let _nomeFilialCache32=null;
+    function filialByTexto32(v){
+      const raw=String(v||''); if(!raw) return '';
+      const f0=fil32(raw); if(f0) return f0;
+      const low=raw.toLowerCase();
+      let m=low.match(/crediaristaf0*(\d+)/) || low.match(/gerentef0*(\d+)/); if(m) return 'F'+Number(m[1]);
+      const n=norm32(raw);
+      if(!_nomeFilialCache32) _nomeFilialCache32=buildNomeFilialMap32();
+      if(_nomeFilialCache32[n]) return _nomeFilialCache32[n];
+      // nome pode vir com pedaços extras, ex: "YASMIM ... ( GERF4" ou "JOYCE ..."
+      for(const [k,f] of Object.entries(_nomeFilialCache32)){
+        if(k && (n===k || n.includes(k) || k.includes(n))) return f;
+      }
+      return '';
+    }
+    function rowFil32(r){
+      const directs=[r?.filial,r?.filial_vendedor,r?.filial_origem,r?.origem_filial,r?.filial_base,r?.loja,r?.unidade,r?.empresa,r?.filial_label];
+      for(const d of directs){const f=fil32(d); if(f) return f;}
+      const vals=[
+        r?.vendedor_erp, r?.vendedor, r?.origem, r?.cobrador, r?.usuario, r?.login,
+        r?.owner, r?.owner_key, r?.usuario_key, r?.destino_login, r?.destino_nome,
+        r?.responsavel, r?.nome_responsavel, r?.operador, r?.funcionario
+      ];
+      for(const v of vals){const f=filialByTexto32(v); if(f) return f;}
+      return '';
+    }
+    function rowKey32(r){
+      return [norm32(r?.cliente||r?.nome||''),String(r?.titulo||'').trim(),String(r?.parcela||'').trim(),dtIso32(r?.pagamento||r?.data_pagamento||''),String(Number(r?.pago||r?.recebido||0).toFixed(2))].join('|');
+    }
+    function normalizeRow32(r0,f,fxForced){
+      const r={...(r0||{})};
+      const rf=rowFil32(r) || f || '';
+      const fx=fxForced||faixa32(r);
+      r.filial = rf;
+      r.faixa = fx;
+      if(r.pago==null && r.recebido!=null) r.pago=Number(r.recebido||0);
+      if(r.dias==null || Number(r.dias||0)===0) r.dias = Number(r.dias_atraso_pagamento ?? r.dias_atraso ?? r.dias ?? 0);
+      if(!r.vendedor) r.vendedor = r.vendedor_erp || r.origem || r.cobrador || r.usuario || r.destino_nome || r.login || '';
+      if(!r.pagamento && r.data_pagamento) r.pagamento=r.data_pagamento;
+      return r;
+    }
+    function addRow32(out,r0,f,fxForced){
+      if(!r0) return;
+      const rf=rowFil32(r0);
+      if(f && rf && rf!==f) return;
+      const r=normalizeRow32(r0,f,fxForced);
+      const fx=r.faixa; if(!out[fx]) return;
+      if(!Number(r.pago||0)) return;
+      const k=rowKey32(r);
+      if(!out.__seen.has(k)){out.__seen.add(k); out[fx].push(r);}
+    }
+    function addBucket32(out,bucket,f){['grave','alerta','atencao'].forEach(fx=>(bucket?.[fx]||[]).forEach(r=>addRow32(out,r,f,fx)));}
+    function keyLooksFilial32(k,b,f){
+      const p=pad32(f); const n=String(Number(p)||''); const kk=String(k||'').toUpperCase();
+      const pats=[f,'F'+p,'_'+f,'_F'+p,'GER'+f,'GERF'+n,'GERF'+p,'GER '+f,'GER F'+p,'GERENTEF'+p,'CREDIARISTAF'+p,'CREDIARISTA'+f,loginCred32(f).toUpperCase(),loginGer32(f).toUpperCase()];
+      if(pats.some(x=>x && kk.includes(x))) return true;
+      const fk=filialByTexto32(k); if(fk===f) return true;
+      for(const fx of ['grave','alerta','atencao']){ if((b?.[fx]||[]).some(r=>rowFil32(r)===f)) return true; }
+      return false;
+    }
+    window.mdlV1032RecebimentosFilial=function(f){
+      f=fil32(f); const out={grave:[],alerta:[],atencao:[],__seen:new Set()};
+      // Fonte principal: relatório quitados do mês atual. Agora vendedor_erp entra na filial.
+      try{(QUITADOS_180||[]).forEach(q=>{ if(pagamentoMesAtual32(q) && rowFil32(q)===f) addRow32(out,q,f); });}catch(e){console.warn(TAG,'QUITADOS_180',e)}
+      // Complementos já gerados pelo backend/conciliados, para não perder manual/legado.
+      try{Object.entries(RECEBIMENTOS||{}).forEach(([k,b])=>{if(keyLooksFilial32(k,b,f)) addBucket32(out,b,f);});}catch(e){console.warn(TAG,'RECEBIMENTOS',e)}
+      try{Object.entries(RECEBIMENTOS_CONCILIADOS||{}).forEach(([k,b])=>{if(keyLooksFilial32(k,b,f)) addBucket32(out,b,f);});}catch(e){console.warn(TAG,'CONCILIADOS',e)}
+      try{Object.entries(RECEBIMENTOS_CREDIARISTA||{}).forEach(([k,b])=>{if(keyLooksFilial32(k,b,f)) addBucket32(out,b,f);});}catch(e){console.warn(TAG,'CREDIARISTA',e)}
+      ['grave','alerta','atencao'].forEach(fx=>out[fx].sort((a,b)=>Number(b.pago||b.recebido||0)-Number(a.pago||a.recebido||0)));
+      delete out.__seen;
+      return out;
+    };
+    // IMPORTANTÍSSIMO: os hotfixes antigos V10.31 chamam window.mdlV1031RecebimentosFilial.
+    // Substituímos essa fonte também para todo caminho antigo passar pela regra nova.
+    window.mdlV1031RecebimentosFilial = window.mdlV1032RecebimentosFilial;
+    function sums32(src){return {grave:(src.grave||[]).reduce((a,b)=>a+Number(b.pago||b.recebido||0),0),alerta:(src.alerta||[]).reduce((a,b)=>a+Number(b.pago||b.recebido||0),0),atencao:(src.atencao||[]).reduce((a,b)=>a+Number(b.pago||b.recebido||0),0)};}
+    window.mdlV1032OfficialFilialEnt=function(f){
+      f=fil32(f); const base={type:'filial',filial:f,nome:(typeof filialLabel==='function'?filialLabel(f):f),...(FILIAIS?.[f]||{})};
+      const rec=window.mdlV1032RecebimentosFilial(f); const s=sums32(rec);
+      return {...base,grave_rec:Math.round(s.grave*100)/100,alerta_rec:Math.round(s.alerta*100)/100,atencao_rec:Math.round(s.atencao*100)/100};
+    };
+    function filialOfRef32(ref){
+      let f='';
+      try{f=fil32(ref?.filial)||filialByTexto32(ref?.login)||filialByTexto32(ref?.nome)}catch(e){}
+      try{if(!f && window.usuarioAtual && usuarioAtual.tipo!=='master') f=fil32(usuarioAtual.filial)||filialByTexto32(usuarioAtual.login)||filialByTexto32(usuarioAtual.nome)}catch(e){}
+      return /^F\d+$/.test(f)?f:'';
+    }
+    function isFilialContext32(ent){
+      try{if(ent && String(ent.type||'').toLowerCase()==='filial') return true;}catch(e){}
+      try{if(ent && (/^gerentef\d{2}$/i.test(String(ent.login||'')) || /gerente/i.test(String(ent.tipo||'')) || ent.is_gerente || ent.is_fixed_gerente)) return true;}catch(e){}
+      try{if(window.usuarioAtual && usuarioAtual.tipo!=='master' && (/^gerentef\d{2}$/i.test(String(usuarioAtual.login||'')) || usuarioAtual.is_gerente || /gerente/i.test(String(usuarioAtual.tipo||'')))) return true;}catch(e){}
+      return false;
+    }
+    const prevGet32=(typeof getRecebimentos==='function')?getRecebimentos:null;
+    if(prevGet32){ getRecebimentos=window.getRecebimentos=function(ent){try{const f=filialOfRef32(ent||{}); if(f && isFilialContext32(ent||{})) return window.mdlV1032RecebimentosFilial(f);}catch(e){console.warn(TAG,'getRecebimentos',e)} return prevGet32.apply(this,arguments);} }
+    const prevCalc32=(typeof calcMeta==='function')?calcMeta:null;
+    if(prevCalc32){ calcMeta=window.calcMeta=function(ent){try{const f=filialOfRef32(ent||{}); if(f && isFilialContext32(ent||{})) return prevCalc32.call(this,window.mdlV1032OfficialFilialEnt(f));}catch(e){console.warn(TAG,'calcMeta',e)} return prevCalc32.apply(this,arguments);} }
+    const prevRenderRec32=(typeof renderRecebimentos==='function')?renderRecebimentos:null;
+    if(prevRenderRec32){ renderRecebimentos=window.renderRecebimentos=function(ent){try{const f=filialOfRef32(ent||{}); if(f && isFilialContext32(ent||{})) return prevRenderRec32.call(this,window.mdlV1032OfficialFilialEnt(f));}catch(e){console.warn(TAG,'renderRecebimentos',e)} return prevRenderRec32.apply(this,arguments);} }
+    try{window.DASHBOARD_BUILD_VERSION='V10.32'}catch(e){}
+    console.log(TAG,'ativo: vendedor_erp/crediaristafXX_YY dos quitados agora entra na filial inteira');
+  }catch(e){console.warn('[V10.32] hotfix falhou',e)}
 })();
 
 </script>
