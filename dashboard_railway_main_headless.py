@@ -34,8 +34,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.38"
-DASHBOARD_BUILD_TAG = "DASH2_0_V10_20_RELATORIOS_JULHO_FTP_FIX"
+DASHBOARD_BUILD_VERSION = "V10.39"
+DASHBOARD_BUILD_TAG = "rateio_data_entrada"
 
 def now_brasilia():
     return datetime.now(APP_TZ)
@@ -3240,7 +3240,147 @@ if _filiais_com_novo_vendas:
         df_vend.loc[_last, "pendente"] += round(_tot_p_vends - float(df_vend.loc[_idx_vends, "pendente"].sum()), 2)
         df_vend.loc[_last, "pago"] += round(_tot_pg_vends - float(df_vend.loc[_idx_vends, "pago"].sum()), 2)
         print(f"✅ V27D rateio novos vendedores: {_fil_v27d} dividido entre {len(_idx_vends)} vendedores do bloco de 40%")
-    df_vend["total"] = df_vend["pendente"].astype(float) + df_vend["pago"].astype(float)
+    
+# =========================================
+# V10.39 — RATEIO PROPORCIONAL POR DATA DE ENTRADA DE COBRANÇA
+# Vazio = mantém peso 100% e não mexe no rateio atual.
+# Data no mês atual = peso proporcional aos dias ativos no mês.
+# Mês anterior = peso 100%.
+# =========================================
+try:
+    import calendar as _cal_v1039
+    from datetime import date as _date_v1039, datetime as _dt_v1039
+    import urllib.request as _urlreq_v1039
+    import unicodedata as _ud_v1039
+
+    def _v1039_norm_key(v):
+        s = str(v or "").strip().upper()
+        s = _ud_v1039.normalize("NFKD", s)
+        s = "".join(ch for ch in s if not _ud_v1039.combining(ch))
+        s = re.sub(r"[^A-Z0-9]+", " ", s)
+        return re.sub(r"\s+", " ", s).strip()
+
+    def _v1039_parse_date(v):
+        s = str(v or "").strip()
+        if not s: return None
+        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d"):
+            try: return _dt_v1039.strptime(s[:10], fmt).date()
+            except Exception: pass
+        try: return _dt_v1039.fromisoformat(s[:10]).date()
+        except Exception: return None
+
+    def _v1039_period_month():
+        for _var in ("data_fim", "DATA_FIM", "fim_mes", "data_final"):
+            try:
+                d = _v1039_parse_date(globals().get(_var))
+                if d: return d.year, d.month
+            except Exception: pass
+        try: return now_brasilia().year, now_brasilia().month
+        except Exception: return _date_v1039.today().year, _date_v1039.today().month
+
+    def _v1039_load_cred_state():
+        data = {}
+        try:
+            _path = os.path.join(pasta, "credenciais_dashboard.json")
+            if os.path.exists(_path):
+                with open(_path, "r", encoding="utf-8") as f: data = json.load(f)
+        except Exception: data = {}
+        try:
+            if not isinstance(data, dict) or not data.get("users"):
+                url = "https://moveisdolar.com.br/colaborador/credenciais_dashboard.json?_v=1039"
+                with _urlreq_v1039.urlopen(url, timeout=12) as resp:
+                    data = json.loads(resp.read().decode("utf-8", errors="ignore"))
+        except Exception: pass
+        return data if isinstance(data, dict) else {}
+
+    def _v1039_data_entrada_maps():
+        state = _v1039_load_cred_state()
+        users = state.get("users") if isinstance(state.get("users"), dict) else {}
+        colabs = state.get("colaborador_status") if isinstance(state.get("colaborador_status"), dict) else {}
+        by_login, by_nome_filial = {}, {}
+        def add(login, nome, filial, data):
+            data = str(data or "").strip()
+            if not data: return
+            fil = str(filial or "").strip().upper()
+            if fil and not fil.startswith("F"):
+                m = re.search(r"(\d{1,2})", fil)
+                fil = f"F{int(m.group(1))}" if m else fil
+            if login:
+                by_login[_v1039_norm_key(login)] = data
+                if fil: by_login[_v1039_norm_key(f"{login}_{fil}")] = data
+            if nome and fil:
+                by_nome_filial[(_v1039_norm_key(nome), fil)] = data
+        for login, u in users.items():
+            if isinstance(u, dict):
+                add(login or u.get("login"), u.get("nome") or login, u.get("filial"), u.get("data_entrada") or u.get("data_entrada_cobranca"))
+        for k, st in colabs.items():
+            if isinstance(st, dict):
+                parts = str(k or "").split("|")
+                add(st.get("login"), st.get("nome") or (parts[0] if parts else ""), st.get("filial") or (parts[1] if len(parts)>1 else ""), st.get("data_entrada") or st.get("data_entrada_cobranca"))
+        return by_login, by_nome_filial
+
+    def _v1039_entry_date_for_row(row, by_login, by_nome_filial):
+        nome = row.get("vendedor") if hasattr(row, "get") else row["vendedor"]
+        filial = str(row.get("filial_vendedor") if hasattr(row, "get") else row["filial_vendedor"]).strip().upper()
+        keys = [_v1039_norm_key(str(nome or "")), _v1039_norm_key(f"{nome}_{filial}")]
+        for k in ("login", "usuario", "user"):
+            try:
+                if k in row and str(row[k] or "").strip():
+                    login = str(row[k] or "").strip()
+                    keys += [_v1039_norm_key(login), _v1039_norm_key(f"{login}_{filial}")]
+            except Exception: pass
+        for k in keys:
+            if k in by_login: return _v1039_parse_date(by_login[k])
+        return _v1039_parse_date(by_nome_filial.get((_v1039_norm_key(nome), filial)))
+
+    def _v1039_weight(data_entrada, ano, mes):
+        if not data_entrada: return 1.0
+        first = _date_v1039(ano, mes, 1)
+        last_day = _cal_v1039.monthrange(ano, mes)[1]
+        last = _date_v1039(ano, mes, last_day)
+        if data_entrada <= first: return 1.0
+        if data_entrada > last: return 0.0
+        return max(0.0, min(1.0, ((last - data_entrada).days + 1) / float(last_day)))
+
+    _by_login_v1039, _by_nome_filial_v1039 = _v1039_data_entrada_maps()
+    _ano_v1039, _mes_v1039 = _v1039_period_month()
+    _ajustes_v1039 = []
+    for _fil_v1039 in sorted(set(str(x) for x in df_vend.get("filial_vendedor", []).dropna().tolist())):
+        _mask_v1039 = (df_vend["filial_vendedor"].astype(str).str.upper() == _fil_v1039.upper()) & (~df_vend["is_gerente"].astype(bool))
+        _idxs_v1039 = list(df_vend[_mask_v1039].index)
+        if len(_idxs_v1039) <= 1: continue
+        _tot_p_v1039 = round(float(df_vend.loc[_idxs_v1039, "pendente"].astype(float).sum()), 2)
+        _tot_pg_v1039 = round(float(df_vend.loc[_idxs_v1039, "pago"].astype(float).sum()), 2)
+        if abs(_tot_p_v1039) < 0.01 and abs(_tot_pg_v1039) < 0.01: continue
+        _weights_v1039, _datas_v1039 = [], []
+        for _idx_v1039 in _idxs_v1039:
+            _row_v1039 = df_vend.loc[_idx_v1039]
+            _dt_ent_v1039 = _v1039_entry_date_for_row(_row_v1039, _by_login_v1039, _by_nome_filial_v1039)
+            _weights_v1039.append(float(_v1039_weight(_dt_ent_v1039, _ano_v1039, _mes_v1039)))
+            _datas_v1039.append(_dt_ent_v1039)
+        if not any(d is not None for d in _datas_v1039): continue
+        if sum(_weights_v1039) <= 0: _weights_v1039 = [1.0 for _ in _idxs_v1039]
+        _sum_w_v1039 = sum(_weights_v1039)
+        if _sum_w_v1039 <= 0: continue
+        for _idx_v1039, _w_v1039 in zip(_idxs_v1039, _weights_v1039):
+            df_vend.loc[_idx_v1039, "pendente"] = round(_tot_p_v1039 * (_w_v1039 / _sum_w_v1039), 2)
+            df_vend.loc[_idx_v1039, "pago"] = round(_tot_pg_v1039 * (_w_v1039 / _sum_w_v1039), 2)
+        _last_v1039 = _idxs_v1039[-1]
+        df_vend.loc[_last_v1039, "pendente"] += round(_tot_p_v1039 - float(df_vend.loc[_idxs_v1039, "pendente"].astype(float).sum()), 2)
+        df_vend.loc[_last_v1039, "pago"] += round(_tot_pg_v1039 - float(df_vend.loc[_idxs_v1039, "pago"].astype(float).sum()), 2)
+        _nomes_v1039 = []
+        for _idx_v1039, _w_v1039, _dt_ent_v1039 in zip(_idxs_v1039, _weights_v1039, _datas_v1039):
+            _nomes_v1039.append(f"{df_vend.loc[_idx_v1039, 'vendedor']}={_w_v1039:.2f}" + (f" entrada={_dt_ent_v1039}" if _dt_ent_v1039 else ""))
+        _ajustes_v1039.append(f"{_fil_v1039}: " + "; ".join(_nomes_v1039))
+    if _ajustes_v1039:
+        print("✅ V10.39 rateio proporcional por data_entrada aplicado:")
+        for _l_v1039 in _ajustes_v1039: print("   - " + _l_v1039)
+    else:
+        print("ℹ️ V10.39 rateio proporcional: nenhuma data_entrada no mês atual; rateio antigo preservado.")
+except Exception as _e_v1039:
+    print(f"⚠️ V10.39 rateio proporcional por data_entrada falhou; mantendo rateio atual: {_e_v1039}")
+
+df_vend["total"] = df_vend["pendente"].astype(float) + df_vend["pago"].astype(float)
     _total_por_filial_v27d = df_vend.groupby("filial_vendedor")["pendente"].sum().rename("total_filial")
     df_vend = df_vend.drop(columns=[c for c in ["total_filial"] if c in df_vend.columns], errors="ignore").merge(_total_por_filial_v27d, on="filial_vendedor", how="left")
     df_vend["perc_filial"] = (df_vend["pendente"] / df_vend["total_filial"].replace(0, 1) * 100).round(2)
@@ -12268,7 +12408,7 @@ function renderColaboradorStatusPanel(users){
   const options=normalUsers.map(u=>`<option value="${esc(u.login||'')}">${esc(u.nome||u.login||'')} ${u.filial?`- ${esc(u.filial)}`:''}</option>`).join('');
   return `<div class="glass panel" style="margin-bottom:14px;border-color:rgba(34,197,94,.28)">
     <div class="section-head" style="margin:0 0 10px"><div><h2 style="font-size:18px">👥 Status operacional dos colaboradores</h2><div class="hint">Use quando alguém sair, entrar ou trocar de função. Inativo não acessa e, na próxima geração, sai do rateio de cobrança. A data de saída é só histórico/controle interno. As flags controlam em quais murais/listas ele participa.</div></div></div>
-    <div class="senhas-table-wrap"><table class="senhas-table"><thead><tr><th>Colaborador</th><th>Filial</th><th>Tipo</th><th>Status</th><th>Cobrança</th><th>Sem movimento</th><th>Aniversário</th><th>Murais</th><th>Saída</th><th>Substituto</th><th>Obs</th><th>Ações</th></tr></thead><tbody>${normalUsers.map(u=>{
+    <div class="senhas-table-wrap"><table class="senhas-table"><thead><tr><th>Colaborador</th><th>Filial</th><th>Tipo</th><th>Status</th><th>Cobrança</th><th>Sem movimento</th><th>Aniversário</th><th>Murais</th><th>Data entrada cobrança</th><th>Saída</th><th>Substituto</th><th>Obs</th><th>Ações</th></tr></thead><tbody>${normalUsers.map(u=>{
       const login=String(u.login||'').toLowerCase(); const dom=_senhaDomKey(login);
       return `<tr>
         <td><strong>${esc(u.nome||login)}</strong><div class="small muted">${esc(login)}</div></td>
@@ -12279,7 +12419,7 @@ function renderColaboradorStatusPanel(users){
         <td style="text-align:center"><input type="checkbox" id="colab_mov_${dom}" ${colabBool(u,'participa_sem_movimento')?'checked':''}></td>
         <td style="text-align:center"><input type="checkbox" id="colab_ani_${dom}" ${colabBool(u,'participa_aniversariantes')?'checked':''}></td>
         <td style="text-align:center"><input type="checkbox" id="colab_mur_${dom}" ${colabBool(u,'participa_murais')?'checked':''}></td>
-        <td><input id="colab_saida_${dom}" type="date" value="${esc(u.data_saida||'')}" style="min-width:130px"></td>
+        <td><input id="colab_entrada_${dom}" type="date" value="${esc(u.data_entrada||u.data_entrada_cobranca||'')}" style="min-width:130px"><div class="small muted">vazio = normal</div></td><td><input id="colab_saida_${dom}" type="date" value="${esc(u.data_saida||'')}" style="min-width:130px"></td>
         <td><select id="colab_sub_${dom}" style="min-width:180px"><option value="">Sem substituto</option>${options}</select></td>
         <td><input id="colab_obs_${dom}" value="${esc(u.obs||'')}" placeholder="Ex: saiu, férias, troca filial" style="min-width:210px"></td>
         <td><button class="btn primary" onclick="adminSalvarStatusColaborador('${login}')">💾 Salvar</button><div id="colab_msg_${dom}" class="small muted" style="margin-top:6px"></div></td>
@@ -12296,17 +12436,18 @@ async function adminSalvarStatusColaborador(login){
   fd.append('participa_sem_movimento',document.getElementById(`colab_mov_${dom}`)?.checked?'1':'0');
   fd.append('participa_aniversariantes',document.getElementById(`colab_ani_${dom}`)?.checked?'1':'0');
   fd.append('participa_murais',document.getElementById(`colab_mur_${dom}`)?.checked?'1':'0');
+  fd.append('data_entrada',document.getElementById(`colab_entrada_${dom}`)?.value||'');
   fd.append('data_saida',document.getElementById(`colab_saida_${dom}`)?.value||'');
   fd.append('substituto',document.getElementById(`colab_sub_${dom}`)?.value||'');
   fd.append('obs',document.getElementById(`colab_obs_${dom}`)?.value||'');
   try{
     const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json();
-    if(j.ok){ if(msg) msg.textContent='✅ Salvo online. Rode o dashboard novamente para recalcular rateio/listas.'; await carregarCredenciaisOnline(); renderSenhasTab(); toast('Status salvo. Próxima execução recalcula rateio/listas.','success'); }
+    if(j.ok){ await adminSalvarEntradaCobrancaV1039(login); if(msg) msg.textContent='✅ Salvo online. Rode o dashboard novamente para recalcular rateio/listas.'; await carregarCredenciaisOnline(); renderSenhasTab(); toast('Status salvo. Próxima execução recalcula rateio/listas.','success'); }
     else{ throw new Error(j.error||'erro'); }
   }catch(e){
     // fallback local para testar a tela abrindo o HTML pelo arquivo, sem FTP/API.
     const u=(AUTH_STATE?.users||{})[login];
-    if(u){u.status_operacional=fd.get('status'); u.access_disabled=(u.status_operacional==='inativo'); ['participa_cobrancas','participa_sem_movimento','participa_aniversariantes','participa_murais'].forEach(k=>u[k]=fd.get(k)==='1'); u.data_saida=fd.get('data_saida'); u.substituto=fd.get('substituto'); u.obs=fd.get('obs');}
+    if(u){u.status_operacional=fd.get('status'); u.access_disabled=(u.status_operacional==='inativo'); ['participa_cobrancas','participa_sem_movimento','participa_aniversariantes','participa_murais'].forEach(k=>u[k]=fd.get(k)==='1'); u.data_entrada=fd.get('data_entrada'); u.data_entrada_cobranca=fd.get('data_entrada'); u.data_saida=fd.get('data_saida'); u.substituto=fd.get('substituto'); u.obs=fd.get('obs');}
     localStorage.setItem('mdl_colab_status_teste_'+login, JSON.stringify(u||{}));
     if(msg) msg.textContent='🧪 Salvo só no navegador para teste local. Para recalcular rateio, precisa salvar no JSON/API e rodar o robô.';
     renderSenhasTab();
@@ -18769,6 +18910,29 @@ if ($action === 'admin_create_user') {
   $data['users'][$login] = ['login'=>$login,'nome'=>$nome,'filial'=>$filial,'password'=>$senha,'must_change_password'=>true,'is_gerente'=>false,'is_terceiro'=>($tipo==='cobranca'),'is_crediarista'=>($tipo!=='cobranca'),'only_cobranca'=>true];
   save_all($file, $data); echo json_encode(['ok'=>true], JSON_UNESCAPED_UNICODE); exit;
 }
+
+if ($action === 'admin_update_user_entry_date') {
+  ensure_colab_status($data);
+  $login = strtolower(trim((string)($_POST['login'] ?? '')));
+  $entrada = trim((string)($_POST['data_entrada'] ?? ''));
+  if (!$login) { echo json_encode(['ok'=>false,'error'=>'login_obrigatorio']); exit; }
+  $ref = resolve_login_ref($data, $login);
+  if (!$ref || $ref['type'] !== 'user') { echo json_encode(['ok'=>false,'error'=>'login_nao_encontrado']); exit; }
+  $key = $ref['key'];
+  if (!isset($data['users'][$key]) || !is_array($data['users'][$key])) { echo json_encode(['ok'=>false,'error'=>'usuario_invalido']); exit; }
+  $data['users'][$key]['data_entrada'] = $entrada;
+  $data['users'][$key]['data_entrada_cobranca'] = $entrada;
+  $u = $data['users'][$key];
+  $nome = $u['nome'] ?? $login; $filial = $u['filial'] ?? ''; $isGer = !empty($u['is_gerente']);
+  $ck = colab_status_key($nome, $filial, $isGer);
+  if (!isset($data['colaborador_status'][$ck]) || !is_array($data['colaborador_status'][$ck])) {
+    $data['colaborador_status'][$ck] = ['login'=>$login, 'nome'=>$nome, 'filial'=>$filial, 'tipo'=>$isGer ? 'Gerente' : 'Vendedor', 'status'=>'ativo', 'participa_cobrancas'=>true, 'participa_sem_movimento'=>true, 'participa_aniversariantes'=>true, 'participa_murais'=>true, 'data_saida'=>'', 'substituto'=>'', 'obs'=>''];
+  }
+  $data['colaborador_status'][$ck]['data_entrada'] = $entrada;
+  $data['colaborador_status'][$ck]['data_entrada_cobranca'] = $entrada;
+  save_all($file, $data); echo json_encode(['ok'=>true], JSON_UNESCAPED_UNICODE); exit;
+}
+
 if ($action === 'resolve_reset') {
   $login = strtolower(trim($_POST['login'] ?? '')); if (!$login) { echo json_encode(['ok'=>false,'error'=>'login_obrigatorio']); exit; }
   $ref = resolve_login_ref($data, $login); if (!$ref) { echo json_encode(['ok'=>false,'error'=>'login_nao_encontrado']); exit; }
