@@ -34,7 +34,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.39"
+DASHBOARD_BUILD_VERSION = "V10.40"
 DASHBOARD_BUILD_TAG = "rateio_data_entrada"
 
 def now_brasilia():
@@ -3283,7 +3283,7 @@ except Exception as _e_v107_dreno:
 
 
 # =========================================
-# V10.39 — RATEIO PROPORCIONAL POR DATA DE ENTRADA DE COBRANÇA
+# V10.40 — SALVAR DATA ENTRADA COBRANÇA + RATEIO PROPORCIONAL
 # Vazio = mantém peso 100% e não mexe no rateio atual.
 # Data no mês atual = peso proporcional aos dias ativos no mês.
 # Mês anterior = peso 100%.
@@ -3414,12 +3414,12 @@ try:
             _nomes_v1039.append(f"{df_vend.loc[_idx_v1039, 'vendedor']}={_w_v1039:.2f}" + (f" entrada={_dt_ent_v1039}" if _dt_ent_v1039 else ""))
         _ajustes_v1039.append(f"{_fil_v1039}: " + "; ".join(_nomes_v1039))
     if _ajustes_v1039:
-        print("✅ V10.39 rateio proporcional por data_entrada aplicado:")
+        print("✅ V10.40 rateio proporcional por data_entrada aplicado:")
         for _l_v1039 in _ajustes_v1039: print("   - " + _l_v1039)
     else:
-        print("ℹ️ V10.39 rateio proporcional: nenhuma data_entrada no mês atual; rateio antigo preservado.")
+        print("ℹ️ V10.40 rateio proporcional: nenhuma data_entrada no mês atual; rateio antigo preservado.")
 except Exception as _e_v1039:
-    print(f"⚠️ V10.39 rateio proporcional por data_entrada falhou; mantendo rateio atual: {_e_v1039}")
+    print(f"⚠️ V10.40 rateio proporcional por data_entrada falhou; mantendo rateio atual: {_e_v1039}")
 
 
 # ===== SALVAR CSV
@@ -12408,7 +12408,8 @@ function renderColaboradorStatusPanel(users){
   const normalUsers=(users||[]).filter(u=>u && !u.is_viewer && !isLegacyGerenteNominalV1026(u));
   const options=normalUsers.map(u=>`<option value="${esc(u.login||'')}">${esc(u.nome||u.login||'')} ${u.filial?`- ${esc(u.filial)}`:''}</option>`).join('');
   return `<div class="glass panel" style="margin-bottom:14px;border-color:rgba(34,197,94,.28)">
-    <div class="section-head" style="margin:0 0 10px"><div><h2 style="font-size:18px">👥 Status operacional dos colaboradores</h2><div class="hint">Use quando alguém sair, entrar ou trocar de função. Inativo não acessa e, na próxima geração, sai do rateio de cobrança. A data de saída é só histórico/controle interno. As flags controlam em quais murais/listas ele participa.</div></div></div>
+    <div class="section-head" style="margin:0 0 10px"><div><h2 style="font-size:18px">👥 Status operacional dos colaboradores</h2><div class="hint">Use quando alguém sair, entrar ou trocar de função. Inativo não acessa e, na próxima geração, sai do rateio de cobrança. A data de saída é só histórico/controle interno. As flags controlam em quais murais/listas ele participa.</div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn primary" onclick="adminSalvarTodasEntradasCobrancaV1040()">💾 Salvar datas de entrada cobrança</button><button class="btn soft" onclick="adminLimparDatasEntradaCobrancaV1040()">🧹 Limpar datas preenchidas</button></div></div>
+    <div id="colab_entrada_all_msg" class="note" style="margin:0 0 10px;color:#fbbf24;font-weight:800">Preencha a data somente para vendedor novo. Depois clique em “Salvar datas de entrada cobrança”. Vazio mantém rateio normal.</div>
     <div class="senhas-table-wrap"><table class="senhas-table"><thead><tr><th>Colaborador</th><th>Filial</th><th>Tipo</th><th>Status</th><th>Cobrança</th><th>Sem movimento</th><th>Aniversário</th><th>Murais</th><th>Data entrada cobrança</th><th>Saída</th><th>Substituto</th><th>Obs</th><th>Ações</th></tr></thead><tbody>${normalUsers.map(u=>{
       const login=String(u.login||'').toLowerCase(); const dom=_senhaDomKey(login);
       return `<tr>
@@ -12420,7 +12421,7 @@ function renderColaboradorStatusPanel(users){
         <td style="text-align:center"><input type="checkbox" id="colab_mov_${dom}" ${colabBool(u,'participa_sem_movimento')?'checked':''}></td>
         <td style="text-align:center"><input type="checkbox" id="colab_ani_${dom}" ${colabBool(u,'participa_aniversariantes')?'checked':''}></td>
         <td style="text-align:center"><input type="checkbox" id="colab_mur_${dom}" ${colabBool(u,'participa_murais')?'checked':''}></td>
-        <td><input id="colab_entrada_${dom}" type="date" value="${esc(u.data_entrada||u.data_entrada_cobranca||'')}" style="min-width:130px"><div class="small muted">vazio = normal</div></td><td><input id="colab_saida_${dom}" type="date" value="${esc(u.data_saida||'')}" style="min-width:130px"></td>
+        <td><input id="colab_entrada_${dom}" data-login="${esc(login)}" type="date" value="${esc(u.data_entrada||u.data_entrada_cobranca||'')}" style="min-width:130px"><div class="small muted">vazio = normal</div></td><td><input id="colab_saida_${dom}" type="date" value="${esc(u.data_saida||'')}" style="min-width:130px"></td>
         <td><select id="colab_sub_${dom}" style="min-width:180px"><option value="">Sem substituto</option>${options}</select></td>
         <td><input id="colab_obs_${dom}" value="${esc(u.obs||'')}" placeholder="Ex: saiu, férias, troca filial" style="min-width:210px"></td>
         <td><button class="btn primary" onclick="adminSalvarStatusColaborador('${login}')">💾 Salvar</button><div id="colab_msg_${dom}" class="small muted" style="margin-top:6px"></div></td>
@@ -12453,6 +12454,70 @@ async function adminSalvarStatusColaborador(login){
     if(msg) msg.textContent='🧪 Salvo só no navegador para teste local. Para recalcular rateio, precisa salvar no JSON/API e rodar o robô.';
     renderSenhasTab();
   }
+}
+
+
+async function adminSalvarEntradaCobrancaV1040(login, entradaOverride=null, showToast=false){
+  login=String(login||'').toLowerCase().trim();
+  if(!login) throw new Error('login_obrigatorio');
+  const dom=_senhaDomKey(login);
+  const entrada=(entradaOverride!==null && entradaOverride!==undefined) ? String(entradaOverride||'') : (document.getElementById(`colab_entrada_${dom}`)?.value||'');
+  const fd=new FormData();
+  fd.append('action','admin_update_user_entry_date');
+  fd.append('login',login);
+  fd.append('data_entrada',entrada);
+  const r=await fetch(API_CRED,{method:'POST',body:fd});
+  const raw=await r.text(); let j={};
+  try{j=JSON.parse(raw||'{}')}catch(_e){throw new Error('retorno_invalido_api')}
+  if(!j.ok) throw new Error(j.error||'erro_salvar_data_entrada');
+  try{
+    const u=(AUTH_STATE?.users||{})[login];
+    if(u){u.data_entrada=entrada; u.data_entrada_cobranca=entrada;}
+    Object.values(AUTH_STATE?.colaborador_status||{}).forEach(st=>{
+      if(String(st?.login||'').toLowerCase()===login){st.data_entrada=entrada; st.data_entrada_cobranca=entrada;}
+    });
+  }catch(_e){}
+  if(showToast) toast('Data de entrada cobrança salva. Rode cobrança para recalcular o rateio.','success');
+  return true;
+}
+function adminSalvarEntradaCobrancaV1039(login){
+  return adminSalvarEntradaCobrancaV1040(login,null,false);
+}
+async function adminSalvarTodasEntradasCobrancaV1040(){
+  const msg=document.getElementById('colab_entrada_all_msg');
+  const logins=Object.keys(AUTH_STATE?.users||{}).filter(l=>document.getElementById(`colab_entrada_${_senhaDomKey(l)}`));
+  let ok=0, fail=0, changed=0;
+  if(msg) msg.textContent='⏳ Salvando datas no FTP...';
+  for(const login of logins){
+    const dom=_senhaDomKey(login);
+    const inp=document.getElementById(`colab_entrada_${dom}`);
+    if(!inp) continue;
+    const entrada=inp.value||'';
+    const u=(AUTH_STATE?.users||{})[login]||{};
+    const atual=String(u.data_entrada_cobranca||u.data_entrada||'');
+    if(entrada!==atual) changed++;
+    try{
+      await adminSalvarEntradaCobrancaV1040(login,entrada,false);
+      ok++;
+    }catch(e){
+      fail++;
+      console.warn('[V10.40] falha salvando data entrada cobrança',login,e);
+    }
+  }
+  if(fail===0){
+    if(msg) msg.textContent=`✅ Datas salvas no FTP (${ok} usuário(s), ${changed} alteração(ões)). Rode cobrança agora para recalcular.`;
+    await carregarCredenciaisOnline();
+    renderSenhasTab();
+    toast('Datas de entrada cobrança salvas. Próxima cobrança recalcula o rateio.','success');
+  }else{
+    if(msg) msg.textContent=`⚠️ Salvou ${ok}, falhou ${fail}. Veja o console/log.`;
+    toast(`Falhou ao salvar ${fail} data(s).`,'warn');
+  }
+}
+async function adminLimparDatasEntradaCobrancaV1040(){
+  if(!confirm('Limpar todas as datas de entrada cobrança preenchidas? Isso volta o rateio de todos para o normal.')) return;
+  document.querySelectorAll('[id^="colab_entrada_"]').forEach(inp=>{inp.value=''});
+  await adminSalvarTodasEntradasCobrancaV1040();
 }
 
 function gerentesFiliaisFixos(){
