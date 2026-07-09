@@ -3240,7 +3240,48 @@ if _filiais_com_novo_vendas:
         df_vend.loc[_last, "pendente"] += round(_tot_p_vends - float(df_vend.loc[_idx_vends, "pendente"].sum()), 2)
         df_vend.loc[_last, "pago"] += round(_tot_pg_vends - float(df_vend.loc[_idx_vends, "pago"].sum()), 2)
         print(f"✅ V27D rateio novos vendedores: {_fil_v27d} dividido entre {len(_idx_vends)} vendedores do bloco de 40%")
-    
+    df_vend["total"] = df_vend["pendente"].astype(float) + df_vend["pago"].astype(float)
+    _total_por_filial_v27d = df_vend.groupby("filial_vendedor")["pendente"].sum().rename("total_filial")
+    df_vend = df_vend.drop(columns=[c for c in ["total_filial"] if c in df_vend.columns], errors="ignore").merge(_total_por_filial_v27d, on="filial_vendedor", how="left")
+    df_vend["perc_filial"] = (df_vend["pendente"] / df_vend["total_filial"].replace(0, 1) * 100).round(2)
+    df_vend["filial_ordem"] = pd.Categorical(df_vend["filial_vendedor"], categories=ORDEM_FILIAIS, ordered=True)
+    df_vend = df_vend.sort_values(["filial_ordem", "is_gerente", "pendente"], ascending=[True, False, False]).reset_index(drop=True)
+
+
+# ===== V10.7: REATIVA RATEIO DE FILIAL QUE GANHOU USUÁRIO PELAS METAS =====
+# Caso clássico: F5 não tinha colaborador ativo no relatório de cobrança, então a carteira
+# ficou em filiais_sem_ativo. Depois a rotina V23 cria gerente/vendedor a partir das metas
+# de vendas do SGI; se não transferir o bloco consolidado para esses usuários, a tela da
+# filial fica com pendente/pago zerados, mas ainda aparece recebimento por faixa.
+try:
+    _filiais_drenadas_v107 = []
+    for _fil_v107 in list(filiais_sem_ativo.keys()):
+        if _fil_v107 not in ORDEM_FILIAIS:
+            continue
+        _bloco_v107 = filiais_sem_ativo.get(_fil_v107) or {}
+        _pend_bloco_v107 = float(_bloco_v107.get('pendente', 0) or 0)
+        _pago_bloco_v107 = float(_bloco_v107.get('pago', 0) or 0)
+        if abs(_pend_bloco_v107) < 0.01 and abs(_pago_bloco_v107) < 0.01:
+            continue
+        _tem_ativos_v107 = (df_vend['filial_vendedor'].astype(str).str.upper() == _fil_v107).any()
+        if not _tem_ativos_v107:
+            continue
+        df_vend = ratear(df_vend, _fil_v107, _pend_bloco_v107, _pago_bloco_v107)
+        # Remove o consolidado da filial para ela não ser considerada "sem ativo" depois.
+        del filiais_sem_ativo[_fil_v107]
+        _filiais_drenadas_v107.append(f"{_fil_v107}: pend={_pend_bloco_v107:,.2f} pago={_pago_bloco_v107:,.2f}")
+    if _filiais_drenadas_v107:
+        df_vend['total'] = df_vend['pendente'].astype(float) + df_vend['pago'].astype(float)
+        _total_por_filial_v107 = df_vend.groupby('filial_vendedor')['pendente'].sum().rename('total_filial')
+        df_vend = df_vend.drop(columns=[c for c in ['total_filial'] if c in df_vend.columns], errors='ignore').merge(_total_por_filial_v107, on='filial_vendedor', how='left')
+        df_vend['perc_filial'] = (df_vend['pendente'] / df_vend['total_filial'].replace(0, 1) * 100).round(2)
+        df_vend['filial_ordem'] = pd.Categorical(df_vend['filial_vendedor'], categories=ORDEM_FILIAIS, ordered=True)
+        df_vend = df_vend.sort_values(['filial_ordem', 'is_gerente', 'pendente'], ascending=[True, False, False]).reset_index(drop=True)
+        print('✅ V10.7 rateio consolidado drenado para usuários ativos/metas: ' + '; '.join(_filiais_drenadas_v107))
+except Exception as _e_v107_dreno:
+    print(f'⚠️ V10.7 falhou ao drenar filial sem ativo para usuários de metas: {_e_v107_dreno}')
+
+
 # =========================================
 # V10.39 — RATEIO PROPORCIONAL POR DATA DE ENTRADA DE COBRANÇA
 # Vazio = mantém peso 100% e não mexe no rateio atual.
@@ -3380,46 +3421,6 @@ try:
 except Exception as _e_v1039:
     print(f"⚠️ V10.39 rateio proporcional por data_entrada falhou; mantendo rateio atual: {_e_v1039}")
 
-df_vend["total"] = df_vend["pendente"].astype(float) + df_vend["pago"].astype(float)
-    _total_por_filial_v27d = df_vend.groupby("filial_vendedor")["pendente"].sum().rename("total_filial")
-    df_vend = df_vend.drop(columns=[c for c in ["total_filial"] if c in df_vend.columns], errors="ignore").merge(_total_por_filial_v27d, on="filial_vendedor", how="left")
-    df_vend["perc_filial"] = (df_vend["pendente"] / df_vend["total_filial"].replace(0, 1) * 100).round(2)
-    df_vend["filial_ordem"] = pd.Categorical(df_vend["filial_vendedor"], categories=ORDEM_FILIAIS, ordered=True)
-    df_vend = df_vend.sort_values(["filial_ordem", "is_gerente", "pendente"], ascending=[True, False, False]).reset_index(drop=True)
-
-
-# ===== V10.7: REATIVA RATEIO DE FILIAL QUE GANHOU USUÁRIO PELAS METAS =====
-# Caso clássico: F5 não tinha colaborador ativo no relatório de cobrança, então a carteira
-# ficou em filiais_sem_ativo. Depois a rotina V23 cria gerente/vendedor a partir das metas
-# de vendas do SGI; se não transferir o bloco consolidado para esses usuários, a tela da
-# filial fica com pendente/pago zerados, mas ainda aparece recebimento por faixa.
-try:
-    _filiais_drenadas_v107 = []
-    for _fil_v107 in list(filiais_sem_ativo.keys()):
-        if _fil_v107 not in ORDEM_FILIAIS:
-            continue
-        _bloco_v107 = filiais_sem_ativo.get(_fil_v107) or {}
-        _pend_bloco_v107 = float(_bloco_v107.get('pendente', 0) or 0)
-        _pago_bloco_v107 = float(_bloco_v107.get('pago', 0) or 0)
-        if abs(_pend_bloco_v107) < 0.01 and abs(_pago_bloco_v107) < 0.01:
-            continue
-        _tem_ativos_v107 = (df_vend['filial_vendedor'].astype(str).str.upper() == _fil_v107).any()
-        if not _tem_ativos_v107:
-            continue
-        df_vend = ratear(df_vend, _fil_v107, _pend_bloco_v107, _pago_bloco_v107)
-        # Remove o consolidado da filial para ela não ser considerada "sem ativo" depois.
-        del filiais_sem_ativo[_fil_v107]
-        _filiais_drenadas_v107.append(f"{_fil_v107}: pend={_pend_bloco_v107:,.2f} pago={_pago_bloco_v107:,.2f}")
-    if _filiais_drenadas_v107:
-        df_vend['total'] = df_vend['pendente'].astype(float) + df_vend['pago'].astype(float)
-        _total_por_filial_v107 = df_vend.groupby('filial_vendedor')['pendente'].sum().rename('total_filial')
-        df_vend = df_vend.drop(columns=[c for c in ['total_filial'] if c in df_vend.columns], errors='ignore').merge(_total_por_filial_v107, on='filial_vendedor', how='left')
-        df_vend['perc_filial'] = (df_vend['pendente'] / df_vend['total_filial'].replace(0, 1) * 100).round(2)
-        df_vend['filial_ordem'] = pd.Categorical(df_vend['filial_vendedor'], categories=ORDEM_FILIAIS, ordered=True)
-        df_vend = df_vend.sort_values(['filial_ordem', 'is_gerente', 'pendente'], ascending=[True, False, False]).reset_index(drop=True)
-        print('✅ V10.7 rateio consolidado drenado para usuários ativos/metas: ' + '; '.join(_filiais_drenadas_v107))
-except Exception as _e_v107_dreno:
-    print(f'⚠️ V10.7 falhou ao drenar filial sem ativo para usuários de metas: {_e_v107_dreno}')
 
 # ===== SALVAR CSV
 csv_path = os.path.join(pasta, "dashboard_vendedores.csv")
