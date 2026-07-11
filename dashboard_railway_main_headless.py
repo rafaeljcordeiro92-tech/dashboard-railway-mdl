@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_38_CSM_30_ROTATIVO_RECENTE_FIX
+# VERSAO: DASH2_0_V10_41_RATEIO_CLIENTE_ZERO_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,8 +34,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.40"
-DASHBOARD_BUILD_TAG = "rateio_data_entrada"
+DASHBOARD_BUILD_VERSION = "V10.41"
+DASHBOARD_BUILD_TAG = "rateio_cliente_zero"
 
 def now_brasilia():
     return datetime.now(APP_TZ)
@@ -2786,16 +2786,25 @@ COBRANCA10_FILIAL = "FTER"
 COBRANCA10_RATEIO_DEFAULT = 20.0
 
 def _load_cobranca_global_rateio_pct():
+    """
+    V10.41:
+    - 0 é um valor válido e precisa zerar a carteira global.
+    - Só usa 20% como padrão quando a chave realmente não existe ou é inválida.
+    """
     try:
         _cfgp = os.path.join(pasta, "cache_historico", "config_meta.json")
         if os.path.exists(_cfgp):
             with open(_cfgp, "r", encoding="utf-8") as _fcg:
                 _rawcg = json.load(_fcg)
             _globalcg = _rawcg.get("global", _rawcg) if isinstance(_rawcg, dict) else {}
-            _pctcg = float(_globalcg.get("cobranca_global_rateio_pct", COBRANCA10_RATEIO_DEFAULT) or COBRANCA10_RATEIO_DEFAULT)
-            return max(0.0, min(100.0, _pctcg))
-    except Exception:
-        pass
+            if "cobranca_global_rateio_pct" in _globalcg:
+                _raw_pct = _globalcg.get("cobranca_global_rateio_pct")
+                if _raw_pct is None or str(_raw_pct).strip() == "":
+                    return COBRANCA10_RATEIO_DEFAULT
+                _pctcg = float(str(_raw_pct).replace(",", "."))
+                return max(0.0, min(100.0, _pctcg))
+    except Exception as _e_cg:
+        print(f"⚠️ V10.41 não conseguiu ler o percentual da cobrança global: {_e_cg}")
     return COBRANCA10_RATEIO_DEFAULT
 
 COBRANCA10_RATEIO = _load_cobranca_global_rateio_pct() / 100.0
@@ -2852,32 +2861,72 @@ def cobranca_row_key_py(r):
     ])
 
 def cliente_grupo_key_py(r):
-    """Chave de cliente para manter todos os títulos do mesmo cliente/CPF no mesmo destino operacional."""
-    base = str(r.get("cpf") or r.get("documento") or r.get("cliente") or r.get("nome") or "").strip().upper()
+    """
+    Chave única do cliente para manter TODOS os títulos no mesmo destino operacional.
+
+    Prioridade:
+    1) CPF/CNPJ, quando o relatório trouxer o documento;
+    2) cliente_key já calculado;
+    3) nome do cliente normalizado.
+
+    O relatório atual de contas a receber normalmente não traz CPF/CNPJ. Nesse caso,
+    a chave operacional usa o cadastro/nome normalizado do cliente, sem dividir por título.
+    """
+    base = str(
+        r.get("cpf")
+        or r.get("cpf_cnpj")
+        or r.get("documento")
+        or r.get("cliente_key")
+        or r.get("cliente")
+        or r.get("nome")
+        or ""
+    ).strip().upper()
     base = unicodedata.normalize("NFKD", base)
     base = "".join(c for c in base if not unicodedata.combining(c))
+    # Remove marcadores operacionais que podem variar entre títulos do mesmo cliente.
+    base = re.sub(r"\*\s*COB\b", " ", base)
+    base = re.sub(r"\*\s*NC\b", " ", base)
     base = re.sub(r"[^A-Z0-9]+", " ", base)
     base = re.sub(r"\s+", " ", base).strip()
-    return base[:80] or cobranca_row_key_py(r)
+    return base[:120] or cobranca_row_key_py(r)
 
 # =========================================
-# COBRANÇA10 — 20% global dos títulos de cobrança
-# Cada título vai para 1 destino apenas, sem duplicidade.
+# V10.41 — COBRANÇA GLOBAL POR CLIENTE, NÃO POR TÍTULO
+#
+# O percentual é aplicado sobre clientes únicos. Se um cliente/CPF for selecionado,
+# TODOS os títulos dele seguem juntos para o mesmo destino. Isso evita que um usuário
+# receba uma parcela e outro usuário receba outra parcela do mesmo cliente.
 # =========================================
-_clientes_cobrar_sorted = sorted(clientes_cobrar, key=lambda x: (cobranca_row_key_py(x), -float(x.get("pendente", 0) or 0)))
-_clientes_cobrar_unicos = {}
-for _c_tmp in _clientes_cobrar_sorted:
-    _k_tmp = cobranca_row_key_py(_c_tmp)
-    if _k_tmp not in _clientes_cobrar_unicos:
-        _clientes_cobrar_unicos[_k_tmp] = _c_tmp
-_clientes_cobrar_base = list(_clientes_cobrar_unicos.values())
-_clientes_cobrar_base.sort(key=lambda x: x["pendente"], reverse=True)
-_qtd_terceiro = int(round(len(_clientes_cobrar_base) * COBRANCA10_RATEIO))
-_clientes_cobrar_hash = sorted(_clientes_cobrar_base, key=lambda x: _hashlib.md5(cobranca_row_key_py(x).encode("utf-8")).hexdigest())
-_clientes_terceiro_lista = _clientes_cobrar_hash[:_qtd_terceiro]
-_clientes_terceiro_keys = {cobranca_row_key_py(x) for x in _clientes_terceiro_lista}
-clientes_cobrar = [x for x in clientes_cobrar if cobranca_row_key_py(x) not in _clientes_terceiro_keys]
-print(f"🤝 Cobrança10 separado com {len(_clientes_terceiro_lista)} títulos ({COBRANCA10_RATEIO*100:.0f}% do total único)")
+_clientes_cobrar_grupos = {}
+for _c_tmp in clientes_cobrar:
+    _g_tmp = cliente_grupo_key_py(_c_tmp)
+    _clientes_cobrar_grupos.setdefault(_g_tmp, []).append(_c_tmp)
+
+_clientes_grupos_hash = sorted(
+    _clientes_cobrar_grupos.items(),
+    key=lambda kv: _hashlib.md5(str(kv[0]).encode("utf-8")).hexdigest(),
+)
+_qtd_terceiro_grupos = int(round(len(_clientes_grupos_hash) * COBRANCA10_RATEIO))
+_qtd_terceiro_grupos = max(0, min(len(_clientes_grupos_hash), _qtd_terceiro_grupos))
+
+_clientes_terceiro_grupos = _clientes_grupos_hash[:_qtd_terceiro_grupos]
+_clientes_terceiro_cliente_keys = {k for k, _rows in _clientes_terceiro_grupos}
+_clientes_terceiro_lista = [
+    row
+    for _k_grupo, _rows_grupo in _clientes_terceiro_grupos
+    for row in _rows_grupo
+]
+
+# Remove da base dos demais usuários TODOS os títulos dos clientes destinados à cobrança global.
+clientes_cobrar = [
+    x for x in clientes_cobrar
+    if cliente_grupo_key_py(x) not in _clientes_terceiro_cliente_keys
+]
+
+print(
+    f"🤝 V10.41 Cobrança10: {len(_clientes_terceiro_cliente_keys)} cliente(s) único(s), "
+    f"{len(_clientes_terceiro_lista)} título(s), percentual={COBRANCA10_RATEIO*100:.2f}%"
+)
 
 # Ativos: agrupa por (vendedor, filial_vendedor) — pertence a uma filial pelo nome
 ativos = df_ativos_raw.groupby(["vendedor","filial_vendedor","is_gerente"]).agg(
@@ -3283,7 +3332,7 @@ except Exception as _e_v107_dreno:
 
 
 # =========================================
-# V10.40 — SALVAR DATA ENTRADA COBRANÇA + RATEIO PROPORCIONAL
+# V10.41 — SALVAR DATA ENTRADA COBRANÇA + RATEIO PROPORCIONAL
 # Vazio = mantém peso 100% e não mexe no rateio atual.
 # Data no mês atual = peso proporcional aos dias ativos no mês.
 # Mês anterior = peso 100%.
@@ -3414,12 +3463,12 @@ try:
             _nomes_v1039.append(f"{df_vend.loc[_idx_v1039, 'vendedor']}={_w_v1039:.2f}" + (f" entrada={_dt_ent_v1039}" if _dt_ent_v1039 else ""))
         _ajustes_v1039.append(f"{_fil_v1039}: " + "; ".join(_nomes_v1039))
     if _ajustes_v1039:
-        print("✅ V10.40 rateio proporcional por data_entrada aplicado:")
+        print("✅ V10.41 rateio proporcional por data_entrada aplicado:")
         for _l_v1039 in _ajustes_v1039: print("   - " + _l_v1039)
     else:
-        print("ℹ️ V10.40 rateio proporcional: nenhuma data_entrada no mês atual; rateio antigo preservado.")
+        print("ℹ️ V10.41 rateio proporcional: nenhuma data_entrada no mês atual; rateio antigo preservado.")
 except Exception as _e_v1039:
-    print(f"⚠️ V10.40 rateio proporcional por data_entrada falhou; mantendo rateio atual: {_e_v1039}")
+    print(f"⚠️ V10.41 rateio proporcional por data_entrada falhou; mantendo rateio atual: {_e_v1039}")
 
 
 # ===== SALVAR CSV
@@ -6505,8 +6554,9 @@ def aplicar_anti_duplicidade_operacional_carteiras():
     """
     V7.9 HOTFIX: remove duplicidade sem zerar a lista dos vendedores.
 
-    Regra nova:
-    - Cobrança10 continua exclusiva: se o título caiu no lote do terceiro, sai das outras listas operacionais.
+    Regra V10.41:
+    - Cobrança10 é exclusiva por cliente: se o cliente/CPF caiu no lote global,
+      TODOS os títulos dele saem das outras listas operacionais.
     - Vendedor x vendedor: mantém somente um responsável vendedor para o mesmo título.
     - Crediariasta x crediarista: mantém somente um responsável crediarista para o mesmo título.
     - Vendedor x crediarista: NÃO remove do vendedor. As listas são tratadas como trilhas operacionais separadas,
@@ -6521,13 +6571,19 @@ def aplicar_anti_duplicidade_operacional_carteiras():
         except Exception:
             return ''
 
+    def _cliente_key(r):
+        try:
+            return cliente_grupo_key_py(r)
+        except Exception:
+            return ''
+
     # 1) Títulos do terceiro têm prioridade/exclusividade.
     terceiro_keys = set()
     try:
         for fx in ['grave','alerta','atencao']:
             for r in (clientes_terceiro_js or {}).get(fx, []) or []:
-                k = _key(r)
-                if k and k.count('|') >= 2:
+                k = _cliente_key(r)
+                if k:
                     terceiro_keys.add(k)
     except Exception:
         pass
@@ -6539,10 +6595,10 @@ def aplicar_anti_duplicidade_operacional_carteiras():
                 for fx in ['grave','alerta','atencao']:
                     nova = []
                     for r in (data or {}).get(fx, []) or []:
-                        k = _key(r)
+                        k = _cliente_key(r)
                         if k in keys_to_remove:
                             total += 1
-                            removidos.append({'key': k, 'removido_de': f'{tipo}:{dono}', 'mantido_em': 'terceiro:Cobrança10', 'motivo': 'cobranca10_exclusiva'})
+                            removidos.append({'key': k, 'removido_de': f'{tipo}:{dono}', 'mantido_em': 'terceiro:Cobrança10', 'motivo': 'cobranca10_cliente_exclusivo'})
                         else:
                             nova.append(r)
                     data[fx] = nova
@@ -6583,7 +6639,7 @@ def aplicar_anti_duplicidade_operacional_carteiras():
         print(f"🧯 Anti-duplicidade operacional V7.9 aplicado: {len(removidos)} título(s) removido(s). Vendedor x crediarista preservado.")
         try:
             with open(os.path.join(pasta, 'relatorio_duplicidades_resolvidas.json'), 'w', encoding='utf-8') as f:
-                json.dump({'gerado_em': now_brasilia().isoformat(), 'versao': 'V7.9', 'regra': 'cobranca10 exclusiva; dedupe interno por grupo; vendedor x crediarista preservado', 'total_removidos': len(removidos), 'removidos': removidos[:1500]}, f, ensure_ascii=False, indent=2)
+                json.dump({'gerado_em': now_brasilia().isoformat(), 'versao': 'V7.9', 'regra': 'V10.41 cobranca10 exclusiva por cliente; dedupe interno por titulo; vendedor x crediarista preservado', 'total_removidos': len(removidos), 'removidos': removidos[:1500]}, f, ensure_ascii=False, indent=2)
         except Exception:
             pass
     else:
@@ -11529,7 +11585,7 @@ function readCrediaristasConfigFromUI(){
   }).filter(r=>r.login&&r.filial&&r.pct>0);
 }
 
-function renderMetasTab(){const cards=[...flattenVendedores(),...flattenFiliais()]; const currentMode=window._metaMode||'global'; const currentTarget=window._metaSelectedTarget||''; metaSection.innerHTML=`<div class="section-head"><div><h2>🎯 Configuração de metas e bônus</h2><div class="hint">Altere globalmente ou por vendedor/filial. Ao salvar, já fica online.</div></div></div><div class="meta-layout"><div class="glass panel"><div class="tabs" style="justify-content:flex-start;margin-top:0"><button id="btnModeGlobal" class="tab" onclick="setMetaMode('global')">🌐 Padrão global</button><button id="btnModeInd" class="tab" onclick="setMetaMode('individual')">👤 Por vendedor/filial</button></div><div id="metaSelectWrap" class="hidden" style="margin:8px 0 14px"><div class="input-card"><label>Selecionar alvo</label><select id="metaTarget" onchange="loadMetaSelected()"><option value="">Selecione...</option>${optionTargets()}</select></div></div><div class="section-head" style="margin-top:10px"><div><h2 style="font-size:18px">% de meta por faixa</h2></div></div><div class="form-grid"><div class="input-card"><label>Grave</label><input id="cfg_grave_pct" type="number" step="0.01"></div><div class="input-card"><label>Alerta</label><input id="cfg_alerta_pct" type="number" step="0.01"></div><div class="input-card"><label>Atenção</label><input id="cfg_atencao_pct" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">Pesos da meta geral</h2></div></div><div class="form-grid"><div class="input-card"><label>Peso Grave</label><input id="cfg_peso_grave" type="number" step="0.01"></div><div class="input-card"><label>Peso Alerta</label><input id="cfg_peso_alerta" type="number" step="0.01"></div><div class="input-card"><label>Peso Atenção</label><input id="cfg_peso_atencao" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">Bônus / mensagem da faixa <span class="note">· Não acumulativo</span></h2></div></div><div class="form-grid bonus"><div class="input-card"><label>50%</label><input id="cfg_bonus_50" placeholder="Ex: Parabéns, você ganhou R$ 100,00"></div><div class="input-card"><label>75%</label><input id="cfg_bonus_75"></div><div class="input-card"><label>85%</label><input id="cfg_bonus_85"></div><div class="input-card"><label>100%</label><input id="cfg_bonus_100"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">💲 Meta mínima Vendas e Serviços</h2><div class="hint">Configuração inicial para comissão de vendedor e gerente/filial.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Vendedor · mínimo vendas (%)</label><input id="cfg_vendas_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Vendedor · mínimo serviços (%)</label><input id="cfg_servicos_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial · mínimo vendas (%)</label><input id="cfg_gerente_vendas_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial · mínimo serviços (%)</label><input id="cfg_gerente_servicos_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Vendedor · mercantil mínimo para rentab (%)</label><input id="cfg_vendedor_rentab_min_mercantil_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial · mercantil mínimo para rentab (%)</label><input id="cfg_gerente_rentab_min_mercantil_pct" type="number" step="0.01" placeholder="80"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🤝 Rateio cobrança global</h2><div class="hint">Percentual do total único da cobrança geral distribuído para os usuários do tipo cobrança global (ex.: Cobrança10).</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Usuários de cobrança global (%)</label><input id="cfg_cobranca_global_rateio_pct" type="number" step="0.01" placeholder="20"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🧾 Texto da comissão</h2><div class="hint">Frase exibida no card de comissão de crediaristas/cobrança terceira.</div></div></div><div class="form-grid bonus"><div class="input-card" style="grid-column:1/-1"><label>Mensagem abaixo da comissão</label><input id="cfg_comissao_pagamento_texto" placeholder="Ex: Pagamento previsto para o dia 25 do mês seguinte"></div></div>${renderCrediaristasConfigPanel()}<div id="commissionPanel"></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button class="btn primary" onclick="salvarMeta()">💾 Salvar configuração</button><button class="btn ghost" onclick="removerMetaIndividual()">🗑️ Remover individual</button></div><div id="metaSaveMsg" class="note" style="margin-top:10px"></div><div id="metaSavedList" class="note" style="margin-top:10px"></div></div></div>`; const sel=document.getElementById('metaTarget'); if(sel && currentTarget) sel.value=currentTarget; setMetaMode(currentMode); renderSavedMetaList();}
+function renderMetasTab(){const cards=[...flattenVendedores(),...flattenFiliais()]; const currentMode=window._metaMode||'global'; const currentTarget=window._metaSelectedTarget||''; metaSection.innerHTML=`<div class="section-head"><div><h2>🎯 Configuração de metas e bônus</h2><div class="hint">Altere globalmente ou por vendedor/filial. Ao salvar, já fica online.</div></div></div><div class="meta-layout"><div class="glass panel"><div class="tabs" style="justify-content:flex-start;margin-top:0"><button id="btnModeGlobal" class="tab" onclick="setMetaMode('global')">🌐 Padrão global</button><button id="btnModeInd" class="tab" onclick="setMetaMode('individual')">👤 Por vendedor/filial</button></div><div id="metaSelectWrap" class="hidden" style="margin:8px 0 14px"><div class="input-card"><label>Selecionar alvo</label><select id="metaTarget" onchange="loadMetaSelected()"><option value="">Selecione...</option>${optionTargets()}</select></div></div><div class="section-head" style="margin-top:10px"><div><h2 style="font-size:18px">% de meta por faixa</h2></div></div><div class="form-grid"><div class="input-card"><label>Grave</label><input id="cfg_grave_pct" type="number" step="0.01"></div><div class="input-card"><label>Alerta</label><input id="cfg_alerta_pct" type="number" step="0.01"></div><div class="input-card"><label>Atenção</label><input id="cfg_atencao_pct" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">Pesos da meta geral</h2></div></div><div class="form-grid"><div class="input-card"><label>Peso Grave</label><input id="cfg_peso_grave" type="number" step="0.01"></div><div class="input-card"><label>Peso Alerta</label><input id="cfg_peso_alerta" type="number" step="0.01"></div><div class="input-card"><label>Peso Atenção</label><input id="cfg_peso_atencao" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">Bônus / mensagem da faixa <span class="note">· Não acumulativo</span></h2></div></div><div class="form-grid bonus"><div class="input-card"><label>50%</label><input id="cfg_bonus_50" placeholder="Ex: Parabéns, você ganhou R$ 100,00"></div><div class="input-card"><label>75%</label><input id="cfg_bonus_75"></div><div class="input-card"><label>85%</label><input id="cfg_bonus_85"></div><div class="input-card"><label>100%</label><input id="cfg_bonus_100"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">💲 Meta mínima Vendas e Serviços</h2><div class="hint">Configuração inicial para comissão de vendedor e gerente/filial.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Vendedor · mínimo vendas (%)</label><input id="cfg_vendas_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Vendedor · mínimo serviços (%)</label><input id="cfg_servicos_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial · mínimo vendas (%)</label><input id="cfg_gerente_vendas_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial · mínimo serviços (%)</label><input id="cfg_gerente_servicos_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Vendedor · mercantil mínimo para rentab (%)</label><input id="cfg_vendedor_rentab_min_mercantil_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial · mercantil mínimo para rentab (%)</label><input id="cfg_gerente_rentab_min_mercantil_pct" type="number" step="0.01" placeholder="80"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🤝 Rateio cobrança global</h2><div class="hint">Percentual dos clientes únicos da cobrança geral distribuído para usuários do tipo cobrança global (ex.: Cobrança10). Todos os títulos do mesmo cliente seguem juntos.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Usuários de cobrança global (%)</label><input id="cfg_cobranca_global_rateio_pct" type="number" step="0.01" placeholder="20"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🧾 Texto da comissão</h2><div class="hint">Frase exibida no card de comissão de crediaristas/cobrança terceira.</div></div></div><div class="form-grid bonus"><div class="input-card" style="grid-column:1/-1"><label>Mensagem abaixo da comissão</label><input id="cfg_comissao_pagamento_texto" placeholder="Ex: Pagamento previsto para o dia 25 do mês seguinte"></div></div>${renderCrediaristasConfigPanel()}<div id="commissionPanel"></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button class="btn primary" onclick="salvarMeta()">💾 Salvar configuração</button><button class="btn ghost" onclick="removerMetaIndividual()">🗑️ Remover individual</button></div><div id="metaSaveMsg" class="note" style="margin-top:10px"></div><div id="metaSavedList" class="note" style="margin-top:10px"></div></div></div>`; const sel=document.getElementById('metaTarget'); if(sel && currentTarget) sel.value=currentTarget; setMetaMode(currentMode); renderSavedMetaList();}
 function setMetaMode(mode){window._metaMode=mode; const bg=document.getElementById('btnModeGlobal'); const bi=document.getElementById('btnModeInd'); if(bg) bg.classList.toggle('active',mode==='global'); if(bi) bi.classList.toggle('active',mode==='individual'); const wrap=document.getElementById('metaSelectWrap'); if(wrap) wrap.classList.toggle('hidden',mode!=='individual'); if(mode==='global'){fillMetaForm('global')} else {const raw=(document.getElementById('metaTarget')?.value)||window._metaSelectedTarget||''; if(raw){window._metaSelectedTarget=raw; fillMetaForm('individual',raw)} else {fillMetaForm('global')}}}
 function loadMetaSelected(){const val=document.getElementById('metaTarget').value; window._metaSelectedTarget=val; if(!val){fillMetaForm('global'); return;} fillMetaForm('individual',val)}
 function collectMetaForm(){const out={}; ['grave_pct','alerta_pct','atencao_pct','peso_grave','peso_alerta','peso_atencao','vendas_min_pct','servicos_min_pct','gerente_vendas_min_pct','gerente_servicos_min_pct','vendedor_rentab_min_mercantil_pct','gerente_rentab_min_mercantil_pct','cobranca_global_rateio_pct'].forEach(k=>out[k]=Number(document.getElementById('cfg_'+k).value||0)); ['bonus_50','bonus_75','bonus_85','bonus_100','comissao_pagamento_texto'].forEach(k=>out[k]=document.getElementById('cfg_'+k)?.value||''); return {...out,crediaristas_config:readCrediaristasConfigFromUI(),...readCommissionPanel()}}
@@ -12501,7 +12557,7 @@ async function adminSalvarTodasEntradasCobrancaV1040(){
       ok++;
     }catch(e){
       fail++;
-      console.warn('[V10.40] falha salvando data entrada cobrança',login,e);
+      console.warn('[V10.41] falha salvando data entrada cobrança',login,e);
     }
   }
   if(fail===0){
