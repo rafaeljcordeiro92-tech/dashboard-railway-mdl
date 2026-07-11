@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_41_RATEIO_CLIENTE_ZERO_FIX
+# VERSAO: DASH2_0_V10_42_RATEIO_CLIENTE_ZERO_NAME_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,8 +34,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.41"
-DASHBOARD_BUILD_TAG = "rateio_cliente_zero"
+DASHBOARD_BUILD_VERSION = "V10.42"
+DASHBOARD_BUILD_TAG = "rateio_cliente_zero_name_fix"
 
 def now_brasilia():
     return datetime.now(APP_TZ)
@@ -2787,24 +2787,75 @@ COBRANCA10_RATEIO_DEFAULT = 20.0
 
 def _load_cobranca_global_rateio_pct():
     """
-    V10.41:
-    - 0 é um valor válido e precisa zerar a carteira global.
-    - Só usa 20% como padrão quando a chave realmente não existe ou é inválida.
+    V10.42:
+    - 0 é um valor válido e zera a carteira global.
+    - Lê primeiro a configuração online, porque o rateio acontece antes do bloco
+      principal que sincroniza config_meta.json.
+    - Usa 20% apenas quando a chave não existe ou o conteúdo é inválido.
     """
+
+    def _extrair_pct(_raw):
+        if not isinstance(_raw, dict):
+            return None
+        if isinstance(_raw.get("data"), dict):
+            _raw = _raw.get("data")
+        _glob = _raw.get("global", _raw) if isinstance(_raw, dict) else {}
+        if not isinstance(_glob, dict) or "cobranca_global_rateio_pct" not in _glob:
+            return None
+        _valor = _glob.get("cobranca_global_rateio_pct")
+        if _valor is None or str(_valor).strip() == "":
+            return None
+        _pct = float(str(_valor).replace(",", "."))
+        return max(0.0, min(100.0, _pct))
+
+    # Fonte principal: arquivo público salvo pelo dashboard.
+    _urls = [
+        "https://moveisdolar.com.br/colaborador/config_meta.json",
+        "https://moveisdolar.com.br/colaborador/config_meta_api.php",
+    ]
+    _contexts = [None]
     try:
-        _cfgp = os.path.join(pasta, "cache_historico", "config_meta.json")
-        if os.path.exists(_cfgp):
+        _contexts.append(ssl._create_unverified_context())
+    except Exception:
+        pass
+
+    for _url in _urls:
+        for _ctx in _contexts:
+            try:
+                _sep = "&" if "?" in _url else "?"
+                _req = _url + _sep + "_=" + str(int(time.time()))
+                if _ctx is None:
+                    _resp = urllib.request.urlopen(_req, timeout=12)
+                else:
+                    _resp = urllib.request.urlopen(_req, timeout=12, context=_ctx)
+                with _resp:
+                    _txt = _resp.read().decode("utf-8", errors="ignore").strip()
+                if not _txt.startswith("{"):
+                    continue
+                _pct = _extrair_pct(json.loads(_txt))
+                if _pct is not None:
+                    print(f"🌐 V10.42 percentual cobrança global carregado: {_pct:.2f}%")
+                    return _pct
+            except Exception:
+                pass
+
+    # Fallback local: cache persistido ou arquivo da pasta do projeto.
+    for _cfgp in (
+        os.path.join(pasta, "cache_historico", "config_meta.json"),
+        os.path.join(pasta, "config_meta.json"),
+    ):
+        try:
+            if not os.path.exists(_cfgp):
+                continue
             with open(_cfgp, "r", encoding="utf-8") as _fcg:
-                _rawcg = json.load(_fcg)
-            _globalcg = _rawcg.get("global", _rawcg) if isinstance(_rawcg, dict) else {}
-            if "cobranca_global_rateio_pct" in _globalcg:
-                _raw_pct = _globalcg.get("cobranca_global_rateio_pct")
-                if _raw_pct is None or str(_raw_pct).strip() == "":
-                    return COBRANCA10_RATEIO_DEFAULT
-                _pctcg = float(str(_raw_pct).replace(",", "."))
-                return max(0.0, min(100.0, _pctcg))
-    except Exception as _e_cg:
-        print(f"⚠️ V10.41 não conseguiu ler o percentual da cobrança global: {_e_cg}")
+                _pct = _extrair_pct(json.load(_fcg))
+            if _pct is not None:
+                print(f"💾 V10.42 percentual cobrança global carregado do cache: {_pct:.2f}%")
+                return _pct
+        except Exception:
+            pass
+
+    print(f"⚠️ V10.42 percentual cobrança global não encontrado; usando padrão {COBRANCA10_RATEIO_DEFAULT:.2f}%")
     return COBRANCA10_RATEIO_DEFAULT
 
 COBRANCA10_RATEIO = _load_cobranca_global_rateio_pct() / 100.0
@@ -2891,7 +2942,7 @@ def cliente_grupo_key_py(r):
     return base[:120] or cobranca_row_key_py(r)
 
 # =========================================
-# V10.41 — COBRANÇA GLOBAL POR CLIENTE, NÃO POR TÍTULO
+# V10.42 — COBRANÇA GLOBAL POR CLIENTE, ZERO VÁLIDO E SEM NAMEERROR
 #
 # O percentual é aplicado sobre clientes únicos. Se um cliente/CPF for selecionado,
 # TODOS os títulos dele seguem juntos para o mesmo destino. Isso evita que um usuário
@@ -2924,7 +2975,7 @@ clientes_cobrar = [
 ]
 
 print(
-    f"🤝 V10.41 Cobrança10: {len(_clientes_terceiro_cliente_keys)} cliente(s) único(s), "
+    f"🤝 V10.42 Cobrança10: {len(_clientes_terceiro_cliente_keys)} cliente(s) único(s), "
     f"{len(_clientes_terceiro_lista)} título(s), percentual={COBRANCA10_RATEIO*100:.2f}%"
 )
 
@@ -5122,7 +5173,7 @@ recebimentos_terceiro_js = {'grave': [], 'alerta': [], 'atencao': []}
 for _krt, _vrt in recebimentos_det_js.items():
     for _fxrt in ['grave', 'alerta', 'atencao']:
         for _rrt in (_vrt.get(_fxrt) or []):
-            if cobranca_row_key_py(_rrt) in _clientes_terceiro_keys:
+            if cliente_grupo_key_py(_rrt) in _clientes_terceiro_cliente_keys:
                 recebimentos_terceiro_js[_fxrt].append(_rrt)
 for _fxrt in ['grave', 'alerta', 'atencao']:
     recebimentos_terceiro_js[_fxrt].sort(key=lambda x: float(x.get('pago', 0) or 0), reverse=True)
