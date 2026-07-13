@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_45_RATEIO_30_DIAS_DATA_ENTRADA_FTP_FIX
+# VERSAO: DASH2_0_V10_46_RATEIO_NOME_EXIBICAO_DATA_ENTRADA_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,8 +34,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.45"
-DASHBOARD_BUILD_TAG = "rateio_30_dias_data_entrada_ftp_fix"
+DASHBOARD_BUILD_VERSION = "V10.46"
+DASHBOARD_BUILD_TAG = "rateio_nome_exibicao_data_entrada_fix"
 
 def now_brasilia():
     return datetime.now(APP_TZ)
@@ -3593,7 +3593,7 @@ except Exception as _e_v107_dreno:
 
 
 # =========================================
-# V10.45 — DATA ENTRADA COBRANÇA + RATEIO PROPORCIONAL NOS PRIMEIROS 30 DIAS
+# V10.46 — DATA ENTRADA COBRANÇA + RATEIO PROPORCIONAL NOS PRIMEIROS 30 DIAS
 # Vazio = mantém peso 100% e não mexe no rateio atual.
 # Nos primeiros 30 dias corridos = peso proporcional aos dias ativos.
 # A partir do 30º dia = peso 100%.
@@ -3653,7 +3653,7 @@ try:
                         json.dump(data, _f_v1045, ensure_ascii=False, indent=2)
                 except Exception:
                     pass
-                print("🌐 V10.45 credenciais/data de entrada carregadas do FTP antes do rateio")
+                print("🌐 V10.46 credenciais/data de entrada carregadas do FTP antes do rateio")
         except Exception as _e_ftp_v1045:
             data = {}
 
@@ -3707,18 +3707,53 @@ try:
         return by_login, by_nome_filial
 
     def _v1039_entry_date_for_row(row, by_login, by_nome_filial):
-        nome = row.get("vendedor") if hasattr(row, "get") else row["vendedor"]
-        filial = str(row.get("filial_vendedor") if hasattr(row, "get") else row["filial_vendedor"]).strip().upper()
-        keys = [_v1039_norm_key(str(nome or "")), _v1039_norm_key(f"{nome}_{filial}")]
-        for k in ("login", "usuario", "user"):
+        # V10.46: o dataframe guarda o nome bruto em "vendedor" (ex.:
+        # "ADRYAN RIBEIRO DE LIMA (F5)") e o nome limpo em "nome_exibicao".
+        # A credencial é salva com o nome limpo. A V10.45 procurava apenas o
+        # nome bruto e por isso a data existia no JSON, mas não era vinculada
+        # ao vendedor durante o rateio.
+        def _row_value(chave, default=""):
             try:
-                if k in row and str(row[k] or "").strip():
-                    login = str(row[k] or "").strip()
-                    keys += [_v1039_norm_key(login), _v1039_norm_key(f"{login}_{filial}")]
-            except Exception: pass
+                if hasattr(row, "get"):
+                    return row.get(chave, default)
+                return row[chave] if chave in row else default
+            except Exception:
+                return default
+
+        nome_exib = str(_row_value("nome_exibicao", "") or "").strip()
+        nome_bruto = str(_row_value("vendedor", "") or "").strip()
+        filial = str(_row_value("filial_vendedor", "") or "").strip().upper()
+
+        nomes = []
+        for _nome in (nome_exib, nome_bruto):
+            if not _nome:
+                continue
+            _limpo = limpar_nome_display(limpar_nome_erp(_nome))
+            for _cand in (_nome, _limpo):
+                _cand = str(_cand or "").strip()
+                if _cand and _cand not in nomes:
+                    nomes.append(_cand)
+
+        # Primeiro tenta os nomes limpos associados à filial.
+        for _nome in nomes:
+            _dt = _v1039_parse_date(by_nome_filial.get((_v1039_norm_key(_nome), filial)))
+            if _dt:
+                return _dt
+
+        # Depois tenta login explícito, caso o dataframe passe a fornecê-lo.
+        keys = []
+        for k in ("login", "usuario", "user"):
+            login = str(_row_value(k, "") or "").strip()
+            if login:
+                keys += [_v1039_norm_key(login), _v1039_norm_key(f"{login}_{filial}")]
+        for _nome in nomes:
+            keys += [_v1039_norm_key(_nome), _v1039_norm_key(f"{_nome}_{filial}")]
         for k in keys:
-            if k in by_login: return _v1039_parse_date(by_login[k])
-        return _v1039_parse_date(by_nome_filial.get((_v1039_norm_key(nome), filial)))
+            if k in by_login:
+                _dt = _v1039_parse_date(by_login[k])
+                if _dt:
+                    return _dt
+        return None
 
     def _v1039_weight(data_entrada, ano, mes):
         # V10.45: vendedor novo cresce proporcionalmente durante os primeiros
@@ -3738,6 +3773,8 @@ try:
         return max(1.0 / 30.0, min(1.0, dias_ativos / 30.0))
 
     _by_login_v1039, _by_nome_filial_v1039 = _v1039_data_entrada_maps()
+    _datas_unicas_v1046 = sorted(set(str(v) for v in list(_by_login_v1039.values()) + list(_by_nome_filial_v1039.values()) if str(v or "").strip()))
+    print(f"🗓️ V10.46 datas de entrada encontradas no JSON: {len(_datas_unicas_v1046)} valor(es) válido(s)")
     _ano_v1039, _mes_v1039 = _v1039_period_month()
     _ajustes_v1039 = []
     for _fil_v1039 in sorted(set(str(x) for x in df_vend.get("filial_vendedor", []).dropna().tolist())):
@@ -3768,12 +3805,12 @@ try:
             _nomes_v1039.append(f"{df_vend.loc[_idx_v1039, 'vendedor']}={_w_v1039:.2f}" + (f" entrada={_dt_ent_v1039}" if _dt_ent_v1039 else ""))
         _ajustes_v1039.append(f"{_fil_v1039}: " + "; ".join(_nomes_v1039))
     if _ajustes_v1039:
-        print("✅ V10.45 rateio proporcional dos primeiros 30 dias aplicado:")
+        print("✅ V10.46 rateio proporcional dos primeiros 30 dias aplicado:")
         for _l_v1039 in _ajustes_v1039: print("   - " + _l_v1039)
     else:
-        print("ℹ️ V10.45 rateio proporcional: nenhuma data de entrada encontrada; rateio antigo preservado.")
+        print("ℹ️ V10.46 rateio proporcional: nenhuma data de entrada vinculada aos vendedores; rateio antigo preservado.")
 except Exception as _e_v1039:
-    print(f"⚠️ V10.45 rateio proporcional por data de entrada falhou; mantendo rateio atual: {_e_v1039}")
+    print(f"⚠️ V10.46 rateio proporcional por data de entrada falhou; mantendo rateio atual: {_e_v1039}")
 
 
 # ===== SALVAR CSV
@@ -3915,6 +3952,9 @@ for _, row in df_vend.iterrows():
         "filial": filial,
         "is_gerente": is_ger,
         "email_recuperacao": EMAIL_RECUPERACAO,
+        # V10.46: preserva também no usuário, não apenas em colaborador_status.
+        "data_entrada": estado_ant.get("data_entrada") or estado_ant.get("data_entrada_cobranca") or "",
+        "data_entrada_cobranca": estado_ant.get("data_entrada_cobranca") or estado_ant.get("data_entrada") or "",
     }
     tipo = "GERENTE" if is_ger else "VENDEDOR"
     linhas_txt.append(f"{login_fin} | {nome_exib} | {senha_atual} | {filial} | {tipo}")
@@ -4154,6 +4194,17 @@ for _login_st, _u_st in list(auth_users.items()):
     _prev_st = dict(_status_antigo.get(_key_st) or {})
     _base_st = _colab_default_status_py(_login_st, _nome_st, _fil_st, _is_ger_st)
     _base_st.update(_prev_st)
+    # V10.46: se o status antigo estiver sem a data, usa a cópia persistida
+    # no próprio usuário. Evita o MAIN publicar o JSON novamente com campo vazio.
+    _entrada_preservada_v1046 = (
+        _base_st.get("data_entrada_cobranca")
+        or _base_st.get("data_entrada")
+        or _u_st.get("data_entrada_cobranca")
+        or _u_st.get("data_entrada")
+        or ""
+    )
+    _base_st["data_entrada"] = _entrada_preservada_v1046
+    _base_st["data_entrada_cobranca"] = _entrada_preservada_v1046
     _base_st["login"] = _login_st
     _base_st["nome"] = _nome_st
     _base_st["filial"] = str(_fil_st or '').strip().upper()
@@ -4174,6 +4225,7 @@ for _login_st, _u_st in list(auth_users.items()):
     _u_st["status_operacional"] = _base_st["status"]
     _u_st["access_disabled"] = (_base_st["status"] != "ativo")
     _u_st["data_entrada"] = _base_st.get("data_entrada", "")
+    _u_st["data_entrada_cobranca"] = _base_st.get("data_entrada_cobranca") or _base_st.get("data_entrada", "")
     _u_st["data_saida"] = _base_st.get("data_saida", "")
     _u_st["substituto"] = _base_st.get("substituto", "")
     _u_st["obs"] = _base_st.get("obs", "")
