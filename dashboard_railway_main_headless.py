@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_42_RATEIO_CLIENTE_ZERO_NAME_FIX
+# VERSAO: DASH2_0_V10_43_HISTORICO_COBRANCAS_WAL_RECOVERY_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,8 +34,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.42"
-DASHBOARD_BUILD_TAG = "rateio_cliente_zero_name_fix"
+DASHBOARD_BUILD_VERSION = "V10.43"
+DASHBOARD_BUILD_TAG = "historico_cobrancas_wal_recovery_fix"
 
 def now_brasilia():
     return datetime.now(APP_TZ)
@@ -4500,6 +4500,104 @@ def _ftp_json(nome, default):
     except Exception:
         return default
 
+
+# V10.43: cobrancas_log.json é a visão consolidada; os NDJSON em
+# /backups_cobrancas são o diário de segurança (WAL). Se o JSON principal
+# estiver vazio, incompleto ou tiver sido resetado por falha de FTP, recupera
+# automaticamente os registros dos append sem duplicar.
+def _ftp_cobrancas_logs_v1043(default=None):
+    if default is None:
+        default = []
+    base = _ftp_json('cobrancas_log.json', [])
+    if not isinstance(base, list):
+        base = []
+
+    append_rows = []
+    ftp = None
+    try:
+        import ftplib
+        from io import BytesIO
+        ftp = ftplib.FTP()
+        ftp.connect("moveisdolar.com.br", 21, timeout=25)
+        ftp.login("moveisdolar3", "Deg27ll02mdl2301#")
+        ftp.encoding = 'utf-8'
+        ftp.cwd('/public_html/colaborador/backups_cobrancas')
+        nomes = ftp.nlst()
+        nomes = sorted([
+            n for n in nomes
+            if str(n).startswith('cobrancas_log_append_') and str(n).endswith('.ndjson')
+        ])
+        # O próprio PHP mantém somente os últimos dias. Lê todos os append
+        # disponíveis, pois são pequenos e servem para recompor o histórico.
+        for nome in nomes:
+            bio = BytesIO()
+            try:
+                ftp.retrbinary(f'RETR {nome}', bio.write)
+                txt = bio.getvalue().decode('utf-8', errors='replace')
+                for linha in txt.splitlines():
+                    linha = linha.strip()
+                    if not linha:
+                        continue
+                    try:
+                        obj = json.loads(linha)
+                        if isinstance(obj, dict):
+                            append_rows.append(obj)
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+    except Exception as e:
+        print(f"⚠️ V10.43: não consegui ler WAL de cobranças no FTP: {e}")
+    finally:
+        try:
+            if ftp:
+                ftp.quit()
+        except Exception:
+            try:
+                if ftp:
+                    ftp.close()
+            except Exception:
+                pass
+
+    def _key(x):
+        if not isinstance(x, dict):
+            return ''
+        _id = str(x.get('id') or '').strip()
+        if _id:
+            return 'ID|' + _id
+        return 'ROW|' + '|'.join([
+            str(x.get('cobranca_key') or '').strip(),
+            str(x.get('cliente_key') or x.get('cliente') or '').strip(),
+            str(x.get('titulo') or '').strip(),
+            str(x.get('parcela') or '').strip(),
+            str(x.get('vencimento') or '').strip(),
+            str(x.get('usuario') or x.get('login') or '').strip(),
+            str(x.get('telefone') or '').strip(),
+            str(x.get('server_time') or x.get('criado_em') or x.get('data') or '').strip(),
+        ])
+
+    merged = []
+    seen = set()
+    for row in list(base) + list(append_rows):
+        if not isinstance(row, dict):
+            continue
+        k = _key(row)
+        if k and k in seen:
+            continue
+        if k:
+            seen.add(k)
+        merged.append(row)
+
+    merged.sort(key=lambda x: str(
+        x.get('server_time') or x.get('criado_em') or x.get('data') or x.get('server_date') or ''
+    ))
+    if append_rows and len(merged) > len(base):
+        print(
+            f"🧾 V10.43 histórico cobranças recuperado do WAL: "
+            f"principal={len(base)} append={len(append_rows)} consolidado={len(merged)}"
+        )
+    return merged if merged else list(default or [])
+
 # Atualiza métricas finais dos crediaristas após montar carteiras/recebimentos reais
 for _fil_cred, _login_cred in CREDIARISTAS_FILIAIS.items():
     _pend_cred = sum(float(x.get('pendente', 0) or 0) for _fx in ['grave','alerta','atencao'] for x in clientes_crediarista_js.get(_login_cred, {}).get(_fx, []))
@@ -4511,7 +4609,7 @@ for _fil_cred, _login_cred in CREDIARISTAS_FILIAIS.items():
 
 def _historico_comissao_cobranca10():
     hist = _load_json_safe(COMISSAO_HIST_PATH, {"months": {}})
-    logs = _ftp_json('cobrancas_log.json', [])
+    logs = _ftp_cobrancas_logs_v1043([])
     mes_atual = _dt.now().strftime('%Y-%m')
     cfg_rows = (CONFIG_META.get('camp_cobranca_terceiro') or _config_meta_default_global.get('camp_cobranca_terceiro') or [])
     pct_fx = {str(x.get('faixa','')).lower(): float(str(x.get('pct',0)).replace(',','.')) for x in cfg_rows if x}
@@ -7589,7 +7687,7 @@ def carregar_clientes_sem_movimento_local():
             except Exception as e:
                 print(f"⚠️ CSM logs: falha lendo cobrancas_log local: {e}")
         try:
-            data = _ftp_json('cobrancas_log.json', None)
+            data = _ftp_cobrancas_logs_v1043([])
             if isinstance(data, list):
                 # FTP é a fonte mais completa; se veio, usa ela no lugar do local.
                 logs = data
@@ -8065,7 +8163,7 @@ js_destaque = json.dumps(destaque_semana or {}, ensure_ascii=False)
 js_hist_dash = json.dumps(hist_dash, ensure_ascii=False)
 js_quitados_180 = json.dumps((quitados_180_info.get('dados') or {}).get('quitados', []), ensure_ascii=False)
 try:
-    js_cobrancas_logs_boot = json.dumps(_ftp_json('cobrancas_log.json', []), ensure_ascii=False)
+    js_cobrancas_logs_boot = json.dumps(_ftp_cobrancas_logs_v1043([]), ensure_ascii=False)
 except Exception:
     js_cobrancas_logs_boot = '[]'
 js_hist_recebimentos_mensais = json.dumps(HIST_RECEBIMENTOS_MENSAIS, ensure_ascii=False)
@@ -11548,8 +11646,18 @@ async function carregarCobrancasOnline(){
     try{j=JSON.parse(txt);}catch(e){}
     if(j.ok && Array.isArray(j.data)){
       COB_LOGS=j.data;
+      try{window.COB_LOGS=COB_LOGS}catch(e){}
       mergeLocalCobLogs();
+      try{window.COB_LOGS=COB_LOGS}catch(e){}
       try{localStorage.setItem('mdl_cobrancas_log_cache', JSON.stringify(COB_LOGS));}catch(e){}
+      if(Number(j.recovered||0)>0 || Number(j.append_count||0)>0){
+        console.log('[V10.43 histórico cobranças]',{
+          total:COB_LOGS.length,
+          principal:Number(j.main_count||0),
+          append:Number(j.append_count||0),
+          recuperados:Number(j.recovered||0)
+        });
+      }
     }else{
       const cache=localStorage.getItem('mdl_cobrancas_log_cache');
       if(cache) COB_LOGS=JSON.parse(cache)||COB_LOGS||[];
@@ -11800,7 +11908,7 @@ function renderTelegramTab(){
   <div class="glass panel" style="margin-top:14px"><h3>Como pegar o Chat ID</h3><div class="hint">1) Crie/adicone o bot em um grupo. 2) Mande uma mensagem no grupo. 3) No navegador, abra: https://api.telegram.org/botSEU_TOKEN/getUpdates. 4) Procure o campo <b>chat</b> e copie o <b>id</b>. Grupo normalmente começa com -100.</div></div>`;
 }
 
-function renderLogsTab(){const cfgPanel=renderCobrancaConfigPanel(); const LOGS_REAIS=(COB_LOGS||[]).filter(isLogCobrancaReal); const filOpts=['<option value="">Todas as filiais</option>',...ORDEM.map(f=>`<option value="${f}">${f}</option>`)].join(''); const vendOpts=['<option value="">Todos os usuários</option>',...Array.from(new Set(LOGS_REAIS.map(x=>x.usuario).filter(Boolean))).sort().map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)].join(''); logSection.innerHTML=cfgPanel+`<div class="section-head"><div><h2>🧾 Histórico de cobranças</h2><div class="hint">Filtre por data, usuário ou filial. Também é possível remover lançamentos indevidos.</div></div></div><div class="glass panel"><div class="search-row"><div class="input-card"><label>Buscar cliente/título</label><input id="logQ" placeholder="Nome, título, parcela"></div><div class="input-card"><label>Data inicial</label><input id="logDe" type="date"></div><div class="input-card"><label>Data final</label><input id="logAte" type="date"></div><div class="input-card"><label>Filial</label><select id="logFil">${filOpts}</select></div></div><div class="search-row" style="margin-top:10px"><div class="input-card"><label>Usuário</label><select id="logVend">${vendOpts}</select></div><div style="display:flex;align-items:end;gap:10px"><button class="btn primary" onclick="applyLogFilter()">Filtrar</button><button class="btn soft" onclick="clearLogFilter()">Limpar</button></div></div><div id="logsList" class="logs-list"></div></div>`; applyLogFilter()}
+function renderLogsTab(){const cfgPanel=renderCobrancaConfigPanel(); const LOGS_REAIS=(COB_LOGS||[]).filter(isLogCobrancaReal); const filOpts=['<option value="">Todas as filiais</option>',...ORDEM.map(f=>`<option value="${f}">${f}</option>`)].join(''); const vendOpts=['<option value="">Todos os usuários</option>',...Array.from(new Set(LOGS_REAIS.map(x=>x.usuario).filter(Boolean))).sort().map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)].join(''); logSection.innerHTML=cfgPanel+`<div class="section-head"><div><h2>🧾 Histórico de cobranças</h2><div class="hint">Filtre por data, usuário ou filial. Histórico consolidado do JSON principal + backups de segurança (WAL).</div></div></div><div class="glass panel"><div class="search-row"><div class="input-card"><label>Buscar cliente/título</label><input id="logQ" placeholder="Nome, título, parcela"></div><div class="input-card"><label>Data inicial</label><input id="logDe" type="date"></div><div class="input-card"><label>Data final</label><input id="logAte" type="date"></div><div class="input-card"><label>Filial</label><select id="logFil">${filOpts}</select></div></div><div class="search-row" style="margin-top:10px"><div class="input-card"><label>Usuário</label><select id="logVend">${vendOpts}</select></div><div style="display:flex;align-items:end;gap:10px"><button class="btn primary" onclick="applyLogFilter()">Filtrar</button><button class="btn soft" onclick="clearLogFilter()">Limpar</button></div></div><div id="logsList" class="logs-list"></div></div>`; applyLogFilter()}
 function parseDateBR(s){if(!s) return null; const v=String(s).trim(); let m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/); if(m){let y=Number(m[3]); if(y<100)y+=2000; const d=new Date(y, Number(m[2])-1, Number(m[1])); return isNaN(d.getTime())?null:d} m=v.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/); if(m){const d=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]),Number(m[4]||0),Number(m[5]||0),Number(m[6]||0)); return isNaN(d.getTime())?null:d} const d=new Date(v); return isNaN(d.getTime())?null:d}
 function parseDate(s){return parseDateBR(s)}
 function dateOnlyISO(s){const d=parseDateBR(s); if(!d) return ''; const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,'0'); const da=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${da}`}
@@ -18669,7 +18777,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 date_default_timezone_set('America/Sao_Paulo');
 
 $file = __DIR__ . '/cobrancas_log.json';
+$legacyFile = __DIR__ . '/cobrancas_logs.json';
 $backupDir = __DIR__ . '/backups_cobrancas';
+$deletedFile = $backupDir . '/cobrancas_log_deleted_ids.json';
 if (!file_exists($backupDir)) @mkdir($backupDir, 0777, true);
 
 function read_json_safe($path, $default = []){
@@ -18680,24 +18790,26 @@ function read_json_safe($path, $default = []){
   return is_array($j) ? $j : $default;
 }
 function write_json_atomic($path, $data){
+  $json = json_encode($data, JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+  if ($json === false) return false;
   $tmp = $path . '.tmp_' . uniqid('', true);
-  $json = json_encode($data, JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE);
-  if (@file_put_contents($tmp, $json, LOCK_EX) === false) return false;
-  return @rename($tmp, $path);
+  if (@file_put_contents($tmp, $json, LOCK_EX) !== false) {
+    if (@rename($tmp, $path)) return true;
+    // Alguns ambientes de hospedagem não permitem rename sobre arquivo existente.
+    // Faz fallback para escrita direta sem perder o WAL.
+    @unlink($tmp);
+  }
+  return @file_put_contents($path, $json, LOCK_EX) !== false;
 }
 function cleanup_backups($backupDir){
-  // V4.6: evita estourar FTP. Mantém somente:
-  // - latest do dia
-  // - latest dos últimos 10 dias
-  // - append NDJSON dos últimos 10 dias
-  $keepDays = 10;
+  $keepDays = 45;
   $limit = time() - ($keepDays * 86400);
   foreach (glob($backupDir . '/cobrancas_log_*.json') ?: [] as $f) {
     $base = basename($f);
+    if ($base === 'cobrancas_log_deleted_ids.json') continue;
     if (preg_match('/_latest\.json$/', $base)) {
       if (@filemtime($f) < $limit) @unlink($f);
     } else {
-      // remove backups antigos por horário/segundo das versões anteriores
       @unlink($f);
     }
   }
@@ -18705,21 +18817,11 @@ function cleanup_backups($backupDir){
     if (@filemtime($f) < $limit) @unlink($f);
   }
 }
-function make_backup($file, $backupDir, $tag='before_write'){
-  if (!file_exists($file)) return;
+function make_backup($file, $backupDir){
+  if (!file_exists($file) || @filesize($file) <= 2) return;
   $day = date('Y-m-d');
-  // V4.6: não cria 1 JSON a cada clique. Atualiza somente o latest do dia.
   @copy($file, $backupDir . "/cobrancas_log_{$day}_latest.json");
   cleanup_backups($backupDir);
-}
-function restore_latest_backup($file, $backupDir){
-  if (file_exists($file) && filesize($file) > 2) return false;
-  $files = glob($backupDir . '/cobrancas_log_*_latest.json');
-  if (!$files) $files = glob($backupDir . '/cobrancas_log_*.json');
-  if (!$files) return false;
-  usort($files, function($a,$b){ return filemtime($b) <=> filemtime($a); });
-  if (isset($files[0]) && file_exists($files[0])) { @copy($files[0], $file); return true; }
-  return false;
 }
 function norm_key($s){
   $s = strtoupper(trim((string)$s));
@@ -18728,44 +18830,134 @@ function norm_key($s){
 }
 function cobranca_key($p){
   if (!empty($p['cobranca_key'])) return (string)$p['cobranca_key'];
-  return norm_key($p['cliente'] ?? '') . '|' . trim((string)($p['titulo'] ?? '')) . '|' . trim((string)($p['parcela'] ?? '')) . '|' . trim((string)($p['vencimento'] ?? ''));
+  return norm_key($p['cliente'] ?? '') . '|' .
+         trim((string)($p['titulo'] ?? '')) . '|' .
+         trim((string)($p['parcela'] ?? '')) . '|' .
+         trim((string)($p['vencimento'] ?? ''));
 }
 function cliente_key($p){
   if (!empty($p['cliente_key'])) return (string)$p['cliente_key'];
-  return substr(norm_key($p['cpf'] ?? ($p['documento'] ?? ($p['cliente'] ?? ''))), 0, 90);
+  return substr(norm_key($p['cpf'] ?? ($p['documento'] ?? ($p['cliente'] ?? ''))), 0, 120);
+}
+function log_unique_key($p){
+  $id = trim((string)($p['id'] ?? ''));
+  if ($id !== '') return 'ID|' . $id;
+  return 'ROW|' . implode('|', [
+    cobranca_key($p),
+    cliente_key($p),
+    trim((string)($p['usuario'] ?? ($p['login'] ?? ''))),
+    trim((string)($p['telefone'] ?? '')),
+    trim((string)($p['server_time'] ?? ($p['criado_em'] ?? ($p['data'] ?? ''))))
+  ]);
+}
+function read_append_rows($backupDir){
+  $rows = [];
+  $files = glob($backupDir . '/cobrancas_log_append_*.ndjson') ?: [];
+  sort($files);
+  foreach($files as $f){
+    $h = @fopen($f, 'rb');
+    if (!$h) continue;
+    while (($line = fgets($h)) !== false) {
+      $line = trim($line);
+      if ($line === '') continue;
+      $j = json_decode($line, true);
+      if (is_array($j)) $rows[] = $j;
+    }
+    fclose($h);
+  }
+  return $rows;
+}
+function merge_logs($lists, $deletedIds = []){
+  $out = [];
+  $seen = [];
+  $deleted = [];
+  foreach((array)$deletedIds as $d) $deleted[(string)$d] = true;
+  foreach((array)$lists as $list){
+    if (!is_array($list)) continue;
+    foreach($list as $row){
+      if (!is_array($row)) continue;
+      $id = trim((string)($row['id'] ?? ''));
+      if ($id !== '' && isset($deleted[$id])) continue;
+      $k = log_unique_key($row);
+      if ($k !== '' && isset($seen[$k])) continue;
+      if ($k !== '') $seen[$k] = true;
+      $out[] = $row;
+    }
+  }
+  usort($out, function($a,$b){
+    $da = (string)($a['server_time'] ?? ($a['criado_em'] ?? ($a['data'] ?? ($a['server_date'] ?? ''))));
+    $db = (string)($b['server_time'] ?? ($b['criado_em'] ?? ($b['data'] ?? ($b['server_date'] ?? ''))));
+    return strcmp($da, $db);
+  });
+  return $out;
+}
+function save_deleted_id($deletedFile, $id){
+  if ($id === '') return;
+  $arr = read_json_safe($deletedFile, []);
+  if (!in_array($id, $arr, true)) $arr[] = $id;
+  write_json_atomic($deletedFile, array_values($arr));
 }
 
-if (!file_exists($file)) {
-  restore_latest_backup($file, $backupDir);
-  if (!file_exists($file)) write_json_atomic($file, []);
+$main = read_json_safe($file, []);
+$legacy = read_json_safe($legacyFile, []);
+$appendRows = read_append_rows($backupDir);
+$deletedIds = read_json_safe($deletedFile, []);
+$data = merge_logs([$main, $legacy, $appendRows], $deletedIds);
+
+// V10.43: reconstitui o JSON principal a partir do WAL sempre que necessário.
+if (count($data) !== count($main) || (!file_exists($file) && count($data) >= 0)) {
+  write_json_atomic($file, $data);
 }
-$data = read_json_safe($file, []);
-if (!is_array($data)) $data = [];
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-  echo json_encode(['ok'=>true,'data'=>$data,'count'=>count($data)], JSON_UNESCAPED_UNICODE); exit;
+  echo json_encode([
+    'ok'=>true,
+    'data'=>$data,
+    'count'=>count($data),
+    'main_count'=>count($main),
+    'append_count'=>count($appendRows),
+    'recovered'=>max(0, count($data)-count($main)),
+    'version'=>'V10.43'
+  ], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+  exit;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $raw = file_get_contents('php://input');
-  if (!mb_check_encoding($raw, 'UTF-8')) { $raw = mb_convert_encoding($raw, 'UTF-8', 'auto'); }
+  if (function_exists('mb_check_encoding') && !mb_check_encoding($raw, 'UTF-8')) {
+    $raw = mb_convert_encoding($raw, 'UTF-8', 'auto');
+  }
   $payload = json_decode($raw, true);
-  if (!is_array($payload)) { echo json_encode(['ok'=>false,'error'=>'payload_invalido','json_error'=>json_last_error_msg()]); exit; }
+  if (!is_array($payload)) {
+    echo json_encode(['ok'=>false,'error'=>'payload_invalido','json_error'=>json_last_error_msg()]);
+    exit;
+  }
 
   if (($payload['action'] ?? '') === 'delete') {
-    make_backup($file, $backupDir, 'before_delete');
-    $id = $payload['id'] ?? '';
-    $cliente = $payload['cliente'] ?? '';
-    $titulo = $payload['titulo'] ?? '';
-    $parcela = $payload['parcela'] ?? '';
+    make_backup($file, $backupDir);
+    $id = trim((string)($payload['id'] ?? ''));
+    $cliente = (string)($payload['cliente'] ?? '');
+    $titulo = (string)($payload['titulo'] ?? '');
+    $parcela = (string)($payload['parcela'] ?? '');
     $novo = [];
     foreach($data as $item){
-      $sameId = ($id !== '' && (string)($item['id'] ?? '') === (string)$id);
-      $sameComposite = ($cliente !== '' && (string)($item['cliente'] ?? '') === (string)$cliente && (string)($item['titulo'] ?? '') === (string)$titulo && (string)($item['parcela'] ?? '') === (string)$parcela);
-      if(!$sameId && !$sameComposite) $novo[] = $item;
+      $sameId = ($id !== '' && (string)($item['id'] ?? '') === $id);
+      $sameComposite = (
+        $cliente !== '' &&
+        (string)($item['cliente'] ?? '') === $cliente &&
+        (string)($item['titulo'] ?? '') === $titulo &&
+        (string)($item['parcela'] ?? '') === $parcela
+      );
+      if ($sameId || $sameComposite) {
+        $delId = trim((string)($item['id'] ?? ''));
+        if ($delId !== '') save_deleted_id($deletedFile, $delId);
+      } else {
+        $novo[] = $item;
+      }
     }
-    write_json_atomic($file, $novo);
-    echo json_encode(['ok'=>true,'count'=>count($novo)], JSON_UNESCAPED_UNICODE); exit;
+    $ok = write_json_atomic($file, $novo);
+    echo json_encode(['ok'=>$ok,'count'=>count($novo),'version'=>'V10.43'], JSON_UNESCAPED_UNICODE);
+    exit;
   }
 
   if (empty($payload['id'])) $payload['id'] = uniqid('cob_', true);
@@ -18774,27 +18966,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $payload['cliente_key'] = cliente_key($payload);
   $payload['cobranca_key'] = cobranca_key($payload);
 
-  // Antiduplo clique: mesmo usuário + mesmo título + telefone em até 2 minutos não duplica.
+  // Antiduplo clique: mesmo usuário + mesmo título + telefone em até 2 minutos.
   $now = time();
   foreach(array_reverse($data) as $item){
-    if (($item['cobranca_key'] ?? '') === $payload['cobranca_key']
-      && strtolower((string)($item['usuario'] ?? '')) === strtolower((string)($payload['usuario'] ?? ''))
-      && (string)($item['telefone'] ?? '') === (string)($payload['telefone'] ?? '')) {
-        $ts = strtotime((string)($item['server_time'] ?? ''));
-        if ($ts && abs($now - $ts) <= 120) {
-          echo json_encode(['ok'=>true,'id'=>$item['id'] ?? $payload['id'],'duplicado'=>true], JSON_UNESCAPED_UNICODE); exit;
-        }
+    if (
+      ($item['cobranca_key'] ?? '') === $payload['cobranca_key'] &&
+      strtolower((string)($item['usuario'] ?? '')) === strtolower((string)($payload['usuario'] ?? '')) &&
+      (string)($item['telefone'] ?? '') === (string)($payload['telefone'] ?? '')
+    ) {
+      $ts = strtotime((string)($item['server_time'] ?? ''));
+      if ($ts && abs($now - $ts) <= 120) {
+        echo json_encode([
+          'ok'=>true,
+          'id'=>$item['id'] ?? $payload['id'],
+          'duplicado'=>true,
+          'version'=>'V10.43'
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+      }
     }
   }
 
-  make_backup($file, $backupDir, 'before_write');
+  make_backup($file, $backupDir);
+
+  // WAL primeiro: mesmo que o JSON principal falhe, o registro fica recuperável.
+  $appendPath = $backupDir . '/cobrancas_log_append_' . date('Y-m-d') . '.ndjson';
+  $appendOk = @file_put_contents(
+    $appendPath,
+    json_encode($payload, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES) . "\n",
+    FILE_APPEND|LOCK_EX
+  ) !== false;
+
   $data[] = $payload;
-  $ok = write_json_atomic($file, $data);
-  @file_put_contents($backupDir . '/cobrancas_log_append_' . date('Y-m-d') . '.ndjson', json_encode($payload, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND|LOCK_EX);
-  @copy($file, $backupDir . '/cobrancas_log_' . date('Y-m-d') . '_latest.json');
-  echo json_encode(['ok'=>$ok,'id'=>$payload['id'],'count'=>count($data)], JSON_UNESCAPED_UNICODE); exit;
+  $data = merge_logs([$data], read_json_safe($deletedFile, []));
+  $mainOk = write_json_atomic($file, $data);
+  if ($mainOk) @copy($file, $backupDir . '/cobrancas_log_' . date('Y-m-d') . '_latest.json');
+
+  $ok = $mainOk || $appendOk;
+  echo json_encode([
+    'ok'=>$ok,
+    'main_ok'=>$mainOk,
+    'append_ok'=>$appendOk,
+    'id'=>$payload['id'],
+    'count'=>count($data),
+    'version'=>'V10.43'
+  ], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+  exit;
 }
-echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado'], JSON_UNESCAPED_UNICODE);
+
+echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado','version'=>'V10.43'], JSON_UNESCAPED_UNICODE);
 ?>"""
 
 CONFIG_META_API_PHP = r"""<?php
@@ -19532,11 +19752,10 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
 
     print('ℹ️ MAIN: não publica metas_vendas/margens/sales_version; pacote de vendas é exclusivo do sales worker.')
 
-    try:
-        if not _ftp_remote_exists_v1019('cobrancas_log.json'):
-            _ftp_upload_bytes_v1019('cobrancas_log.json', b'[]', label='cobrancas_log.json inicial')
-    except Exception as e_coblog:
-        print(f'⚠️ V10.19: erro checando cobrancas_log.json: {e_coblog}')
+    # V10.43: nunca sobrescreve cobrancas_log.json com [] por falha transitória
+    # de consulta FTP. A própria cobrancas_api.php cria/repara o arquivo usando
+    # os append NDJSON em backups_cobrancas.
+    print('🛡️ V10.43: cobrancas_log.json preservado; API/WAL faz criação e recuperação.')
     try:
         if not _ftp_remote_exists_v1019('mensagens_log.json'):
             _ftp_upload_bytes_v1019('mensagens_log.json', b'[]', label='mensagens_log.json inicial')
