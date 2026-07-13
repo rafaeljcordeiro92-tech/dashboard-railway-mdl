@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_43_HISTORICO_COBRANCAS_WAL_RECOVERY_FIX
+# VERSAO: DASH2_0_V10_44_CPF_CNPJ_RELATORIOS_RATEIO_CONCILIACAO_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,8 +34,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.43"
-DASHBOARD_BUILD_TAG = "historico_cobrancas_wal_recovery_fix"
+DASHBOARD_BUILD_VERSION = "V10.44"
+DASHBOARD_BUILD_TAG = "cpf_cnpj_relatorios_rateio_conciliacao_fix"
 
 def now_brasilia():
     return datetime.now(APP_TZ)
@@ -295,6 +295,89 @@ def marcar_multiselect_por_label(label_texto, valores, timeout=20, limpar_antes=
     driver.execute_script("document.body.click();")
     time.sleep(0.5)
     return checkboxes
+
+
+def garantir_coluna_cpf_cnpj_relatorio(contexto="principal", timeout=20):
+    """
+    Garante a seleção da coluna CPF/CNPJ no multiselect "Colunas do Relatório".
+
+    Não limpa as demais colunas já marcadas. Isso preserva o layout atual e apenas
+    acrescenta o documento do cliente no relatório principal e no de quitados.
+    """
+    label = None
+    xpaths_label = [
+        "//label[@id='titulo_campo_colunas_relatorio']",
+        "//label[@for='colunas_relatorio']",
+        "//label[contains(normalize-space(.),'Colunas do Relatório')]",
+        "//label[contains(normalize-space(.),'Colunas do Relatorio')]",
+    ]
+    for xp in xpaths_label:
+        try:
+            label = wait.until(EC.presence_of_element_located((By.XPATH, xp)))
+            if label:
+                break
+        except Exception:
+            pass
+    if label is None:
+        raise Exception("Campo 'Colunas do Relatório' não encontrado")
+
+    try:
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", label)
+    except Exception:
+        pass
+
+    botao = label.find_element(By.XPATH, "following::button[1]")
+    try:
+        botao.click()
+    except Exception:
+        driver.execute_script("arguments[0].click();", botao)
+    time.sleep(0.8)
+
+    container = label.find_element(By.XPATH, "following::ul[1]")
+    alvo = None
+    for c in container.find_elements(By.XPATH, ".//input[@type='checkbox']"):
+        valor = str(c.get_attribute("value") or "").strip().lower()
+        texto_item = ""
+        try:
+            texto_item = c.find_element(By.XPATH, "ancestor::label[1]").text
+        except Exception:
+            pass
+        texto_norm = normalizar_texto_match(texto_item)
+        if valor == "cpf_cnpj" or "CPF/CNPJ" in texto_norm or "CPF CNPJ" in texto_norm:
+            alvo = c
+            break
+
+    if alvo is None:
+        raise Exception("Checkbox value='cpf_cnpj' não encontrado em Colunas do Relatório")
+
+    if not alvo.is_selected():
+        driver.execute_script("arguments[0].click();", alvo)
+        time.sleep(0.4)
+
+    selecionado = alvo.is_selected()
+    try:
+        # Fecha o dropdown sem alterar as outras seleções.
+        driver.execute_script("document.body.click();")
+    except Exception:
+        pass
+    time.sleep(0.4)
+
+    if not selecionado:
+        raise Exception("CPF/CNPJ não permaneceu selecionado")
+
+    total_txt = ""
+    try:
+        total_txt = botao.find_element(By.CSS_SELECTOR, ".multiselect-selected-text").text.strip()
+    except Exception:
+        pass
+    print(f"✅ V10.44 CPF/CNPJ incluído nas colunas do relatório {contexto}" + (f" · {total_txt}" if total_txt else ""))
+    return True
+
+
+def normalizar_documento_cliente(valor):
+    """Retorna CPF/CNPJ somente com dígitos; vazio quando o conteúdo não é documento válido."""
+    digitos = re.sub(r"\D+", "", str(valor or ""))
+    return digitos if len(digitos) in (11, 14) else ""
 
 
 def normalizar_texto_match(texto):
@@ -729,6 +812,10 @@ def _parse_quitados_xls_180d(caminho_quitados, colmap):
     cruzando com cobrancas_log.json pelo último cobrador antes do pagamento.
     """
     dfq = pd.read_excel(caminho_quitados, header=None, engine="openpyxl")
+    try:
+        colmap = detectar_colunas_contas_receber(dfq, contexto="quitados")
+    except Exception as _e_col_q:
+        print(f"⚠️ V10.44 mapa dinâmico quitados falhou; usando mapa principal: {_e_col_q}")
     quitados = []
     vend_atual = None
     agora = now_brasilia()
@@ -799,9 +886,14 @@ def _parse_quitados_xls_180d(caminho_quitados, colmap):
         filial_txt = c0
         mfil = re.search(r"FILIAL\s*(\d+)", filial_txt.upper())
         filial_key = f"F{int(mfil.group(1))}" if mfil else ""
+        cpf_cnpj = _limpa(row[colmap["cpf_cnpj"]]) if colmap.get("cpf_cnpj") is not None and len(row) > colmap["cpf_cnpj"] else ""
+        cpf_cnpj_normalizado = normalizar_documento_cliente(cpf_cnpj)
 
         quitados.append({
             "cliente": c1[:80],
+            "cpf_cnpj": cpf_cnpj,
+            "cpf_cnpj_normalizado": cpf_cnpj_normalizado,
+            "cliente_key": ("DOC:" + cpf_cnpj_normalizado) if cpf_cnpj_normalizado else normalizar_texto_match(c1[:80]),
             "vendedor_erp": _limpar_nome_display_local(vend_atual),
             "filial": filial_key,
             "filial_label": filial_txt,
@@ -870,6 +962,12 @@ def coletar_quitados_180d_contas_receber():
         time.sleep(1.5)
     except Exception as e:
         print(f"⚠️ Não abriu + quitados: {e}")
+
+    # Coluna CPF/CNPJ também no relatório de quitados.
+    try:
+        garantir_coluna_cpf_cnpj_relatorio("quitados", timeout=20)
+    except Exception as e:
+        print(f"⚠️ V10.44 não consegui garantir CPF/CNPJ no relatório de quitados: {e}")
 
     # Data último pagamento
     try:
@@ -1932,6 +2030,12 @@ try:
 except Exception as e:
     print(f"⚠️ Não abriu +: {e}")
 
+# ===== COLUNAS DO RELATÓRIO — CPF/CNPJ
+try:
+    garantir_coluna_cpf_cnpj_relatorio("principal", timeout=20)
+except Exception as e:
+    print(f"⚠️ V10.44 não consegui garantir CPF/CNPJ no relatório principal: {e}")
+
 # ===== FORMAS DE PAGAMENTO
 try:
     marcar_multiselect_por_label("Forma de Pagamento", ["3", "47", "17"], timeout=20, limpar_antes=True)
@@ -2177,32 +2281,122 @@ try:
 except Exception as e:
     print(f"⚠️ Erro ao coletar Margem Bruta/Rentabilidade do SGI: {e}")
 
-# ===== MAPA DE COLUNAS DO XLS NOVO
-COL = {
-    "filial": 0,
-    "cliente": 1,
-    "contato": 2,
-    "conta_caixa": 3,
-    "restricao_credito": 4,
-    "historico": 5,
-    "num_lancamento": 6,
-    "forma_pagamento": 7,
-    "prev_real": 8,
-    "num_titulo": 9,
-    "num_parcela": 10,
-    "emissao": 11,
-    "vencimento": 12,
-    "pagamento": 13,
-    "nominal": 14,
-    "pendente": 15,
-    "pago_total": 16,
-    "juros_total": 17,
-    # Relatório novo: S=Observações (18) e T=Avalistas (19).
-    # Relatório antigo: S=Avalistas (18). Detecta pela quantidade de colunas.
-    "observacoes": 18 if df_raw.shape[1] > 19 else None,
-    "avalistas": 19 if df_raw.shape[1] > 19 else 18,
-}
-print(f"🧭 Colunas detectadas: Observações={COL.get('observacoes')} Avalistas={COL.get('avalistas')}")
+# ===== MAPA DINÂMICO DE COLUNAS DO XLS — V10.44
+def _normalizar_header_contas(valor):
+    s = str(valor or "").strip()
+    if s in ("", "nan", "None"):
+        return ""
+    s = s.replace("º", "o").replace("°", "o").replace("ª", "a")
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    s = re.sub(r"[^A-Za-z0-9]+", "_", s.lower()).strip("_")
+    return re.sub(r"_+", "_", s)
+
+
+def detectar_colunas_contas_receber(df_relatorio, contexto="principal"):
+    """
+    Localiza as colunas pelo cabeçalho real do SGI.
+
+    Assim a inclusão de CPF/CNPJ em C não desloca Contato, Conta Caixa, Título,
+    Vencimento, Pago, Observações e Avalistas. Mantém fallback para relatórios
+    antigos sem CPF/CNPJ.
+    """
+    aliases = {
+        "filial": {"filial"},
+        "cliente": {"cliente", "nome_cliente"},
+        "cpf_cnpj": {"cpf_cnpj", "cpf", "cnpj", "cpf_ou_cnpj"},
+        "contato": {"contato", "contatos", "telefone", "telefones"},
+        "conta_caixa": {"conta_caixa", "conta_de_caixa"},
+        "restricao_credito": {"restricao_credito", "restricao_de_credito", "restricao"},
+        "historico": {"historico"},
+        "num_lancamento": {"n_lancamento", "no_lancamento", "numero_lancamento", "num_lancamento"},
+        "forma_pagamento": {"forma_de_pagamento", "forma_pagamento"},
+        "prev_real": {"prev_real", "prev_realizado", "previsto_realizado"},
+        "num_titulo": {"n_titulo", "no_titulo", "numero_titulo", "num_titulo"},
+        "num_parcela": {"n_parcela", "no_parcela", "numero_parcela", "num_parcela", "parcela"},
+        "emissao": {"emissao", "data_emissao"},
+        "vencimento": {"vencimento", "data_vencimento"},
+        "pagamento": {"pagamento", "data_pagamento"},
+        "nominal": {"nominal", "valor_nominal"},
+        "pendente": {"pendente", "valor_pendente"},
+        "pago_total": {"pago_total", "valor_pago_total", "total_pago"},
+        "juros_total": {"juros_total", "valor_juros_total", "total_juros"},
+        "observacoes": {"observacoes", "observacao", "obs"},
+        "avalistas": {"avalistas", "avalista"},
+    }
+
+    melhor = {}
+    melhor_linha = None
+    melhor_score = -1
+    limite = min(len(df_relatorio), 120)
+    for i in range(limite):
+        row = df_relatorio.iloc[i]
+        atual = {}
+        for idx in range(len(row)):
+            h = _normalizar_header_contas(row.iloc[idx] if hasattr(row, "iloc") else row[idx])
+            if not h:
+                continue
+            for chave, nomes in aliases.items():
+                if h in nomes and chave not in atual:
+                    atual[chave] = idx
+                    break
+        score = sum(1 for k in (
+            "filial", "cliente", "contato", "num_lancamento", "forma_pagamento",
+            "num_titulo", "num_parcela", "vencimento", "pendente", "pago_total"
+        ) if k in atual)
+        if score > melhor_score:
+            melhor_score = score
+            melhor = atual
+            melhor_linha = i
+
+    if melhor_score < 8:
+        ncols = int(getattr(df_relatorio, "shape", (0, 0))[1] or 0)
+        if ncols >= 21:
+            # Layout V10.44: CPF/CNPJ em C.
+            melhor = {
+                "filial": 0, "cliente": 1, "cpf_cnpj": 2, "contato": 3,
+                "conta_caixa": 4, "restricao_credito": 5, "historico": 6,
+                "num_lancamento": 7, "forma_pagamento": 8, "prev_real": 9,
+                "num_titulo": 10, "num_parcela": 11, "emissao": 12,
+                "vencimento": 13, "pagamento": 14, "nominal": 15,
+                "pendente": 16, "pago_total": 17, "juros_total": 18,
+                "observacoes": 19, "avalistas": 20,
+            }
+        else:
+            # Compatibilidade com layout anterior sem CPF/CNPJ.
+            melhor = {
+                "filial": 0, "cliente": 1, "cpf_cnpj": None, "contato": 2,
+                "conta_caixa": 3, "restricao_credito": 4, "historico": 5,
+                "num_lancamento": 6, "forma_pagamento": 7, "prev_real": 8,
+                "num_titulo": 9, "num_parcela": 10, "emissao": 11,
+                "vencimento": 12, "pagamento": 13, "nominal": 14,
+                "pendente": 15, "pago_total": 16, "juros_total": 17,
+                "observacoes": 18 if ncols > 19 else None,
+                "avalistas": 19 if ncols > 19 else 18,
+            }
+        melhor_linha = "fallback"
+
+    obrigatorias = [
+        "filial", "cliente", "contato", "num_lancamento", "forma_pagamento",
+        "num_titulo", "num_parcela", "vencimento", "pagamento", "pendente", "pago_total"
+    ]
+    faltando = [k for k in obrigatorias if melhor.get(k) is None]
+    if faltando:
+        raise Exception(f"Colunas obrigatórias ausentes no relatório {contexto}: {faltando}. Mapa={melhor}")
+
+    melhor.setdefault("cpf_cnpj", None)
+    melhor.setdefault("observacoes", None)
+    melhor.setdefault("avalistas", None)
+    print(
+        f"🧭 V10.44 colunas {contexto}: header={melhor_linha} "
+        f"CPF/CNPJ={melhor.get('cpf_cnpj')} Contato={melhor.get('contato')} "
+        f"Título={melhor.get('num_titulo')} Pago={melhor.get('pago_total')} "
+        f"Observações={melhor.get('observacoes')} Avalistas={melhor.get('avalistas')}"
+    )
+    return melhor
+
+
+COL = detectar_colunas_contas_receber(df_raw, contexto="principal")
 
 
 def _row_val_safe(row, idx):
@@ -2624,6 +2818,8 @@ for _i in range(len(df_raw)):
 
     _c0 = str(_row[COL["filial"]]).strip()
     _c1 = str(_row[COL["cliente"]]).strip()
+    _cpf_cnpj = _row_val_safe(_row, COL.get("cpf_cnpj"))
+    _cpf_cnpj_normalizado = normalizar_documento_cliente(_cpf_cnpj)
     _contato = str(_row[COL["contato"]]).strip() if len(_row) > COL["contato"] else ""
     _avalista = _row_val_safe(_row, COL.get("avalistas"))
 
@@ -2745,6 +2941,8 @@ for _i in range(len(df_raw)):
             "is_ativo": _is_ativo,
             "is_fdep": _is_fdep,
             "cliente": _c1[:50],
+            "cpf_cnpj": _cpf_cnpj,
+            "cpf_cnpj_normalizado": _cpf_cnpj_normalizado,
             "contato": _contato,
             "telefones": _telefones,
             "avalista": _avalista[:50],
@@ -2759,8 +2957,11 @@ for _i in range(len(df_raw)):
             "pago": _pago_val,
             "faixa": _faixa,
             "titulo_key": _titulo_key,
-            "cliente_key": normalizar_texto_match(_c1[:50]),
+            "titulo_key_doc": "|".join([_cpf_cnpj_normalizado or normalizar_texto_match(_c1[:50]), str(_titulo).strip(), str(_parcela).strip()]),
+            "cliente_key_legacy": normalizar_texto_match(_c1[:50]),
+            "cliente_key": ("DOC:" + _cpf_cnpj_normalizado) if _cpf_cnpj_normalizado else normalizar_texto_match(_c1[:50]),
             "cobranca_key": "|".join([str(_c1[:50]).strip().upper(), str(_titulo).strip(), str(_parcela).strip(), str(_row[COL["vencimento"]]).strip()]),
+            "cobranca_key_doc": "|".join([_cpf_cnpj_normalizado or normalizar_texto_match(_c1[:50]), str(_titulo).strip(), str(_parcela).strip(), str(_row[COL["vencimento"]]).strip()]),
             "mensagem_whatsapp": _mensagem,
         })
 
@@ -2834,7 +3035,7 @@ def _load_cobranca_global_rateio_pct():
                     continue
                 _pct = _extrair_pct(json.loads(_txt))
                 if _pct is not None:
-                    print(f"🌐 V10.42 percentual cobrança global carregado: {_pct:.2f}%")
+                    print(f"🌐 V10.44 percentual cobrança global carregado: {_pct:.2f}%")
                     return _pct
             except Exception:
                 pass
@@ -2850,12 +3051,12 @@ def _load_cobranca_global_rateio_pct():
             with open(_cfgp, "r", encoding="utf-8") as _fcg:
                 _pct = _extrair_pct(json.load(_fcg))
             if _pct is not None:
-                print(f"💾 V10.42 percentual cobrança global carregado do cache: {_pct:.2f}%")
+                print(f"💾 V10.44 percentual cobrança global carregado do cache: {_pct:.2f}%")
                 return _pct
         except Exception:
             pass
 
-    print(f"⚠️ V10.42 percentual cobrança global não encontrado; usando padrão {COBRANCA10_RATEIO_DEFAULT:.2f}%")
+    print(f"⚠️ V10.44 percentual cobrança global não encontrado; usando padrão {COBRANCA10_RATEIO_DEFAULT:.2f}%")
     return COBRANCA10_RATEIO_DEFAULT
 
 COBRANCA10_RATEIO = _load_cobranca_global_rateio_pct() / 100.0
@@ -2920,13 +3121,22 @@ def cliente_grupo_key_py(r):
     2) cliente_key já calculado;
     3) nome do cliente normalizado.
 
-    O relatório atual de contas a receber normalmente não traz CPF/CNPJ. Nesse caso,
-    a chave operacional usa o cadastro/nome normalizado do cliente, sem dividir por título.
+    Na V10.44 o relatório traz CPF/CNPJ. Quando o documento estiver vazio/inválido,
+    a chave operacional mantém o fallback pelo nome normalizado, sem dividir por título.
     """
-    base = str(
-        r.get("cpf")
+    doc = normalizar_documento_cliente(
+        r.get("cpf_cnpj_normalizado")
         or r.get("cpf_cnpj")
+        or r.get("cpf")
         or r.get("documento")
+        or r.get("cliente_key")
+        or ""
+    )
+    if doc:
+        return doc
+
+    base = str(
+        r.get("cliente_key_legacy")
         or r.get("cliente_key")
         or r.get("cliente")
         or r.get("nome")
@@ -2975,7 +3185,7 @@ clientes_cobrar = [
 ]
 
 print(
-    f"🤝 V10.42 Cobrança10: {len(_clientes_terceiro_cliente_keys)} cliente(s) único(s), "
+    f"🤝 V10.44 Cobrança10: {len(_clientes_terceiro_cliente_keys)} cliente(s) único(s), "
     f"{len(_clientes_terceiro_lista)} título(s), percentual={COBRANCA10_RATEIO*100:.2f}%"
 )
 
@@ -4501,7 +4711,7 @@ def _ftp_json(nome, default):
         return default
 
 
-# V10.43: cobrancas_log.json é a visão consolidada; os NDJSON em
+# V10.44: cobrancas_log.json é a visão consolidada; os NDJSON em
 # /backups_cobrancas são o diário de segurança (WAL). Se o JSON principal
 # estiver vazio, incompleto ou tiver sido resetado por falha de FTP, recupera
 # automaticamente os registros dos append sem duplicar.
@@ -4547,7 +4757,7 @@ def _ftp_cobrancas_logs_v1043(default=None):
             except Exception:
                 continue
     except Exception as e:
-        print(f"⚠️ V10.43: não consegui ler WAL de cobranças no FTP: {e}")
+        print(f"⚠️ V10.44: não consegui ler WAL de cobranças no FTP: {e}")
     finally:
         try:
             if ftp:
@@ -4593,7 +4803,7 @@ def _ftp_cobrancas_logs_v1043(default=None):
     ))
     if append_rows and len(merged) > len(base):
         print(
-            f"🧾 V10.43 histórico cobranças recuperado do WAL: "
+            f"🧾 V10.44 histórico cobranças recuperado do WAL: "
             f"principal={len(base)} append={len(append_rows)} consolidado={len(merged)}"
         )
     return merged if merged else list(default or [])
@@ -5087,6 +5297,8 @@ for _i2 in range(len(df_raw)):
         continue
     _c02 = str(_row2[COL["filial"]]).strip()
     _c12 = str(_row2[COL["cliente"]]).strip()
+    _cpf2 = _row_val_safe(_row2, COL.get("cpf_cnpj"))
+    _cpf2_normalizado = normalizar_documento_cliente(_cpf2)
 
     if "Vendedor:" in _c02:
         _vd2 = limpar_nome_erp(_c02)
@@ -5156,6 +5368,9 @@ for _i2 in range(len(df_raw)):
 
     _rec_raw[_kv2][_f2].append({
         "cliente": _c12[:40],
+        "cpf_cnpj": _cpf2,
+        "cpf_cnpj_normalizado": _cpf2_normalizado,
+        "cliente_key": ("DOC:" + _cpf2_normalizado) if _cpf2_normalizado else normalizar_texto_match(_c12[:40]),
         "dias": _dias2,
         "pago": _pago2,
         "vencimento": str(_row2[COL["vencimento"]]).strip(),
@@ -6478,6 +6693,8 @@ for _ct in _clientes_terceiro_lista:
     clientes_terceiro_js[_ct["faixa"]].append({
         "nome": _ct.get("cliente", _ct.get("nome", "")),
         "cliente": _ct.get("cliente", ""),
+        "cpf_cnpj": _ct.get("cpf_cnpj", ""),
+        "cpf_cnpj_normalizado": _ct.get("cpf_cnpj_normalizado", ""),
         "restricao": _ct.get("restricao", ""),
         "vencimento": _ct.get("vencimento", ""),
         "pagamento": _ct.get("pagamento", ""),
@@ -6493,7 +6710,9 @@ for _ct in _clientes_terceiro_lista:
         "vendedor": COBRANCA10_NOME,
         "novo": _ct.get("novo", False),
         "cliente_key": _ct.get("cliente_key", cliente_grupo_key_py(_ct)),
+        "cliente_key_legacy": _ct.get("cliente_key_legacy", normalizar_texto_match(_ct.get("cliente", ""))),
         "cobranca_key": _ct.get("cobranca_key", cobranca_row_key_py(_ct)),
+        "cobranca_key_doc": _ct.get("cobranca_key_doc", ""),
     })
 
 for f in ORDEM_FILIAIS:
@@ -6513,6 +6732,8 @@ for c in _cli_ativos:
     clientes_por_vend_js[_nd][c['faixa']].append({
         "nome": c["cliente"],
         "cliente": c["cliente"],
+        "cpf_cnpj": c.get("cpf_cnpj", ""),
+        "cpf_cnpj_normalizado": c.get("cpf_cnpj_normalizado", ""),
         "restricao": c["restricao"],
         "vencimento": c["vencimento"],
         "pagamento": c.get("pagamento", ""),
@@ -6527,6 +6748,10 @@ for c in _cli_ativos:
         "mensagem_whatsapp": c.get("mensagem_whatsapp", ""),
         "vendedor": _nd[:25],
         "novo": c.get("novo", False),
+        "cliente_key": c.get("cliente_key", cliente_grupo_key_py(c)),
+        "cliente_key_legacy": c.get("cliente_key_legacy", normalizar_texto_match(c.get("cliente", ""))),
+        "cobranca_key": c.get("cobranca_key", cobranca_row_key_py(c)),
+        "cobranca_key_doc": c.get("cobranca_key_doc", ""),
     })
 
     _ff = c["filial"]
@@ -6534,6 +6759,8 @@ for c in _cli_ativos:
         clientes_js[_ff][c['faixa']].append({
             "nome": c["cliente"],
             "cliente": c["cliente"],
+            "cpf_cnpj": c.get("cpf_cnpj", ""),
+            "cpf_cnpj_normalizado": c.get("cpf_cnpj_normalizado", ""),
             "restricao": c["restricao"],
             "vencimento": c["vencimento"],
             "pagamento": c.get("pagamento", ""),
@@ -6549,7 +6776,9 @@ for c in _cli_ativos:
             "vendedor": _nd[:25],
             "novo": c.get("novo", False),
             "cliente_key": c.get("cliente_key", cliente_grupo_key_py(c)),
+            "cliente_key_legacy": c.get("cliente_key_legacy", normalizar_texto_match(c.get("cliente", ""))),
             "cobranca_key": c.get("cobranca_key", cobranca_row_key_py(c)),
+            "cobranca_key_doc": c.get("cobranca_key_doc", ""),
         })
 
 # ── Inativos e FDEP: distribui 60% gerente/40% vendedores por filial ──
@@ -6561,7 +6790,8 @@ for c in _cli_inat_fdep:
         # FDEP: distribui por peso proporcional (mesmo rateio do pendente)
         _dest_filial = None
         if tw > 0:
-            _hash_n = int(_hashlib.md5(c['cliente'][:30].encode()).hexdigest(), 16)
+            _hash_base_cliente = cliente_grupo_key_py(c) or c.get('cliente', '')[:30]
+            _hash_n = int(_hashlib.md5(str(_hash_base_cliente).encode('utf-8')).hexdigest(), 16)
             _filiais_ord2 = sorted(pesos.items(), key=lambda x: x[1], reverse=True)
             _acum2 = 0
             _lim2  = (_hash_n % 10000) / 10000.0
@@ -6610,6 +6840,8 @@ for _filial_dest, _clientes_inat in _inat_por_filial.items():
         clientes_js[_filial_dest][c["faixa"]].append({
             "nome": c.get("cliente", c.get("nome", "")),
             "cliente": c.get("cliente", ""),
+            "cpf_cnpj": c.get("cpf_cnpj", ""),
+            "cpf_cnpj_normalizado": c.get("cpf_cnpj_normalizado", ""),
             "restricao": c.get("restricao", ""),
             "vencimento": c.get("vencimento", ""),
             "pagamento": c.get("pagamento", ""),
@@ -6625,7 +6857,9 @@ for _filial_dest, _clientes_inat in _inat_por_filial.items():
             "vendedor": limpar_nome_display(c["vendedor"])[:20] + _tag,
             "novo": c.get("novo", False),
             "cliente_key": c.get("cliente_key", cliente_grupo_key_py(c)),
+            "cliente_key_legacy": c.get("cliente_key_legacy", normalizar_texto_match(c.get("cliente", ""))),
             "cobranca_key": c.get("cobranca_key", cobranca_row_key_py(c)),
+            "cobranca_key_doc": c.get("cobranca_key_doc", ""),
         })
 
     # Distribui os 40% entre vendedores ativos da filial
@@ -6654,6 +6888,8 @@ for _filial_dest, _clientes_inat in _inat_por_filial.items():
             clientes_por_vend_js[_vend_dest][c["faixa"]].append({
                 "nome": c.get("cliente", c.get("nome", "")),
                 "cliente": c.get("cliente", ""),
+                "cpf_cnpj": c.get("cpf_cnpj", ""),
+                "cpf_cnpj_normalizado": c.get("cpf_cnpj_normalizado", ""),
                 "restricao": c.get("restricao", ""),
                 "vencimento": c.get("vencimento", ""),
                 "pagamento": c.get("pagamento", ""),
@@ -6668,6 +6904,10 @@ for _filial_dest, _clientes_inat in _inat_por_filial.items():
                 "mensagem_whatsapp": c.get("mensagem_whatsapp", ""),
                 "vendedor": limpar_nome_display(c["vendedor"])[:20] + _tag,
                 "novo": c.get("novo", False),
+                "cliente_key": c.get("cliente_key", cliente_grupo_key_py(c)),
+                "cliente_key_legacy": c.get("cliente_key_legacy", normalizar_texto_match(c.get("cliente", ""))),
+                "cobranca_key": c.get("cobranca_key", cobranca_row_key_py(c)),
+                "cobranca_key_doc": c.get("cobranca_key_doc", ""),
             })
 
 print(f"📋 Clientes por filial (gerente):")
@@ -6701,13 +6941,13 @@ for _cred_cfg in CREDIARISTAS_CONFIG:
 
 def aplicar_anti_duplicidade_operacional_carteiras():
     """
-    V7.9 HOTFIX: remove duplicidade sem zerar a lista dos vendedores.
+    V10.44: remove duplicidade por CPF/CNPJ sem zerar a lista dos vendedores.
 
-    Regra V10.41:
-    - Cobrança10 é exclusiva por cliente: se o cliente/CPF caiu no lote global,
+    Regra V10.44:
+    - Cobrança10 é exclusiva por cliente: se o CPF/cliente caiu no lote global,
       TODOS os títulos dele saem das outras listas operacionais.
-    - Vendedor x vendedor: mantém somente um responsável vendedor para o mesmo título.
-    - Crediariasta x crediarista: mantém somente um responsável crediarista para o mesmo título.
+    - Vendedor x vendedor: um único responsável recebe todos os títulos do mesmo CPF.
+    - Crediarista x crediarista: um único responsável recebe todos os títulos do mesmo CPF.
     - Vendedor x crediarista: NÃO remove do vendedor. As listas são tratadas como trilhas operacionais separadas,
       porque a regra antiga estava fazendo os vendedores perderem Para cobrar / Novos / Aguardando.
     - Filial/gerente continua sendo visão consolidada da carteira, não deve roubar lista individual do vendedor.
@@ -6758,41 +6998,78 @@ def aplicar_anti_duplicidade_operacional_carteiras():
     _remove_keys_de_map(clientes_crediarista_js, 'crediarista', terceiro_keys)
     _remove_keys_de_map(clientes_por_vend_js, 'vendedor', terceiro_keys)
 
-    # 2) Deduplica dentro do próprio grupo de vendedores ou crediaristas, sem cruzar os dois grupos.
-    def _dedupe_interno(map_obj, tipo):
-        seen = {}
+    # 2) Deduplica por CLIENTE/CPF dentro de vendedores e dentro de crediaristas.
+    # Todos os títulos do mesmo CPF seguem juntos para um único dono operacional.
+    # Vendedor x crediarista continua preservado como trilhas separadas.
+    def _dedupe_interno_por_cliente(map_obj, tipo):
         try:
             donos = sorted(list((map_obj or {}).keys()), key=lambda x: str(x))
+            rebuilt = {d: {'grave': [], 'alerta': [], 'atencao': []} for d in donos}
+            grupos = {}
+            sem_chave = []
+
             for dono in donos:
                 data = (map_obj or {}).get(dono) or {}
-                for fx in ['grave','alerta','atencao']:
-                    nova = []
+                for fx in ['grave', 'alerta', 'atencao']:
                     for r in data.get(fx, []) or []:
-                        k = _key(r)
-                        if not k or k.count('|') < 2:
-                            nova.append(r)
+                        ck = _cliente_key(r)
+                        if not ck:
+                            sem_chave.append((dono, fx, r))
                             continue
-                        if k not in seen:
-                            seen[k] = {'tipo': tipo, 'dono': dono, 'faixa': fx}
-                            nova.append(r)
-                        else:
-                            removidos.append({'key': k, 'removido_de': f'{tipo}:{dono}', 'mantido_em': f"{seen[k]['tipo']}:{seen[k]['dono']}", 'motivo': f'duplicado_interno_{tipo}'})
-                    data[fx] = nova
-        except Exception:
-            pass
+                        grupos.setdefault(ck, {}).setdefault(dono, []).append((fx, r))
 
-    _dedupe_interno(clientes_crediarista_js, 'crediarista')
-    _dedupe_interno(clientes_por_vend_js, 'vendedor')
+            for dono, fx, r in sem_chave:
+                rebuilt[dono][fx].append(r)
+
+            for ck, por_dono in grupos.items():
+                # Mantém o cliente com o dono que já possui o maior saldo desse CPF.
+                # Em empate, a ordem do login deixa o resultado determinístico.
+                dono_escolhido = sorted(
+                    por_dono.keys(),
+                    key=lambda d: (-sum(float(x.get('pendente', 0) or 0) for _fx, x in por_dono[d]), str(d))
+                )[0]
+                titulos_vistos = set()
+                for dono_origem in sorted(por_dono.keys(), key=lambda x: str(x)):
+                    for fx, r in por_dono[dono_origem]:
+                        tk = _key(r) or str(r.get('cobranca_key_doc') or '')
+                        if tk and tk in titulos_vistos:
+                            removidos.append({
+                                'key': tk, 'cliente_key': ck,
+                                'removido_de': f'{tipo}:{dono_origem}',
+                                'mantido_em': f'{tipo}:{dono_escolhido}',
+                                'motivo': f'titulo_duplicado_mesmo_cliente_{tipo}'
+                            })
+                            continue
+                        if tk:
+                            titulos_vistos.add(tk)
+                        rebuilt[dono_escolhido][fx].append(r)
+                        if dono_origem != dono_escolhido:
+                            removidos.append({
+                                'key': tk or ck, 'cliente_key': ck,
+                                'removido_de': f'{tipo}:{dono_origem}',
+                                'mantido_em': f'{tipo}:{dono_escolhido}',
+                                'motivo': f'cpf_cliente_unico_{tipo}'
+                            })
+
+            for dono in donos:
+                data = (map_obj or {}).setdefault(dono, {})
+                for fx in ['grave', 'alerta', 'atencao']:
+                    data[fx] = rebuilt[dono][fx]
+        except Exception as e:
+            print(f"⚠️ V10.44 dedupe por CPF falhou em {tipo}: {e}")
+
+    _dedupe_interno_por_cliente(clientes_crediarista_js, 'crediarista')
+    _dedupe_interno_por_cliente(clientes_por_vend_js, 'vendedor')
 
     if removidos:
-        print(f"🧯 Anti-duplicidade operacional V7.9 aplicado: {len(removidos)} título(s) removido(s). Vendedor x crediarista preservado.")
+        print(f"🧯 Anti-duplicidade operacional V10.44 aplicado: {len(removidos)} título(s) removido(s). Vendedor x crediarista preservado.")
         try:
             with open(os.path.join(pasta, 'relatorio_duplicidades_resolvidas.json'), 'w', encoding='utf-8') as f:
-                json.dump({'gerado_em': now_brasilia().isoformat(), 'versao': 'V7.9', 'regra': 'V10.41 cobranca10 exclusiva por cliente; dedupe interno por titulo; vendedor x crediarista preservado', 'total_removidos': len(removidos), 'removidos': removidos[:1500]}, f, ensure_ascii=False, indent=2)
+                json.dump({'gerado_em': now_brasilia().isoformat(), 'versao': 'V10.44', 'regra': 'cobranca10 exclusiva por CPF/cliente; dedupe interno por CPF com todos os titulos juntos; vendedor x crediarista preservado', 'total_removidos': len(removidos), 'removidos': removidos[:1500]}, f, ensure_ascii=False, indent=2)
         except Exception:
             pass
     else:
-        print('✅ Anti-duplicidade operacional V7.9: nada para remover.')
+        print('✅ Anti-duplicidade operacional V10.44: nada para remover.')
 
 
 aplicar_anti_duplicidade_operacional_carteiras()
@@ -11078,6 +11355,15 @@ function similarCliente(a,b){
   if(!x || !y) return false;
   return x===y || x.includes(y.slice(0,18)) || y.includes(x.slice(0,18));
 }
+function docClienteJs(x){
+  const raw=String(x?.cpf_cnpj_normalizado||x?.cpf_cnpj||x?.cpf||x?.documento||'').replace(/\D/g,'');
+  return (raw.length===11||raw.length===14)?raw:'';
+}
+function mesmoClienteJs(a,b){
+  const da=docClienteJs(a), db=docClienteJs(b);
+  if(da && db) return da===db;
+  return similarCliente(a?.cliente||a?.nome||'', b?.cliente||b?.nome||'');
+}
 function getQuitadosConciliados(){
   const out={};
   const logs=(COB_LOGS||[]).slice().filter(l=>String(l.acao||'')==='whatsapp' || l.telefone || l.titulo || l.parcela);
@@ -11090,7 +11376,7 @@ function getQuitadosConciliados(){
 
   (QUITADOS_180||[]).forEach(q=>{
     const k=`${String(q.titulo||'').trim()}|${String(q.parcela||'').trim()}`;
-    const cand=(byTitulo[k]||[]).filter(l=>similarCliente(l.cliente,q.cliente));
+    const cand=(byTitulo[k]||[]).filter(l=>mesmoClienteJs(l,q));
     if(!cand.length) return;
 
     const pagto=parseDataBRjs(q.pagamento);
@@ -11117,6 +11403,9 @@ function getQuitadosConciliados(){
     const faixa=q.faixa||'grave';
     const rec={
       cliente:q.cliente,
+      cpf_cnpj:q.cpf_cnpj||l.cpf_cnpj||'',
+      cpf_cnpj_normalizado:q.cpf_cnpj_normalizado||l.cpf_cnpj_normalizado||'',
+      cliente_key:q.cliente_key||l.cliente_key||'',
       dias:q.dias_atraso_pagamento,
       pago:Number(q.pago||0),
       vencimento:q.vencimento,
@@ -11136,7 +11425,7 @@ function getQuitadosConciliados(){
       if(!out[key]) out[key]={grave:[],alerta:[],atencao:[]};
       if(!out[key][faixa]) out[key][faixa]=[];
       // evita duplicar no mesmo key
-      const exists=out[key][faixa].some(x=>String(x.titulo)===String(rec.titulo)&&String(x.parcela)===String(rec.parcela)&&similarCliente(x.cliente,rec.cliente));
+      const exists=out[key][faixa].some(x=>String(x.titulo)===String(rec.titulo)&&String(x.parcela)===String(rec.parcela)&&mesmoClienteJs(x,rec));
       if(!exists) out[key][faixa].push(rec);
     });
   });
@@ -11161,7 +11450,7 @@ function mergeRecebimentosConciliados(base, ent){
     if(!extra) return;
     ['grave','alerta','atencao'].forEach(fx=>{
       (extra[fx]||[]).forEach(r=>{
-        const exists=result[fx].some(x=>String(x.titulo)===String(r.titulo)&&String(x.parcela)===String(r.parcela)&&similarCliente(x.cliente,r.cliente));
+        const exists=result[fx].some(x=>String(x.titulo)===String(r.titulo)&&String(x.parcela)===String(r.parcela)&&mesmoClienteJs(x,r));
         if(!exists) result[fx].push(r);
       });
     });
@@ -11185,7 +11474,7 @@ function getRecebimentos(ent){
   ['grave','alerta','atencao'].forEach(fx=>base[fx].sort((a,b)=>Number(b.pago||0)-Number(a.pago||0)));
   return base;
 }
-function renderRecebimentos(ent){const src=getRecebimentos(ent); let out=''; ['grave','alerta','atencao'].forEach(fx=>{const arr=src[fx]||[]; const label=fx==='grave'?'Grave':fx==='alerta'?'Alerta':'Atenção'; if(!arr.length){out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>Sem recebimentos</span></div></div>`; return} out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${arr.length} títulos · ${R(arr.reduce((a,b)=>a+Number(b.pago||0),0))}</span></div><div class="tableish">${arr.slice(0,80).map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · Parcela ${esc(r.parcela||'')}</div></div><div><strong>${esc(r.pagamento||'')}</strong><div class="small muted">Pagamento</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${R(r.pago||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${esc(r.vendedor||'')}</strong><div class="small muted">Origem</div></div></div></div>`).join('')}</div></div>`}); return out}
+function renderRecebimentos(ent){const src=getRecebimentos(ent); let out=''; ['grave','alerta','atencao'].forEach(fx=>{const arr=src[fx]||[]; const label=fx==='grave'?'Grave':fx==='alerta'?'Alerta':'Atenção'; if(!arr.length){out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>Sem recebimentos</span></div></div>`; return} out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${arr.length} títulos · ${R(arr.reduce((a,b)=>a+Number(b.pago||0),0))}</span></div><div class="tableish">${arr.slice(0,80).map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · Parcela ${esc(r.parcela||'')}</div>${r.cpf_cnpj?`<div class="small muted">CPF/CNPJ: ${esc(r.cpf_cnpj)}</div>`:''}</div><div><strong>${esc(r.pagamento||'')}</strong><div class="small muted">Pagamento</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${R(r.pago||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${esc(r.vendedor||'')}</strong><div class="small muted">Origem</div></div></div></div>`).join('')}</div></div>`}); return out}
 function cobrancaRowKey(r){return [String(r.cliente||r.nome||'').trim().toUpperCase(),String(r.titulo||'').trim(),String(r.parcela||'').trim(),String(r.vencimento||'').trim()].join('|')}
 function dedupeCobrancaBuckets(src){const out={grave:[],alerta:[],atencao:[]}; const seen=new Set(); ['grave','alerta','atencao'].forEach(fx=>{(src?.[fx]||[]).forEach(r=>{const k=cobrancaRowKey(r); if(!seen.has(k)){seen.add(k); out[fx].push(r);}})}); return out}
 function vendorAssignedKeysByFilial(filial){const keys=new Set(); const arr=(TODOS?.[filial]||[]); arr.forEach(v=>{const buckets=CLIENTES_VEND?.[v.nome]||{grave:[],alerta:[],atencao:[]}; ['grave','alerta','atencao'].forEach(fx=>(buckets[fx]||[]).forEach(r=>keys.add(cobrancaRowKey(r))))}); return keys}
@@ -11259,7 +11548,7 @@ function daysSinceCob(raw){
 function sameCobTitle(a,b){
   return String(a?.titulo||'').trim()===String(b?.titulo||'').trim()
       && String(a?.parcela||'').trim()===String(b?.parcela||'').trim()
-      && (typeof similarCliente==='function' ? similarCliente(a?.cliente||a?.nome||'', b?.cliente||b?.nome||'') : normName(a?.cliente||a?.nome||'')===normName(b?.cliente||b?.nome||''));
+      && (typeof mesmoClienteJs==='function' ? mesmoClienteJs(a,b) : (typeof similarCliente==='function' ? similarCliente(a?.cliente||a?.nome||'', b?.cliente||b?.nome||'') : normName(a?.cliente||a?.nome||'')===normName(b?.cliente||b?.nome||'')));
 }
 function entMatchesCobLog(log,ent){
   if(!ent) return true;
@@ -11486,7 +11775,7 @@ function renderCobrancasEnt(ent){
     const btn = bloqueado
       ? `<button class="btn soft" title="Só volta para cobrança após 3 dias sem pagamento" disabled>⏳ Aguardando 3 dias</button>`
       : `<button class="btn wa" onclick='abrirWhats(${JSON.stringify(r)}, ${JSON.stringify({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''})})'>💬 ${retry?'Cobrar novamente':'WhatsApp'}</button>`;
-    return `<div class="row-item ${retry?'retry-due':''}"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')} ${r.novo?'<span class="mini-chip" style="margin-left:6px;background:#eef7ff;color:#1e3a8a;border-color:#93c5fd">Novo hoje</span>':''} ${statusChip}</div>${info}<div class="small muted">✍️ Avalista: ${esc((r.avalista && String(r.avalista).toLowerCase()!=='nan')?r.avalista:'Sem Aval')}</div>${(r.avalista && String(r.avalista).toLowerCase()!=='nan')?'<div class="small avalista-alert">⚠️ Atenção, lembre de cobrar o AVALISTA</div>':''}<div class="small muted">🔒 Restrição crédito: ${/sem restr/i.test(String(r.restricao||''))?`<span class="restr-ok">${esc(r.restricao||'Sem Restrição')}</span>`:esc(r.restricao||'Sem informação')}</div><div class="small muted">👤 ${esc(r.vendedor||'')}</div><div class="small muted">☎️ ${esc(Array.isArray(r.telefones)?r.telefones.join(', '):(r.contato||''))}</div></div><div><strong>${esc(r.titulo||'')}</strong><div class="small muted">Título</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${R(r.pendente||0)}</strong><div class="small muted">Pendente</div></div><div>${showFaixa?`<div class="small muted">${esc(r.faixa_label||'')}</div>`:''}${btn}</div></div></div>`;
+    return `<div class="row-item ${retry?'retry-due':''}"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')} ${r.novo?'<span class="mini-chip" style="margin-left:6px;background:#eef7ff;color:#1e3a8a;border-color:#93c5fd">Novo hoje</span>':''} ${statusChip}</div>${info}${r.cpf_cnpj?`<div class="small muted">🪪 CPF/CNPJ: <strong>${esc(r.cpf_cnpj)}</strong></div>`:''}<div class="small muted">✍️ Avalista: ${esc((r.avalista && String(r.avalista).toLowerCase()!=='nan')?r.avalista:'Sem Aval')}</div>${(r.avalista && String(r.avalista).toLowerCase()!=='nan')?'<div class="small avalista-alert">⚠️ Atenção, lembre de cobrar o AVALISTA</div>':''}<div class="small muted">🔒 Restrição crédito: ${/sem restr/i.test(String(r.restricao||''))?`<span class="restr-ok">${esc(r.restricao||'Sem Restrição')}</span>`:esc(r.restricao||'Sem informação')}</div><div class="small muted">👤 ${esc(r.vendedor||'')}</div><div class="small muted">☎️ ${esc(Array.isArray(r.telefones)?r.telefones.join(', '):(r.contato||''))}</div></div><div><strong>${esc(r.titulo||'')}</strong><div class="small muted">Título</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${R(r.pendente||0)}</strong><div class="small muted">Pendente</div></div><div>${showFaixa?`<div class="small muted">${esc(r.faixa_label||'')}</div>`:''}${btn}</div></div></div>`;
   }).join('');
 
   const faixas=['grave','alerta','atencao'];
@@ -11526,7 +11815,9 @@ async function registrarCobrancaOnline(r,entRef,numero){
     : (usuarioAtual?.nome||usuarioAtual?.login||'master');
   const payload={
     cliente:r.cliente||r.nome||'',titulo:r.titulo||'',parcela:r.parcela||'',
-    cliente_key:r.cliente_key||'',cobranca_key:r.cobranca_key||'',owner_key:r.owner_key||'',
+    cpf_cnpj:r.cpf_cnpj||'',cpf_cnpj_normalizado:r.cpf_cnpj_normalizado||'',
+    cliente_key:r.cliente_key||'',cliente_key_legacy:r.cliente_key_legacy||'',
+    cobranca_key:r.cobranca_key||'',cobranca_key_doc:r.cobranca_key_doc||'',owner_key:r.owner_key||'',
     vencimento:r.vencimento||'',pendente:Number(r.pendente||0),telefone:numero,
     usuario:usuarioLog,login:entRef.login||usuarioAtual?.login||'',filial:entRef.filial||'',
     destino_tipo:entRef.type||'',destino_nome:entRef.nome||'',acao:'whatsapp',tentativa:Number(r._cob_status?.proxima_tentativa||1),qtd_cobrancas_antes:Number(r._cob_status?.qtd||0),ultima_cobranca_anterior:String(r._cob_status?.ultima_fmt||'')
@@ -11651,7 +11942,7 @@ async function carregarCobrancasOnline(){
       try{window.COB_LOGS=COB_LOGS}catch(e){}
       try{localStorage.setItem('mdl_cobrancas_log_cache', JSON.stringify(COB_LOGS));}catch(e){}
       if(Number(j.recovered||0)>0 || Number(j.append_count||0)>0){
-        console.log('[V10.43 histórico cobranças]',{
+        console.log('[V10.44 histórico cobranças]',{
           total:COB_LOGS.length,
           principal:Number(j.main_count||0),
           append:Number(j.append_count||0),
@@ -18213,7 +18504,7 @@ Preparamos condições especiais para você comemorar com a gente.
           ['grave','alerta','atencao'].forEach(fx=>{
             const arr=src[fx]||[]; const label=fx==='grave'?'Grave':fx==='alerta'?'Alerta':'Atenção';
             if(!arr.length){out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>Sem recebimentos</span></div></div>`; return;}
-            out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${arr.length} títulos · ${R(arr.reduce((a,b)=>a+Number(b.pago||b.recebido||0),0))}</span></div><div class="tableish">${arr.slice(0,120).map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · Parcela ${esc(r.parcela||'')}</div></div><div><strong>${esc(r.pagamento||'')}</strong><div class="small muted">Pagamento</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${R(r.pago||r.recebido||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${esc(r.vendedor||'')}</strong><div class="small muted">Origem</div></div></div></div>`).join('')}</div></div>`;
+            out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${arr.length} títulos · ${R(arr.reduce((a,b)=>a+Number(b.pago||b.recebido||0),0))}</span></div><div class="tableish">${arr.slice(0,120).map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · Parcela ${esc(r.parcela||'')}</div>${r.cpf_cnpj?`<div class="small muted">CPF/CNPJ: ${esc(r.cpf_cnpj)}</div>`:''}</div><div><strong>${esc(r.pagamento||'')}</strong><div class="small muted">Pagamento</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${R(r.pago||r.recebido||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${esc(r.vendedor||'')}</strong><div class="small muted">Origem</div></div></div></div>`).join('')}</div></div>`;
           });
           return out;
         }
@@ -18357,7 +18648,7 @@ Preparamos condições especiais para você comemorar com a gente.
           ['grave','alerta','atencao'].forEach(fx=>{
             const arr=src[fx]||[]; const label=fx==='grave'?'Grave':fx==='alerta'?'Alerta':'Atenção';
             if(!arr.length){out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>Sem recebimentos</span></div></div>`; return;}
-            out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${arr.length} títulos · ${R(arr.reduce((a,b)=>a+Number(b.pago||b.recebido||0),0))}</span></div><div class="tableish">${arr.slice(0,160).map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · Parcela ${esc(r.parcela||'')}</div></div><div><strong>${esc(r.pagamento||'')}</strong><div class="small muted">Pagamento</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${R(r.pago||r.recebido||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${esc(r.vendedor||'')}</strong><div class="small muted">Origem</div></div></div></div>`).join('')}</div></div>`;
+            out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${arr.length} títulos · ${R(arr.reduce((a,b)=>a+Number(b.pago||b.recebido||0),0))}</span></div><div class="tableish">${arr.slice(0,160).map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · Parcela ${esc(r.parcela||'')}</div>${r.cpf_cnpj?`<div class="small muted">CPF/CNPJ: ${esc(r.cpf_cnpj)}</div>`:''}</div><div><strong>${esc(r.pagamento||'')}</strong><div class="small muted">Pagamento</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${R(r.pago||r.recebido||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${esc(r.vendedor||'')}</strong><div class="small muted">Origem</div></div></div></div>`).join('')}</div></div>`;
           });
           return out;
         }
@@ -18663,7 +18954,7 @@ Preparamos condições especiais para você comemorar com a gente.
           ['grave','alerta','atencao'].forEach(fx=>{
             const arr=src[fx]||[]; const label=fx==='grave'?'Grave':fx==='alerta'?'Alerta':'Atenção';
             if(!arr.length){out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>Sem recebimentos</span></div></div>`; return;}
-            out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${arr.length} títulos · ${R(arr.reduce((a,b)=>a+Number(b.pago||b.recebido||0),0))}</span></div><div class="tableish">${arr.slice(0,220).map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · Parcela ${esc(r.parcela||'')}</div></div><div><strong>${esc(r.pagamento||'')}</strong><div class="small muted">Pagamento</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${R(r.pago||r.recebido||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${esc(r.vendedor||'')}</strong><div class="small muted">Origem</div></div></div></div>`).join('')}</div></div>`;
+            out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${arr.length} títulos · ${R(arr.reduce((a,b)=>a+Number(b.pago||b.recebido||0),0))}</span></div><div class="tableish">${arr.slice(0,220).map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · Parcela ${esc(r.parcela||'')}</div>${r.cpf_cnpj?`<div class="small muted">CPF/CNPJ: ${esc(r.cpf_cnpj)}</div>`:''}</div><div><strong>${esc(r.pagamento||'')}</strong><div class="small muted">Pagamento</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${R(r.pago||r.recebido||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${esc(r.vendedor||'')}</strong><div class="small muted">Origem</div></div></div></div>`).join('')}</div></div>`;
           });
           return out;
         }
@@ -18677,6 +18968,9 @@ Preparamos condições especiais para você comemorar com a gente.
   }catch(e){console.warn('[V10.37] hotfix falhou',e)}
 })();
 
+</script>
+<script>
+try{window.DASHBOARD_BUILD_VERSION='V10.44';console.log('[V10.44 CPF/CNPJ] ativo: relatórios principal/quitados, rateio por documento, conciliação e exibição no painel');}catch(e){}
 </script>
 
 </body>
@@ -18837,7 +19131,10 @@ function cobranca_key($p){
 }
 function cliente_key($p){
   if (!empty($p['cliente_key'])) return (string)$p['cliente_key'];
-  return substr(norm_key($p['cpf'] ?? ($p['documento'] ?? ($p['cliente'] ?? ''))), 0, 120);
+  $doc = $p['cpf_cnpj_normalizado'] ?? ($p['cpf_cnpj'] ?? ($p['cpf'] ?? ($p['documento'] ?? '')));
+  $digits = preg_replace('/\D+/', '', (string)$doc);
+  if (strlen($digits) === 11 || strlen($digits) === 14) return 'DOC:' . $digits;
+  return substr(norm_key($p['cliente'] ?? ''), 0, 120);
 }
 function log_unique_key($p){
   $id = trim((string)($p['id'] ?? ''));
@@ -18904,7 +19201,7 @@ $appendRows = read_append_rows($backupDir);
 $deletedIds = read_json_safe($deletedFile, []);
 $data = merge_logs([$main, $legacy, $appendRows], $deletedIds);
 
-// V10.43: reconstitui o JSON principal a partir do WAL sempre que necessário.
+// V10.44: reconstitui o JSON principal a partir do WAL sempre que necessário.
 if (count($data) !== count($main) || (!file_exists($file) && count($data) >= 0)) {
   write_json_atomic($file, $data);
 }
@@ -18917,7 +19214,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     'main_count'=>count($main),
     'append_count'=>count($appendRows),
     'recovered'=>max(0, count($data)-count($main)),
-    'version'=>'V10.43'
+    'version'=>'V10.44'
   ], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
   exit;
 }
@@ -18956,7 +19253,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       }
     }
     $ok = write_json_atomic($file, $novo);
-    echo json_encode(['ok'=>$ok,'count'=>count($novo),'version'=>'V10.43'], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['ok'=>$ok,'count'=>count($novo),'version'=>'V10.44'], JSON_UNESCAPED_UNICODE);
     exit;
   }
 
@@ -18980,7 +19277,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           'ok'=>true,
           'id'=>$item['id'] ?? $payload['id'],
           'duplicado'=>true,
-          'version'=>'V10.43'
+          'version'=>'V10.44'
         ], JSON_UNESCAPED_UNICODE);
         exit;
       }
@@ -19009,12 +19306,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     'append_ok'=>$appendOk,
     'id'=>$payload['id'],
     'count'=>count($data),
-    'version'=>'V10.43'
+    'version'=>'V10.44'
   ], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
   exit;
 }
 
-echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado','version'=>'V10.43'], JSON_UNESCAPED_UNICODE);
+echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado','version'=>'V10.44'], JSON_UNESCAPED_UNICODE);
 ?>"""
 
 CONFIG_META_API_PHP = r"""<?php
@@ -19752,10 +20049,10 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
 
     print('ℹ️ MAIN: não publica metas_vendas/margens/sales_version; pacote de vendas é exclusivo do sales worker.')
 
-    # V10.43: nunca sobrescreve cobrancas_log.json com [] por falha transitória
+    # V10.44: nunca sobrescreve cobrancas_log.json com [] por falha transitória
     # de consulta FTP. A própria cobrancas_api.php cria/repara o arquivo usando
     # os append NDJSON em backups_cobrancas.
-    print('🛡️ V10.43: cobrancas_log.json preservado; API/WAL faz criação e recuperação.')
+    print('🛡️ V10.44: cobrancas_log.json preservado; API/WAL faz criação e recuperação.')
     try:
         if not _ftp_remote_exists_v1019('mensagens_log.json'):
             _ftp_upload_bytes_v1019('mensagens_log.json', b'[]', label='mensagens_log.json inicial')
