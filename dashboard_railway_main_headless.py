@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_44_CPF_CNPJ_RELATORIOS_RATEIO_CONCILIACAO_FIX
+# VERSAO: DASH2_0_V10_45_RATEIO_30_DIAS_DATA_ENTRADA_FTP_FIX
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,8 +34,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.44"
-DASHBOARD_BUILD_TAG = "cpf_cnpj_relatorios_rateio_conciliacao_fix"
+DASHBOARD_BUILD_VERSION = "V10.45"
+DASHBOARD_BUILD_TAG = "rateio_30_dias_data_entrada_ftp_fix"
 
 def now_brasilia():
     return datetime.now(APP_TZ)
@@ -3593,10 +3593,10 @@ except Exception as _e_v107_dreno:
 
 
 # =========================================
-# V10.41 — SALVAR DATA ENTRADA COBRANÇA + RATEIO PROPORCIONAL
+# V10.45 — DATA ENTRADA COBRANÇA + RATEIO PROPORCIONAL NOS PRIMEIROS 30 DIAS
 # Vazio = mantém peso 100% e não mexe no rateio atual.
-# Data no mês atual = peso proporcional aos dias ativos no mês.
-# Mês anterior = peso 100%.
+# Nos primeiros 30 dias corridos = peso proporcional aos dias ativos.
+# A partir do 30º dia = peso 100%.
 # =========================================
 try:
     import calendar as _cal_v1039
@@ -3630,18 +3630,54 @@ try:
         except Exception: return _date_v1039.today().year, _date_v1039.today().month
 
     def _v1039_load_cred_state():
+        # V10.45: busca PRIMEIRO o JSON remoto do FTP, porque a data é salva pelo
+        # dashboard diretamente no servidor. O arquivo local do Railway pode estar
+        # desatualizado até a etapa posterior de sincronização de credenciais.
         data = {}
         try:
-            _path = os.path.join(pasta, "credenciais_dashboard.json")
-            if os.path.exists(_path):
-                with open(_path, "r", encoding="utf-8") as f: data = json.load(f)
-        except Exception: data = {}
-        try:
-            if not isinstance(data, dict) or not data.get("users"):
-                url = "https://moveisdolar.com.br/colaborador/credenciais_dashboard.json?_v=1039"
-                with _urlreq_v1039.urlopen(url, timeout=12) as resp:
+            import ftplib as _ftplib_v1045
+            from io import BytesIO as _BytesIO_v1045
+            _buf_v1045 = _BytesIO_v1045()
+            _ftp_v1045 = _ftplib_v1045.FTP()
+            _ftp_v1045.connect("moveisdolar.com.br", 21, timeout=20)
+            _ftp_v1045.login("moveisdolar3", "Deg27ll02mdl2301#")
+            _ftp_v1045.encoding = "utf-8"
+            _ftp_v1045.cwd("/public_html/colaborador")
+            _ftp_v1045.retrbinary("RETR credenciais_dashboard.json", _buf_v1045.write)
+            _ftp_v1045.quit()
+            data = json.loads(_buf_v1045.getvalue().decode("utf-8", errors="ignore"))
+            if isinstance(data, dict):
+                try:
+                    _path = os.path.join(pasta, "credenciais_dashboard.json")
+                    with open(_path, "w", encoding="utf-8") as _f_v1045:
+                        json.dump(data, _f_v1045, ensure_ascii=False, indent=2)
+                except Exception:
+                    pass
+                print("🌐 V10.45 credenciais/data de entrada carregadas do FTP antes do rateio")
+        except Exception as _e_ftp_v1045:
+            data = {}
+
+        # Fallback local, preservando operação quando o FTP estiver indisponível.
+        if not isinstance(data, dict) or not data:
+            try:
+                _path = os.path.join(pasta, "credenciais_dashboard.json")
+                if os.path.exists(_path):
+                    with open(_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+            except Exception:
+                data = {}
+
+        # Último fallback HTTP com contexto SSL tolerante, igual às outras
+        # recuperações do projeto quando o certificado da hospedagem falha.
+        if not isinstance(data, dict) or not data:
+            try:
+                import ssl as _ssl_v1045
+                url = "https://moveisdolar.com.br/colaborador/credenciais_dashboard.json?_v=1045"
+                _ctx_v1045 = _ssl_v1045._create_unverified_context()
+                with _urlreq_v1039.urlopen(url, timeout=12, context=_ctx_v1045) as resp:
                     data = json.loads(resp.read().decode("utf-8", errors="ignore"))
-        except Exception: pass
+            except Exception:
+                data = {}
         return data if isinstance(data, dict) else {}
 
     def _v1039_data_entrada_maps():
@@ -3685,13 +3721,21 @@ try:
         return _v1039_parse_date(by_nome_filial.get((_v1039_norm_key(nome), filial)))
 
     def _v1039_weight(data_entrada, ano, mes):
-        if not data_entrada: return 1.0
-        first = _date_v1039(ano, mes, 1)
-        last_day = _cal_v1039.monthrange(ano, mes)[1]
-        last = _date_v1039(ano, mes, last_day)
-        if data_entrada <= first: return 1.0
-        if data_entrada > last: return 0.0
-        return max(0.0, min(1.0, ((last - data_entrada).days + 1) / float(last_day)))
+        # V10.45: vendedor novo cresce proporcionalmente durante os primeiros
+        # 30 dias corridos desde a entrada. Depois disso assume peso normal 100%.
+        # Quem não possui data continua exatamente como antes, com peso 100%.
+        if not data_entrada:
+            return 1.0
+        try:
+            referencia = now_brasilia().date()
+        except Exception:
+            referencia = _date_v1039.today()
+        if data_entrada > referencia:
+            return 0.0
+        dias_ativos = (referencia - data_entrada).days + 1
+        if dias_ativos >= 30:
+            return 1.0
+        return max(1.0 / 30.0, min(1.0, dias_ativos / 30.0))
 
     _by_login_v1039, _by_nome_filial_v1039 = _v1039_data_entrada_maps()
     _ano_v1039, _mes_v1039 = _v1039_period_month()
@@ -3724,12 +3768,12 @@ try:
             _nomes_v1039.append(f"{df_vend.loc[_idx_v1039, 'vendedor']}={_w_v1039:.2f}" + (f" entrada={_dt_ent_v1039}" if _dt_ent_v1039 else ""))
         _ajustes_v1039.append(f"{_fil_v1039}: " + "; ".join(_nomes_v1039))
     if _ajustes_v1039:
-        print("✅ V10.41 rateio proporcional por data_entrada aplicado:")
+        print("✅ V10.45 rateio proporcional dos primeiros 30 dias aplicado:")
         for _l_v1039 in _ajustes_v1039: print("   - " + _l_v1039)
     else:
-        print("ℹ️ V10.41 rateio proporcional: nenhuma data_entrada no mês atual; rateio antigo preservado.")
+        print("ℹ️ V10.45 rateio proporcional: nenhuma data de entrada encontrada; rateio antigo preservado.")
 except Exception as _e_v1039:
-    print(f"⚠️ V10.41 rateio proporcional por data_entrada falhou; mantendo rateio atual: {_e_v1039}")
+    print(f"⚠️ V10.45 rateio proporcional por data de entrada falhou; mantendo rateio atual: {_e_v1039}")
 
 
 # ===== SALVAR CSV
@@ -12915,7 +12959,7 @@ function renderColaboradorStatusPanel(users){
   const options=normalUsers.map(u=>`<option value="${esc(u.login||'')}">${esc(u.nome||u.login||'')} ${u.filial?`- ${esc(u.filial)}`:''}</option>`).join('');
   return `<div class="glass panel" style="margin-bottom:14px;border-color:rgba(34,197,94,.28)">
     <div class="section-head" style="margin:0 0 10px"><div><h2 style="font-size:18px">👥 Status operacional dos colaboradores</h2><div class="hint">Use quando alguém sair, entrar ou trocar de função. Inativo não acessa e, na próxima geração, sai do rateio de cobrança. A data de saída é só histórico/controle interno. As flags controlam em quais murais/listas ele participa.</div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn primary" onclick="adminSalvarTodasEntradasCobrancaV1040()">💾 Salvar datas de entrada cobrança</button><button class="btn soft" onclick="adminLimparDatasEntradaCobrancaV1040()">🧹 Limpar datas preenchidas</button></div></div>
-    <div id="colab_entrada_all_msg" class="note" style="margin:0 0 10px;color:#fbbf24;font-weight:800">Preencha a data somente para vendedor novo. Depois clique em “Salvar datas de entrada cobrança”. Vazio mantém rateio normal.</div>
+    <div id="colab_entrada_all_msg" class="note" style="margin:0 0 10px;color:#fbbf24;font-weight:800">Preencha a data somente para vendedor novo. Nos primeiros 30 dias corridos o rateio será proporcional; depois fica 100% automaticamente. Vazio mantém rateio normal.</div>
     <div class="senhas-table-wrap"><table class="senhas-table"><thead><tr><th>Colaborador</th><th>Filial</th><th>Tipo</th><th>Status</th><th>Cobrança</th><th>Sem movimento</th><th>Aniversário</th><th>Murais</th><th>Data entrada cobrança</th><th>Saída</th><th>Substituto</th><th>Obs</th><th>Ações</th></tr></thead><tbody>${normalUsers.map(u=>{
       const login=String(u.login||'').toLowerCase(); const dom=_senhaDomKey(login);
       return `<tr>
