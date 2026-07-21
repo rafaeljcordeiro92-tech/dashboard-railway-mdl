@@ -34,10 +34,10 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.48"
-DASHBOARD_BUILD_TAG = "modo_leve_pc_fraco_preventiva_base"
+DASHBOARD_BUILD_VERSION = "V10.49"
+DASHBOARD_BUILD_TAG = "modo_leve_cred_logout_recebimentos_fix"
 
-# V10.48: modo leve REAL com detalhes carregados sob demanda.
+# V10.49: modo leve REAL com resumos, recebimentos conciliados e sessão corrigida.
 # Mantém o dashboard principal funcionando, mas evita embutir bases pesadas no HTML
 # que travavam navegador antigo/fraco. Para voltar ao modo completo, use DASHBOARD_MODO_LEVE=0.
 DASHBOARD_MODO_LEVE = os.getenv("DASHBOARD_MODO_LEVE", "1") != "0"
@@ -8644,7 +8644,7 @@ DETALHES_DIR_V1048 = os.path.join(pasta, 'clientes_detalhes')
 os.makedirs(DETALHES_DIR_V1048, exist_ok=True)
 DETALHES_FILES_V1048 = []
 DETALHES_MANIFEST_V1048 = {
-    'version': 'V10.48',
+    'version': 'V10.49',
     'updated_at': now_brasilia().isoformat(),
     'updated_at_label': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'),
     'mode': 'lazy_per_entity' if DASHBOARD_MODO_LEVE else 'embedded',
@@ -8663,18 +8663,28 @@ def _save_detail_v1048(kind, key, data):
     filename = f'{kind}_{_slug_v1048(key)}.json'
     path = os.path.join(DETALHES_DIR_V1048, filename)
     payload = {
-        'ok': True, 'version': 'V10.48', 'kind': kind, 'key': str(key),
+        'ok': True, 'version': 'V10.49', 'kind': kind, 'key': str(key),
         'updated_at': now_brasilia().isoformat(), 'data': data or {'grave': [], 'alerta': [], 'atencao': []},
     }
     with open(path, 'w', encoding='utf-8') as fh:
         json.dump(payload, fh, ensure_ascii=False, separators=(',', ':'))
+    _grave_v1049 = (data or {}).get('grave') or []
+    _alerta_v1049 = (data or {}).get('alerta') or []
+    _atencao_v1049 = (data or {}).get('atencao') or []
+    def _sum_pending_v1049(items):
+        return round(sum(float((item or {}).get('pendente') or 0) for item in items), 2)
     entry = {
         'file': f'clientes_detalhes/{filename}',
         'bytes': os.path.getsize(path),
-        'grave': len((data or {}).get('grave') or []),
-        'alerta': len((data or {}).get('alerta') or []),
-        'atencao': len((data or {}).get('atencao') or []),
+        'grave': len(_grave_v1049),
+        'alerta': len(_alerta_v1049),
+        'atencao': len(_atencao_v1049),
+        # V10.49: resumo fica no HTML leve para cards/listas existirem antes do lazy-load.
+        'grave_pend': _sum_pending_v1049(_grave_v1049),
+        'alerta_pend': _sum_pending_v1049(_alerta_v1049),
+        'atencao_pend': _sum_pending_v1049(_atencao_v1049),
     }
+    entry['pendente'] = round(entry['grave_pend'] + entry['alerta_pend'] + entry['atencao_pend'], 2)
     DETALHES_FILES_V1048.append((path, filename))
     return entry
 
@@ -8720,7 +8730,24 @@ except Exception:
     pass
 
 js_hist_dash = json.dumps(hist_dash, ensure_ascii=False)
-js_quitados_180 = '[]' if DASHBOARD_MODO_LEVE else json.dumps((quitados_180_info.get('dados') or {}).get('quitados', []), ensure_ascii=False)
+# V10.49: mantém apenas os campos necessários à conciliação de recebimentos/comissões.
+# O V10.48 zerava QUITADOS_180 no modo leve e, por isso, crediaristas/usuários perdiam
+# recebimentos e comissão. A versão compacta preserva o cálculo sem reengordar o HTML.
+_quitados_full_v1049 = (quitados_180_info.get('dados') or {}).get('quitados', []) or []
+if DASHBOARD_MODO_LEVE:
+    _quitados_keys_v1049 = (
+        'cliente','cpf_cnpj','cpf_cnpj_normalizado','cliente_key','filial','titulo','parcela',
+        'vencimento','pagamento','pago','dias_atraso_pagamento','faixa'
+    )
+    _quitados_lite_v1049 = [
+        {k: item.get(k) for k in _quitados_keys_v1049 if item.get(k) not in (None, '')}
+        for item in _quitados_full_v1049
+    ]
+    js_quitados_180 = json.dumps(_quitados_lite_v1049, ensure_ascii=False, separators=(',', ':'))
+    print(f"🧾 V10.49 conciliação leve: {len(_quitados_lite_v1049)} quitados compactos preservados para recebimentos/comissões.")
+else:
+    js_quitados_180 = json.dumps(_quitados_full_v1049, ensure_ascii=False)
+
 try:
     js_cobrancas_logs_boot = '[]' if DASHBOARD_MODO_LEVE else json.dumps(_ftp_cobrancas_logs_v1043([]), ensure_ascii=False)
 except Exception:
@@ -9940,7 +9967,7 @@ async function ensureDetailData(ref){
   }catch(e){console.error('V10.48 lazy detail',e); _applyDetailData(ref,_DETAIL_EMPTY()); toast('Não consegui carregar a carteira detalhada. Atualize a página.'); return false;}
 }
 function showDetailLoading(ref){
-  try{document.getElementById('mainScreen')?.classList.add('hidden'); detailScreen?.classList.remove('hidden'); detailScreen.innerHTML=`<div class="lazy-loading"><div class="spin">⏳</div><div>Carregando somente a carteira de ${esc(ref?.nome||ref?.filial||'cliente')}...</div><div class="hint" style="margin-top:6px">Modo leve real V10.48</div></div>`;}catch(e){}
+  try{document.getElementById('mainScreen')?.classList.add('hidden'); detailScreen?.classList.remove('hidden'); detailScreen.innerHTML=`<div class="lazy-loading"><div class="spin">⏳</div><div>Carregando somente a carteira de ${esc(ref?.nome||ref?.filial||'cliente')}...</div><div class="hint" style="margin-top:6px">Modo leve real V10.49</div></div>`;}catch(e){}
 }
 function captureDetailUiState(){
   try{if(!detailScreen || detailScreen.classList.contains('hidden')) return null; const open=[]; detailScreen.querySelectorAll('.accordion.open').forEach(a=>{const h=(a.querySelector('.acc-head')?.innerText||'').trim().slice(0,100); if(h)open.push(h)}); const active=detailScreen.querySelector('[data-cobtab].active')?.dataset?.cobtab||''; return {open,active,scrollY:window.scrollY};}catch(e){return null}
@@ -10108,6 +10135,10 @@ async function tentarAtualizarOnlineDepoisLogin(){
         if(!detailScreen.classList.contains('hidden') && currentDetailRef) openEntity(currentDetailRef);
         else renderList();
         if(isUltimoDiaMes23()) setTimeout(()=>salvarSnapshotComissionamentoMensal(true),900);
+      }else if(!detailScreen.classList.contains('hidden') && currentDetailRef){
+        // V10.49: após carregar COB_LOGS + quitados compactos, recalcula recebimentos e comissão
+        // também para crediaristas, vendedores, gerentes e terceiro.
+        openEntity(currentDetailRef);
       }
     }catch(e){}
   }catch(e){console.log('Falha atualização online pós-login',e);}
@@ -10237,7 +10268,7 @@ function showLaranjitoOncePerAccess(){
 }
 
 function saveSession(){try{const data={usuarioAtual,exp:Date.now()+30*24*60*60*1000,version:DASHBOARD_BUILD_VERSION}; localStorage.setItem(SESSION_KEY, JSON.stringify(data));}catch(e){}}
-function clearSession(){try{localStorage.removeItem(SESSION_KEY);}catch(e){}}
+function clearSession(){try{localStorage.removeItem(SESSION_KEY);}catch(e){} try{sessionStorage.removeItem(SESSION_KEY);}catch(e){}}
 function restoreSession(){try{const raw=localStorage.getItem(SESSION_KEY); if(!raw) return false; const data=JSON.parse(raw); if(!data || !data.usuarioAtual || !data.exp || Date.now()>data.exp){localStorage.removeItem(SESSION_KEY); return false;} usuarioAtual=data.usuarioAtual; return true;}catch(e){return false;}}
 function currentUserKey(){return usuarioAtual?.tipo==='master'?'MASTER':(usuarioAtual?.login || `${usuarioAtual?.nome||''}_${usuarioAtual?.filial||''}`)}
 function currentUserKeys(){
@@ -10275,7 +10306,7 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&l
 function trunc(s,n=18){s=String(s||'');return s.length>n?s.slice(0,n-1)+'…':s}
 function filialLabel(f){return String(f||'').replace(/^F/,'Filial F')}
 function flattenVendedores(){const out=[];Object.entries(TODOS||{}).forEach(([f,arr])=>(arr||[]).forEach(v=>out.push({type:'vendedor',filial:f,...v})));return out}
-function thirdChargeEntity(){const src=CLIENTES_TERCEIRO||{grave:[],alerta:[],atencao:[]}; const rsrc=RECEBIMENTOS_TERCEIRO||{grave:[],alerta:[],atencao:[]}; const pend=[...(src.grave||[]),...(src.alerta||[]),...(src.atencao||[])].reduce((a,b)=>a+Number(b.pendente||0),0); const rec=[...(rsrc.grave||[]),...(rsrc.alerta||[]),...(rsrc.atencao||[])].reduce((a,b)=>a+Number(b.pago||0),0); return {type:'terceiro',login:COBRANCA10_LOGIN,filial:'FTER',nome:COBRANCA10_NOME,is_terceiro:true,is_gerente:false,pendente:pend,pago:rec,total:pend+rec,perc_filial:100,grave_pend:(src.grave||[]).reduce((a,b)=>a+Number(b.pendente||0),0),alerta_pend:(src.alerta||[]).reduce((a,b)=>a+Number(b.pendente||0),0),atencao_pend:(src.atencao||[]).reduce((a,b)=>a+Number(b.pendente||0),0),grave_rec:(rsrc.grave||[]).reduce((a,b)=>a+Number(b.pago||0),0),alerta_rec:(rsrc.alerta||[]).reduce((a,b)=>a+Number(b.pago||0),0),atencao_rec:(rsrc.atencao||[]).reduce((a,b)=>a+Number(b.pago||0),0)}}
+function thirdChargeEntity(){const src=CLIENTES_TERCEIRO||{grave:[],alerta:[],atencao:[]}; const rsrc=RECEBIMENTOS_TERCEIRO||{grave:[],alerta:[],atencao:[]}; const sm=DETALHES_MANIFEST?.terceiro||{}; const loaded=!!(CLIENTES_TERCEIRO&&Object.keys(CLIENTES_TERCEIRO).length); const gp=loaded?(src.grave||[]).reduce((a,b)=>a+Number(b.pendente||0),0):Number(sm.grave_pend||0); const ap=loaded?(src.alerta||[]).reduce((a,b)=>a+Number(b.pendente||0),0):Number(sm.alerta_pend||0); const tp=loaded?(src.atencao||[]).reduce((a,b)=>a+Number(b.pendente||0),0):Number(sm.atencao_pend||0); const rec=[...(rsrc.grave||[]),...(rsrc.alerta||[]),...(rsrc.atencao||[])].reduce((a,b)=>a+Number(b.pago||0),0); const pend=gp+ap+tp; return {type:'terceiro',login:COBRANCA10_LOGIN,filial:'FTER',nome:COBRANCA10_NOME,is_terceiro:true,is_gerente:false,pendente:pend,pago:rec,total:pend+rec,perc_filial:100,grave_pend:gp,alerta_pend:ap,atencao_pend:tp,grave_rec:(rsrc.grave||[]).reduce((a,b)=>a+Number(b.pago||0),0),alerta_rec:(rsrc.alerta||[]).reduce((a,b)=>a+Number(b.pago||0),0),atencao_rec:(rsrc.atencao||[]).reduce((a,b)=>a+Number(b.pago||0),0)}}
 
 function emptyRec(){return {grave:[],alerta:[],atencao:[]}}
 function recTotal(src){return ['grave','alerta','atencao'].reduce((acc,fx)=>acc+(src?.[fx]||[]).reduce((a,b)=>a+Number(b.pago||0),0),0)}
@@ -10293,9 +10324,11 @@ function crediaristaEntities(){return getCrediaristasConfig().map((row)=>{
   const aRec=(recOwn.alerta||[]).reduce((a,b)=>a+Number(b.pago||0),0);
   const tRec=(recOwn.atencao||[]).reduce((a,b)=>a+Number(b.pago||0),0);
   const cli=CLIENTES_CREDIARISTA?.[loginKey]||{grave:[],alerta:[],atencao:[]};
-  const gp=(cli.grave||[]).reduce((a,b)=>a+Number(b.pendente||0),0);
-  const ap=(cli.alerta||[]).reduce((a,b)=>a+Number(b.pendente||0),0);
-  const tp=(cli.atencao||[]).reduce((a,b)=>a+Number(b.pendente||0),0);
+  const sm=DETALHES_MANIFEST?.crediaristas?.[loginKey]||{};
+  const loaded=Object.prototype.hasOwnProperty.call(CLIENTES_CREDIARISTA||{},loginKey);
+  const gp=loaded?(cli.grave||[]).reduce((a,b)=>a+Number(b.pendente||0),0):Number(sm.grave_pend||0);
+  const ap=loaded?(cli.alerta||[]).reduce((a,b)=>a+Number(b.pendente||0),0):Number(sm.alerta_pend||0);
+  const tp=loaded?(cli.atencao||[]).reduce((a,b)=>a+Number(b.pendente||0),0):Number(sm.atencao_pend||0);
   const pendCred=gp+ap+tp; const recTotalOwn=gRec+aRec+tRec;
   return {type:'crediarista',login:loginKey,filial:filialKey,nome:nomeCred,pct_base:Number(row.pct||100),is_crediarista:true,is_gerente:false,only_cobranca:true,
     pendente:pendCred,pago:recTotalOwn,total:pendCred+recTotalOwn,perc_filial:100,
@@ -10941,7 +10974,7 @@ function setFiltroFilial(f){
   }
   renderList();
 }
-function currentEntities(){let arr=mainTab==='filiais'?flattenFiliais():flattenVendedores(); if(mainTab==='vendedores' && usuarioAtual?.tipo==='master'){const t=thirdChargeEntity(); const hasThird=Number(t.pendente||0)>0 || Number(t.pago||0)>0 || Number(t.grave_pend||0)>0 || Number(t.alerta_pend||0)>0 || Number(t.atencao_pend||0)>0; if(hasThird) arr=[t,...arr]; const creds=crediaristaEntities().filter(x=>Number(x.pendente||0)>0||Number(x.pago||0)>0); if(creds.length) arr=[...creds,...arr]} return arr.filter(x=>filtroFilial==='TODAS'||x.filial===filtroFilial || x.is_terceiro || x.is_crediarista)}
+function currentEntities(){let arr=mainTab==='filiais'?flattenFiliais():flattenVendedores(); if(mainTab==='vendedores' && usuarioAtual?.tipo==='master'){const t=thirdChargeEntity(); const hasThird=Number(t.pendente||0)>0 || Number(t.pago||0)>0 || Number(t.grave_pend||0)>0 || Number(t.alerta_pend||0)>0 || Number(t.atencao_pend||0)>0; if(hasThird) arr=[t,...arr]; const creds=crediaristaEntities(); if(creds.length) arr=[...creds,...arr]} return arr.filter(x=>filtroFilial==='TODAS'||x.filial===filtroFilial || x.is_terceiro || x.is_crediarista)}
 function renderEntityCard(ent){const m=calcMeta(ent); const isThird=!!(ent?.is_terceiro || ent?.type==='terceiro'); const isCred=!!(ent?.is_crediarista || ent?.type==='crediarista'); if(isThird || isCred){const credLogin=String(ent.login||crediaristaLoginByFilial(ent.filial)||'').toLowerCase(); const credFilial=String(ent.filial||'').toUpperCase(); const credNome=String(ent.nome||`CREDIARISTA${credFilial}`); const label=isThird?'Cobrança terceiro':'Crediarista'; const sub=isThird?'Clique para abrir a carteira terceirizada':'Clique para abrir a carteira do crediarista'; const actionAttr=isThird?`data-action="third-card" role="button" tabindex="0"`:`data-action="cred-card" data-login="${esc(credLogin)}" data-filial="${esc(credFilial)}" data-nome="${esc(credNome)}" role="button" tabindex="0"`; return `<div class="glass card ${m.geral>=50?'card-hit':(m.geral<30?'card-low-red':(m.geral<40?'card-low-orange':''))}" style="box-shadow:0 0 0 2px rgba(239,68,68,.12) inset" ${actionAttr}><div class="title">${esc(credNome)}</div><div class="numbers" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="stat-box" style="min-width:0"><div class="mini">Pendente</div><div class="big" style="color:var(--red);font-size:15px;word-break:break-word">${R(ent.pendente||0)}</div></div><div class="stat-box" style="min-width:0"><div class="mini">Recebido</div><div class="big" style="color:var(--green);font-size:15px;word-break:break-word">${R(ent.pago||0)}</div></div></div><div class="meta-row"><div class="mini-chip">🔴 Grave ${pct(m.grave.perc)}</div><div class="mini-chip">🟠 Alerta ${pct(m.alerta.perc)}</div><div class="mini-chip">🟡 Atenção ${pct(m.atencao.perc)}</div><div class="mini-chip" style="font-size:12px">🔵 Meta geral ${pct(m.geral)}</div></div>${renderMascotStatus(m.geral,label)}<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>${sub}</span></div></div>`} const bonus=getBonus(m.cfg,m.geral);const sales=summarizeSalesCard(ent);const salesPct=sales?.n||0;const salesBorder=salesPct>=100?'box-shadow:0 0 0 2px rgba(242,201,76,.35) inset':salesPct>=80?'box-shadow:0 0 0 2px rgba(34,197,94,.18) inset':salesPct>=50?'box-shadow:0 0 0 2px rgba(249,115,22,.18) inset':'box-shadow:0 0 0 2px rgba(239,68,68,.12) inset';const cls=m.geral>=50?'card-hit':(m.geral<30?'card-low-red':(m.geral<40?'card-low-orange':''));const pulseNote=m.geral>=50?'<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>Meta atingida no mês</span></div>':'';return `<div class="glass card ${cls}" style="${salesBorder}" onclick='openEntity(${JSON.stringify({type:ent.type,filial:ent.filial,nome:ent.nome})})'><div class="title">${esc(ent.nome)} ${ent.type==='vendedor'?`(${ent.filial})`:''}</div><div class="numbers" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="stat-box" style="min-width:0"><div class="mini">Pendente</div><div class="big" style="color:var(--red);font-size:15px;word-break:break-word">${R(ent.pendente||0)}</div></div><div class="stat-box" style="min-width:0"><div class="mini">Recebido</div><div class="big" style="color:var(--green);font-size:15px;word-break:break-word">${R(ent.pago||0)}</div></div></div><div class="meta-row"><div class="mini-chip">🔴 Grave ${pct(m.grave.perc)}</div><div class="mini-chip">🟠 Alerta ${pct(m.alerta.perc)}</div><div class="mini-chip">🟡 Atenção ${pct(m.atencao.perc)}</div><div class="mini-chip" style="font-size:12px">🔵 Meta geral ${pct(m.geral)}</div></div>${renderSalesCardSummary(ent)}${renderDualMascotStatus(ent)}${bonus?`<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>${esc(bonus.text)}</span></div>`:''}${pulseNote}</div>`}
 function renderGroupBars(entities){if(!entities.length) return `<div class="empty">Nenhum dado para exibir.</div>`; const max=Math.max(1,...entities.map(e=>Math.max(Number(e.grave_pend||0),Number(e.alerta_pend||0),Number(e.atencao_pend||0),Number(e.pago||0)))); return `<div class="glass big-chart-card"><div class="section-head"><div><h2>📊 Panorama por ${mainTab==='filiais'?'filial':'vendedor'}</h2><div class="hint">Barras por faixa: Grave, Alerta, Atenção e Recebido</div></div><div class="legend-inline"><span><i class="dot" style="background:var(--red)"></i>Grave</span><span><i class="dot" style="background:var(--orange)"></i>Alerta</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção</span><span><i class="dot" style="background:var(--green)"></i>Recebido</span></div></div><div class="groupbars">${entities.map(e=>{const vals=[{c:'var(--red)',v:Number(e.grave_pend||0),t:'Grave'},{c:'var(--orange)',v:Number(e.alerta_pend||0),t:'Alerta'},{c:'var(--yellow)',v:Number(e.atencao_pend||0),t:'Atenção'},{c:'var(--green)',v:Number(e.pago||0),t:'Recebido'}]; return `<div class="group"><div class="bars">${vals.map(v=>`<div title="${v.t}: ${R(v.v)}" class="bar" style="height:${Math.max(12,(v.v/max)*240)}px;background:linear-gradient(180deg,${v.c},${v.c})"></div>`).join('')}<span class="wave one"></span><span class="wave two"></span><span class="bubble b1"></span><span class="bubble b2"></span><span class="bubble b3"></span></div><div class="glabel">${esc(trunc(e.nome,16))}</div></div>`}).join('')}</div><div class="axis"><span>Escala relativa automática</span><span>${entities.length} ${mainTab==='filiais'?'filiais':'colaboradores'}</span></div></div>`}
 
@@ -13938,7 +13971,11 @@ async function abrirApp(){
  loginScreen.classList.add('hidden'); app.classList.remove('hidden'); if(usuarioAtual.tipo==='master'){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); const isDiretor=usuarioAtual?.roleLabel==='Diretor Comercial'; userBadge.textContent=isDiretor?'👑 Diretor Comercial':'👑 Master'; masterTabs.classList.remove('hidden'); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{const t=btn.dataset.tab; btn.classList.toggle('hidden', isDiretor && ['cobrancas','senhas','whatsapp_master'].includes(t));}); setMainTab('inicio')} else if(usuarioAtual.is_viewer){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); userBadge.textContent='📺 Painel'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); listSection.classList.add('hidden'); metaSection.classList.add('hidden'); logSection.classList.add('hidden'); avisosSection.classList.add('hidden'); senhasSection.classList.add('hidden'); histSection.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden'); mainTab='inicio'; renderTopMural(); renderInicioTab();} else {document.getElementById('kpis').classList.add('hidden'); userBadge.textContent=usuarioAtual.is_terceiro?`🤝 ${usuarioAtual.nome}`:(usuarioAtual.is_crediarista?`🧾 ${usuarioAtual.nome}`:(usuarioAtual.is_gerente?`🏬 ${usuarioAtual.filial}`:`👤 ${usuarioAtual.nome}`)); masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(usuarioAtual.is_terceiro){openThirdChargePanel()} else if(usuarioAtual.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login}) }
   setTimeout(()=>{tentarAtualizarOnlineDepoisLogin();}, 80);
 }
-function logout(){clearSession(); location.reload()}
+function logout(){
+  clearSession();
+  try{usuarioAtual=null;currentDetailRef=null;}catch(e){}
+  try{window.location.replace(window.location.pathname+'?logout='+Date.now());}catch(e){window.location.reload();}
+}
 window.addEventListener('load',async ()=>{
   const u=document.getElementById('loginUser');
   const p=document.getElementById('loginPass');
@@ -19410,7 +19447,7 @@ Preparamos condições especiais para você comemorar com a gente.
 
 </script>
 <script>
-try{window.DASHBOARD_BUILD_VERSION='V10.48';console.log('[V10.48] modo leve real, relatório estável e aba WhatsApp Master ativos');}catch(e){}
+try{window.DASHBOARD_BUILD_VERSION='V10.49';console.log('[V10.49] crediaristas, recebimentos/comissões e logout corrigidos');}catch(e){}
 </script>
 
 </body>

@@ -1,4 +1,4 @@
-# VERSAO: WHATSAPP_MASTER_PREVENTIVA_V2_V10_48
+# VERSAO: WHATSAPP_MASTER_PREVENTIVA_V2_V10_49
 # MDL COB+VENDAS -> WhatsApp Master
 # Régua: D-5, D-1, D0, D+1, D+3, D+7, D+10, D+14.
 # Segurança: qualquer título D+15 ou mais no mesmo CPF/CNPJ bloqueia o automático.
@@ -68,6 +68,9 @@ def hoje_br() -> date:
 def log(message: str) -> None:
     line = f"[{now_br().isoformat()}] {message}"
     print(line, flush=True)
+    # O scheduler já redireciona stdout para este mesmo arquivo. Evita linhas duplicadas.
+    if os.getenv("WHATSAPP_MASTER_STDOUT_CAPTURED", "0") == "1":
+        return
     try:
         with LOG_PATH.open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")
@@ -417,7 +420,7 @@ def publish_status_files() -> None:
 
 
 def append_history(run: dict[str, Any]) -> None:
-    history = load_json(HISTORY_PATH, {"version": "V10.48", "runs": []})
+    history = load_json(HISTORY_PATH, {"version": "V10.49", "runs": []})
     runs = history.setdefault("runs", [])
     compact = {
         key: run.get(key)
@@ -448,7 +451,7 @@ def append_history(run: dict[str, Any]) -> None:
 def error_status(message: str) -> dict[str, Any]:
     output = {
         "ok": False,
-        "version": "V10.48",
+        "version": "V10.49",
         "erro": message,
         "gerado_em": now_br().isoformat(),
         "enabled": ENABLED,
@@ -468,7 +471,7 @@ def error_status(message: str) -> dict[str, Any]:
 
 def main() -> int:
     run_id = now_br().strftime("%Y%m%d-%H%M%S")
-    log("🚀 Iniciando WhatsApp Master Preventiva/Cobrança V10.48")
+    log("🚀 Iniciando WhatsApp Master Preventiva/Cobrança V10.49")
     log(f"Config: ENABLED={ENABLED} DRY_RUN={DRY_RUN} MARCOS={list(MARCOS.values())}")
 
     preventive_path = find_preventive_input()
@@ -582,7 +585,7 @@ def main() -> int:
 
     output = {
         "ok": not errors,
-        "version": "V10.48",
+        "version": "V10.49",
         "run_id": run_id,
         "gerado_em": now_br().isoformat(),
         "arquivo": preventive_path.name,

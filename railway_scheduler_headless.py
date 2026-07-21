@@ -1,4 +1,4 @@
-# VERSAO: RAILWAY_SCHEDULER_MDL_V48_LEVE_REAL_WHATSAPP_MASTER
+# VERSAO: RAILWAY_SCHEDULER_MDL_V49_CRED_LOGOUT_RECEBIMENTOS
 import json
 import os
 import sys
@@ -79,7 +79,7 @@ _force_main_boot = True
 _force_sales_after_main = False
 
 STATE = {
-    'version': 'V48_LEVE_REAL_WHATSAPP_MASTER',
+    'version': 'V49_CRED_LOGOUT_RECEBIMENTOS',
     'started_at': None,
     'updated_at': None,
     'scheduler': 'starting',
@@ -168,6 +168,8 @@ def start_job(name, cmd, extra_env=None):
     env['PYTHONUTF8'] = '1'
     if extra_env:
         env.update({str(k): str(v) for k, v in extra_env.items()})
+    if key == 'whatsapp_master_preventiva':
+        env['WHATSAPP_MASTER_STDOUT_CAPTURED'] = '1'
     return subprocess.Popen(cmd, cwd=BASE_DIR, env=env, stdout=open(log_path, 'a', encoding='utf-8'), stderr=subprocess.STDOUT)
 
 def finish_if_done(name, proc):
@@ -358,7 +360,7 @@ def preventiva_status_payload():
 
 
 def preventiva_history_payload():
-    return _load_json_safe(PREVENTIVA_HISTORY, {'version':'V10.48','runs':[]})
+    return _load_json_safe(PREVENTIVA_HISTORY, {'version':'V10.49','runs':[]})
 
 def force_run(kind):
     global _sales_proc, _cobranca_proc, _preventiva_proc, _force_sales_after_main
@@ -429,7 +431,7 @@ def start_http_panel():
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log('VERSAO V48: modo leve real + relatório estável + painel WhatsApp Master')
+log('VERSAO V49: crediaristas + recebimentos/comissões + logout corrigidos')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
