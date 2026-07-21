@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_46_RATEIO_NOME_EXIBICAO_DATA_ENTRADA_FIX
+# VERSAO: DASH2_0_V10_51_BLOQUEIO_SESSAO_TEMPO_REAL
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -34,10 +34,10 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.50"
+DASHBOARD_BUILD_VERSION = "V10.51"
 DASHBOARD_BUILD_TAG = "comissao_crediarista_fonte_unica_oficial"
 
-# V10.50: modo leve REAL com fonte oficial única para comissão/recebimentos das crediaristas.
+# V10.51: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
 # Mantém o dashboard principal funcionando, mas evita embutir bases pesadas no HTML
 # que travavam navegador antigo/fraco. Para voltar ao modo completo, use DASHBOARD_MODO_LEVE=0.
 DASHBOARD_MODO_LEVE = os.getenv("DASHBOARD_MODO_LEVE", "1") != "0"
@@ -10102,6 +10102,7 @@ const API_CFG='config_meta_api.php';
 const API_COB='cobrancas_api.php';
 const API_MSG='mensagens_api.php';
 const API_CRED='credenciais_api.php';
+const API_ACCESS_GUARD='access_guard_api.php';
 const API_HIST='historico_api.php';
 const API_COMIS='historico_comissionamento_api.php';
 
@@ -10182,9 +10183,94 @@ let HIST_DASH=__JS_HIST_DASH__||{dates:{}};
 let HIST_COMISSAO={months:{}};
 const SESSION_KEY='mdl_dashboard_session_v1';
 function getAuthUser(login){const k=String(login||'').trim().toLowerCase(); if(k===LOGIN_DIRETOR.toLowerCase()) return AUTH_STATE?.director||null; return (AUTH_STATE?.users||{})[k]||null}
-async function carregarCredenciaisOnline(){try{const r=await fetchComTimeout(API_CRED+'?_='+Date.now(),{},2500); const j=await r.json(); if(j.ok && j.data){AUTH_STATE=j.data;}}catch(e){console.log('Falha ao carregar credenciais online',e);}}
+async function carregarCredenciaisOnline(){try{const r=await fetchComTimeout(API_CRED+'?_='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}},2500); const j=await r.json(); if(j.ok && j.data){AUTH_STATE=j.data; return true;}}catch(e){console.log('Falha ao carregar credenciais online',e);} return false;}
 function acessoGeralBloqueado(){return !!(AUTH_STATE && AUTH_STATE.access_blocked);}
 function textoBloqueioAcesso(){return String(AUTH_STATE?.access_blocked_reason || 'Sistema em atualização. Aguarde liberação pelo Master.');}
+
+// ===== V10.51: bloqueio real de sessões =====
+const ACCESS_GUARD_INTERVAL_MS=3000;
+const ACCESS_KICK_KEY='mdl_dashboard_access_kick_v1051';
+let _accessGuardBusy=false;
+let _accessKickInProgress=false;
+let _accessBroadcast=null;
+try{
+  _accessBroadcast=new BroadcastChannel('mdl_dashboard_access_v1051');
+  _accessBroadcast.onmessage=(ev)=>{
+    if(ev?.data?.type==='BLOCK_ALL' && !sessaoAdministrativaV1051()) desconectarPorBloqueioV1051(ev.data.reason||'Acessos bloqueados pelo Master.');
+    if(ev?.data?.type==='BLOCK_USER' && String(ev.data.login||'').toLowerCase()===String(usuarioAtual?.login||'').toLowerCase()) desconectarPorBloqueioV1051(ev.data.reason||'Seu usuário foi bloqueado pelo Master.');
+  };
+}catch(e){}
+window.addEventListener('storage',(ev)=>{
+  if(ev.key!==ACCESS_KICK_KEY || !ev.newValue || sessaoAdministrativaV1051()) return;
+  try{
+    const d=JSON.parse(ev.newValue);
+    const alvo=String(d?.login||'').toLowerCase();
+    if(!alvo || alvo===String(usuarioAtual?.login||'').toLowerCase()) desconectarPorBloqueioV1051(d?.reason||'Acessos bloqueados pelo Master.');
+  }catch(e){desconectarPorBloqueioV1051('Acessos bloqueados pelo Master.');}
+});
+function sessaoAdministrativaV1051(){
+  const tipo=String(usuarioAtual?.tipo||'').toLowerCase();
+  const role=String(usuarioAtual?.roleLabel||'').toLowerCase();
+  return tipo==='master' || tipo==='diretor' || role.includes('diretor');
+}
+function usuarioOnlineAtualV1051(){
+  if(!usuarioAtual || sessaoAdministrativaV1051()) return null;
+  return getAuthUser(usuarioAtual?.login||'');
+}
+function sessaoBloqueadaNoEstadoV1051(){
+  if(!usuarioAtual || sessaoAdministrativaV1051()) return {blocked:false};
+  if(acessoGeralBloqueado()) return {blocked:true,reason:textoBloqueioAcesso(),kind:'global'};
+  const auth=usuarioOnlineAtualV1051();
+  if(!auth) return {blocked:true,reason:'Seu usuário não existe mais ou teve o acesso removido.',kind:'user'};
+  const st=String(auth.status_operacional||'ativo').toLowerCase();
+  if(auth.access_disabled || ['inativo','bloqueado','desligado'].includes(st)) return {blocked:true,reason:'Seu usuário foi bloqueado pelo Master.',kind:'user'};
+  return {blocked:false};
+}
+function telaBloqueioV1051(reason){
+  try{
+    let el=document.getElementById('mdlAccessBlockedOverlayV1051');
+    if(!el){el=document.createElement('div');el.id='mdlAccessBlockedOverlayV1051';document.body.appendChild(el);}
+    el.style.cssText='position:fixed;inset:0;z-index:2147483647;background:rgba(5,8,14,.97);display:flex;align-items:center;justify-content:center;padding:24px;font-family:Arial,sans-serif;color:#fff';
+    el.innerHTML=`<div style="width:min(520px,100%);background:#111827;border:1px solid rgba(239,68,68,.55);border-radius:22px;padding:28px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.65)"><div style="font-size:48px">🔒</div><h2 style="margin:10px 0 8px">Acesso bloqueado</h2><p style="color:#cbd5e1;line-height:1.5">${esc(reason||'Acessos bloqueados pelo Master.')}</p><div style="margin-top:14px;color:#f59e0b;font-weight:800">Sua sessão foi encerrada. Voltando ao login...</div></div>`;
+  }catch(e){}
+}
+function desconectarPorBloqueioV1051(reason){
+  if(_accessKickInProgress || sessaoAdministrativaV1051()) return;
+  _accessKickInProgress=true;
+  try{clearSession();}catch(e){}
+  try{usuarioAtual=null;currentDetailRef=null;}catch(e){}
+  telaBloqueioV1051(reason);
+  setTimeout(()=>{
+    try{window.location.replace(window.location.pathname+'?bloqueado='+Date.now());}
+    catch(e){window.location.reload();}
+  },900);
+}
+async function consultarAccessGuardV1051(){
+  if(_accessGuardBusy || !usuarioAtual || sessaoAdministrativaV1051() || _accessKickInProgress) return;
+  _accessGuardBusy=true;
+  try{
+    const login=encodeURIComponent(String(usuarioAtual?.login||''));
+    const r=await fetchComTimeout(API_ACCESS_GUARD+'?login='+login+'&_='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}},2400);
+    const j=await r.json();
+    if(!j?.ok) return;
+    if(j.access_blocked) return desconectarPorBloqueioV1051(j.reason||'Acessos bloqueados pelo Master.');
+    if(j.user_exists===false || j.user_blocked) return desconectarPorBloqueioV1051(j.user_reason||'Seu usuário foi bloqueado pelo Master.');
+    // Mudou a revisão global ou individual: sessão anterior foi revogada e deve pedir login novamente.
+    const raw=localStorage.getItem(SESSION_KEY)||sessionStorage.getItem(SESSION_KEY);
+    if(raw){
+      const data=JSON.parse(raw);
+      if(Number(data.accessRevision??-1)!==Number(j.access_revision??0) || Number(data.userRevision??-1)!==Number(j.user_revision??0)){
+        return desconectarPorBloqueioV1051('Sua sessão foi revogada pelo Master. Entre novamente.');
+      }
+    }
+  }catch(e){console.log('[V10.51 access guard]',e)}
+  finally{_accessGuardBusy=false;}
+}
+function publicarKickV1051(login='',reason='Acessos bloqueados pelo Master.'){
+  const data={login:String(login||'').toLowerCase(),reason,at:Date.now()};
+  try{localStorage.setItem(ACCESS_KICK_KEY,JSON.stringify(data));}catch(e){}
+  try{_accessBroadcast?.postMessage({type:data.login?'BLOCK_USER':'BLOCK_ALL',...data});}catch(e){}
+}
 
 async function carregarHistoricoOnline(){try{const r=await fetchComTimeout(API_HIST+'?_='+Date.now(),{},2500); const j=await r.json(); if(j.ok && j.data){HIST_DASH=j.data;}}catch(e){console.log('Falha ao carregar histórico online',e);}}
 async function carregarHistoricoComissaoOnline(){try{const r=await fetchComTimeout(API_COMIS+'?_='+Date.now(),{},3000); const j=await r.json(); if(j.ok && j.data){HIST_COMISSAO=j.data;}}catch(e){console.log('Falha ao carregar histórico de comissionamento',e);}}
@@ -10291,9 +10377,9 @@ function showLaranjitoOncePerAccess(){
   }catch(e){}
 }
 
-function saveSession(){try{const data={usuarioAtual,exp:Date.now()+30*24*60*60*1000,version:DASHBOARD_BUILD_VERSION}; localStorage.setItem(SESSION_KEY, JSON.stringify(data));}catch(e){}}
+function saveSession(){try{const auth=getAuthUser(usuarioAtual?.login||'')||{};const data={usuarioAtual,exp:Date.now()+30*24*60*60*1000,version:DASHBOARD_BUILD_VERSION,accessRevision:Number(AUTH_STATE?.access_revision||0),userRevision:Number(auth?.session_revision||0)}; localStorage.setItem(SESSION_KEY, JSON.stringify(data));sessionStorage.setItem(SESSION_KEY,JSON.stringify(data));}catch(e){}}
 function clearSession(){try{localStorage.removeItem(SESSION_KEY);}catch(e){} try{sessionStorage.removeItem(SESSION_KEY);}catch(e){}}
-function restoreSession(){try{const raw=localStorage.getItem(SESSION_KEY); if(!raw) return false; const data=JSON.parse(raw); if(!data || !data.usuarioAtual || !data.exp || Date.now()>data.exp){localStorage.removeItem(SESSION_KEY); return false;} usuarioAtual=data.usuarioAtual; return true;}catch(e){return false;}}
+function restoreSession(){try{const raw=localStorage.getItem(SESSION_KEY)||sessionStorage.getItem(SESSION_KEY); if(!raw) return false; const data=JSON.parse(raw); if(!data || !data.usuarioAtual || !data.exp || Date.now()>data.exp){clearSession(); return false;} const adm=String(data.usuarioAtual?.tipo||'').toLowerCase()==='master'||String(data.usuarioAtual?.roleLabel||'').toLowerCase().includes('diretor'); if(!adm){const auth=getAuthUser(data.usuarioAtual?.login||''); if(!auth||data.accessRevision===undefined||data.userRevision===undefined||Number(data.accessRevision)!==Number(AUTH_STATE?.access_revision||0)||Number(data.userRevision)!==Number(auth?.session_revision||0)||AUTH_STATE?.access_blocked||auth?.access_disabled||['inativo','bloqueado','desligado'].includes(String(auth?.status_operacional||'ativo').toLowerCase())){clearSession();return false;}} usuarioAtual=data.usuarioAtual; return true;}catch(e){clearSession();return false;}}
 function currentUserKey(){return usuarioAtual?.tipo==='master'?'MASTER':(usuarioAtual?.login || `${usuarioAtual?.nome||''}_${usuarioAtual?.filial||''}`)}
 function currentUserKeys(){
   try{
@@ -13456,7 +13542,7 @@ async function adminSalvarStatusColaborador(login){
   fd.append('obs',document.getElementById(`colab_obs_${dom}`)?.value||'');
   try{
     const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json();
-    if(j.ok){ await adminSalvarEntradaCobrancaV1039(login); if(msg) msg.textContent='✅ Salvo online. Rode o dashboard novamente para recalcular rateio/listas.'; await carregarCredenciaisOnline(); renderSenhasTab(); toast('Status salvo. Próxima execução recalcula rateio/listas.','success'); }
+    if(j.ok){ if(status!=='ativo') publicarKickV1051(login,'Seu usuário foi bloqueado pelo Master.'); await adminSalvarEntradaCobrancaV1039(login); if(msg) msg.textContent='✅ Salvo online. Rode o dashboard novamente para recalcular rateio/listas.'; await carregarCredenciaisOnline(); renderSenhasTab(); toast('Status salvo. Próxima execução recalcula rateio/listas.','success'); }
     else{ throw new Error(j.error||'erro'); }
   }catch(e){
     // fallback local para testar a tela abrindo o HTML pelo arquivo, sem FTP/API.
@@ -13591,7 +13677,7 @@ function renderSenhasTab(){
     <div class="section-head" style="margin:0;gap:14px;align-items:center">
       <div>
         <h2 style="font-size:18px;margin:0">${acessoGeralBloqueado()?'🔒 Acessos bloqueados':'✅ Acessos liberados'}</h2>
-        <div class="hint">${acessoGeralBloqueado()?esc(textoBloqueioAcesso()):'Todos os usuários podem acessar normalmente.'}</div>
+        <div class="hint">${acessoGeralBloqueado()?esc(textoBloqueioAcesso()):'Todos os usuários podem acessar normalmente. Ao bloquear, sessões ativas caem em até 3 segundos.'}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn ${acessoGeralBloqueado()?'soft':'primary'}" onclick="adminSetAccessBlock(true)">🔒 Bloquear acessos</button>
@@ -13636,7 +13722,8 @@ async function adminSetAccessBlock(flag){
     const j=await r.json();
     if(j.ok){
       await carregarCredenciaisOnline();
-      toast(flag?'Acessos bloqueados.':'Acessos liberados.','success');
+      if(flag) publicarKickV1051('',textoBloqueioAcesso());
+      toast(flag?'Acessos bloqueados e sessões dos usuários derrubadas.':'Acessos liberados; os usuários devem entrar novamente.','success');
       renderSenhasTab();
     }else{
       toast('Não consegui alterar o bloqueio de acessos.');
@@ -14026,11 +14113,16 @@ window.addEventListener('load',async ()=>{
     const stampSales = String((verSales && (verSales.updated_at_label||verSales.updated_at)) || '');
     if(stampSales) window.__salesUpdatedAtLabel = stampSales;
   }catch(_e){}
-  if(restoreSession()){abrirApp();}
+  if(restoreSession()){
+    const b=sessaoBloqueadaNoEstadoV1051();
+    if(b.blocked) desconectarPorBloqueioV1051(b.reason); else abrirApp();
+  }
   setInterval(pollSalesLive,60000);
   setInterval(pollDashboardLiveReload,60000);
+  setInterval(consultarAccessGuardV1051,ACCESS_GUARD_INTERVAL_MS);
   setTimeout(pollSalesLive,3000);
   setTimeout(pollDashboardLiveReload,5000);
+  setTimeout(consultarAccessGuardV1051,1200);
 })
 
 // ===== V4.1 HOTFIX: notificações individuais, histórico comissionamento atual e aniversariantes visível =====
@@ -16010,8 +16102,8 @@ Preparamos condições especiais para você comemorar com a gente.
     window.salvarMensagemReativacaoFilial = async function(){ const f=mdlV97FilialKey(document.getElementById('reatMsgFilial')?.value||''), el=document.getElementById('reatMsgTemplateFilial'); if(!f){toast('Selecione uma filial para salvar mensagem individual.','warn');return} CONFIG_META.reativacao_msg_template_filiais=CONFIG_META.reativacao_msg_template_filiais||{}; CONFIG_META.reativacao_msg_template_filiais[f]=String(el?.value||''); try{ const j=await mdlV97SaveConfig(); toast(j.ok?`Mensagem da ${f} salva com emojis.`:'Não consegui salvar mensagem por filial.',j.ok?'success':'warn'); }catch(e){console.warn(e); toast('Falha ao salvar mensagem por filial.','warn')} };
     window.salvarMensagemAniversarioGlobal = async function(){ const el=document.getElementById('anivMsgTemplate'); const val=String(el?.value||DEFAULT_ANIVERSARIO_MSG_V97); CONFIG_META.aniversario_msg_template=val; try{ const j=await mdlV97SaveConfig(); if(j.ok){ if(el) el.value=val; toast('Mensagem global de aniversário salva com emojis.','success'); } else toast('Não consegui salvar mensagem global.','warn'); }catch(e){console.warn(e); toast('Falha ao salvar mensagem de aniversário.','warn')} };
     window.salvarMensagemAniversarioFilial = async function(){ const f=mdlV97FilialKey(document.getElementById('anivMsgFilial')?.value||''), el=document.getElementById('anivMsgTemplateFilial'); if(!f){toast('Selecione uma filial para salvar mensagem individual.','warn');return} CONFIG_META.aniversario_msg_template_filiais=CONFIG_META.aniversario_msg_template_filiais||{}; CONFIG_META.aniversario_msg_template_filiais[f]=String(el?.value||''); try{ const j=await mdlV97SaveConfig(); toast(j.ok?`Mensagem de aniversário da ${f} salva com emojis.`:'Não consegui salvar mensagem por filial.',j.ok?'success':'warn'); }catch(e){console.warn(e); toast('Falha ao salvar mensagem por filial.','warn')} };
-    window.saveSession = function(){ try{ const data={usuarioAtual,exp:Date.now()+45*24*60*60*1000,version:DASHBOARD_BUILD_VERSION}; localStorage.setItem(SESSION_KEY, JSON.stringify(data)); sessionStorage.setItem(SESSION_KEY, JSON.stringify(data)); }catch(e){} };
-    window.restoreSession = function(){ try{ const raw=localStorage.getItem(SESSION_KEY)||sessionStorage.getItem(SESSION_KEY); if(!raw) return false; const data=JSON.parse(raw); if(!data||!data.usuarioAtual||!data.exp||Date.now()>Number(data.exp)){localStorage.removeItem(SESSION_KEY);sessionStorage.removeItem(SESSION_KEY);return false;} usuarioAtual=data.usuarioAtual; return true; }catch(e){return false} };
+    window.saveSession = function(){ try{ const auth=getAuthUser(usuarioAtual?.login||'')||{}; const data={usuarioAtual,exp:Date.now()+45*24*60*60*1000,version:DASHBOARD_BUILD_VERSION,accessRevision:Number(AUTH_STATE?.access_revision||0),userRevision:Number(auth?.session_revision||0)}; localStorage.setItem(SESSION_KEY, JSON.stringify(data)); sessionStorage.setItem(SESSION_KEY, JSON.stringify(data)); }catch(e){} };
+    window.restoreSession = function(){ try{ const raw=localStorage.getItem(SESSION_KEY)||sessionStorage.getItem(SESSION_KEY); if(!raw) return false; const data=JSON.parse(raw); if(!data||!data.usuarioAtual||!data.exp||Date.now()>Number(data.exp)){clearSession();return false;} const adm=String(data.usuarioAtual?.tipo||'').toLowerCase()==='master'||String(data.usuarioAtual?.roleLabel||'').toLowerCase().includes('diretor'); if(!adm){const auth=getAuthUser(data.usuarioAtual?.login||''); if(!auth||data.accessRevision===undefined||data.userRevision===undefined||Number(data.accessRevision)!==Number(AUTH_STATE?.access_revision||0)||Number(data.userRevision)!==Number(auth?.session_revision||0)||AUTH_STATE?.access_blocked||auth?.access_disabled||['inativo','bloqueado','desligado'].includes(String(auth?.status_operacional||'ativo').toLowerCase())){clearSession();return false;}} usuarioAtual=data.usuarioAtual; return true; }catch(e){clearSession();return false} };
     const DEFAULT_DIRECTOR_TABS_V97=['inicio','vendedores','filiais','servicos','cobrancas','avisos','historico'];
     const ALL_TABS_V97=[['inicio','Início'],['vendedores','Por Colaborador'],['filiais','Por Filial'],['metas','Metas'],['servicos','Serviços'],['cobrancas','Cobranças'],['reativacao','Clientes sem movimento'],['aniversariantes','Aniversariantes'],['avisos','Avisos'],['telegram','Telegram'],['senhas','Senhas'],['historico','Histórico']];
     function isDiretorV97(){ return String(usuarioAtual?.roleLabel||'').toLowerCase().includes('diretor') || String(usuarioAtual?.login||'').toLowerCase()==='diretorcomercial' || String(usuarioAtual?.tipo||'').toLowerCase()==='diretor'; }
@@ -19482,7 +19574,7 @@ Preparamos condições especiais para você comemorar com a gente.
 
 </script>
 <script>
-try{window.DASHBOARD_BUILD_VERSION='V10.50';console.log('[V10.50] comissão crediarista usa fonte oficial única no Master e no login');}catch(e){}
+try{window.DASHBOARD_BUILD_VERSION='V10.51';console.log('[V10.51] bloqueio derruba sessões ativas e mantém comissão oficial única');}catch(e){}
 </script>
 
 </body>
@@ -19743,6 +19835,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
   }
 
+  // V10.51: trava operacional no servidor. Mesmo uma aba antiga não consegue registrar cobrança após bloqueio.
+  $credFile = __DIR__ . '/credenciais_dashboard.json';
+  $guard = read_json_safe($credFile, []);
+  if (!empty($guard['access_blocked'])) {
+    http_response_code(423);
+    echo json_encode(['ok'=>false,'error'=>'access_blocked','reason'=>($guard['access_blocked_reason'] ?? 'Sistema bloqueado pelo Master.'),'version'=>'V10.51'], JSON_UNESCAPED_UNICODE);
+    exit;
+  }
+  $actor = strtolower(trim((string)($payload['login'] ?? ($payload['usuario'] ?? ''))));
+  if ($actor !== '') {
+    foreach(($guard['users'] ?? []) as $k=>$uGuard){
+      if(strtolower((string)$k)===$actor || strtolower((string)($uGuard['login'] ?? ''))===$actor){
+        $stGuard=strtolower(trim((string)($uGuard['status_operacional'] ?? 'ativo')));
+        if(!empty($uGuard['access_disabled']) || in_array($stGuard,['inativo','bloqueado','desligado'])){
+          http_response_code(423);
+          echo json_encode(['ok'=>false,'error'=>'user_blocked','reason'=>'Usuário bloqueado pelo Master.','version'=>'V10.51'], JSON_UNESCAPED_UNICODE);
+          exit;
+        }
+        break;
+      }
+    }
+  }
+
   if (($payload['action'] ?? '') === 'delete') {
     make_backup($file, $backupDir);
     $id = trim((string)($payload['id'] ?? ''));
@@ -19951,6 +20066,36 @@ echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado'], JSON_UNESCAPED_U
 
 
 
+ACCESS_GUARD_API_PHP = r"""<?php
+header('Content-Type: application/json; charset=utf-8');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Cache-Control');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
+$file = __DIR__ . '/credenciais_dashboard.json';
+$data = json_decode(@file_get_contents($file), true);
+if (!is_array($data)) $data = ['users'=>[], 'access_blocked'=>false, 'access_revision'=>0];
+$login = strtolower(trim((string)($_GET['login'] ?? '')));
+$user = null;
+foreach(($data['users'] ?? []) as $k=>$u){
+  if(strtolower((string)$k)===$login || strtolower((string)($u['login'] ?? ''))===$login){$user=$u;break;}
+}
+$status = strtolower(trim((string)($user['status_operacional'] ?? 'ativo')));
+$userBlocked = $user ? (!empty($user['access_disabled']) || in_array($status,['inativo','bloqueado','desligado'])) : ($login !== '');
+echo json_encode([
+  'ok'=>true,
+  'access_blocked'=>!empty($data['access_blocked']),
+  'reason'=>(string)($data['access_blocked_reason'] ?? 'Sistema em atualização. Aguarde liberação pelo Master.'),
+  'access_revision'=>intval($data['access_revision'] ?? 0),
+  'access_blocked_at'=>(string)($data['access_blocked_at'] ?? ''),
+  'user_exists'=>$login==='' ? true : is_array($user),
+  'user_blocked'=>$userBlocked,
+  'user_revision'=>intval($user['session_revision'] ?? 0),
+  'user_reason'=>$userBlocked ? 'Seu usuário foi bloqueado pelo Master.' : ''
+], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+?>"""
+
 CREDENCIAIS_API_PHP = r"""<?php
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -19970,6 +20115,8 @@ if (!is_array($data)) $data = ['users'=>[], 'director'=>[], 'password_reset_requ
 if (!isset($data['users']) || !is_array($data['users'])) $data['users'] = [];
 if (!isset($data['director']) || !is_array($data['director'])) $data['director'] = [];
 if (!isset($data['password_reset_requests']) || !is_array($data['password_reset_requests'])) $data['password_reset_requests'] = [];
+if (!isset($data['access_revision'])) $data['access_revision'] = 0;
+foreach($data['users'] as &$uRev){ if(!isset($uRev['session_revision'])) $uRev['session_revision']=0; } unset($uRev);
 
 function save_all($file, $data){ file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE)); }
 function resolve_login_ref(&$data, $login){
@@ -19990,6 +20137,8 @@ if ($action === 'admin_set_access_block') {
   $reason = trim((string)($_POST['reason'] ?? ''));
   $data['access_blocked'] = $blocked;
   $data['access_blocked_reason'] = $blocked ? ($reason ?: 'Sistema em atualização. Aguarde liberação pelo Master.') : '';
+  $data['access_revision'] = intval($data['access_revision'] ?? 0) + 1;
+  $data['force_logout_before'] = date('c');
   if ($blocked) { $data['access_blocked_at'] = date('c'); }
   else { $data['access_unblocked_at'] = date('c'); }
   save_all($file, $data);
@@ -20072,6 +20221,8 @@ if ($action === 'admin_update_user_status') {
   $flags = ['participa_cobrancas','participa_sem_movimento','participa_aniversariantes','participa_murais'];
   $u['status_operacional'] = $status;
   $u['access_disabled'] = ($status !== 'ativo');
+  $u['session_revision'] = intval($u['session_revision'] ?? 0) + 1;
+  $u['force_logout_at'] = date('c');
   foreach($flags as $fl){ $u[$fl] = (($_POST[$fl] ?? '1') === '1'); }
   $u['data_entrada'] = trim((string)($_POST['data_entrada'] ?? ($u['data_entrada'] ?? '')));
   $u['data_saida'] = trim((string)($_POST['data_saida'] ?? ''));
@@ -20408,6 +20559,7 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
     _ftp_upload_bytes_v1019('cobrancas_api.php', COBRANCAS_API_PHP.encode('utf-8'), label='cobrancas_api.php')
     _ftp_upload_bytes_v1019('config_meta_api.php', CONFIG_META_API_PHP.encode('utf-8'), label='config_meta_api.php')
     _ftp_upload_bytes_v1019('mensagens_api.php', MESSAGES_API_PHP.encode('utf-8'), label='mensagens_api.php')
+    _ftp_upload_bytes_v1019('access_guard_api.php', ACCESS_GUARD_API_PHP.encode('utf-8'), label='access_guard_api.php')
     _ftp_upload_bytes_v1019('credenciais_api.php', CREDENCIAIS_API_PHP.encode('utf-8'), label='credenciais_api.php')
     _ftp_upload_bytes_v1019('historico_api.php', HISTORICO_API_PHP.encode('utf-8'), label='historico_api.php')
     _ftp_upload_bytes_v1019('historico_comissionamento_api.php', HISTORICO_COMISSIONAMENTO_API_PHP.encode('utf-8'), label='historico_comissionamento_api.php')

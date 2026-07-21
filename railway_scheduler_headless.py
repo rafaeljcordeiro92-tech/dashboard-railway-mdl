@@ -1,4 +1,4 @@
-# VERSAO: RAILWAY_SCHEDULER_MDL_V50_COMISSAO_CRED_FONTE_UNICA
+# VERSAO: RAILWAY_SCHEDULER_MDL_V51_BLOQUEIO_SESSAO_REAL
 import json
 import os
 import sys
@@ -431,7 +431,7 @@ def start_http_panel():
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log('VERSAO V49: crediaristas + recebimentos/comissões + logout corrigidos')
+log('VERSAO V51: bloqueio derruba sessões ativas; comissão oficial preservada')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
