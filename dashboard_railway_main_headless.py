@@ -34,10 +34,10 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.47"
+DASHBOARD_BUILD_VERSION = "V10.48"
 DASHBOARD_BUILD_TAG = "modo_leve_pc_fraco_preventiva_base"
 
-# V10.47: modo leve para computadores fracos das lojas.
+# V10.48: modo leve REAL com detalhes carregados sob demanda.
 # Mantém o dashboard principal funcionando, mas evita embutir bases pesadas no HTML
 # que travavam navegador antigo/fraco. Para voltar ao modo completo, use DASHBOARD_MODO_LEVE=0.
 DASHBOARD_MODO_LEVE = os.getenv("DASHBOARD_MODO_LEVE", "1") != "0"
@@ -2268,6 +2268,103 @@ if not nome_arquivo_contas_valido(os.path.basename(caminho)):
     raise Exception(f"Arquivo selecionado não é o relatório de contas a receber: {caminho}")
 df_raw = _ler_contas_receber_xls(caminho)
 print(f"📋 {df_raw.shape[0]} linhas lidas")
+try:
+    _principal_fixo_v1048 = os.path.join(pasta, "contas_receber_principal.xls")
+    shutil.copy2(caminho, _principal_fixo_v1048 + ".novo")
+    os.replace(_principal_fixo_v1048 + ".novo", _principal_fixo_v1048)
+    print(f"💾 V10.48 base humana fixa para bloqueio D+15: {_principal_fixo_v1048}")
+except Exception as _e_principal_v1048:
+    print(f"⚠️ V10.48 não conseguiu fixar base humana: {_e_principal_v1048}")
+
+# V10.48: gera uma fonte SEPARADA para a régua automática D-5 até D+14.
+# O relatório humano principal continua exatamente D+15 até D+90.
+PREVENTIVA_INPUT_PATH_V1048 = os.path.join(pasta, 'contas_receber_preventiva.xls')
+def gerar_relatorio_preventiva_v1048():
+    data_prev_ini = (now_brasilia() - timedelta(days=14)).strftime('%d/%m/%Y')
+    data_prev_fim = (now_brasilia() + timedelta(days=5)).strftime('%d/%m/%Y')
+    print(f"\n💬 V10.48 gerando relatório exclusivo WhatsApp Master: {data_prev_ini} até {data_prev_fim}")
+    try:
+        driver.get(URL + '/relatorio_contas_receber')
+        wait.until(EC.presence_of_element_located((By.ID, 'data_vencimento_inicial')))
+        try:
+            _sel = driver.find_element(By.ID, 'data_vencimento')
+            Select(_sel).select_by_value('intervalo')
+            driver.execute_script("arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", _sel)
+        except Exception as _e:
+            print(f'⚠️ Preventiva: intervalo vencimento: {_e}')
+        time.sleep(1)
+        _set_input_by_id_safely('data_vencimento_inicial', data_prev_ini)
+        _set_input_by_id_safely('data_vencimento_final', data_prev_fim)
+
+        # Confirma Situação = Pendentes. Não dependemos do padrão visual do SGI.
+        _situacao_pendente_ok_v1048 = False
+        for _by_sit, _sel_sit in [
+            (By.ID, 'situacao'), (By.ID, 'situacao_titulo'), (By.ID, 'situacao_conta'),
+            (By.NAME, 'filtros[situacao]'), (By.NAME, 'filtros[situacao_titulo]'),
+        ]:
+            try:
+                _sit_el = driver.find_element(_by_sit, _sel_sit)
+                _sit_select = Select(_sit_el)
+                for _opt in _sit_select.options:
+                    if 'pendent' in normalizar_texto_match(_opt.text).lower():
+                        _sit_select.select_by_visible_text(_opt.text)
+                        _situacao_pendente_ok_v1048 = True
+                        print(f'✅ Preventiva: Situação Pendentes confirmada via {_sel_sit}')
+                        break
+                if _situacao_pendente_ok_v1048:
+                    break
+            except Exception:
+                pass
+        if not _situacao_pendente_ok_v1048:
+            print('⚠️ Preventiva: não consegui confirmar explicitamente Situação Pendentes; usando o padrão atual do SGI')
+
+        try:
+            driver.find_element(By.XPATH, "//label[contains(text(),'Filiais')]/following::button[1]").click()
+            time.sleep(1)
+            _cont = driver.find_element(By.XPATH, "//label[contains(text(),'Filiais')]/following::ul[1]")
+            for _c in _cont.find_elements(By.XPATH, ".//input[@type='checkbox']"):
+                if _c.get_attribute('value') in ['1','2','3','4','5','6','7','8','10'] and not _c.is_selected():
+                    driver.execute_script('arguments[0].click();', _c)
+            driver.execute_script('document.body.click();')
+        except Exception as _e:
+            print(f'⚠️ Preventiva: filiais: {_e}')
+
+        try:
+            clicar_seguro_xpath("//span[contains(@class,'glyphicon-plus')]", timeout=20)
+            time.sleep(1)
+        except Exception as _e:
+            print(f'⚠️ Preventiva: mais filtros: {_e}')
+        try:
+            garantir_coluna_cpf_cnpj_relatorio('preventiva', timeout=20)
+        except Exception as _e:
+            print(f'⚠️ Preventiva: CPF/CNPJ: {_e}')
+        try:
+            marcar_multiselect_por_label('Forma de Pagamento', ['3','47','17'], timeout=20, limpar_antes=True)
+        except Exception as _e:
+            print(f'⚠️ Preventiva: formas: {_e}')
+        try:
+            Select(wait.until(EC.presence_of_element_located((By.ID, '_formato')))).select_by_value('xls')
+        except Exception as _e:
+            print(f'⚠️ Preventiva: formato: {_e}')
+
+        _antes = set(_listar_xls_contas_download())
+        _inicio = time.time()
+        _clicar_gerar_relatorio_principal()
+        _baixado = _aguardar_xls_contas(_antes, _inicio, timeout_seg=240)
+        if not _baixado:
+            _baixado = _tentar_download_direto_xls_contas(driver.current_url)
+        if not _baixado or not os.path.exists(_baixado):
+            raise RuntimeError('XLS preventivo não foi baixado')
+        _tmp_prev = PREVENTIVA_INPUT_PATH_V1048 + '.novo'
+        shutil.copy2(_baixado, _tmp_prev)
+        os.replace(_tmp_prev, PREVENTIVA_INPUT_PATH_V1048)
+        print(f'✅ V10.48 relatório preventiva salvo: {PREVENTIVA_INPUT_PATH_V1048} ({os.path.getsize(PREVENTIVA_INPUT_PATH_V1048)} bytes)')
+        return PREVENTIVA_INPUT_PATH_V1048
+    except Exception as _e:
+        print(f'⚠️ V10.48 não conseguiu atualizar relatório preventiva; worker continuará em DRY RUN/sem envio se a base não estiver válida: {_e}')
+        return PREVENTIVA_INPUT_PATH_V1048 if os.path.exists(PREVENTIVA_INPUT_PATH_V1048) else None
+
+PREVENTIVA_INPUT_PATH_V1048 = gerar_relatorio_preventiva_v1048()
 
 metas_vendas_info = {"json_path": None, "xlsx_path": None, "dados": {}}
 try:
@@ -8528,21 +8625,94 @@ js_filiais  = json.dumps(filiais_js_ordered,  ensure_ascii=False)
 # clientes_por_vend_js já construído na serialização acima
 
 # ── Recebimentos detalhados por faixa por vendedor (para relatório 💰) ──
-# Mostra títulos pagos após data_corte_parse, por faixa de vencimento
-# Só vendedores ativos; inativos/FDEP aparecem com tag no nome
+# Mostra títulos pagos após data_corte_parse, por faixa de vencimento.
+# Os cálculos/rateios continuam feitos no Python exatamente como antes.
 js_recebimentos = json.dumps(recebimentos_det_js, ensure_ascii=False)
 js_recebimentos_terceiro = json.dumps(recebimentos_terceiro_js, ensure_ascii=False)
-js_clientes      = json.dumps(clientes_js,           ensure_ascii=False)
-js_clientes_vend = json.dumps(clientes_por_vend_js,  ensure_ascii=False)
-js_clientes_terceiro = json.dumps(clientes_terceiro_js, ensure_ascii=False)
-js_clientes_crediarista = json.dumps(clientes_crediarista_js, ensure_ascii=False)
 js_recebimentos_crediarista = json.dumps(recebimentos_crediarista_js, ensure_ascii=False)
 js_crediaristas_map = json.dumps(CREDIARISTAS_CONFIG, ensure_ascii=False)
 js_destaque = json.dumps(destaque_semana or {}, ensure_ascii=False)
-# V10.47 MODO LEVE:
-# - histórico limitado para reduzir processamento no navegador;
-# - quitados 180d e logs de cobrança não são embutidos no HTML no modo leve;
-# - informações completas continuam nos arquivos/APIs próprios quando disponíveis.
+
+# V10.48 MODO LEVE REAL:
+# A carteira detalhada não entra mais inteira no HTML inicial. Ela é separada
+# por filial/vendedor/crediarista e carregada apenas quando a tela individual é aberta.
+# Isso não altera totais, metas, comissão, rateio, recebimentos ou regras de cobrança.
+import hashlib as _hashlib_v1048
+import unicodedata as _ud_v1048
+
+DETALHES_DIR_V1048 = os.path.join(pasta, 'clientes_detalhes')
+os.makedirs(DETALHES_DIR_V1048, exist_ok=True)
+DETALHES_FILES_V1048 = []
+DETALHES_MANIFEST_V1048 = {
+    'version': 'V10.48',
+    'updated_at': now_brasilia().isoformat(),
+    'updated_at_label': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'),
+    'mode': 'lazy_per_entity' if DASHBOARD_MODO_LEVE else 'embedded',
+    'page_size': 50,
+    'filiais': {}, 'vendedores': {}, 'crediaristas': {}, 'terceiro': None,
+}
+
+def _slug_v1048(value):
+    raw = str(value or '').strip()
+    norm = _ud_v1048.normalize('NFD', raw).encode('ascii', 'ignore').decode('ascii')
+    norm = re.sub(r'[^A-Za-z0-9]+', '_', norm).strip('_').lower()[:52] or 'item'
+    digest = _hashlib_v1048.sha1(raw.encode('utf-8', errors='ignore')).hexdigest()[:10]
+    return f'{norm}_{digest}'
+
+def _save_detail_v1048(kind, key, data):
+    filename = f'{kind}_{_slug_v1048(key)}.json'
+    path = os.path.join(DETALHES_DIR_V1048, filename)
+    payload = {
+        'ok': True, 'version': 'V10.48', 'kind': kind, 'key': str(key),
+        'updated_at': now_brasilia().isoformat(), 'data': data or {'grave': [], 'alerta': [], 'atencao': []},
+    }
+    with open(path, 'w', encoding='utf-8') as fh:
+        json.dump(payload, fh, ensure_ascii=False, separators=(',', ':'))
+    entry = {
+        'file': f'clientes_detalhes/{filename}',
+        'bytes': os.path.getsize(path),
+        'grave': len((data or {}).get('grave') or []),
+        'alerta': len((data or {}).get('alerta') or []),
+        'atencao': len((data or {}).get('atencao') or []),
+    }
+    DETALHES_FILES_V1048.append((path, filename))
+    return entry
+
+if DASHBOARD_MODO_LEVE:
+    _vendor_filial_v1048 = {}
+    for _f_map, _arr_map in (todos_js or {}).items():
+        for _v_map in (_arr_map or []):
+            if _v_map.get('nome'):
+                _vendor_filial_v1048[str(_v_map.get('nome'))] = str(_f_map).upper()
+    _cred_filial_v1048 = {str(_c.get('login') or '').lower(): str(_c.get('filial') or '').upper() for _c in (CREDIARISTAS_CONFIG or []) if _c.get('login')}
+    for _f, _data in (clientes_js or {}).items():
+        DETALHES_MANIFEST_V1048['filiais'][str(_f).upper()] = _save_detail_v1048('filial', str(_f).upper(), _data)
+    for _nome, _data in (clientes_por_vend_js or {}).items():
+        _entry_v1048 = _save_detail_v1048('vendedor', str(_nome), _data)
+        _entry_v1048['filial'] = _vendor_filial_v1048.get(str(_nome), '')
+        DETALHES_MANIFEST_V1048['vendedores'][str(_nome)] = _entry_v1048
+    for _login, _data in (clientes_crediarista_js or {}).items():
+        _entry_c_v1048 = _save_detail_v1048('crediarista', str(_login).lower(), _data)
+        _entry_c_v1048['filial'] = _cred_filial_v1048.get(str(_login).lower(), '')
+        DETALHES_MANIFEST_V1048['crediaristas'][str(_login).lower()] = _entry_c_v1048
+    DETALHES_MANIFEST_V1048['terceiro'] = _save_detail_v1048('terceiro', 'cobranca10', clientes_terceiro_js or {})
+    _manifest_path_v1048 = os.path.join(DETALHES_DIR_V1048, 'manifest.json')
+    with open(_manifest_path_v1048, 'w', encoding='utf-8') as fh:
+        json.dump(DETALHES_MANIFEST_V1048, fh, ensure_ascii=False, separators=(',', ':'))
+    DETALHES_FILES_V1048.append((_manifest_path_v1048, 'manifest.json'))
+    js_clientes = '{}'
+    js_clientes_vend = '{}'
+    js_clientes_terceiro = '{}'
+    js_clientes_crediarista = '{}'
+    print(f"🪶 V10.48 modo leve real: {len(DETALHES_FILES_V1048)-1} carteiras separadas; HTML inicial sem os milhares de títulos.")
+else:
+    js_clientes = json.dumps(clientes_js, ensure_ascii=False)
+    js_clientes_vend = json.dumps(clientes_por_vend_js, ensure_ascii=False)
+    js_clientes_terceiro = json.dumps(clientes_terceiro_js, ensure_ascii=False)
+    js_clientes_crediarista = json.dumps(clientes_crediarista_js, ensure_ascii=False)
+
+js_detalhes_manifest = json.dumps(DETALHES_MANIFEST_V1048, ensure_ascii=False)
+
 try:
     if DASHBOARD_MODO_LEVE and isinstance(hist_dash, list):
         hist_dash = hist_dash[-DASHBOARD_HIST_MAX:]
@@ -8550,10 +8720,7 @@ except Exception:
     pass
 
 js_hist_dash = json.dumps(hist_dash, ensure_ascii=False)
-if DASHBOARD_MODO_LEVE:
-    js_quitados_180 = '[]'
-else:
-    js_quitados_180 = json.dumps((quitados_180_info.get('dados') or {}).get('quitados', []), ensure_ascii=False)
+js_quitados_180 = '[]' if DASHBOARD_MODO_LEVE else json.dumps((quitados_180_info.get('dados') or {}).get('quitados', []), ensure_ascii=False)
 try:
     js_cobrancas_logs_boot = '[]' if DASHBOARD_MODO_LEVE else json.dumps(_ftp_cobrancas_logs_v1043([]), ensure_ascii=False)
 except Exception:
@@ -9598,7 +9765,19 @@ body.inicio-view .kpi .value{font-size:21px!important}
   .kpi-card .v,.metric .v{font-size:18px!important}
 }
 
-.mdl-light-mode *{animation:none!important;transition:none!important}.mdl-light-mode .glass,.mdl-light-mode .card,.mdl-light-mode .panel{box-shadow:none!important}</style>
+.mdl-light-mode *{animation:none!important;transition:none!important}.mdl-light-mode .glass,.mdl-light-mode .card,.mdl-light-mode .panel{box-shadow:none!important}
+/* ===== V10.48: modo leve real + WhatsApp Master ===== */
+.lazy-loading{padding:34px;text-align:center;border:1px dashed rgba(96,165,250,.35);border-radius:18px;background:rgba(96,165,250,.06);font-weight:900;color:#bfdbfe}
+.lazy-loading .spin{display:inline-block;font-size:30px;margin-bottom:8px}
+.update-available{border-color:rgba(245,158,11,.45)!important;background:rgba(245,158,11,.08)!important}
+.wa-master-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:14px 0}
+.wa-master-card{padding:16px;border-radius:16px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.09)}
+.wa-master-card .k{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;font-weight:900}.wa-master-card .v{font-size:23px;font-weight:950;margin-top:7px}
+.wa-master-table{width:100%;border-collapse:collapse;font-size:12px}.wa-master-table th,.wa-master-table td{padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.08);text-align:left;vertical-align:top}.wa-master-table th{position:sticky;top:0;background:#111827;color:#cbd5e1;z-index:1}
+.wa-master-scroll{max-height:520px;overflow:auto;border:1px solid rgba(255,255,255,.09);border-radius:16px}
+.wa-status-ok{color:#31c48d}.wa-status-warn{color:#fbbf24}.wa-status-bad{color:#f05252}
+@media(max-width:900px){.wa-master-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:560px){.wa-master-grid{grid-template-columns:1fr}}
+</style>
 </head>
 <body class="mdl-light-mode">
 <div id="loginScreen" class="login-wrap">
@@ -9655,6 +9834,7 @@ body.inicio-view .kpi .value{font-size:21px!important}
       <button class="tab" data-tab="avisos" onclick="setMainTab('avisos')">📣 Avisos</button>
       <button class="tab" data-tab="telegram" onclick="setMainTab('telegram')">📲 Telegram</button>
       <button class="tab" data-tab="senhas" onclick="setMainTab('senhas')">🔐 Senhas</button>
+      <button class="tab" data-tab="whatsapp_master" onclick="setMainTab('whatsapp_master')">💬 WhatsApp Master</button>
       <button class="tab" data-tab="historico" onclick="setMainTab('historico')">🗂️ Histórico</button>
     </div>
 
@@ -9671,6 +9851,7 @@ body.inicio-view .kpi .value{font-size:21px!important}
       <div id="avisosSection" class="hidden"></div>
       <div id="telegramSection" class="hidden"></div>
       <div id="senhasSection" class="hidden"></div>
+      <div id="whatsappMasterSection" class="hidden"></div>
       <div id="histSection" class="hidden"></div>
     </div>
 
@@ -9697,10 +9878,12 @@ const CREDS=__JS_CREDS__;
 const AUTH_BOOT=__JS_AUTH_STATE__;
 const TODOS=__JS_TODOS__;
 const FILIAIS=__JS_FILIAIS__;
-const CLIENTES_FIL=__JS_CLIENTES__;
-const CLIENTES_VEND=__JS_CLIENTES_VEND__;
-const CLIENTES_TERCEIRO=__JS_CLIENTES_TERCEIRO__;
-const CLIENTES_CREDIARISTA=__JS_CLIENTES_CREDIARISTA__||{};
+let CLIENTES_FIL=__JS_CLIENTES__;
+let CLIENTES_VEND=__JS_CLIENTES_VEND__;
+let CLIENTES_TERCEIRO=__JS_CLIENTES_TERCEIRO__;
+let CLIENTES_CREDIARISTA=__JS_CLIENTES_CREDIARISTA__||{};
+const DETALHES_MANIFEST=__JS_DETALHES_MANIFEST__||{mode:'embedded',filiais:{},vendedores:{},crediaristas:{},terceiro:null};
+const DASHBOARD_LAZY_MODE=String(DETALHES_MANIFEST?.mode||'')==='lazy_per_entity';
 const RECEBIMENTOS=__JS_RECEBIMENTOS__;
 const RECEBIMENTOS_TERCEIRO=__JS_RECEBIMENTOS_TERCEIRO__;
 const RECEBIMENTOS_CREDIARISTA=__JS_RECEBIMENTOS_CREDIARISTA__||{};
@@ -9708,6 +9891,63 @@ const QUITADOS_180=__JS_QUITADOS_180__||[];
 const HIST_RECEBIMENTOS_MENSAIS=__JS_HIST_RECEBIMENTOS_MENSAIS__||{months:{}};
 const DASHBOARD_BUILD_VERSION=__JS_DASHBOARD_BUILD_VERSION__;
 const DASHBOARD_BUILD_TAG=__JS_DASHBOARD_BUILD_TAG__;
+
+
+const _DETAIL_EMPTY=()=>({grave:[],alerta:[],atencao:[]});
+const _DETAIL_LOADING=new Map();
+function _detailManifestEntry(ref){
+  const t=String(ref?.type||'').toLowerCase();
+  if(t==='filial' || ref?.is_gerente) return DETALHES_MANIFEST?.filiais?.[String(ref?.filial||'').toUpperCase()]||null;
+  if(t==='crediarista' || ref?.is_crediarista) return DETALHES_MANIFEST?.crediaristas?.[String(ref?.login||'').toLowerCase()]||null;
+  if(t==='terceiro' || ref?.is_terceiro) return DETALHES_MANIFEST?.terceiro||null;
+  return DETALHES_MANIFEST?.vendedores?.[String(ref?.nome||'')]||null;
+}
+function _detailAlreadyLoaded(ref){
+  const t=String(ref?.type||'').toLowerCase();
+  if(t==='filial' || ref?.is_gerente) return Object.prototype.hasOwnProperty.call(CLIENTES_FIL||{},String(ref?.filial||'').toUpperCase());
+  if(t==='crediarista' || ref?.is_crediarista) return Object.prototype.hasOwnProperty.call(CLIENTES_CREDIARISTA||{},String(ref?.login||'').toLowerCase());
+  if(t==='terceiro' || ref?.is_terceiro) return !!(CLIENTES_TERCEIRO && Object.keys(CLIENTES_TERCEIRO).length);
+  return Object.prototype.hasOwnProperty.call(CLIENTES_VEND||{},String(ref?.nome||''));
+}
+function _applyDetailData(ref,data){
+  const t=String(ref?.type||'').toLowerCase(); const clean=(data&&typeof data==='object')?data:_DETAIL_EMPTY();
+  if(t==='filial' || ref?.is_gerente) CLIENTES_FIL[String(ref?.filial||'').toUpperCase()]=clean;
+  else if(t==='crediarista' || ref?.is_crediarista) CLIENTES_CREDIARISTA[String(ref?.login||'').toLowerCase()]=clean;
+  else if(t==='terceiro' || ref?.is_terceiro) CLIENTES_TERCEIRO=clean;
+  else CLIENTES_VEND[String(ref?.nome||'')]=clean;
+}
+async function _fetchDetailEntry(entry){
+  if(!entry?.file)return null; const key=String(entry.file); if(_DETAIL_LOADING.has(key))return _DETAIL_LOADING.get(key);
+  const promise=(async()=>{try{const payload=await fetchJsonNoCache(key); if(!payload?.ok)throw new Error(payload?.erro||'arquivo inválido'); return payload.data||_DETAIL_EMPTY();}finally{_DETAIL_LOADING.delete(key)}})();
+  _DETAIL_LOADING.set(key,promise); return promise;
+}
+async function ensureDetailData(ref){
+  if(!DASHBOARD_LAZY_MODE || _detailAlreadyLoaded(ref)) return true;
+  const t=String(ref?.type||'').toLowerCase();
+  try{
+    if(t==='filial' || ref?.is_gerente){
+      const filial=String(ref?.filial||'').toUpperCase(); const mainEntry=DETALHES_MANIFEST?.filiais?.[filial];
+      const vendorEntries=Object.entries(DETALHES_MANIFEST?.vendedores||{}).filter(([,e])=>String(e?.filial||'').toUpperCase()===filial);
+      const [mainData,...vendorData]=await Promise.all([_fetchDetailEntry(mainEntry),...vendorEntries.map(([,e])=>_fetchDetailEntry(e))]);
+      CLIENTES_FIL[filial]=mainData||_DETAIL_EMPTY(); vendorEntries.forEach(([name],i)=>{CLIENTES_VEND[name]=vendorData[i]||_DETAIL_EMPTY()}); return true;
+    }
+    if(t==='crediarista' || ref?.is_crediarista){
+      const login=String(ref?.login||'').toLowerCase(); const filial=String(ref?.filial||'').toUpperCase(); const entry=DETALHES_MANIFEST?.crediaristas?.[login]||DETALHES_MANIFEST?.filiais?.[filial];
+      CLIENTES_CREDIARISTA[login]=(await _fetchDetailEntry(entry))||_DETAIL_EMPTY(); return true;
+    }
+    if(t==='terceiro' || ref?.is_terceiro){CLIENTES_TERCEIRO=(await _fetchDetailEntry(DETALHES_MANIFEST?.terceiro))||_DETAIL_EMPTY(); return true;}
+    const name=String(ref?.nome||''); CLIENTES_VEND[name]=(await _fetchDetailEntry(DETALHES_MANIFEST?.vendedores?.[name]))||_DETAIL_EMPTY(); return true;
+  }catch(e){console.error('V10.48 lazy detail',e); _applyDetailData(ref,_DETAIL_EMPTY()); toast('Não consegui carregar a carteira detalhada. Atualize a página.'); return false;}
+}
+function showDetailLoading(ref){
+  try{document.getElementById('mainScreen')?.classList.add('hidden'); detailScreen?.classList.remove('hidden'); detailScreen.innerHTML=`<div class="lazy-loading"><div class="spin">⏳</div><div>Carregando somente a carteira de ${esc(ref?.nome||ref?.filial||'cliente')}...</div><div class="hint" style="margin-top:6px">Modo leve real V10.48</div></div>`;}catch(e){}
+}
+function captureDetailUiState(){
+  try{if(!detailScreen || detailScreen.classList.contains('hidden')) return null; const open=[]; detailScreen.querySelectorAll('.accordion.open').forEach(a=>{const h=(a.querySelector('.acc-head')?.innerText||'').trim().slice(0,100); if(h)open.push(h)}); const active=detailScreen.querySelector('[data-cobtab].active')?.dataset?.cobtab||''; return {open,active,scrollY:window.scrollY};}catch(e){return null}
+}
+function restoreDetailUiState(st){
+  if(!st)return; try{detailScreen.querySelectorAll('.accordion').forEach(a=>{const h=(a.querySelector('.acc-head')?.innerText||'').trim().slice(0,100); if(st.open?.includes(h))a.classList.add('open')}); if(st.active){const btn=detailScreen.querySelector(`[data-cobtab="${st.active}"]`); if(btn) switchCobTab(btn,st.active)} setTimeout(()=>window.scrollTo(0,Number(st.scrollY||0)),0);}catch(e){}
+}
 
 function isAdminLike(){
   const t=String(usuarioAtual?.tipo||'').toLowerCase();
@@ -10013,6 +10253,7 @@ const loginScreen=document.getElementById('loginScreen');
 const app=document.getElementById('app');
 const userBadge=document.getElementById('userBadge');
 const masterTabs=document.getElementById('masterTabs');
+const whatsappMasterSection=document.getElementById('whatsappMasterSection');
 const mainFilters=document.getElementById('mainFilters');
 const topMural=document.getElementById('topMural');
 const inicioSection=document.getElementById('inicioSection');
@@ -10433,7 +10674,8 @@ function latestUpdatedLabel(){
 }
 
 function renderUpdateStrip(){
-  return `<div class="glass" style="margin:10px 0 14px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;min-height:42px;border-color:rgba(148,163,184,.20)"><div style="font-size:12px;color:#a9b2c7">🕒 Última atualização do dashboard: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div>${nextUpdateClockHtml()}</div>`;
+  const pending=!!window.__dashboardUpdateAvailable;
+  return `<div class="glass ${pending?'update-available':''}" style="margin:10px 0 14px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;min-height:42px;border-color:rgba(148,163,184,.20)"><div style="font-size:12px;color:#a9b2c7">${pending?'🆕 Nova atualização disponível':'🕒 Última atualização do dashboard'}: <strong style="color:#e5e7eb">${esc(latestUpdatedLabel()||'--')}</strong></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${nextUpdateClockHtml()}${pending?'<button class="btn primary" onclick="location.reload()">Atualizar agora</button>':''}</div></div>`;
 }
 
 
@@ -10501,7 +10743,8 @@ async function pollSalesLive(){
     if(typeof renderKPIs==='function' && document.getElementById('kpis')) renderKPIs();
     if(typeof renderServicosTab==='function' && (!servicesSection.classList.contains('hidden') || usuarioAtual?.is_viewer)) renderServicosTab(!!usuarioAtual?.is_viewer);
     if(!detailScreen.classList.contains('hidden') && currentDetailRef){
-      try{ openEntity(currentDetailRef); }catch(_e){}
+      window.__detailSalesUpdatePending=true;
+      // V10.48: não reconstrói a tela individual automaticamente; isso fechava os acordeões.
     }
   }catch(e){console.log('pollSalesLive',e)}
 }
@@ -10515,7 +10758,7 @@ async function pollDashboardLiveReload(){
     }
     if(!stamp) return;
     if(window.__lastDashboardVersion===undefined){window.__lastDashboardVersion=stamp; return;}
-    if(window.__lastDashboardVersion!==stamp){ location.reload(); return; }
+    if(window.__lastDashboardVersion!==stamp){ window.__dashboardUpdateAvailable=stamp; window.__dashboardUpdatedAtLabel=stamp; window.__lastDashboardVersion=stamp; try{if(!detailScreen.classList.contains('hidden')&&currentDetailRef){const box=detailScreen.querySelector('.update-available'); if(!box){const tmp=document.createElement('div');tmp.innerHTML=renderUpdateStrip();detailScreen.prepend(tmp.firstElementChild)}}else if(mainTab==='inicio'){renderInicioTab()}}catch(_e){} return; }
   }catch(e){console.log('pollDashboardLiveReload',e)}
 }
 
@@ -10604,7 +10847,7 @@ function setMainTab(tab){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
   detailScreen.classList.add('hidden');
   document.getElementById('mainScreen').classList.remove('hidden');
-  const hiddenMain=['inicio','metas','servicos','cobrancas','reativacao','aniversariantes','avisos','telegram','senhas','historico'].includes(tab);
+  const hiddenMain=['inicio','metas','servicos','cobrancas','reativacao','aniversariantes','avisos','telegram','senhas','whatsapp_master','historico'].includes(tab);
   if(inicioSection) inicioSection.classList.toggle('hidden',tab!=='inicio');
   listSection.classList.toggle('hidden',hiddenMain);
   metaSection.classList.toggle('hidden',tab!=='metas');
@@ -10615,6 +10858,7 @@ function setMainTab(tab){
   avisosSection.classList.toggle('hidden',tab!=='avisos');
   if(telegramSection) telegramSection.classList.toggle('hidden',tab!=='telegram');
   senhasSection.classList.toggle('hidden',tab!=='senhas');
+  whatsappMasterSection?.classList.toggle('hidden',tab!=='whatsapp_master');
   histSection.classList.toggle('hidden',tab!=='historico');
   mainFilters.classList.toggle('hidden',!(tab==='vendedores'||tab==='filiais'));
   renderTopMural();
@@ -10633,8 +10877,47 @@ function setMainTab(tab){
   if(tab==='avisos') renderAvisosTab();
   if(tab==='telegram') renderTelegramTab();
   if(tab==='senhas') renderSenhasTab();
+  if(tab==='whatsapp_master') renderWhatsAppMasterTab();
   if(tab==='historico') renderHistoricoTab();
 }
+
+const WA_MASTER_MONITOR_URL='https://dashbboardcobvendasmdl.up.railway.app';
+let WA_MASTER_STATUS={}; let WA_MASTER_ITEMS=[]; let WA_MASTER_HISTORY=[]; let WA_MASTER_PAGE=1; const WA_MASTER_PAGE_SIZE=50;
+function waEscStatus(v){const x=String(v||'').toLowerCase();return x.includes('erro')?'wa-status-bad':(x.includes('enviado')||x.includes('ok')||x.includes('conect')?'wa-status-ok':'wa-status-warn')}
+function waFmtDate(v){try{return new Date(v).toLocaleString('pt-BR')}catch(e){return String(v||'—')}}
+function waItemStatus(x){return x.status||x.resultado||(x.erro?'erro':(x.motivo?'ignorado':'candidato'))}
+function waAllItems(data){if(Array.isArray(data?.auditoria)&&data.auditoria.length)return data.auditoria.map(x=>({...x,status:waItemStatus(x)})); const arr=[]; (data?.preview||[]).forEach(x=>arr.push({...x,status:data?.dry_run?'simulado':'candidato'})); (data?.enviados_detalhes||data?.sent_now||[]).forEach(x=>arr.push({...x,status:'enviado'})); (data?.skipped||data?.skipped_amostra||[]).forEach(x=>arr.push({...x,status:'ignorado'})); (data?.errors||[]).forEach(x=>arr.push({...x,status:'erro'})); return arr}
+function waRenderRows(){
+  const host=document.getElementById('waMasterRows'); if(!host)return; const q=String(document.getElementById('waMasterSearch')?.value||'').toLowerCase(); const marco=String(document.getElementById('waMasterMarco')?.value||''); const status=String(document.getElementById('waMasterStatus')?.value||'');
+  const filtered=WA_MASTER_ITEMS.filter(x=>{const text=[x.cliente,x.cpf_cnpj,x.telefone,x.filial,x.titulo,x.parcela,x.motivo,x.erro].join(' ').toLowerCase(); const st=waItemStatus(x); return (!q||text.includes(q))&&(!marco||String(x.marco||'')===marco)&&(!status||st===status)});
+  const max=Math.max(1,Math.ceil(filtered.length/WA_MASTER_PAGE_SIZE)); if(WA_MASTER_PAGE>max)WA_MASTER_PAGE=max; if(WA_MASTER_PAGE<1)WA_MASTER_PAGE=1; const ini=(WA_MASTER_PAGE-1)*WA_MASTER_PAGE_SIZE; const page=filtered.slice(ini,ini+WA_MASTER_PAGE_SIZE);
+  host.innerHTML=`<div class="log-pager"><div><strong>${filtered.length}</strong> registro(s) · ${filtered.length?ini+1:0}-${Math.min(ini+WA_MASTER_PAGE_SIZE,filtered.length)} · página ${WA_MASTER_PAGE}/${max}</div><div style="display:flex;gap:8px"><button class="btn soft" ${WA_MASTER_PAGE<=1?'disabled':''} onclick="WA_MASTER_PAGE--;waRenderRows()">⬅️ Anterior</button><button class="btn soft" ${WA_MASTER_PAGE>=max?'disabled':''} onclick="WA_MASTER_PAGE++;waRenderRows()">Próxima ➡️</button></div></div><div class="wa-master-scroll"><table class="wa-master-table"><thead><tr><th>Status</th><th>Marco</th><th>Cliente</th><th>CPF/CNPJ</th><th>Telefone</th><th>Filial</th><th>Título</th><th>Mensagem / motivo</th></tr></thead><tbody>${page.length?page.map(x=>`<tr><td class="${waEscStatus(waItemStatus(x))}"><strong>${esc(waItemStatus(x))}</strong></td><td>${esc(x.marco||'—')}</td><td><strong>${esc(x.cliente||'—')}</strong><div class="small muted">${esc(x.vencimento||'')} · ${R(x.valor||x.pendente||0)}</div></td><td>${esc(x.cpf_cnpj||'—')}</td><td>${esc(x.telefone||'—')}</td><td>${esc(x.filial||'—')}</td><td>${esc(x.titulo||'—')}<div class="small muted">${esc(x.parcela||'')}</div></td><td><div>${esc(x.motivo||x.erro||x.mensagem||'—')}</div>${x.mensagem&&(x.motivo||x.erro)?`<div class="small muted" style="margin-top:5px">${esc(x.mensagem)}</div>`:''}</td></tr>`).join(''):'<tr><td colspan="8"><div class="empty">Nenhum registro encontrado.</div></td></tr>'}</tbody></table></div>`;
+}
+async function fetchWaMasterStatus(){
+  let data=null, history=null;
+  try{data=await fetchJsonNoCache('whatsapp_master_preventiva_status.json')}catch(_e){};
+  try{history=await fetchJsonNoCache('whatsapp_master_preventiva_historico.json')}catch(_e){};
+  try{const live=await fetch(WA_MASTER_MONITOR_URL+'/api/preventiva/status?_='+Date.now(),{cache:'no-store'}); if(live.ok){const j=await live.json(); data={...(data||{}),...(j?.preview||{}),live_job:j?.job||{},live_updated_at:j?.updated_at||'',service:j?.service||(data||{}).service}}}catch(_e){}
+  try{const liveHist=await fetch(WA_MASTER_MONITOR_URL+'/api/preventiva/history?_='+Date.now(),{cache:'no-store'}); if(liveHist.ok)history=await liveHist.json()}catch(_e){}
+  return {...(data||{ok:false,erro:'Ainda não existe execução da preventiva.'}),__history:Array.isArray(history?.runs)?history.runs:[]};
+}
+async function renderWhatsAppMasterTab(force=false){
+  if(!whatsappMasterSection)return; if(usuarioAtual?.tipo!=='master'){whatsappMasterSection.innerHTML='<div class="empty">Acesso exclusivo do Master.</div>';return}
+  whatsappMasterSection.innerHTML='<div class="lazy-loading"><div class="spin">⏳</div><div>Carregando acompanhamento do WhatsApp Master...</div></div>';
+  WA_MASTER_STATUS=await fetchWaMasterStatus(); WA_MASTER_ITEMS=waAllItems(WA_MASTER_STATUS); WA_MASTER_HISTORY=Array.isArray(WA_MASTER_STATUS?.__history)?WA_MASTER_STATUS.__history:[]; WA_MASTER_PAGE=1;
+  const d=WA_MASTER_STATUS||{}; const job=d.live_job||{}; const by=d.por_marco||{}; const svc=d.service||{}; const run=job.running?'Rodando':(d.ok?'Concluído':'Sem execução');
+  whatsappMasterSection.innerHTML=`<div class="section-head"><div><h2>💬 WhatsApp Master · Preventiva</h2><div class="hint">Régua D-5, D-1, D0, D+1, D+3, D+7, D+10 e D+14. D+15 ou mais permanece na cobrança humana.</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn soft" onclick="renderWhatsAppMasterTab(true)">🔄 Atualizar</button><button class="btn primary" onclick="rodarWhatsMasterAgora()">▶ Rodar agora</button><button class="btn soft" onclick="window.open(WA_MASTER_MONITOR_URL,'_blank')">🛠️ Abrir monitor</button></div></div>
+  <div class="msg-banner ${d.dry_run?'':'campaign-banner'}"><strong>Modo:</strong> ${d.dry_run?'🧪 DRY RUN — nenhuma mensagem real':'✅ ENVIO REAL'} · <strong>Automação:</strong> ${d.enabled?'habilitada':'desabilitada'} · <strong>Execução:</strong> <span class="${job.running?'wa-status-warn':(d.ok?'wa-status-ok':'wa-status-bad')}">${esc(run)}</span> · <strong>Última atualização:</strong> ${esc(waFmtDate(d.gerado_em||d.live_updated_at))}</div>
+  <div class="wa-master-grid"><div class="wa-master-card"><div class="k">Elegíveis</div><div class="v">${Number(d.candidatos||0)}</div></div><div class="wa-master-card"><div class="k">Enviados</div><div class="v wa-status-ok">${Number(d.enviados_agora||0)}</div></div><div class="wa-master-card"><div class="k">Simulados</div><div class="v wa-status-warn">${d.dry_run?Number(d.candidatos||0):Number(d.simulados||0)}</div></div><div class="wa-master-card"><div class="k">Ignorados/bloqueados</div><div class="v">${Number(d.pulados||0)}</div></div><div class="wa-master-card"><div class="k">Erros</div><div class="v wa-status-bad">${Number(d.erros||0)}</div></div><div class="wa-master-card"><div class="k">CPFs D+15 bloqueados</div><div class="v">${Number(d.cpfs_bloqueados_d15_mais||0)}</div></div><div class="wa-master-card"><div class="k">Sessão/serviço</div><div class="v ${svc.ok?'wa-status-ok':'wa-status-warn'}" style="font-size:16px">${esc(svc.status||svc.session_status||(svc.ok?'Disponível':'Não confirmado'))}</div></div><div class="wa-master-card"><div class="k">Arquivo usado</div><div class="v" style="font-size:14px">${esc(d.arquivo||'—')}</div></div></div>
+  <div class="glass panel" style="margin-bottom:14px"><h3>📅 Resumo por marco</h3><div class="legend-inline">${['D-5','D-1','D0','D+1','D+3','D+7','D+10','D+14'].map(m=>`<span><i class="dot" style="background:var(--green)"></i>${m}: ${Number(by?.[m]?.candidatos||by?.[m]||0)}</span>`).join('')}</div></div>
+  <div class="glass panel"><div class="section-head"><div><h3>🔎 Auditoria da preventiva</h3><div class="hint">50 registros por página. Pesquise por cliente, CPF, telefone, filial ou título.</div></div></div><div class="search-row" style="grid-template-columns:1fr 160px 180px"><div class="input-card"><label>Pesquisar</label><input id="waMasterSearch" oninput="WA_MASTER_PAGE=1;waRenderRows()" placeholder="Cliente, CPF, telefone, filial ou título"></div><div class="input-card"><label>Marco</label><select id="waMasterMarco" onchange="WA_MASTER_PAGE=1;waRenderRows()"><option value="">Todos</option>${['D-5','D-1','D0','D+1','D+3','D+7','D+10','D+14'].map(m=>`<option>${m}</option>`).join('')}</select></div><div class="input-card"><label>Status</label><select id="waMasterStatus" onchange="WA_MASTER_PAGE=1;waRenderRows()"><option value="">Todos</option><option value="simulado">Simulado</option><option value="enviado">Enviado</option><option value="ignorado">Ignorado</option><option value="erro">Erro</option><option value="candidato">Candidato</option></select></div></div><div id="waMasterRows"></div></div>
+  <div class="glass panel" style="margin-top:14px"><h3>🗂️ Histórico das execuções</h3><div class="hint" style="margin-bottom:10px">Últimas ${Math.min(20,WA_MASTER_HISTORY.length)} execuções registradas.</div><div class="wa-master-scroll" style="max-height:360px"><table class="wa-master-table"><thead><tr><th>Data</th><th>Modo</th><th>Elegíveis</th><th>Enviados</th><th>Ignorados</th><th>Erros</th><th>CPFs D+15</th></tr></thead><tbody>${WA_MASTER_HISTORY.length?WA_MASTER_HISTORY.slice().reverse().slice(0,20).map(h=>`<tr><td>${esc(waFmtDate(h.gerado_em))}</td><td>${h.dry_run?'DRY RUN':(h.enabled?'REAL':'DESATIVADO')}</td><td>${Number(h.candidatos||0)}</td><td>${Number(h.enviados_agora||0)}</td><td>${Number(h.pulados||0)}</td><td class="${Number(h.erros||0)?'wa-status-bad':''}">${Number(h.erros||0)}</td><td>${Number(h.cpfs_bloqueados_d15_mais||0)}</td></tr>`).join(''):'<tr><td colspan="7"><div class="empty">Ainda não há histórico.</div></td></tr>'}</tbody></table></div></div>`;
+  waRenderRows();
+}
+async function rodarWhatsMasterAgora(){
+  if(usuarioAtual?.tipo!=='master')return; const mode=WA_MASTER_STATUS?.dry_run!==false?'DRY RUN':'ENVIO REAL'; if(!confirm(`Rodar WhatsApp Master agora em ${mode}?`))return; try{const r=await fetch(WA_MASTER_MONITOR_URL+'/run/preventiva',{method:'POST'}); const j=await r.json(); toast(j.message||'Execução solicitada.',j.ok?'success':''); setTimeout(()=>renderWhatsAppMasterTab(true),1800)}catch(e){toast('Não consegui iniciar pelo dashboard. Abra o monitor operacional.');}
+}
+
 function renderFilters(){if(mainTab!=='vendedores'&&mainTab!=='filiais'){mainFilters.innerHTML='';return} let html=`<button class="pill ${filtroFilial==='TODAS'?'active':''}" onclick="setFiltroFilial('TODAS')">Todas</button>`; ORDEM.forEach(f=>{html+=`<button class="pill ${filtroFilial===f?'active':''}" onclick="setFiltroFilial('${f}')">${f}</button>`}); mainFilters.innerHTML=html;}
 function setFiltroFilial(f){
   filtroFilial=f;
@@ -10751,20 +11034,29 @@ function countCobrancasHojePorOwner(keys,filial=''){
   const hoje=dateOnlyISO(new Date());
   return (COB_LOGS||[]).filter(x=>logIsHojeCobrancaReal(x,hoje) && logMatchesAnyOwner(x,keys,filial)).length;
 }
+function detailManifestCount(entry){return Number(entry?.grave||0)+Number(entry?.alerta||0)+Number(entry?.atencao||0)}
+function detailPendingCount(kind,key,loaded){
+  const live=((loaded?.grave||[]).length+(loaded?.alerta||[]).length+(loaded?.atencao||[]).length); if(live>0||!DASHBOARD_LAZY_MODE)return live;
+  if(kind==='filial')return detailManifestCount(DETALHES_MANIFEST?.filiais?.[String(key||'').toUpperCase()]);
+  if(kind==='vendedor')return detailManifestCount(DETALHES_MANIFEST?.vendedores?.[String(key||'')]);
+  if(kind==='crediarista')return detailManifestCount(DETALHES_MANIFEST?.crediaristas?.[String(key||'').toLowerCase()]);
+  if(kind==='terceiro')return detailManifestCount(DETALHES_MANIFEST?.terceiro);
+  return live;
+}
 function renderNoChargeAlerts(){
   const totalPend=(obj)=>((obj?.grave||[]).length+(obj?.alerta||[]).length+(obj?.atencao||[]).length);
   const entries=[];
 
   // Vendedores / colaboradores: usa nome, login e filial do próprio usuário.
   flattenVendedores().forEach(v=>{
-    const pending=totalPend(CLIENTES_VEND[v.nome]||{});
+    const pending=detailPendingCount('vendedor',v.nome,CLIENTES_VEND[v.nome]||{});
     const done=countCobrancasHojePorOwner([v.nome, v.login], v.filial);
     if(pending>0 && done===0) entries.push({tipo:'Colaborador',nome:v.nome,filial:v.filial,pending,done});
   });
 
   // Filiais / gerentes: se qualquer cobrança daquela filial foi registrada hoje, não aparece no mural.
   flattenFiliais().forEach(f=>{
-    const pending=totalPend(CLIENTES_FIL[f.filial]||{});
+    const pending=detailPendingCount('filial',f.filial,CLIENTES_FIL[f.filial]||{});
     const done=countCobrancasHojePorOwner([f.nome, f.filial, filialLabel(f.filial)], f.filial);
     if(pending>0 && done===0) entries.push({tipo:'Filial',nome:filialLabel(f.filial),filial:f.filial,pending,done});
   });
@@ -10772,13 +11064,13 @@ function renderNoChargeAlerts(){
   // Crediaristas: reconhece login, nome e logs com destino_tipo=crediarista da mesma filial.
   crediaristaEntities().forEach(c=>{
     const key=String(c.login||'').toLowerCase();
-    const pending=totalPend(CLIENTES_CREDIARISTA[key]||{});
+    const pending=detailPendingCount('crediarista',key,CLIENTES_CREDIARISTA[key]||{});
     const done=countCobrancasHojePorOwner([c.nome, c.login], c.filial);
     if(pending>0 && done===0) entries.push({tipo:'Crediarista',nome:c.nome,filial:c.filial,pending,done});
   });
 
   // Cobrança terceiro / Cobrança10
-  const pendingTer=totalPend(CLIENTES_TERCEIRO||{});
+  const pendingTer=detailPendingCount('terceiro','cobranca10',CLIENTES_TERCEIRO||{});
   const doneTer=countCobrancasHojePorOwner([COBRANCA10_NOME, COBRANCA10_LOGIN, 'cobranca10', 'cobranca 10'], 'FTER');
   if(pendingTer>0 && doneTer===0) entries.push({tipo:'Cobrança',nome:COBRANCA10_NOME,filial:'FTER',pending:pendingTer,done:doneTer});
 
@@ -10863,7 +11155,7 @@ function findEntity(ref){const n=String(ref?.nome||'').toLowerCase(); const f=St
 function keysFromLogsForCommission(logs){const out=new Set(); (logs||[]).forEach(l=>{out.add(cobrancaRowKey(l)); const alt=[String(l.cliente||'').trim().toUpperCase(),String(l.titulo||'').trim(),String(l.parcela||'').trim()].join('|'); out.add(alt);}); return out}
 function key3Cob(r){return [String(r.cliente||r.nome||'').trim().toUpperCase(),String(r.titulo||'').trim(),String(r.parcela||'').trim()].join('|')}
 function renderTerceiroCommission(ent){const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista'); const baseCfg=isCred?entityConfig({type:'vendedor',nome:ent.nome,filial:ent.filial}):entityConfig({type:'vendedor',nome:COBRANCA10_NOME,filial:'FTER'}); const cfg=commissionCfg(baseCfg); const policy=(isCred?(cfg.camp_cob_crediarista||[]):(cfg.camp_cobranca_terceiro||[])); const policyOk=Array.isArray(policy)&&policy.length?policy:(isCred?defaultCampCrediarista():defaultCampTerceiro()); const byFaixa={atencao:{pct:0,cobrado:0,recebido:0,comissao:0},alerta:{pct:0,cobrado:0,recebido:0,comissao:0},grave:{pct:0,cobrado:0,recebido:0,comissao:0}}; policyOk.forEach(r=>{const fx=String(r.faixa||'').toLowerCase(); if(byFaixa[fx]) byFaixa[fx].pct=Number(String(r.pct||0).replace(',','.'))||0}); const mesAtual=dateOnlyISO(new Date()).slice(0,7); const userKeys=isCred?[String(ent.login||'').toLowerCase(),String(ent.nome||'').toLowerCase()]:[COBRANCA10_NOME.toLowerCase(),COBRANCA10_LOGIN]; const cobrados=(COB_LOGS||[]).filter(x=>userKeys.includes(String(x.usuario||'').toLowerCase()) && dateOnlyISO(x.server_time||x.criado_em||x.data||'').slice(0,7)===mesAtual); const keys=keysFromLogsForCommission(cobrados); const srcCli=isCred?(CLIENTES_CREDIARISTA?.[String(ent.login||'').toLowerCase()]||{grave:[],alerta:[],atencao:[]}):(CLIENTES_TERCEIRO||{grave:[],alerta:[],atencao:[]}); const srcRec=getRecebimentos(ent)||{grave:[],alerta:[],atencao:[]}; ['atencao','alerta','grave'].forEach(fx=>{byFaixa[fx].cobrado=(srcCli?.[fx]||[]).filter(r=>keys.has(cobrancaRowKey(r))||keys.has(key3Cob(r))).length; (srcRec?.[fx]||[]).forEach(r=>{const pagMes=dateOnlyISO(r.pagamento||r.data_pagamento||'').slice(0,7); if((keys.has(cobrancaRowKey(r))||keys.has(key3Cob(r))) && pagMes===mesAtual){byFaixa[fx].recebido+=Number(r.pago||0)}}); byFaixa[fx].comissao=byFaixa[fx].recebido*(byFaixa[fx].pct/100)}); const total=Object.values(byFaixa).reduce((a,b)=>a+b.comissao,0); const item=(t,v,s='')=>`<div class="commission-item unlocked ${s}"><div class="k">${t}</div><div class="v">${v}</div></div>`; return `<div class="glass panel commission-card"><h3>💵 ${isCred?'Comissão crediarista':'Comissão cobrança terceiro'} <span class="note">· só títulos cobrados pelo usuário e pagos no mês</span></h3><div class="commission-grid">${item('Atenção %',String(byFaixa.atencao.pct.toFixed(2)).replace('.',',')+'%')}${item('Alerta %',String(byFaixa.alerta.pct.toFixed(2)).replace('.',',')+'%')}${item('Grave %',String(byFaixa.grave.pct.toFixed(2)).replace('.',',')+'%')}${item('Recebido atenção',R(byFaixa.atencao.recebido||0))}${item('Recebido alerta',R(byFaixa.alerta.recebido||0))}${item('Recebido grave',R(byFaixa.grave.recebido||0))}${item('Comissão atenção',R(byFaixa.atencao.comissao||0))}${item('Comissão alerta',R(byFaixa.alerta.comissao||0))}${item('Comissão grave',R(byFaixa.grave.comissao||0))}${item('Total previsto',R(total||0),'total-final')}</div><div class="commission-note">${esc(CONFIG_META?.comissao_pagamento_texto||'A comissão reinicia a cada mês e o pagamento é previsto para o dia 25 do mês seguinte.')}</div></div>`}
-function openCrediaristaPanel(login, filial, nome){
+function openCrediaristaPanelCore(login, filial, nome){
   const filialNorm=String(filial||'').toUpperCase();
   const loginNorm=String(login||crediaristaLoginByFilial(filialNorm)||'').toLowerCase();
   const nomeNorm=String(nome||`CREDIARISTA${filialNorm}`);
@@ -10895,7 +11187,21 @@ function openCrediaristaPanel(login, filial, nome){
   detailScreen.classList.remove('hidden');
   return renderCrediaristaDetail(ent);
 }
-function openThirdChargePanel(){const ent=thirdChargeEntity(); currentDetailRef={type:'terceiro',filial:'FTER',nome:ent.nome}; mascotCongrats(ent); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); renderTerceiroDetail(ent)}
+function openThirdChargePanelCore(){const ent=thirdChargeEntity(); currentDetailRef={type:'terceiro',filial:'FTER',nome:ent.nome}; mascotCongrats(ent); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); renderTerceiroDetail(ent)}
+
+
+async function openCrediaristaPanel(login,filial,nome){
+  const ref={type:'crediarista',login:String(login||'').toLowerCase(),filial:String(filial||'').toUpperCase(),nome:nome||''};
+  const st=captureDetailUiState(); if(DASHBOARD_LAZY_MODE&&!_detailAlreadyLoaded(ref))showDetailLoading(ref); await ensureDetailData(ref); const out=openCrediaristaPanelCore(login,filial,nome); restoreDetailUiState(st); return out;
+}
+async function openThirdChargePanel(){
+  const ref={type:'terceiro',filial:'FTER',nome:'Cobrança10'}; const st=captureDetailUiState(); if(DASHBOARD_LAZY_MODE&&!_detailAlreadyLoaded(ref))showDetailLoading(ref); await ensureDetailData(ref); const out=openThirdChargePanelCore(); restoreDetailUiState(st); return out;
+}
+async function openEntity(ref){
+  if(ref && (ref.type==='crediarista'||ref.is_crediarista)) return openCrediaristaPanel(ref.login||'',ref.filial||'',ref.nome||'');
+  if(ref && (ref.type==='terceiro'||ref.is_terceiro)) return openThirdChargePanel();
+  const st=captureDetailUiState(); if(DASHBOARD_LAZY_MODE&&!_detailAlreadyLoaded(ref))showDetailLoading(ref); await ensureDetailData(ref); const out=openEntityCore(ref); restoreDetailUiState(st); return out;
+}
 
 // Clique blindado dos cards especiais: não depende de onclick inline.
 document.addEventListener('click', function(ev){
@@ -10978,7 +11284,7 @@ function renderCrediaristaDetail(ent){
   `;
 }
 
-function openEntity(ref){if(ref && (ref.type==='crediarista' || ref.is_crediarista)){return openCrediaristaPanel(ref.login||'', ref.filial||'', ref.nome||'')} const ent=findEntity(ref); if(!ent) return; currentDetailRef={type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''}; mascotCongrats(ent); try{renderLaranjitoNotify(); showLaranjitoOncePerAccess()}catch(e){}; document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(ent.is_terceiro || ent.type==='terceiro'){return renderTerceiroDetail(ent)} if(ent.is_crediarista || ent.type==='crediarista'){return openCrediaristaPanel(ent.login||'', ent.filial||'', ent.nome||'')} const meta=calcMeta(ent); const bonus=getBonus(meta.cfg,meta.geral); const deltaVal=Number(ent.var_pago_delta||0); const prevBase=Math.max(Math.abs(Number(ent.pago||0)-deltaVal),1); const pctFallback=(Math.abs(deltaVal)/prevBase)*100; const compPerc=(ent.var_pago_perc==null || Math.abs(Number(ent.var_pago_perc||0))<0.01)?pctFallback:Math.abs(Number(ent.var_pago_perc||0)); detailScreen.innerHTML=`${usuarioAtual && usuarioAtual.tipo!=='master' ? renderInboxBanner() : ''}${renderUpdateStrip()}<div class="back-row">${renderBackButton()}<div><h2>${ent.type==='filial'?filialLabel(ent.filial):esc(ent.nome)}</h2><div class="sub">${ent.type==='filial'?'Painel individual da filial':'Painel individual do vendedor'} · ${ent.filial}</div></div><div class="badge">${ent.type==='filial'?'🏬 Filial':'👤 Vendedor'}</div></div><div class="detail-top"><div class="glass panel"><h3>🎯 Meta do mês <span class="note">· Não acumulativo</span></h3><div class="mega-progress"><div class="ring-wrap">${renderPiggyBank(meta.geral)}</div><div><div class="metrics-grid"><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">% da filial</div><div class="v">${pct(ent.perc_filial||100)}</div></div><div class="metric"><div class="k">Configuração usada</div><div class="v">${Number(meta.cfg.grave_pct||0)}/${Number(meta.cfg.alerta_pct||0)}/${Number(meta.cfg.atencao_pct||0)}</div></div><div class="metric"><div class="k">Comparado a ontem</div><div class="v" style="font-size:16px">${renderDeltaPill(ent.var_pago_delta,compPerc)} <span>${R(Math.abs(Number(ent.var_pago_delta||0)))}</span></div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave alvo ${R(meta.grave.alvo)} · recebido ${R(meta.grave.rec)}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta alvo ${R(meta.alerta.alvo)} · recebido ${R(meta.alerta.rec)}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção alvo ${R(meta.atencao.alvo)} · recebido ${R(meta.atencao.rec)}</span></div></div></div><div class="meta-grid">${renderMetaBox('Grave','var(--red)',meta.grave)}${renderMetaBox('Alerta','var(--orange)',meta.alerta)}${renderMetaBox('Atenção','var(--yellow)',meta.atencao)}${renderMetaBox('Meta geral','var(--blue)',{perc:meta.geral,alvo:meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,rec:meta.grave.rec+meta.alerta.rec+meta.atencao.rec})}</div><div style="height:18px"></div><h3>🌊 Gráfico Geral Contas a Receber</h3>${renderSingleBars(ent,meta,true)}<div style="height:16px"></div><div class="glass panel"><h3>🏆 Bônus e premiações <span class="note">· Não acumulativo</span></h3>${renderBonusBox(meta.cfg,meta.geral)}</div></div><div>${renderSalesPanel(ent)}<div style="height:16px"></div>${renderCommissionSummary(ent)}<div style="height:16px"></div>${renderCampaignSummary(ent)}</div></div>${renderReativacaoEnt(ent)}<div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span class="acc-hint">clique para ${'abrir'}</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span class="acc-hint">clique para ${'abrir'}</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
+function openEntityCore(ref){if(ref && (ref.type==='crediarista' || ref.is_crediarista)){return openCrediaristaPanel(ref.login||'', ref.filial||'', ref.nome||'')} const ent=findEntity(ref); if(!ent) return; currentDetailRef={type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''}; mascotCongrats(ent); try{renderLaranjitoNotify(); showLaranjitoOncePerAccess()}catch(e){}; document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(ent.is_terceiro || ent.type==='terceiro'){return renderTerceiroDetail(ent)} if(ent.is_crediarista || ent.type==='crediarista'){return openCrediaristaPanel(ent.login||'', ent.filial||'', ent.nome||'')} const meta=calcMeta(ent); const bonus=getBonus(meta.cfg,meta.geral); const deltaVal=Number(ent.var_pago_delta||0); const prevBase=Math.max(Math.abs(Number(ent.pago||0)-deltaVal),1); const pctFallback=(Math.abs(deltaVal)/prevBase)*100; const compPerc=(ent.var_pago_perc==null || Math.abs(Number(ent.var_pago_perc||0))<0.01)?pctFallback:Math.abs(Number(ent.var_pago_perc||0)); detailScreen.innerHTML=`${usuarioAtual && usuarioAtual.tipo!=='master' ? renderInboxBanner() : ''}${renderUpdateStrip()}<div class="back-row">${renderBackButton()}<div><h2>${ent.type==='filial'?filialLabel(ent.filial):esc(ent.nome)}</h2><div class="sub">${ent.type==='filial'?'Painel individual da filial':'Painel individual do vendedor'} · ${ent.filial}</div></div><div class="badge">${ent.type==='filial'?'🏬 Filial':'👤 Vendedor'}</div></div><div class="detail-top"><div class="glass panel"><h3>🎯 Meta do mês <span class="note">· Não acumulativo</span></h3><div class="mega-progress"><div class="ring-wrap">${renderPiggyBank(meta.geral)}</div><div><div class="metrics-grid"><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">% da filial</div><div class="v">${pct(ent.perc_filial||100)}</div></div><div class="metric"><div class="k">Configuração usada</div><div class="v">${Number(meta.cfg.grave_pct||0)}/${Number(meta.cfg.alerta_pct||0)}/${Number(meta.cfg.atencao_pct||0)}</div></div><div class="metric"><div class="k">Comparado a ontem</div><div class="v" style="font-size:16px">${renderDeltaPill(ent.var_pago_delta,compPerc)} <span>${R(Math.abs(Number(ent.var_pago_delta||0)))}</span></div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave alvo ${R(meta.grave.alvo)} · recebido ${R(meta.grave.rec)}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta alvo ${R(meta.alerta.alvo)} · recebido ${R(meta.alerta.rec)}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção alvo ${R(meta.atencao.alvo)} · recebido ${R(meta.atencao.rec)}</span></div></div></div><div class="meta-grid">${renderMetaBox('Grave','var(--red)',meta.grave)}${renderMetaBox('Alerta','var(--orange)',meta.alerta)}${renderMetaBox('Atenção','var(--yellow)',meta.atencao)}${renderMetaBox('Meta geral','var(--blue)',{perc:meta.geral,alvo:meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,rec:meta.grave.rec+meta.alerta.rec+meta.atencao.rec})}</div><div style="height:18px"></div><h3>🌊 Gráfico Geral Contas a Receber</h3>${renderSingleBars(ent,meta,true)}<div style="height:16px"></div><div class="glass panel"><h3>🏆 Bônus e premiações <span class="note">· Não acumulativo</span></h3>${renderBonusBox(meta.cfg,meta.geral)}</div></div><div>${renderSalesPanel(ent)}<div style="height:16px"></div>${renderCommissionSummary(ent)}<div style="height:16px"></div>${renderCampaignSummary(ent)}</div></div>${renderReativacaoEnt(ent)}<div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span class="acc-hint">clique para ${'abrir'}</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span class="acc-hint">clique para ${'abrir'}</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
 function canVerComissionamento(){return usuarioAtual?.tipo==='master'}
 function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';
   const c=calcCommissionSummary(ent);
@@ -11855,6 +12161,18 @@ function renderCobrancaConfigPanel(){
 function normalizarListaTelefones(contatos){let base=[]; if(Array.isArray(contatos)) base=contatos; else if(typeof contatos==='string') base=contatos.split(/[;,/|]+/); const out=[]; const seen=new Set(); base.forEach(item=>{const num=String(item||'').replace(/\D/g,''); if(num.length>=10){const finalNum=num.startsWith('55')?num:'55'+num; if(!seen.has(finalNum)){seen.add(finalNum); out.push(finalNum);}}}); return out}
 function matchCob(r,ent=null){return cobLogsTitulo(r,ent).length>0}
 let cobExportCounter=0;
+let cobRenderCounter=0;
+const COB_DETAIL_DATASETS={};
+const COB_DETAIL_PAGES={};
+const COB_DETAIL_PAGE_SIZE=50;
+function cobDatasetHtml(id){
+  const cfg=COB_DETAIL_DATASETS[id]; if(!cfg)return '<div class="empty">Lista indisponível.</div>';
+  const total=cfg.arr.length; const max=Math.max(1,Math.ceil(total/COB_DETAIL_PAGE_SIZE)); let page=Number(COB_DETAIL_PAGES[id]||1); if(page<1)page=1;if(page>max)page=max;COB_DETAIL_PAGES[id]=page;
+  const ini=(page-1)*COB_DETAIL_PAGE_SIZE; const rows=cfg.arr.slice(ini,ini+COB_DETAIL_PAGE_SIZE);
+  const pager=total>COB_DETAIL_PAGE_SIZE?`<div class="log-pager"><div><strong>${total}</strong> título(s) · mostrando ${ini+1}-${Math.min(ini+COB_DETAIL_PAGE_SIZE,total)} · página ${page}/${max}</div><div style="display:flex;gap:8px"><button class="btn soft" ${page<=1?'disabled':''} onclick="cobChangePage('${id}',-1)">⬅️ Anterior</button><button class="btn soft" ${page>=max?'disabled':''} onclick="cobChangePage('${id}',1)">Próxima ➡️</button></div></div>`:'';
+  return total?pager+rows.map(r=>cfg.renderOne(r,cfg.showFaixa)).join('')+pager:'<div class="empty">Nada nesta aba.</div>';
+}
+function cobChangePage(id,delta){COB_DETAIL_PAGES[id]=Number(COB_DETAIL_PAGES[id]||1)+Number(delta||0);const host=document.getElementById(id);if(host)host.innerHTML=cobDatasetHtml(id);}
 function renderCobrancasEnt(ent){
   const src=getClientesEnt(ent);
   const cobradosHoje=getCobradosHoje(ent);
@@ -11874,7 +12192,8 @@ function renderCobrancasEnt(ent){
     return st.deve_voltar; // volta somente depois de 3 dias sem pagamento
   }
 
-  const renderRows=(arr,showFaixa)=>!arr.length?'<div class="empty">Nada nesta aba.</div>':arr.slice(0,150).map(raw=>{
+  const renderBaseId='cobds_'+(++cobRenderCounter);
+  const renderOne=(raw,showFaixa)=>{
     const r=raw._cob_status?raw:decorateRow(raw);
     const st=r._cob_status||{};
     const cobrado=Boolean(st.last);
@@ -11891,7 +12210,13 @@ function renderCobrancasEnt(ent){
       ? `<button class="btn soft" title="Só volta para cobrança após 3 dias sem pagamento" disabled>⏳ Aguardando 3 dias</button>`
       : `<button class="btn wa" onclick='abrirWhats(${JSON.stringify(r)}, ${JSON.stringify({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''})})'>💬 ${retry?'Cobrar novamente':'WhatsApp'}</button>`;
     return `<div class="row-item ${retry?'retry-due':''}"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')} ${r.novo?'<span class="mini-chip" style="margin-left:6px;background:#eef7ff;color:#1e3a8a;border-color:#93c5fd">Novo hoje</span>':''} ${statusChip}</div>${info}${r.cpf_cnpj?`<div class="small muted">🪪 CPF/CNPJ: <strong>${esc(r.cpf_cnpj)}</strong></div>`:''}<div class="small muted">✍️ Avalista: ${esc((r.avalista && String(r.avalista).toLowerCase()!=='nan')?r.avalista:'Sem Aval')}</div>${(r.avalista && String(r.avalista).toLowerCase()!=='nan')?'<div class="small avalista-alert">⚠️ Atenção, lembre de cobrar o AVALISTA</div>':''}<div class="small muted">🔒 Restrição crédito: ${/sem restr/i.test(String(r.restricao||''))?`<span class="restr-ok">${esc(r.restricao||'Sem Restrição')}</span>`:esc(r.restricao||'Sem informação')}</div><div class="small muted">👤 ${esc(r.vendedor||'')}</div><div class="small muted">☎️ ${esc(Array.isArray(r.telefones)?r.telefones.join(', '):(r.contato||''))}</div></div><div><strong>${esc(r.titulo||'')}</strong><div class="small muted">Título</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${R(r.pendente||0)}</strong><div class="small muted">Pendente</div></div><div>${showFaixa?`<div class="small muted">${esc(r.faixa_label||'')}</div>`:''}${btn}</div></div></div>`;
-  }).join('');
+  };
+  const renderRows=(arr,showFaixa,datasetName)=>{
+    const id=renderBaseId+'_'+String(datasetName||'lista').replace(/[^a-z0-9_]+/gi,'_');
+    COB_DETAIL_DATASETS[id]={arr:Array.isArray(arr)?arr:[],showFaixa:!!showFaixa,renderOne};
+    if(COB_DETAIL_PAGES[id]==null)COB_DETAIL_PAGES[id]=1;
+    return `<div id="${id}">${cobDatasetHtml(id)}</div>`;
+  };
 
   const faixas=['grave','alerta','atencao'];
   const tabs=`<div class="tabs" style="justify-content:flex-start;margin:0 0 12px"><button class="tab active" data-cobtab="geral" onclick="switchCobTab(this,'geral')">Para cobrar</button><button class="tab" data-cobtab="novos" onclick="switchCobTab(this,'novos')">Novos Hoje</button><button class="tab" data-cobtab="cobrados" onclick="switchCobTab(this,'cobrados')">Cobrados Hoje</button><button class="tab" data-cobtab="aguardando" onclick="switchCobTab(this,'aguardando')">Aguardando 3 dias</button></div>`;
@@ -11902,7 +12227,7 @@ function renderCobrancasEnt(ent){
     aguardando.push(...arr.filter(r=>r._cob_status?.bloqueado));
     const vis=arr.filter(shouldShowInGeral);
     const label=fx==='grave'?'Grave':fx==='alerta'?'Alerta':'Atenção';
-    geral+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${vis.length} títulos · ${R(vis.reduce((a,b)=>a+Number(b.pendente||0),0))}</span></div><div class="tableish">${renderRows(vis,false)}</div></div>`;
+    geral+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${vis.length} títulos · ${R(vis.reduce((a,b)=>a+Number(b.pendente||0),0))}</span></div><div class="tableish">${renderRows(vis,false,fx)}</div></div>`;
   });
 
   const cobradosRows=(cobradosHoje||[]).map(x=>{
@@ -11917,7 +12242,7 @@ function renderCobrancasEnt(ent){
   aguardando.forEach(r=>exportRows.push(mdlCobExportRow(r,'Aguardando 3 dias')));
   mdlRegisterExport(exportId, 'Relatorio de cobrancas - '+(ent?.nome||ent?.filial||'usuario'), exportRows);
 
-  return `<div style="display:flex;justify-content:flex-end;margin:0 0 10px">${mdlExportButtons(exportId)}</div>${tabs}<div class="cob-pane" data-cobpane="geral">${geral}</div><div class="cob-pane hidden" data-cobpane="novos">${renderRows(allHoje.map(r=>decorateRow({...r,faixa_label:r.faixa||''})).filter(shouldShowInGeral),true)}</div><div class="cob-pane hidden" data-cobpane="cobrados">${renderRows(cobradosRows,true)}</div><div class="cob-pane hidden" data-cobpane="aguardando">${renderRows(aguardando,true)}</div>`;
+  return `<div style="display:flex;justify-content:flex-end;margin:0 0 10px">${mdlExportButtons(exportId)}</div>${tabs}<div class="cob-pane" data-cobpane="geral">${geral}</div><div class="cob-pane hidden" data-cobpane="novos">${renderRows(allHoje.map(r=>decorateRow({...r,faixa_label:r.faixa||''})).filter(shouldShowInGeral),true,'novos')}</div><div class="cob-pane hidden" data-cobpane="cobrados">${renderRows(cobradosRows,true,'cobrados')}</div><div class="cob-pane hidden" data-cobpane="aguardando">${renderRows(aguardando,true,'aguardando')}</div>`;
 }
 function switchCobTab(btn,name){const box=btn.closest('.acc-body'); box.querySelectorAll('[data-cobtab]').forEach(b=>b.classList.toggle('active',b===btn)); box.querySelectorAll('[data-cobpane]').forEach(p=>p.classList.toggle('hidden',p.dataset.cobpane!==name));}
 function abrirWhats(reg,entRef){const nums=normalizarListaTelefones((reg.telefones&&reg.telefones.length)?reg.telefones:reg.contato); if(!nums.length){toast('Cliente sem telefone válido.'); return} reg._cob_status=cobStatusTitulo(reg,entRef); phoneContext={reg,entRef}; if(nums.length===1){enviarWhats(nums[0]); return} const phoneList=document.getElementById('phoneList'); phoneList.innerHTML=nums.map(n=>`<button class="btn soft" style="width:100%" onclick="enviarWhats('${n}')">${n}</button>`).join(''); document.getElementById('phoneModal').classList.add('show')}
@@ -13610,7 +13935,7 @@ async function fazerLogin(){
 }
 async function abrirApp(){
   try{document.body.classList.toggle('master-view', String(usuarioAtual?.tipo||'').toLowerCase()==='master'); document.body.classList.toggle('diretor-view', String(usuarioAtual?.tipo||'').toLowerCase()==='diretor');}catch(e){}
- loginScreen.classList.add('hidden'); app.classList.remove('hidden'); if(usuarioAtual.tipo==='master'){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); const isDiretor=usuarioAtual?.roleLabel==='Diretor Comercial'; userBadge.textContent=isDiretor?'👑 Diretor Comercial':'👑 Master'; masterTabs.classList.remove('hidden'); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{const t=btn.dataset.tab; btn.classList.toggle('hidden', isDiretor && ['cobrancas','senhas'].includes(t));}); setMainTab('inicio')} else if(usuarioAtual.is_viewer){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); userBadge.textContent='📺 Painel'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); listSection.classList.add('hidden'); metaSection.classList.add('hidden'); logSection.classList.add('hidden'); avisosSection.classList.add('hidden'); senhasSection.classList.add('hidden'); histSection.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden'); mainTab='inicio'; renderTopMural(); renderInicioTab();} else {document.getElementById('kpis').classList.add('hidden'); userBadge.textContent=usuarioAtual.is_terceiro?`🤝 ${usuarioAtual.nome}`:(usuarioAtual.is_crediarista?`🧾 ${usuarioAtual.nome}`:(usuarioAtual.is_gerente?`🏬 ${usuarioAtual.filial}`:`👤 ${usuarioAtual.nome}`)); masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(usuarioAtual.is_terceiro){openThirdChargePanel()} else if(usuarioAtual.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login}) }
+ loginScreen.classList.add('hidden'); app.classList.remove('hidden'); if(usuarioAtual.tipo==='master'){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); const isDiretor=usuarioAtual?.roleLabel==='Diretor Comercial'; userBadge.textContent=isDiretor?'👑 Diretor Comercial':'👑 Master'; masterTabs.classList.remove('hidden'); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{const t=btn.dataset.tab; btn.classList.toggle('hidden', isDiretor && ['cobrancas','senhas','whatsapp_master'].includes(t));}); setMainTab('inicio')} else if(usuarioAtual.is_viewer){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); userBadge.textContent='📺 Painel'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); listSection.classList.add('hidden'); metaSection.classList.add('hidden'); logSection.classList.add('hidden'); avisosSection.classList.add('hidden'); senhasSection.classList.add('hidden'); histSection.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden'); mainTab='inicio'; renderTopMural(); renderInicioTab();} else {document.getElementById('kpis').classList.add('hidden'); userBadge.textContent=usuarioAtual.is_terceiro?`🤝 ${usuarioAtual.nome}`:(usuarioAtual.is_crediarista?`🧾 ${usuarioAtual.nome}`:(usuarioAtual.is_gerente?`🏬 ${usuarioAtual.filial}`:`👤 ${usuarioAtual.nome}`)); masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(usuarioAtual.is_terceiro){openThirdChargePanel()} else if(usuarioAtual.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login}) }
   setTimeout(()=>{tentarAtualizarOnlineDepoisLogin();}, 80);
 }
 function logout(){clearSession(); location.reload()}
@@ -19085,7 +19410,7 @@ Preparamos condições especiais para você comemorar com a gente.
 
 </script>
 <script>
-try{window.DASHBOARD_BUILD_VERSION='V10.44';console.log('[V10.44 CPF/CNPJ] ativo: relatórios principal/quitados, rateio por documento, conciliação e exibição no painel');}catch(e){}
+try{window.DASHBOARD_BUILD_VERSION='V10.48';console.log('[V10.48] modo leve real, relatório estável e aba WhatsApp Master ativos');}catch(e){}
 </script>
 
 </body>
@@ -19102,6 +19427,7 @@ repls = {
     '__JS_CLIENTES_VEND__': js_clientes_vend,
     '__JS_CLIENTES_TERCEIRO__': js_clientes_terceiro,
     '__JS_CLIENTES_CREDIARISTA__': js_clientes_crediarista,
+    '__JS_DETALHES_MANIFEST__': js_detalhes_manifest,
     '__JS_RECEBIMENTOS__': js_recebimentos,
     '__JS_RECEBIMENTOS_TERCEIRO__': js_recebimentos_terceiro,
     '__JS_RECEBIMENTOS_CREDIARISTA__': js_recebimentos_crediarista,
@@ -19995,6 +20321,17 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
     # 1) Primeiro recupera o dashboard online. Sobe em arquivo temporário e só troca no final.
     _ftp_upload_file_v1019(html_path, 'dashboard_vendedores.html', atomic=True, label='dashboard_vendedores.html (HTML atômico)')
 
+    # V10.48: publica as carteiras detalhadas separadas. O HTML inicial permanece leve.
+    if DASHBOARD_MODO_LEVE:
+        try:
+            _ok_det_v1048 = 0
+            for _local_det, _name_det in DETALHES_FILES_V1048:
+                if _ftp_upload_file_to_dir_v1020(_local_det, 'clientes_detalhes', _name_det, atomic=True, label=f'clientes_detalhes/{_name_det}'):
+                    _ok_det_v1048 += 1
+            print(f'🪶 FTP V10.48: {_ok_det_v1048}/{len(DETALHES_FILES_V1048)} arquivos de carteira sob demanda enviados.')
+        except Exception as _e_det_v1048:
+            print(f'⚠️ V10.48: falha publicando carteiras sob demanda: {_e_det_v1048}')
+
     # 2) APIs pequenas e essenciais.
     _ftp_upload_bytes_v1019('cobrancas_api.php', COBRANCAS_API_PHP.encode('utf-8'), label='cobrancas_api.php')
     _ftp_upload_bytes_v1019('config_meta_api.php', CONFIG_META_API_PHP.encode('utf-8'), label='config_meta_api.php')
@@ -20049,6 +20386,15 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
             _ftp_upload_file_v1019(RECEBIMENTOS_MENSAL_PATH, 'historico_recebimentos_mensais.json', label='historico_recebimentos_mensais.json')
     except Exception as e_hrm_ftp:
         print(f'⚠️ Erro enviando historico_recebimentos_mensais.json: {e_hrm_ftp}')
+
+    # V10.48: mantém o painel WhatsApp Master atualizado também durante a execução do MAIN.
+    try:
+        for _wa_name_v1048 in ('whatsapp_master_preventiva_status.json','whatsapp_master_preventiva_historico.json','whatsapp_master_preventiva_preview.json'):
+            _wa_path_v1048 = os.path.join(pasta, _wa_name_v1048)
+            if os.path.exists(_wa_path_v1048):
+                _ftp_upload_file_v1019(_wa_path_v1048, _wa_name_v1048, atomic=True, label=_wa_name_v1048)
+    except Exception as _e_wa_ftp_v1048:
+        print(f'⚠️ V10.48: não consegui publicar status WhatsApp Master: {_e_wa_ftp_v1048}')
 
     # 4) Listas pesadas: só sobe quando a execução realmente baixou/gerou ou quando há dados locais válidos.
     try:

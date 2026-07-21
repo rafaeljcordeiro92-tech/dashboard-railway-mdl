@@ -1,4 +1,4 @@
-# VERSAO: RAILWAY_SCHEDULER_MDL_V47_LEVE_PREVENTIVA_MASTER
+# VERSAO: RAILWAY_SCHEDULER_MDL_V48_LEVE_REAL_WHATSAPP_MASTER
 import json
 import os
 import sys
@@ -59,6 +59,9 @@ SCHED_LOG = os.path.join(LOG_DIR, 'scheduler.log')
 MAIN_LOG = os.path.join(LOG_DIR, 'dashboard_completo_cobranca.log')
 SALES_LOG = os.path.join(LOG_DIR, 'vendas_unificadas.log')
 PREVENTIVA_LOG = os.path.join(LOG_DIR, 'whatsapp_master_preventiva.log')
+PREVENTIVA_STATUS = os.path.join(BASE_DIR, 'whatsapp_master_preventiva_status.json')
+PREVENTIVA_PREVIEW = os.path.join(BASE_DIR, 'whatsapp_master_preventiva_preview.json')
+PREVENTIVA_HISTORY = os.path.join(BASE_DIR, 'whatsapp_master_preventiva_historico.json')
 STATUS_PATH = os.path.join(LOG_DIR, 'monitor_status.json')
 
 SALES_CMD = [sys.executable, os.path.join(BASE_DIR, 'dashboard_sales_worker_headless.py')]
@@ -76,7 +79,7 @@ _force_main_boot = True
 _force_sales_after_main = False
 
 STATE = {
-    'version': 'V47_LEVE_PREVENTIVA_MASTER',
+    'version': 'V48_LEVE_REAL_WHATSAPP_MASTER',
     'started_at': None,
     'updated_at': None,
     'scheduler': 'starting',
@@ -333,6 +336,30 @@ def force_summary_now():
     threading.Thread(target=_force_summary_worker, daemon=True).start()
     return True, 'Resumo Telegram enfileirado. Confira o grupo e o log em alguns segundos.'
 
+
+def _load_json_safe(path, default=None):
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {} if default is None else default
+
+
+def preventiva_status_payload():
+    preview = _load_json_safe(PREVENTIVA_STATUS, None) or _load_json_safe(PREVENTIVA_PREVIEW, {})
+    return {
+        'ok': True,
+        'updated_at': iso_now(),
+        'job': dict(STATE.get('jobs', {}).get('whatsapp_master_preventiva', {})),
+        'preview': preview,
+        'service': preview.get('service') if isinstance(preview, dict) else {},
+        'history_available': os.path.exists(PREVENTIVA_HISTORY),
+    }
+
+
+def preventiva_history_payload():
+    return _load_json_safe(PREVENTIVA_HISTORY, {'version':'V10.48','runs':[]})
+
 def force_run(kind):
     global _sales_proc, _cobranca_proc, _preventiva_proc, _force_sales_after_main
     if kind == 'preventiva':
@@ -356,9 +383,20 @@ class Handler(BaseHTTPRequestHandler):
         if isinstance(body, (dict, list)):
             body = json.dumps(body, ensure_ascii=False, indent=2); ctype='application/json; charset=utf-8'
         data = body.encode('utf-8')
-        self.send_response(code); self.send_header('Content-Type', ctype); self.send_header('Content-Length', str(len(data))); self.end_headers(); self.wfile.write(data)
+        self.send_response(code)
+        self.send_header('Content-Type', ctype)
+        self.send_header('Content-Length', str(len(data)))
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers(); self.wfile.write(data)
+    def do_OPTIONS(self):
+        self._send(204, '', 'text/plain; charset=utf-8')
     def do_GET(self):
-        if self.path.startswith('/api/status'): self._send(200, STATE)
+        if self.path.startswith('/api/preventiva/status'): self._send(200, preventiva_status_payload())
+        elif self.path.startswith('/api/preventiva/history'): self._send(200, preventiva_history_payload())
+        elif self.path.startswith('/api/status'): self._send(200, STATE)
         elif self.path.startswith('/api/logs'):
             which='scheduler'
             if '?' in self.path:
@@ -391,7 +429,7 @@ def start_http_panel():
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log('VERSAO V47: modo leve + WhatsApp Master preventiva/cobrança dry-run')
+log('VERSAO V48: modo leve real + relatório estável + painel WhatsApp Master')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
