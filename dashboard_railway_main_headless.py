@@ -34,10 +34,10 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.49"
-DASHBOARD_BUILD_TAG = "modo_leve_cred_logout_recebimentos_fix"
+DASHBOARD_BUILD_VERSION = "V10.50"
+DASHBOARD_BUILD_TAG = "comissao_crediarista_fonte_unica_oficial"
 
-# V10.49: modo leve REAL com resumos, recebimentos conciliados e sessão corrigida.
+# V10.50: modo leve REAL com fonte oficial única para comissão/recebimentos das crediaristas.
 # Mantém o dashboard principal funcionando, mas evita embutir bases pesadas no HTML
 # que travavam navegador antigo/fraco. Para voltar ao modo completo, use DASHBOARD_MODO_LEVE=0.
 DASHBOARD_MODO_LEVE = os.getenv("DASHBOARD_MODO_LEVE", "1") != "0"
@@ -8748,9 +8748,30 @@ if DASHBOARD_MODO_LEVE:
 else:
     js_quitados_180 = json.dumps(_quitados_full_v1049, ensure_ascii=False)
 
+# V10.50: o modo leve não pode zerar a fonte de cobranças usada na comissão.
+# Mantém no HTML uma versão compacta, confirmada no FTP/WAL, suficiente para
+# conciliar os quitados e calcular exatamente a mesma comissão no Master e no login.
 try:
-    js_cobrancas_logs_boot = '[]' if DASHBOARD_MODO_LEVE else json.dumps(_ftp_cobrancas_logs_v1043([]), ensure_ascii=False)
-except Exception:
+    _cobrancas_full_v1050 = _ftp_cobrancas_logs_v1043([])
+    if DASHBOARD_MODO_LEVE:
+        _cobrancas_keys_v1050 = (
+            'id','cobranca_key','cobranca_key_doc','cliente_key','cliente_key_legacy',
+            'cliente','nome','cpf_cnpj','cpf_cnpj_normalizado','titulo','parcela','vencimento',
+            'telefone','telefones','whatsapp','fone','celular','contato',
+            'usuario','login','destino_nome','responsavel','owner_key','usuario_key','destino_login',
+            'filial','destino_tipo','tipo_usuario','acao','tipo','categoria',
+            'server_time','criado_em','created_at','data','server_date','dt'
+        )
+        _cobrancas_lite_v1050 = [
+            {k: item.get(k) for k in _cobrancas_keys_v1050 if item.get(k) not in (None, '')}
+            for item in (_cobrancas_full_v1050 or []) if isinstance(item, dict)
+        ]
+        js_cobrancas_logs_boot = json.dumps(_cobrancas_lite_v1050, ensure_ascii=False, separators=(',', ':'))
+        print(f"🧾 V10.50 fonte oficial leve: {len(_cobrancas_lite_v1050)} cobranças compactas embutidas para comissão idêntica Master/usuário.")
+    else:
+        js_cobrancas_logs_boot = json.dumps(_cobrancas_full_v1050, ensure_ascii=False)
+except Exception as _e_cob_boot_v1050:
+    print(f"⚠️ V10.50 não conseguiu preparar fonte oficial compacta de cobranças: {_e_cob_boot_v1050}")
     js_cobrancas_logs_boot = '[]'
 js_hist_recebimentos_mensais = json.dumps(HIST_RECEBIMENTOS_MENSAIS, ensure_ascii=False)
 js_clientes_sem_movimento = json.dumps(clientes_sem_movimento_js, ensure_ascii=False)
@@ -10136,9 +10157,8 @@ async function tentarAtualizarOnlineDepoisLogin(){
         else renderList();
         if(isUltimoDiaMes23()) setTimeout(()=>salvarSnapshotComissionamentoMensal(true),900);
       }else if(!detailScreen.classList.contains('hidden') && currentDetailRef){
-        // V10.49: após carregar COB_LOGS + quitados compactos, recalcula recebimentos e comissão
-        // também para crediaristas, vendedores, gerentes e terceiro.
-        openEntity(currentDetailRef);
+        // V10.50: após carregar a fonte oficial, aguarda o mesmo recálculo usado pelo Master.
+        await openEntity(currentDetailRef);
       }
     }catch(e){}
   }catch(e){console.log('Falha atualização online pós-login',e);}
@@ -10147,7 +10167,11 @@ async function tentarAtualizarOnlineDepoisLogin(){
 let usuarioAtual=null;
 let mainTab='vendedores';
 let filtroFilial='TODAS';
-let COB_LOGS=__JS_COB_LOGS_BOOT__||[]; try{window.COB_LOGS=COB_LOGS}catch(e){}
+// V10.50: fonte oficial é o snapshot FTP/WAL embutido ou o retorno confirmado da API.
+// Cache/localStorage continua servindo à interface, mas nunca define comissão.
+let COB_LOGS_OFICIAIS=Array.isArray(__JS_COB_LOGS_BOOT__)?[...__JS_COB_LOGS_BOOT__]:[];
+let COB_LOGS=[...COB_LOGS_OFICIAIS];
+try{window.COB_LOGS_OFICIAIS=COB_LOGS_OFICIAIS;window.COB_LOGS=COB_LOGS}catch(e){}
 let phoneContext=null;
 let MSGS=[];
 let currentDetailRef=null;
@@ -11820,7 +11844,10 @@ function mesmoClienteJs(a,b){
 }
 function getQuitadosConciliados(){
   const out={};
-  const logs=(COB_LOGS||[]).slice().filter(l=>String(l.acao||'')==='whatsapp' || l.telefone || l.titulo || l.parcela);
+  // V10.50: conciliação usa somente registros oficiais confirmados no servidor.
+  // Isso impede que caches diferentes de cada navegador mudem recebimentos/comissão.
+  const fonteOficial=(Array.isArray(COB_LOGS_OFICIAIS)&&COB_LOGS_OFICIAIS.length)?COB_LOGS_OFICIAIS:(COB_LOGS||[]).filter(x=>!x?._local);
+  const logs=(fonteOficial||[]).slice().filter(l=>String(l.acao||'')==='whatsapp' || l.telefone || l.titulo || l.parcela);
   const byTitulo={};
   logs.forEach(l=>{
     const k=`${String(l.titulo||'').trim()}|${String(l.parcela||'').trim()}`;
@@ -12404,39 +12431,45 @@ function mergeLocalCobLogs(){
   }catch(e){console.warn('mergeLocalCobLogs',e)}
 }
 async function carregarCobrancasOnline(){
+  let apiConfirmada=false;
   try{
     const r=await fetchComTimeout(API_COB+'?_='+Date.now(),{},5000);
     const txt=await r.text(); let j={ok:false};
     try{j=JSON.parse(txt);}catch(e){}
     if(j.ok && Array.isArray(j.data)){
-      COB_LOGS=j.data;
-      try{window.COB_LOGS=COB_LOGS}catch(e){}
+      apiConfirmada=true;
+      COB_LOGS_OFICIAIS=j.data.filter(x=>x && !x._local);
+      COB_LOGS=[...COB_LOGS_OFICIAIS];
+      try{window.COB_LOGS_OFICIAIS=COB_LOGS_OFICIAIS;window.COB_LOGS=COB_LOGS}catch(e){}
+      // Registros locais podem aparecer na interface, mas não entram na comissão até confirmação da API.
       mergeLocalCobLogs();
       try{window.COB_LOGS=COB_LOGS}catch(e){}
       try{localStorage.setItem('mdl_cobrancas_log_cache', JSON.stringify(COB_LOGS));}catch(e){}
       if(Number(j.recovered||0)>0 || Number(j.append_count||0)>0){
-        console.log('[V10.44 histórico cobranças]',{
-          total:COB_LOGS.length,
+        console.log('[V10.50 histórico oficial cobranças]',{
+          total_oficial:COB_LOGS_OFICIAIS.length,
+          total_interface:COB_LOGS.length,
           principal:Number(j.main_count||0),
           append:Number(j.append_count||0),
           recuperados:Number(j.recovered||0)
         });
       }
     }else{
-      const cache=localStorage.getItem('mdl_cobrancas_log_cache');
-      if(cache) COB_LOGS=JSON.parse(cache)||COB_LOGS||[];
+      // Falha da API: mantém o mesmo snapshot oficial embutido para todos os usuários.
+      COB_LOGS=[...(COB_LOGS_OFICIAIS||[])];
+      mergeLocalCobLogs();
+      try{window.COB_LOGS_OFICIAIS=COB_LOGS_OFICIAIS;window.COB_LOGS=COB_LOGS}catch(e){}
       if(txt) console.log('cobrancas_api retorno:', txt);
     }
   }catch(e){
     console.log(e);
-    try{
-      const cache=localStorage.getItem('mdl_cobrancas_log_cache');
-      if(cache) COB_LOGS=JSON.parse(cache)||COB_LOGS||[];
-    }catch(_e){}
+    COB_LOGS=[...(COB_LOGS_OFICIAIS||[])];
+    mergeLocalCobLogs();
+    try{window.COB_LOGS_OFICIAIS=COB_LOGS_OFICIAIS;window.COB_LOGS=COB_LOGS}catch(_e){}
   }
-  mergeLocalCobLogs();
   RECEBIMENTOS_CONCILIADOS=getQuitadosConciliados();
-  console.log('🔗 Quitados conciliados:', RECEBIMENTOS_CONCILIADOS);
+  console.log('🔗 V10.50 quitados conciliados pela fonte oficial:', {apiConfirmada,totalLogsOficiais:(COB_LOGS_OFICIAIS||[]).length,recebimentos:RECEBIMENTOS_CONCILIADOS});
+  return {ok:true,apiConfirmada,totalOficial:(COB_LOGS_OFICIAIS||[]).length};
 }
 
 async function removerCobranca(id,cliente='',titulo='',parcela=''){if(!confirm('Remover esta cobrança do histórico?')) return; try{const r=await fetch(API_COB,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete',id,cliente,titulo,parcela})}); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} if(j.ok){toast('Cobrança removida.','success'); await carregarCobrancasOnline(); renderLogsTab(); renderList(); if(currentDetailRef) openEntity(currentDetailRef);}else{console.log('Falha remover cobrança:', txt); toast('Não consegui remover.')}}catch(e){console.log(e); toast('Falha ao remover cobrança.')}}
@@ -17308,7 +17341,9 @@ Preparamos condições especiais para você comemorar com a gente.
       const byFaixa={atencao:{pct:0,cobrado:0,recebido:0,comissao:0},alerta:{pct:0,cobrado:0,recebido:0,comissao:0},grave:{pct:0,cobrado:0,recebido:0,comissao:0}};
       policyOk.forEach(r=>{const fx=String(r.faixa||'').toLowerCase(); if(byFaixa[fx]) byFaixa[fx].pct=Number(String(r.pct||0).replace(',','.'))||0});
       const mesAtual=dateOnlyISO(new Date()).slice(0,7);
-      const logsUsuario=(COB_LOGS||[]).filter(x=>_v1017IsCobrancaLog(x)&&_v1017UserMatchesLog(x,ent,isCred));
+      // V10.50: comissão sempre usa a fonte oficial comum a Master e usuário.
+      const _logsComissaoV1050=(Array.isArray(COB_LOGS_OFICIAIS)&&COB_LOGS_OFICIAIS.length)?COB_LOGS_OFICIAIS:(COB_LOGS||[]).filter(x=>!x?._local);
+      const logsUsuario=(_logsComissaoV1050||[]).filter(x=>_v1017IsCobrancaLog(x)&&_v1017UserMatchesLog(x,ent,isCred));
       const srcCli=isCred?(CLIENTES_CREDIARISTA?.[String(ent.login||'').toLowerCase()]||{grave:[],alerta:[],atencao:[]}):(CLIENTES_TERCEIRO||{grave:[],alerta:[],atencao:[]});
       const srcRec=getRecebimentos(ent)||{grave:[],alerta:[],atencao:[]};
       function temCliqueAntesPagamento(row, payISO){
@@ -19447,7 +19482,7 @@ Preparamos condições especiais para você comemorar com a gente.
 
 </script>
 <script>
-try{window.DASHBOARD_BUILD_VERSION='V10.49';console.log('[V10.49] crediaristas, recebimentos/comissões e logout corrigidos');}catch(e){}
+try{window.DASHBOARD_BUILD_VERSION='V10.50';console.log('[V10.50] comissão crediarista usa fonte oficial única no Master e no login');}catch(e){}
 </script>
 
 </body>
