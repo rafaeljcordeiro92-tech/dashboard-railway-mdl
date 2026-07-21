@@ -1,0 +1,41 @@
+PACOTE MDL COB+VENDAS V10.47 - MODO LEVE + WHATSAPP MASTER PREVENTIVA
+
+Arquivos:
+- dashboard_railway_main_headless.py
+- railway_scheduler_headless.py
+- whatsapp_master_preventiva_worker.py
+
+Objetivo 1 - deixar dashboard mais leve:
+- DASHBOARD_MODO_LEVE=1 por padrão.
+- Reduz dados pesados embutidos no HTML.
+- Limita histórico em DASHBOARD_HIST_MAX=200.
+- Não embute quitados 180d/logs pesados no HTML no modo leve.
+- Remove animações/transições pesadas via CSS.
+
+Para voltar modo completo:
+DASHBOARD_MODO_LEVE=0
+
+Objetivo 2 - preparar WhatsApp Master preventiva/cobrança:
+- Regras: D-5, D-1, D0, D+1, D+3, D+7, D+10, D+14.
+- D+15 ou mais no CPF/CNPJ bloqueia automático.
+- DRY_RUN por padrão: não envia cliente real.
+- Gera whatsapp_master_preventiva_preview.json.
+- Log: monitor_logs/whatsapp_master_preventiva.log.
+
+Variáveis seguras iniciais:
+WHATSAPP_MASTER_PREVENTIVA_ENABLED=0
+WHATSAPP_MASTER_PREVENTIVA_DRY_RUN=1
+DASHBOARD_MODO_LEVE=1
+DASHBOARD_HIST_MAX=200
+
+Quando for testar com arquivo manual:
+WHATSAPP_MASTER_PREVENTIVA_INPUT_FILE=/caminho/arquivo.xls
+
+Quando liberar envio real, usar só depois de validar preview:
+WHATSAPP_MASTER_PREVENTIVA_ENABLED=1
+WHATSAPP_MASTER_PREVENTIVA_DRY_RUN=0
+WHATSAPP_MASTER_INTERNAL_TOKEN=<novo token>
+WHATSAPP_MASTER_BASE_URL=https://mdl-whatsapp-ia-f1-piloto-production.up.railway.app
+
+IMPORTANTE:
+Este pacote ainda não dispara cobrança automática em massa por padrão. Ele prepara o painel, logs e preview. O relatório atual 15-90 dias do dashboard humano continua separado.

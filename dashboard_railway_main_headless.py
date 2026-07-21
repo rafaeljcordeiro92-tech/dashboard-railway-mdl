@@ -34,8 +34,14 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.46"
-DASHBOARD_BUILD_TAG = "rateio_nome_exibicao_data_entrada_fix"
+DASHBOARD_BUILD_VERSION = "V10.47"
+DASHBOARD_BUILD_TAG = "modo_leve_pc_fraco_preventiva_base"
+
+# V10.47: modo leve para computadores fracos das lojas.
+# Mantém o dashboard principal funcionando, mas evita embutir bases pesadas no HTML
+# que travavam navegador antigo/fraco. Para voltar ao modo completo, use DASHBOARD_MODO_LEVE=0.
+DASHBOARD_MODO_LEVE = os.getenv("DASHBOARD_MODO_LEVE", "1") != "0"
+DASHBOARD_HIST_MAX = int(os.getenv("DASHBOARD_HIST_MAX", "200"))
 
 def now_brasilia():
     return datetime.now(APP_TZ)
@@ -8533,10 +8539,23 @@ js_clientes_crediarista = json.dumps(clientes_crediarista_js, ensure_ascii=False
 js_recebimentos_crediarista = json.dumps(recebimentos_crediarista_js, ensure_ascii=False)
 js_crediaristas_map = json.dumps(CREDIARISTAS_CONFIG, ensure_ascii=False)
 js_destaque = json.dumps(destaque_semana or {}, ensure_ascii=False)
-js_hist_dash = json.dumps(hist_dash, ensure_ascii=False)
-js_quitados_180 = json.dumps((quitados_180_info.get('dados') or {}).get('quitados', []), ensure_ascii=False)
+# V10.47 MODO LEVE:
+# - histórico limitado para reduzir processamento no navegador;
+# - quitados 180d e logs de cobrança não são embutidos no HTML no modo leve;
+# - informações completas continuam nos arquivos/APIs próprios quando disponíveis.
 try:
-    js_cobrancas_logs_boot = json.dumps(_ftp_cobrancas_logs_v1043([]), ensure_ascii=False)
+    if DASHBOARD_MODO_LEVE and isinstance(hist_dash, list):
+        hist_dash = hist_dash[-DASHBOARD_HIST_MAX:]
+except Exception:
+    pass
+
+js_hist_dash = json.dumps(hist_dash, ensure_ascii=False)
+if DASHBOARD_MODO_LEVE:
+    js_quitados_180 = '[]'
+else:
+    js_quitados_180 = json.dumps((quitados_180_info.get('dados') or {}).get('quitados', []), ensure_ascii=False)
+try:
+    js_cobrancas_logs_boot = '[]' if DASHBOARD_MODO_LEVE else json.dumps(_ftp_cobrancas_logs_v1043([]), ensure_ascii=False)
 except Exception:
     js_cobrancas_logs_boot = '[]'
 js_hist_recebimentos_mensais = json.dumps(HIST_RECEBIMENTOS_MENSAIS, ensure_ascii=False)
@@ -9579,9 +9598,9 @@ body.inicio-view .kpi .value{font-size:21px!important}
   .kpi-card .v,.metric .v{font-size:18px!important}
 }
 
-</style>
+.mdl-light-mode *{animation:none!important;transition:none!important}.mdl-light-mode .glass,.mdl-light-mode .card,.mdl-light-mode .panel{box-shadow:none!important}</style>
 </head>
-<body>
+<body class="mdl-light-mode">
 <div id="loginScreen" class="login-wrap">
   <div class="glass login-card">
     <img class="logo-big" src="__LOGO__" alt="logo">
@@ -19121,7 +19140,7 @@ repls = {
     '__DASH_VERSION_LABEL__': DASHBOARD_BUILD_VERSION,
     '__JS_DASHBOARD_BUILD_VERSION__': json.dumps(DASHBOARD_BUILD_VERSION, ensure_ascii=False),
     '__JS_DASHBOARD_BUILD_TAG__': json.dumps(DASHBOARD_BUILD_TAG, ensure_ascii=False),
-    '__DASHBOARD_UPDATED_AT_LABEL__': json.dumps(now_brasilia().strftime('%d/%m/%Y %H:%M:%S'), ensure_ascii=False),
+    '__DASHBOARD_UPDATED_AT_LABEL__': json.dumps(now_brasilia().strftime('%d/%m/%Y %H:%M:%S') + (' · modo leve' if DASHBOARD_MODO_LEVE else ''), ensure_ascii=False),
 }
 for k,v in repls.items():
     html = html.replace(k, v)

@@ -1,4 +1,4 @@
-# VERSAO: RAILWAY_SCHEDULER_MDL_V46_RESUMO_ASYNC_NDJSON_FIX
+# VERSAO: RAILWAY_SCHEDULER_MDL_V47_LEVE_PREVENTIVA_MASTER
 import json
 import os
 import sys
@@ -58,13 +58,16 @@ FORCE_DAILY_LISTS_ON_BOOT = os.getenv('FORCE_DAILY_LISTS_ON_BOOT', os.getenv('FO
 SCHED_LOG = os.path.join(LOG_DIR, 'scheduler.log')
 MAIN_LOG = os.path.join(LOG_DIR, 'dashboard_completo_cobranca.log')
 SALES_LOG = os.path.join(LOG_DIR, 'vendas_unificadas.log')
+PREVENTIVA_LOG = os.path.join(LOG_DIR, 'whatsapp_master_preventiva.log')
 STATUS_PATH = os.path.join(LOG_DIR, 'monitor_status.json')
 
 SALES_CMD = [sys.executable, os.path.join(BASE_DIR, 'dashboard_sales_worker_headless.py')]
 COBRANCA_CMD = [sys.executable, os.path.join(BASE_DIR, 'dashboard_railway_main_headless.py')]
+PREVENTIVA_CMD = [sys.executable, os.path.join(BASE_DIR, 'whatsapp_master_preventiva_worker.py')]
 
 _sales_proc = None
 _cobranca_proc = None
+_preventiva_proc = None
 _last_sales_slot = None
 _last_cobranca_slot = None
 _last_cobranca_end = None
@@ -73,7 +76,7 @@ _force_main_boot = True
 _force_sales_after_main = False
 
 STATE = {
-    'version': 'V46_RESUMO_ASYNC_NDJSON_FIX',
+    'version': 'V47_LEVE_PREVENTIVA_MASTER',
     'started_at': None,
     'updated_at': None,
     'scheduler': 'starting',
@@ -89,6 +92,7 @@ STATE = {
     'jobs': {
         'dashboard_completo_cobranca': {'running': False, 'last_start': None, 'last_end': None, 'last_exit': None, 'last_error': ''},
         'vendas_unificadas': {'running': False, 'last_start': None, 'last_end': None, 'last_exit': None, 'last_error': ''},
+        'whatsapp_master_preventiva': {'running': False, 'last_start': None, 'last_end': None, 'last_exit': None, 'last_error': ''},
     },
     'recent_events': []
 }
@@ -134,9 +138,13 @@ def notify(text, alert_type='erros'):
 
 def is_running(proc): return proc is not None and proc.poll() is None
 
-def _job_log_path(name): return MAIN_LOG if 'cobranca' in name or 'dashboard' in name else SALES_LOG
+def _job_log_path(name):
+    if 'preventiva' in name or 'whatsapp_master' in name: return PREVENTIVA_LOG
+    return MAIN_LOG if 'cobranca' in name or 'dashboard' in name else SALES_LOG
 
-def _state_job_key(name): return 'dashboard_completo_cobranca' if 'cobranca' in name or 'dashboard' in name else 'vendas_unificadas'
+def _state_job_key(name):
+    if 'preventiva' in name or 'whatsapp_master' in name: return 'whatsapp_master_preventiva'
+    return 'dashboard_completo_cobranca' if 'cobranca' in name or 'dashboard' in name else 'vendas_unificadas'
 
 def start_job(name, cmd, extra_env=None):
     key = _state_job_key(name)
@@ -326,7 +334,11 @@ def force_summary_now():
     return True, 'Resumo Telegram enfileirado. Confira o grupo e o log em alguns segundos.'
 
 def force_run(kind):
-    global _sales_proc, _cobranca_proc, _force_sales_after_main
+    global _sales_proc, _cobranca_proc, _preventiva_proc, _force_sales_after_main
+    if kind == 'preventiva':
+        if is_running(_preventiva_proc): return False, 'Preventiva WhatsApp Master já está rodando.'
+        _preventiva_proc = start_job('whatsapp_master_preventiva_manual', PREVENTIVA_CMD)
+        return True, 'Preventiva WhatsApp Master iniciada em modo configurado. Confira o log/preview.'
     if is_running(_sales_proc) or is_running(_cobranca_proc): return False, 'Já existe job rodando. Aguarde finalizar.'
     if kind == 'main':
         _force_sales_after_main = True
@@ -337,7 +349,7 @@ def force_run(kind):
         return True, 'Vendas iniciado manualmente.'
     return False, 'Tipo inválido.'
 
-HTML = '<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>COB+VENDAS Monitor Railway</title><style>:root{--bg:#070a10;--card:#111827;--line:#263244;--txt:#eef2ff;--mut:#94a3b8;--ok:#22c55e;--bad:#ef4444;--warn:#f59e0b}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#111827,#070a10 55%);font-family:Inter,Segoe UI,Arial,sans-serif;color:var(--txt);padding:24px}.wrap{max-width:1180px;margin:auto}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.brand h1{margin:0;font-size:28px}.brand p{margin:6px 0 0;color:var(--mut)}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:20px 0}.card{background:rgba(17,24,39,.86);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 18px 55px rgba(0,0,0,.25)}.k{font-size:12px;color:var(--mut);font-weight:900;text-transform:uppercase;letter-spacing:.08em}.v{font-size:24px;font-weight:900;margin-top:8px}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}button{border:0;border-radius:12px;padding:12px 16px;font-weight:900;cursor:pointer;color:#111827;background:#f59e0b}button.soft{background:#1f2937;color:var(--txt);border:1px solid var(--line)}button.blue{background:#2563eb;color:white}button.active{outline:2px solid #f59e0b}.jobs{display:grid;grid-template-columns:1fr 1fr;gap:14px}.row{display:grid;grid-template-columns:160px 1fr;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)}pre{white-space:pre-wrap;background:#030712;border:1px solid var(--line);border-radius:14px;padding:14px;color:#d1d5db;max-height:430px;overflow:auto}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.logbox{height:560px;max-height:70vh;font-family:Consolas,monospace;font-size:12px;line-height:1.35}.mut{color:var(--mut)}@media(max-width:850px){.grid,.jobs{grid-template-columns:1fr}.row{grid-template-columns:1fr}.logbox{height:420px}}</style></head><body><div class="wrap"><div class="top"><div class="brand"><h1>🚦 COB+VENDAS Monitor Railway</h1><p>Ordem: cobrança/recebimentos primeiro, vendas depois; vendas a cada 20min; cobrança a cada 2h; clientes sem movimento/aniversariantes 1x ao dia às 07h.</p></div><div class="actions"><button onclick="run(\'main\')">Rodar cobrança agora</button><button class="blue" onclick="run(\'sales\')">Rodar vendas agora</button><button class="soft" onclick="sendSummary()">Enviar resumo Telegram</button><button class="soft" onclick="testTelegram()">Teste Telegram</button></div></div><div id="app">Carregando...</div><div class="card" id="logsCard" style="margin-top:14px"><h2>Logs</h2><div class="actions"><button class="soft" data-log="scheduler" onclick="loadLog(\'scheduler\')">Scheduler</button><button class="soft" data-log="main" onclick="loadLog(\'main\')">Cobrança/Main</button><button class="soft" data-log="sales" onclick="loadLog(\'sales\')">Vendas</button><button class="soft" onclick="togglePause()" id="pauseBtn">Pausar atualização</button></div><div class="mut" id="logStatus">Clique em um log. A tela não será mais recriada quando você estiver lendo.</div><pre id="logbox" class="logbox">Clique em um log.</pre></div></div><script>const R=v=>v==null?\'-\':String(v).replace(\'T\',\' \').slice(0,19);let selectedLog=\'\';let paused=false;let refreshing=false;async function api(p,o){const r=await fetch(p,o);return await r.json()}function esc(s){return String(s??\'\').replace(/[&<>]/g,m=>({\'&\':\'&amp;\',\'<\':\'&lt;\',\'>\':\'&gt;\'}[m]))}async function refresh(){if(paused||refreshing)return;refreshing=true;try{const s=await api(\'/api/status\');const j=s.jobs||{};const ev=(s.recent_events||[]).slice(-18).reverse().join(\'\\n\');document.getElementById(\'app\').innerHTML=`<div class="grid"><div class="card"><div class="k">Scheduler</div><div class="v ok">${s.scheduler||\'-\'}</div></div><div class="card"><div class="k">Próxima vendas</div><div class="v warn">${s.next_sales_label||\'-\'}</div></div><div class="card"><div class="k">Próxima cobrança</div><div class="v warn">${s.next_cobranca_label||\'-\'}</div></div><div class="card"><div class="k">Listas 07h</div><div class="v warn">${s.next_daily_lists_label||\'-\'}</div></div><div class="card"><div class="k">Atualizado</div><div class="v" style="font-size:17px">${R(s.updated_at)}</div></div></div><div class="jobs">${Object.entries(j).map(([name,x])=>`<div class="card"><h2>${name}</h2><div class="row"><b>Status</b><span class="${x.running?\'warn\':\'ok\'}">${x.running?\'Rodando\':\'Parado\'}</span></div><div class="row"><b>Início</b><span>${R(x.last_start)}</span></div><div class="row"><b>Fim</b><span>${R(x.last_end)}</span></div><div class="row"><b>Exit</b><span class="${x.last_exit===0?\'ok\':(x.last_exit?\'bad\':\'\')}">${x.last_exit??\'-\'}</span></div>${x.last_error?`<h3 class="bad">Último erro</h3><pre>${esc(x.last_error)}</pre>`:\'\'}</div>`).join(\'\')}</div><div class="card" style="margin-top:14px"><h2>Eventos recentes</h2><pre>${esc(ev)}</pre></div>`; if(selectedLog) await loadLog(selectedLog,true);}finally{refreshing=false}}async function loadLog(f,keepScroll=false){selectedLog=f;document.querySelectorAll(\'[data-log]\').forEach(b=>b.classList.toggle(\'active\',b.dataset.log===f));const box=document.getElementById(\'logbox\');const status=document.getElementById(\'logStatus\');const nearBottom=box && (box.scrollHeight-box.scrollTop-box.clientHeight<80);const oldTop=box?box.scrollTop:0;const r=await fetch(\'/api/logs?file=\'+encodeURIComponent(f)+\'&_=\'+Date.now());const txt=await r.text();if(box){box.textContent=txt||\'Sem log ainda.\'; if(keepScroll&&!nearBottom) box.scrollTop=oldTop; else box.scrollTop=box.scrollHeight;}if(status)status.textContent=\'Exibindo: \'+f+\' • atualizado \'+new Date().toLocaleTimeString(\'pt-BR\')+\'.\'}function togglePause(){paused=!paused;document.getElementById(\'pauseBtn\').textContent=paused?\'Retomar atualização\':\'Pausar atualização\';}async function run(k){const r=await api(\'/run/\'+k,{method:\'POST\'});alert(r.message||JSON.stringify(r));refresh()}async function sendSummary(){const r=await api(\'/telegram/summary\',{method:\'POST\'});alert(r.message||JSON.stringify(r))}async function testTelegram(){const r=await api(\'/telegram/test\',{method:\'POST\'});alert(r.message||JSON.stringify(r))}setInterval(refresh,7000);refresh();</script></body></html>'
+HTML = '<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>COB+VENDAS Monitor Railway</title><style>:root{--bg:#070a10;--card:#111827;--line:#263244;--txt:#eef2ff;--mut:#94a3b8;--ok:#22c55e;--bad:#ef4444;--warn:#f59e0b}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#111827,#070a10 55%);font-family:Inter,Segoe UI,Arial,sans-serif;color:var(--txt);padding:24px}.wrap{max-width:1180px;margin:auto}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.brand h1{margin:0;font-size:28px}.brand p{margin:6px 0 0;color:var(--mut)}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:20px 0}.card{background:rgba(17,24,39,.86);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 18px 55px rgba(0,0,0,.25)}.k{font-size:12px;color:var(--mut);font-weight:900;text-transform:uppercase;letter-spacing:.08em}.v{font-size:24px;font-weight:900;margin-top:8px}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}button{border:0;border-radius:12px;padding:12px 16px;font-weight:900;cursor:pointer;color:#111827;background:#f59e0b}button.soft{background:#1f2937;color:var(--txt);border:1px solid var(--line)}button.blue{background:#2563eb;color:white}button.active{outline:2px solid #f59e0b}.jobs{display:grid;grid-template-columns:1fr 1fr;gap:14px}.row{display:grid;grid-template-columns:160px 1fr;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)}pre{white-space:pre-wrap;background:#030712;border:1px solid var(--line);border-radius:14px;padding:14px;color:#d1d5db;max-height:430px;overflow:auto}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.logbox{height:560px;max-height:70vh;font-family:Consolas,monospace;font-size:12px;line-height:1.35}.mut{color:var(--mut)}@media(max-width:850px){.grid,.jobs{grid-template-columns:1fr}.row{grid-template-columns:1fr}.logbox{height:420px}}</style></head><body><div class="wrap"><div class="top"><div class="brand"><h1>🚦 COB+VENDAS Monitor Railway</h1><p>Ordem: cobrança/recebimentos primeiro, vendas depois; vendas a cada 20min; cobrança a cada 2h; clientes sem movimento/aniversariantes 1x ao dia às 07h.</p></div><div class="actions"><button onclick="run(\'main\')">Rodar cobrança agora</button><button class="blue" onclick="run(\'sales\')">Rodar vendas agora</button><button class="soft" onclick="sendSummary()">Enviar resumo Telegram</button><button class="soft" onclick="testTelegram()">Teste Telegram</button><button class="soft" onclick="run(\'preventiva\')">Rodar WhatsApp Master</button></div></div><div id="app">Carregando...</div><div class="card" id="logsCard" style="margin-top:14px"><h2>Logs</h2><div class="actions"><button class="soft" data-log="scheduler" onclick="loadLog(\'scheduler\')">Scheduler</button><button class="soft" data-log="main" onclick="loadLog(\'main\')">Cobrança/Main</button><button class="soft" data-log="sales" onclick="loadLog(\'sales\')">Vendas</button><button class="soft" data-log="preventiva" onclick="loadLog(\'preventiva\')">WhatsApp Master</button><button class="soft" onclick="togglePause()" id="pauseBtn">Pausar atualização</button></div><div class="mut" id="logStatus">Clique em um log. A tela não será mais recriada quando você estiver lendo.</div><pre id="logbox" class="logbox">Clique em um log.</pre></div></div><script>const R=v=>v==null?\'-\':String(v).replace(\'T\',\' \').slice(0,19);let selectedLog=\'\';let paused=false;let refreshing=false;async function api(p,o){const r=await fetch(p,o);return await r.json()}function esc(s){return String(s??\'\').replace(/[&<>]/g,m=>({\'&\':\'&amp;\',\'<\':\'&lt;\',\'>\':\'&gt;\'}[m]))}async function refresh(){if(paused||refreshing)return;refreshing=true;try{const s=await api(\'/api/status\');const j=s.jobs||{};const ev=(s.recent_events||[]).slice(-18).reverse().join(\'\\n\');document.getElementById(\'app\').innerHTML=`<div class="grid"><div class="card"><div class="k">Scheduler</div><div class="v ok">${s.scheduler||\'-\'}</div></div><div class="card"><div class="k">Próxima vendas</div><div class="v warn">${s.next_sales_label||\'-\'}</div></div><div class="card"><div class="k">Próxima cobrança</div><div class="v warn">${s.next_cobranca_label||\'-\'}</div></div><div class="card"><div class="k">Listas 07h</div><div class="v warn">${s.next_daily_lists_label||\'-\'}</div></div><div class="card"><div class="k">Atualizado</div><div class="v" style="font-size:17px">${R(s.updated_at)}</div></div></div><div class="jobs">${Object.entries(j).map(([name,x])=>`<div class="card"><h2>${name}</h2><div class="row"><b>Status</b><span class="${x.running?\'warn\':\'ok\'}">${x.running?\'Rodando\':\'Parado\'}</span></div><div class="row"><b>Início</b><span>${R(x.last_start)}</span></div><div class="row"><b>Fim</b><span>${R(x.last_end)}</span></div><div class="row"><b>Exit</b><span class="${x.last_exit===0?\'ok\':(x.last_exit?\'bad\':\'\')}">${x.last_exit??\'-\'}</span></div>${x.last_error?`<h3 class="bad">Último erro</h3><pre>${esc(x.last_error)}</pre>`:\'\'}</div>`).join(\'\')}</div><div class="card" style="margin-top:14px"><h2>Eventos recentes</h2><pre>${esc(ev)}</pre></div>`; if(selectedLog) await loadLog(selectedLog,true);}finally{refreshing=false}}async function loadLog(f,keepScroll=false){selectedLog=f;document.querySelectorAll(\'[data-log]\').forEach(b=>b.classList.toggle(\'active\',b.dataset.log===f));const box=document.getElementById(\'logbox\');const status=document.getElementById(\'logStatus\');const nearBottom=box && (box.scrollHeight-box.scrollTop-box.clientHeight<80);const oldTop=box?box.scrollTop:0;const r=await fetch(\'/api/logs?file=\'+encodeURIComponent(f)+\'&_=\'+Date.now());const txt=await r.text();if(box){box.textContent=txt||\'Sem log ainda.\'; if(keepScroll&&!nearBottom) box.scrollTop=oldTop; else box.scrollTop=box.scrollHeight;}if(status)status.textContent=\'Exibindo: \'+f+\' • atualizado \'+new Date().toLocaleTimeString(\'pt-BR\')+\'.\'}function togglePause(){paused=!paused;document.getElementById(\'pauseBtn\').textContent=paused?\'Retomar atualização\':\'Pausar atualização\';}async function run(k){const r=await api(\'/run/\'+k,{method:\'POST\'});alert(r.message||JSON.stringify(r));refresh()}async function sendSummary(){const r=await api(\'/telegram/summary\',{method:\'POST\'});alert(r.message||JSON.stringify(r))}async function testTelegram(){const r=await api(\'/telegram/test\',{method:\'POST\'});alert(r.message||JSON.stringify(r))}setInterval(refresh,7000);refresh();</script></body></html>'
 
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code=200, body='', ctype='text/html; charset=utf-8'):
@@ -352,7 +364,7 @@ class Handler(BaseHTTPRequestHandler):
             if '?' in self.path:
                 for part in self.path.split('?',1)[1].split('&'):
                     if part.startswith('file='): which=part.split('=',1)[1]
-            path = SCHED_LOG if which=='scheduler' else (MAIN_LOG if which=='main' else SALES_LOG)
+            path = SCHED_LOG if which=='scheduler' else (MAIN_LOG if which=='main' else (PREVENTIVA_LOG if which=='preventiva' else SALES_LOG))
             self._send(200, '\n'.join(tail_file(path, 320)), 'text/plain; charset=utf-8')
         elif self.path.startswith('/health'): self._send(200, {'ok': True, 'updated_at': iso_now()})
         else: self._send(200, HTML)
@@ -361,6 +373,8 @@ class Handler(BaseHTTPRequestHandler):
             ok,msg=force_run('main'); self._send(200, {'ok':ok,'message':msg})
         elif self.path.startswith('/run/sales'):
             ok,msg=force_run('sales'); self._send(200, {'ok':ok,'message':msg})
+        elif self.path.startswith('/run/preventiva'):
+            ok,msg=force_run('preventiva'); self._send(200, {'ok':ok,'message':msg})
         elif self.path.startswith('/telegram/test'):
             ok,resp=telegram_send('✅ Teste Telegram COB+VENDAS OK\n'+br_now().strftime('%d/%m/%Y %H:%M:%S'), alert_type='teste', base_dir=BASE_DIR); self._send(200, {'ok':ok,'message':'Telegram enviado' if ok else resp})
         elif self.path.startswith('/telegram/summary'):
@@ -377,12 +391,13 @@ def start_http_panel():
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log('VERSAO V46: resumo Telegram V29 logs do dia + monitor estável')
+log('VERSAO V47: modo leve + WhatsApp Master preventiva/cobrança dry-run')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
     _sales_proc, sales_finished = finish_if_done('vendas_unificadas', _sales_proc)
     _cobranca_proc, cobranca_finished = finish_if_done('dashboard_completo_cobranca', _cobranca_proc)
+    _preventiva_proc, preventiva_finished = finish_if_done('whatsapp_master_preventiva', _preventiva_proc)
     if cobranca_finished: _force_sales_after_main = True
 
     now = br_now(); maybe_send_daily_summary(now); maybe_send_general_message_alerts(now); maybe_send_meta_diaria_alerts(now); maybe_send_meta_mercantil_100_alerts(now)
