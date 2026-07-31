@@ -1,4 +1,4 @@
-# VERSAO: WHATSAPP_MASTER_PREVENTIVA_V3_V10_54
+# VERSAO: WHATSAPP_MASTER_PREVENTIVA_V3_V10_55
 # MDL COB+VENDAS -> WhatsApp Master
 # Régua: D-5, D-1, D0, D+1, D+3, D+7, D+10, D+14.
 # Segurança: qualquer título D+15 ou mais no mesmo CPF/CNPJ bloqueia o automático.
@@ -337,6 +337,26 @@ def save_json_atomic(path: Path, payload: Any) -> None:
     temporary.replace(path)
 
 
+
+def normalize_filial_short(value: Any) -> str:
+    """Converte descrições longas do SGI em código curto aceito pela API (ex.: F9)."""
+    raw = str(value or "").strip().upper()
+    if not raw:
+        return ""
+    direct = re.search(r"\bF\s*0*(\d{1,2})\b", raw)
+    if direct:
+        number = int(direct.group(1))
+    else:
+        match = re.search(r"\bFILIAL\s*0*(\d{1,2})\b", raw)
+        if not match:
+            match = re.search(r"\b0*(\d{1,2})\b", raw)
+        if not match:
+            return raw[:20]
+        number = int(match.group(1))
+    if number in (90, 99):
+        number = 1
+    return f"F{number}"[:20]
+
 def send_message(row: dict[str, Any], phone: str, interaction_id: str, mark: str, original_phone: str, modo_teste: bool) -> tuple[bool, str]:
     if not WHATSAPP_TOKEN:
         return False, "WHATSAPP_MASTER_INTERNAL_TOKEN/INTERNAL_API_TOKEN não configurado"
@@ -353,7 +373,7 @@ def send_message(row: dict[str, Any], phone: str, interaction_id: str, mark: str
     payload = {
         "interaction_id": interaction_id,
         "tipo": "preventiva" if int(row.get("dias") or 0) <= 0 else "cobranca_automatica",
-        "filial": row.get("filial", ""),
+        "filial": normalize_filial_short(row.get("filial", "")),
         "usuario_login": USUARIO_LOGIN,
         "nome_perfil": NOME_PERFIL,
         "cpf_cnpj": row.get("cpf_cnpj", ""),
@@ -504,7 +524,7 @@ def error_status(message: str) -> dict[str, Any]:
 
 def main() -> int:
     run_id = now_br().strftime("%Y%m%d-%H%M%S")
-    log("🚀 Iniciando WhatsApp Master Preventiva/Cobrança V10.54")
+    log("🚀 Iniciando WhatsApp Master Preventiva/Cobrança V10.55")
     log(f"Config: ENABLED={ENABLED} DRY_RUN={DRY_RUN} TEST_REDIRECT={TEST_REDIRECT} TEST_PHONE={bool(TEST_PHONE)} MAX_SEND={MAX_SEND_PER_RUN} GENERAL={ALLOW_GENERAL_SEND} MARCOS={list(MARCOS.values())}")
 
     preventive_path = find_preventive_input()
