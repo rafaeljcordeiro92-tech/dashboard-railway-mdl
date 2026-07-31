@@ -34,10 +34,10 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.51"
+DASHBOARD_BUILD_VERSION = "V10.52"
 DASHBOARD_BUILD_TAG = "comissao_crediarista_fonte_unica_oficial"
 
-# V10.51: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
+# V10.52: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
 # Mantém o dashboard principal funcionando, mas evita embutir bases pesadas no HTML
 # que travavam navegador antigo/fraco. Para voltar ao modo completo, use DASHBOARD_MODO_LEVE=0.
 DASHBOARD_MODO_LEVE = os.getenv("DASHBOARD_MODO_LEVE", "1") != "0"
@@ -10187,7 +10187,7 @@ async function carregarCredenciaisOnline(){try{const r=await fetchComTimeout(API
 function acessoGeralBloqueado(){return !!(AUTH_STATE && AUTH_STATE.access_blocked);}
 function textoBloqueioAcesso(){return String(AUTH_STATE?.access_blocked_reason || 'Sistema em atualização. Aguarde liberação pelo Master.');}
 
-// ===== V10.51: bloqueio real de sessões =====
+// ===== V10.52: bloqueio real de sessões =====
 const ACCESS_GUARD_INTERVAL_MS=3000;
 const ACCESS_KICK_KEY='mdl_dashboard_access_kick_v1051';
 let _accessGuardBusy=false;
@@ -10263,7 +10263,7 @@ async function consultarAccessGuardV1051(){
         return desconectarPorBloqueioV1051('Sua sessão foi revogada pelo Master. Entre novamente.');
       }
     }
-  }catch(e){console.log('[V10.51 access guard]',e)}
+  }catch(e){console.log('[V10.52 access guard]',e)}
   finally{_accessGuardBusy=false;}
 }
 function publicarKickV1051(login='',reason='Acessos bloqueados pelo Master.'){
@@ -13028,6 +13028,7 @@ function renderSenhaRow(u, isDirector=false){
   const tipo=isDirector?'Diretor':(u.is_crediarista?'Crediarista':(u.is_terceiro?'Cobrança terceiro':(u.is_gerente?'Gerente':'Vendedor')));
   return `<tr>
     <td><strong>${esc(nome)}</strong>${pend?`<div class="small" style="color:#ef4444">${pend} solicitação(ões)</div>`:''}</td>
+    <td><div class="senha-nova-row"><input id="wa_nome_${dom}" value="${esc(u.whatsapp_nome_global||nome)}" placeholder="Ex: DANIELE"><button class="btn primary btn-xs" type="button" onclick='adminSalvarNomeWhats(${keyJs})'>💾</button></div><div id="wa_nome_msg_${dom}" class="note" style="margin-top:4px"></div></td>
     <td><strong style="font-family:DM Mono,monospace">${esc(key)}</strong></td>
     <td><div class="senha-nova-row"><input id="login_new_${dom}" placeholder="Novo login" value="${esc(key)}"><button class="btn soft btn-xs" type="button" onclick='adminAlterarLogin(${keyJs})'>✏️ Alterar</button></div></td>
     <td>${esc(u.filial||'')}</td>
@@ -13667,6 +13668,21 @@ async function adminSalvarGerenteFilial(login){
     await carregarCredenciaisOnline(); renderSenhasTab(); toast('Gerente da filial salvo. Rode o dashboard para recalcular/publicar tudo.','success');
   }catch(e){toast('Não consegui salvar gerente da filial.','warn')}
 }
+async function adminSalvarNomeWhats(login){
+  const dom=_senhaDomKey(login);
+  const nome=(document.getElementById(`wa_nome_${dom}`)?.value||'').trim();
+  const box=document.getElementById(`wa_nome_msg_${dom}`);
+  if(nome.length<2){if(box)box.textContent='Informe o nome usado nas mensagens.';return;}
+  try{
+    const fd=new FormData(); fd.append('action','admin_update_whatsapp_name'); fd.append('login',login); fd.append('whatsapp_nome_global',nome);
+    const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json();
+    if(!j.ok) throw new Error(j.error||'erro');
+    if(box)box.textContent='✅ Nome do WhatsApp salvo.';
+    await carregarCredenciaisOnline();
+    toast('Nome global do WhatsApp salvo.','success');
+  }catch(e){if(box)box.textContent='⚠️ Não consegui salvar.';}
+}
+
 function renderSenhasTab(){
   const users=Object.values(AUTH_STATE?.users||{}).filter(u=>!isLegacyGerenteNominalV1026(u)).sort((a,b)=>String(a.nome||'').localeCompare(String(b.nome||''),'pt-BR'));
   const reqs=[...(AUTH_STATE?.password_reset_requests||[])].reverse();
@@ -13705,12 +13721,12 @@ function renderSenhasTab(){
       <div></div>
     </div>`).join('')}</div>`:''}
   </div>
-  <div class="glass panel admin-accounts-line" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">👑 Contas administrativas</h2><div class="hint">Contas administrativas em linha para caber melhor na tela.</div></div></div><div class="senhas-table-wrap"><table class="senhas-table"><thead><tr><th>Usuário</th><th>Login atual</th><th>Alterar login</th><th>Filial</th><th>Tipo</th><th>Status</th><th>Senha ativa atual</th><th>Nova senha</th><th>Ações</th></tr></thead><tbody>${renderSenhaRow(AUTH_STATE?.director||{login:'diretorcomercial',nome:'Diretor Comercial',must_change_password:true}, true)}</tbody></table></div></div>
+  <div class="glass panel admin-accounts-line" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">👑 Contas administrativas</h2><div class="hint">Contas administrativas em linha para caber melhor na tela.</div></div></div><div class="senhas-table-wrap"><table class="senhas-table"><thead><tr><th>Usuário</th><th>Nome no WhatsApp</th><th>Login atual</th><th>Alterar login</th><th>Filial</th><th>Tipo</th><th>Status</th><th>Senha ativa atual</th><th>Nova senha</th><th>Ações</th></tr></thead><tbody>${renderSenhaRow(AUTH_STATE?.director||{login:'diretorcomercial',nome:'Diretor Comercial',must_change_password:true}, true)}</tbody></table></div></div>
   ${renderGerentesFiliaisPanel()}
   <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">➕ Criar usuário de acesso</h2><div class="hint">Aqui você cria apenas o login/senha de acesso. Depois vá em Metas > Crediaristas configuráveis para vincular esse usuário à filial/base e ao percentual.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Login</label><input id="newUserLogin" placeholder="ex: crediaristaf08"></div><div class="input-card"><label>Nome</label><input id="newUserNome" placeholder="ex: CREDIARISTAF08"></div><div class="input-card"><label>Filial</label><input id="newUserFilial" placeholder="ex: F8"></div><div class="input-card"><label>Senha inicial</label><input id="newUserSenha" placeholder="mín. 4 caracteres"></div></div><div class="form-grid bonus" style="margin-top:10px"><div class="input-card"><label>Tipo</label><select id="newUserTipo"><option value="crediarista">Crediarista</option><option value="cobranca">Cobrança</option></select></div></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="adminCriarUsuarioCobranca()">💾 Criar usuário</button></div><div id="newUserMsg" class="note" style="margin-top:10px"></div></div>
   ${renderColaboradorStatusPanel(users)}
   <div class="section-head"><div><h2>👥 Usuários do dashboard</h2><div class="hint">Visualização em linha para conferir login, senha ativa, status e alterar rapidamente.</div></div></div>
-  <div class="senhas-table-wrap"><table class="senhas-table"><thead><tr><th>Usuário</th><th>Login atual</th><th>Alterar login</th><th>Filial</th><th>Tipo</th><th>Status</th><th>Senha ativa atual</th><th>Nova senha</th><th>Ações</th></tr></thead><tbody>${users.map(u=>renderSenhaRow(u,false)).join('')}</tbody></table></div>`;
+  <div class="senhas-table-wrap"><table class="senhas-table"><thead><tr><th>Usuário</th><th>Nome no WhatsApp</th><th>Login atual</th><th>Alterar login</th><th>Filial</th><th>Tipo</th><th>Status</th><th>Senha ativa atual</th><th>Nova senha</th><th>Ações</th></tr></thead><tbody>${users.map(u=>renderSenhaRow(u,false)).join('')}</tbody></table></div>`;
 }
 async function adminSetAccessBlock(flag){
   try{
@@ -14079,7 +14095,7 @@ async function fazerLogin(){
       msg.textContent='Primeiro acesso: defina sua nova senha.';
       return openPrimeiroAcesso(u);
     }
-    usuarioAtual={tipo:'user',login:u,...CREDS[u]};
+    usuarioAtual={tipo:'user',login:u,...CREDS[u]}; usuarioAtual.whatsapp_nome_global=usuarioAtual.whatsapp_nome_global||usuarioAtual.nome||u;
     saveSession();
     return abrirApp();
   }
@@ -15907,7 +15923,7 @@ function renderAvisoTicker(title,hint,entries,opts={}){
         if(auth.must_change_password && typeof openPrimeiroAcesso==='function'){
           _loginMsg('Primeiro acesso: defina sua nova senha.'); openPrimeiroAcesso(u); return false;
         }
-        usuarioAtual={tipo:'user',login:u,...CREDS[u]}; try{saveSession();}catch(_e){}; try{await abrirApp();}catch(e){console.error(e); _loginMsg('Erro ao abrir dashboard.');} return false;
+        usuarioAtual={tipo:'user',login:u,...CREDS[u]}; usuarioAtual.whatsapp_nome_global=usuarioAtual.whatsapp_nome_global||usuarioAtual.nome||u; try{saveSession();}catch(_e){}; try{await abrirApp();}catch(e){console.error(e); _loginMsg('Erro ao abrir dashboard.');} return false;
       }
       _loginMsg('Login ou senha inválidos.');
       return false;
@@ -19574,7 +19590,7 @@ Preparamos condições especiais para você comemorar com a gente.
 
 </script>
 <script>
-try{window.DASHBOARD_BUILD_VERSION='V10.51';console.log('[V10.51] bloqueio derruba sessões ativas e mantém comissão oficial única');}catch(e){}
+try{window.DASHBOARD_BUILD_VERSION='V10.52';console.log('[V10.52] bloqueio derruba sessões ativas e mantém comissão oficial única');}catch(e){}
 </script>
 
 </body>
@@ -19835,12 +19851,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
   }
 
-  // V10.51: trava operacional no servidor. Mesmo uma aba antiga não consegue registrar cobrança após bloqueio.
+  // V10.52: trava operacional no servidor. Mesmo uma aba antiga não consegue registrar cobrança após bloqueio.
   $credFile = __DIR__ . '/credenciais_dashboard.json';
   $guard = read_json_safe($credFile, []);
   if (!empty($guard['access_blocked'])) {
     http_response_code(423);
-    echo json_encode(['ok'=>false,'error'=>'access_blocked','reason'=>($guard['access_blocked_reason'] ?? 'Sistema bloqueado pelo Master.'),'version'=>'V10.51'], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['ok'=>false,'error'=>'access_blocked','reason'=>($guard['access_blocked_reason'] ?? 'Sistema bloqueado pelo Master.'),'version'=>'V10.52'], JSON_UNESCAPED_UNICODE);
     exit;
   }
   $actor = strtolower(trim((string)($payload['login'] ?? ($payload['usuario'] ?? ''))));
@@ -19850,7 +19866,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stGuard=strtolower(trim((string)($uGuard['status_operacional'] ?? 'ativo')));
         if(!empty($uGuard['access_disabled']) || in_array($stGuard,['inativo','bloqueado','desligado'])){
           http_response_code(423);
-          echo json_encode(['ok'=>false,'error'=>'user_blocked','reason'=>'Usuário bloqueado pelo Master.','version'=>'V10.51'], JSON_UNESCAPED_UNICODE);
+          echo json_encode(['ok'=>false,'error'=>'user_blocked','reason'=>'Usuário bloqueado pelo Master.','version'=>'V10.52'], JSON_UNESCAPED_UNICODE);
           exit;
         }
         break;
@@ -20165,6 +20181,23 @@ if ($action === 'admin_change_login') {
   }
   save_all($file, $data);
   echo json_encode(['ok'=>true,'old_login'=>$old,'new_login'=>$new,'data'=>$data], JSON_UNESCAPED_UNICODE); exit;
+}
+if ($action === 'admin_update_whatsapp_name') {
+  $login = strtolower(trim($_POST['login'] ?? ''));
+  $nome = trim((string)($_POST['whatsapp_nome_global'] ?? ''));
+  if (!$login || !$nome || mb_strlen($nome) < 2) { echo json_encode(['ok'=>false,'error'=>'dados_invalidos']); exit; }
+  $ref = resolve_login_ref($data, $login);
+  if (!$ref) { echo json_encode(['ok'=>false,'error'=>'login_nao_encontrado']); exit; }
+  if ($ref['type'] === 'director') {
+    $data['director']['whatsapp_nome_global'] = $nome;
+    $data['director']['whatsapp_nome_atualizado_em'] = date('c');
+  } else {
+    $key = $ref['key'];
+    $data['users'][$key]['whatsapp_nome_global'] = $nome;
+    $data['users'][$key]['whatsapp_nome_atualizado_em'] = date('c');
+  }
+  save_all($file, $data);
+  echo json_encode(['ok'=>true,'login'=>$login,'whatsapp_nome_global'=>$nome,'data'=>$data], JSON_UNESCAPED_UNICODE); exit;
 }
 if ($action === 'admin_update_user_name') {
   ensure_colab_status($data);
