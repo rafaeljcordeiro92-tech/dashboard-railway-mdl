@@ -1,4 +1,4 @@
-# VERSAO: WHATSAPP_MASTER_PREVENTIVA_V2_V10_51
+# VERSAO: WHATSAPP_MASTER_PREVENTIVA_V3_V10_53
 # MDL COB+VENDAS -> WhatsApp Master
 # Régua: D-5, D-1, D0, D+1, D+3, D+7, D+10, D+14.
 # Segurança: qualquer título D+15 ou mais no mesmo CPF/CNPJ bloqueia o automático.
@@ -16,6 +16,7 @@ import unicodedata
 import urllib.error
 import urllib.request
 from collections import Counter, defaultdict
+import hashlib
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -55,6 +56,12 @@ WHATSAPP_BASE = os.getenv(
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_MASTER_INTERNAL_TOKEN", os.getenv("INTERNAL_API_TOKEN", "")).strip()
 SEND_ENDPOINT = os.getenv("WHATSAPP_MASTER_SEND_ENDPOINT", "/api/internal/interacoes/enviar")
 MAX_AUDIT_ITEMS = max(100, int(os.getenv("WHATSAPP_MASTER_AUDIT_MAX", "1500")))
+MAX_SEND_PER_RUN = max(1, int(os.getenv("WHATSAPP_MASTER_PREVENTIVA_MAX_SEND_PER_RUN", "1")))
+TEST_PHONE = re.sub(r"\D+", "", os.getenv("WHATSAPP_MASTER_PREVENTIVA_TEST_PHONE", ""))
+TEST_REDIRECT = os.getenv("WHATSAPP_MASTER_PREVENTIVA_TEST_REDIRECT", "1") == "1"
+ALLOW_GENERAL_SEND = os.getenv("WHATSAPP_MASTER_PREVENTIVA_ALLOW_GENERAL_SEND", "0") == "1"
+USUARIO_LOGIN = os.getenv("WHATSAPP_MASTER_PREVENTIVA_USUARIO_LOGIN", "whatsapp_master_auto").strip() or "whatsapp_master_auto"
+NOME_PERFIL = os.getenv("WHATSAPP_MASTER_PREVENTIVA_NOME_PERFIL", "Equipe MDL").strip() or "Equipe MDL"
 
 
 def now_br() -> datetime:
@@ -292,20 +299,29 @@ def money_br(value: Any) -> str:
     return text.replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def interaction_id_for(row: dict[str, Any], mark: str) -> str:
+    raw = "|".join([
+        "mdl", "preventiva", row.get("cpf_cnpj", ""), row.get("titulo", ""),
+        row.get("parcela", ""), row.get("vencimento", ""), mark,
+    ])
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
+    return f"mdl-prev-{row.get('vencimento','').replace('-', '')}-{mark.replace('+','p').replace('-','m')}-{digest}"
+
+
 def montar_msg(row: dict[str, Any]) -> str:
     dias = int(row["dias"])
     nome = primeiro_nome(row.get("cliente"))
     valor = money_br(row.get("valor")) if row.get("valor") else "o valor da parcela"
     vencimento = datetime.strptime(row["vencimento"], "%Y-%m-%d").strftime("%d/%m/%Y")
     if dias < 0:
-        return f"Olá, {nome}! Passando para lembrar que você tem uma parcela da LOJAS MDL / Móveis do Lar com vencimento em {vencimento}. Valor: {valor}. Qualquer dúvida, responda esta mensagem."
+        return f"Oi, aqui é {NOME_PERFIL}. Olá, {nome}! Passando para lembrar que você tem uma parcela da LOJAS MDL / Móveis do Lar com vencimento em {vencimento}. Valor: {valor}. Qualquer dúvida, responda esta mensagem."
     if dias == 0:
-        return f"Olá, {nome}! Sua parcela da LOJAS MDL / Móveis do Lar vence hoje ({vencimento}). Valor: {valor}. Se já pagou, desconsidere."
+        return f"Oi, aqui é {NOME_PERFIL}. Olá, {nome}! Sua parcela da LOJAS MDL / Móveis do Lar vence hoje ({vencimento}). Valor: {valor}. Se já pagou, desconsidere."
     if dias <= 3:
-        return f"Olá, {nome}! Identificamos uma parcela da LOJAS MDL / Móveis do Lar vencida desde {vencimento}. Valor: {valor}. Podemos ajudar você a regularizar?"
+        return f"Oi, aqui é {NOME_PERFIL}. Olá, {nome}! Identificamos uma parcela da LOJAS MDL / Móveis do Lar vencida desde {vencimento}. Valor: {valor}. Podemos ajudar você a regularizar?"
     if dias <= 10:
-        return f"Olá, {nome}! Consta uma parcela em aberto na LOJAS MDL / Móveis do Lar vencida em {vencimento}. Valor: {valor}. Responda esta mensagem para receber atendimento."
-    return f"Olá, {nome}! Este é um aviso da LOJAS MDL / Móveis do Lar sobre parcela em aberto vencida em {vencimento}. Valor: {valor}. Para evitar encaminhamento à cobrança humana, responda esta mensagem."
+        return f"Oi, aqui é {NOME_PERFIL}. Olá, {nome}! Consta uma parcela em aberto na LOJAS MDL / Móveis do Lar vencida em {vencimento}. Valor: {valor}. Responda esta mensagem para receber atendimento."
+    return f"Oi, aqui é {NOME_PERFIL}. Olá, {nome}! Este é um aviso da LOJAS MDL / Móveis do Lar sobre parcela em aberto vencida em {vencimento}. Valor: {valor}. Para evitar encaminhamento à cobrança humana, responda esta mensagem."
 
 
 def load_json(path: Path, default: Any) -> Any:
@@ -321,16 +337,30 @@ def save_json_atomic(path: Path, payload: Any) -> None:
     temporary.replace(path)
 
 
-def send_message(phone: str, text: str, reference: str) -> tuple[bool, str]:
+def send_message(row: dict[str, Any], phone: str, text: str, interaction_id: str, mark: str, original_phone: str) -> tuple[bool, str]:
     if not WHATSAPP_TOKEN:
         return False, "WHATSAPP_MASTER_INTERNAL_TOKEN/INTERNAL_API_TOKEN não configurado"
+    titulo_payload = {
+        "titulo": row.get("titulo", ""),
+        "parcela": row.get("parcela", ""),
+        "vencimento": row.get("vencimento", ""),
+        "valor": row.get("valor", 0.0),
+        "marco": mark,
+        "dias": row.get("dias", 0),
+        "telefone_original": original_phone,
+        "modo_teste_redirecionado": bool(TEST_REDIRECT and TEST_PHONE),
+    }
     payload = {
+        "interaction_id": interaction_id,
+        "tipo": "preventiva" if int(row.get("dias") or 0) <= 0 else "cobranca_automatica",
+        "filial": row.get("filial", ""),
+        "usuario_login": USUARIO_LOGIN,
+        "nome_perfil": NOME_PERFIL,
+        "cpf_cnpj": row.get("cpf_cnpj", ""),
+        "cliente_nome": row.get("cliente", ""),
         "telefone": phone,
+        "titulos": [titulo_payload],
         "mensagem": text,
-        "texto": text,
-        "origem": "cobranca_preventiva_mdl",
-        "referencia": reference,
-        "session_route_id": os.getenv("WHATSAPP_MASTER_SESSION_ROUTE_ID", "mdl-master"),
     }
     request = urllib.request.Request(
         WHATSAPP_BASE + SEND_ENDPOINT,
@@ -420,7 +450,7 @@ def publish_status_files() -> None:
 
 
 def append_history(run: dict[str, Any]) -> None:
-    history = load_json(HISTORY_PATH, {"version": "V10.49", "runs": []})
+    history = load_json(HISTORY_PATH, {"version": "V10.53", "runs": []})
     runs = history.setdefault("runs", [])
     compact = {
         key: run.get(key)
@@ -451,7 +481,7 @@ def append_history(run: dict[str, Any]) -> None:
 def error_status(message: str) -> dict[str, Any]:
     output = {
         "ok": False,
-        "version": "V10.49",
+        "version": "V10.53",
         "erro": message,
         "gerado_em": now_br().isoformat(),
         "enabled": ENABLED,
@@ -471,8 +501,8 @@ def error_status(message: str) -> dict[str, Any]:
 
 def main() -> int:
     run_id = now_br().strftime("%Y%m%d-%H%M%S")
-    log("🚀 Iniciando WhatsApp Master Preventiva/Cobrança V10.49")
-    log(f"Config: ENABLED={ENABLED} DRY_RUN={DRY_RUN} MARCOS={list(MARCOS.values())}")
+    log("🚀 Iniciando WhatsApp Master Preventiva/Cobrança V10.53")
+    log(f"Config: ENABLED={ENABLED} DRY_RUN={DRY_RUN} TEST_REDIRECT={TEST_REDIRECT} TEST_PHONE={bool(TEST_PHONE)} MAX_SEND={MAX_SEND_PER_RUN} GENERAL={ALLOW_GENERAL_SEND} MARCOS={list(MARCOS.values())}")
 
     preventive_path = find_preventive_input()
     if not preventive_path:
@@ -526,7 +556,9 @@ def main() -> int:
         if not mark:
             continue
         key = "|".join([row["cpf_cnpj"], row.get("titulo", ""), row.get("parcela", ""), row["vencimento"], mark])
-        base = {**row, "marco": mark, "dedupe_key": key}
+        interaction_id_producao = interaction_id_for(row, mark)
+        interaction_id = interaction_id_producao
+        base = {**row, "marco": mark, "dedupe_key": key, "interaction_id": interaction_id}
         if row["cpf_cnpj"] in blocked_docs:
             item = {**base, "status": "ignorado", "motivo": "bloqueado_d15_ou_mais_no_cpf"}
             skipped.append(item)
@@ -542,21 +574,53 @@ def main() -> int:
             skipped.append(item)
             audit.append(item)
             continue
-        if ONLY_PHONES and row["telefone"] not in ONLY_PHONES:
+        destino = row["telefone"]
+        modo_teste = bool(TEST_REDIRECT and TEST_PHONE)
+        if modo_teste:
+            destino = TEST_PHONE if TEST_PHONE.startswith("55") else ("55" + TEST_PHONE if len(TEST_PHONE) in (10, 11) else TEST_PHONE)
+            test_digest = hashlib.sha256((interaction_id_producao + "|" + destino).encode("utf-8")).hexdigest()[:16]
+            interaction_id = f"teste-{run_id}-{test_digest}"
+            base["interaction_id"] = interaction_id
+        elif ONLY_PHONES and row["telefone"] not in ONLY_PHONES:
             item = {**base, "status": "ignorado", "motivo": "fora_piloto_allowed_phones"}
             skipped.append(item)
             audit.append(item)
             continue
+        elif not ALLOW_GENERAL_SEND and not ONLY_PHONES:
+            item = {**base, "status": "ignorado", "motivo": "envio_geral_bloqueado_sem_allowed_phones"}
+            skipped.append(item)
+            audit.append(item)
+            continue
 
-        candidate = {**base, "mensagem": montar_msg(row), "status": "simulado" if DRY_RUN or not ENABLED else "candidato"}
+        candidate = {
+            **base,
+            "telefone_destino": destino,
+            "telefone_original": row["telefone"],
+            "modo_teste_redirecionado": modo_teste,
+            "usuario_login": USUARIO_LOGIN,
+            "nome_perfil": NOME_PERFIL,
+            "mensagem": (("[TESTE CONTROLADO — NÃO É COBRANÇA REAL]\n" if modo_teste else "") + montar_msg(row)),
+            "status": "simulado" if DRY_RUN or not ENABLED else "candidato",
+        }
         candidates.append(candidate)
         if ENABLED and not DRY_RUN:
-            ok, response = send_message(row["telefone"], candidate["mensagem"], key)
+            if len(sent_now) >= MAX_SEND_PER_RUN:
+                item = {**candidate, "status": "ignorado", "motivo": "limite_por_execucao_atingido"}
+                skipped.append(item)
+                audit.append(item)
+                continue
+            ok, response = send_message(
+                row, candidate["telefone_destino"], candidate["mensagem"],
+                interaction_id, mark, row["telefone"],
+            )
             if ok:
                 sent_item = {**candidate, "status": "enviado", "resposta": response[:500]}
-                sent_state[key] = {
+                state_key = ("TESTE|" + interaction_id) if modo_teste else key
+                sent_state[state_key] = {
                     "quando": now_br().isoformat(),
-                    "telefone": row["telefone"],
+                    "telefone_destino": candidate["telefone_destino"],
+                    "telefone_original": row["telefone"],
+                    "interaction_id": interaction_id,
                     "marco": mark,
                     "resposta": response[:500],
                 }
@@ -585,7 +649,7 @@ def main() -> int:
 
     output = {
         "ok": not errors,
-        "version": "V10.49",
+        "version": "V10.53",
         "run_id": run_id,
         "gerado_em": now_br().isoformat(),
         "arquivo": preventive_path.name,
@@ -593,6 +657,13 @@ def main() -> int:
         "enabled": ENABLED,
         "dry_run": DRY_RUN,
         "marcos": list(MARCOS.values()),
+        "modo": "teste_unitario_redirecionado" if TEST_REDIRECT and TEST_PHONE else "producao_controlada",
+        "test_redirect": TEST_REDIRECT,
+        "test_phone_configured": bool(TEST_PHONE),
+        "max_send_per_run": MAX_SEND_PER_RUN,
+        "allow_general_send": ALLOW_GENERAL_SEND,
+        "usuario_login": USUARIO_LOGIN,
+        "nome_perfil": NOME_PERFIL,
         "service": service,
         "total_linhas_lidas": len(preventive_rows),
         "total_linhas_base_humana": len(human_rows),
