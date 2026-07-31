@@ -1,4 +1,4 @@
-# VERSAO: WHATSAPP_MASTER_PREVENTIVA_V3_V10_53
+# VERSAO: WHATSAPP_MASTER_PREVENTIVA_V3_V10_54
 # MDL COB+VENDAS -> WhatsApp Master
 # Régua: D-5, D-1, D0, D+1, D+3, D+7, D+10, D+14.
 # Segurança: qualquer título D+15 ou mais no mesmo CPF/CNPJ bloqueia o automático.
@@ -337,7 +337,7 @@ def save_json_atomic(path: Path, payload: Any) -> None:
     temporary.replace(path)
 
 
-def send_message(row: dict[str, Any], phone: str, text: str, interaction_id: str, mark: str, original_phone: str) -> tuple[bool, str]:
+def send_message(row: dict[str, Any], phone: str, interaction_id: str, mark: str, original_phone: str, modo_teste: bool) -> tuple[bool, str]:
     if not WHATSAPP_TOKEN:
         return False, "WHATSAPP_MASTER_INTERNAL_TOKEN/INTERNAL_API_TOKEN não configurado"
     titulo_payload = {
@@ -360,7 +360,10 @@ def send_message(row: dict[str, Any], phone: str, text: str, interaction_id: str
         "cliente_nome": row.get("cliente", ""),
         "telefone": phone,
         "titulos": [titulo_payload],
-        "mensagem": text,
+        "marco": mark,
+        "usar_regra_whatsapp": True,
+        "modo_teste": modo_teste,
+        "mensagem": "",
     }
     request = urllib.request.Request(
         WHATSAPP_BASE + SEND_ENDPOINT,
@@ -501,7 +504,7 @@ def error_status(message: str) -> dict[str, Any]:
 
 def main() -> int:
     run_id = now_br().strftime("%Y%m%d-%H%M%S")
-    log("🚀 Iniciando WhatsApp Master Preventiva/Cobrança V10.53")
+    log("🚀 Iniciando WhatsApp Master Preventiva/Cobrança V10.54")
     log(f"Config: ENABLED={ENABLED} DRY_RUN={DRY_RUN} TEST_REDIRECT={TEST_REDIRECT} TEST_PHONE={bool(TEST_PHONE)} MAX_SEND={MAX_SEND_PER_RUN} GENERAL={ALLOW_GENERAL_SEND} MARCOS={list(MARCOS.values())}")
 
     preventive_path = find_preventive_input()
@@ -548,6 +551,7 @@ def main() -> int:
     skipped: list[dict[str, Any]] = []
     sent_now: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
+    send_attempts = 0
     audit: list[dict[str, Any]] = []
 
     for row in preventive_rows:
@@ -599,19 +603,19 @@ def main() -> int:
             "modo_teste_redirecionado": modo_teste,
             "usuario_login": USUARIO_LOGIN,
             "nome_perfil": NOME_PERFIL,
-            "mensagem": (("[TESTE CONTROLADO — NÃO É COBRANÇA REAL]\n" if modo_teste else "") + montar_msg(row)),
+            "mensagem": "Regra ativa do WhatsApp Master será aplicada no envio",
             "status": "simulado" if DRY_RUN or not ENABLED else "candidato",
         }
         candidates.append(candidate)
         if ENABLED and not DRY_RUN:
-            if len(sent_now) >= MAX_SEND_PER_RUN:
-                item = {**candidate, "status": "ignorado", "motivo": "limite_por_execucao_atingido"}
-                skipped.append(item)
-                audit.append(item)
-                continue
+            # Limite por tentativa, não apenas por sucesso. Em teste controlado uma falha
+            # não autoriza tentar outro cliente/título automaticamente.
+            if send_attempts >= MAX_SEND_PER_RUN:
+                break
+            send_attempts += 1
             ok, response = send_message(
-                row, candidate["telefone_destino"], candidate["mensagem"],
-                interaction_id, mark, row["telefone"],
+                row, candidate["telefone_destino"], interaction_id, mark,
+                row["telefone"], modo_teste,
             )
             if ok:
                 sent_item = {**candidate, "status": "enviado", "resposta": response[:500]}
@@ -627,10 +631,14 @@ def main() -> int:
                 sent_now.append(sent_item)
                 audit.append(sent_item)
                 time.sleep(float(os.getenv("WHATSAPP_MASTER_PREVENTIVA_SEND_GAP_SECONDS", "2")))
+                if send_attempts >= MAX_SEND_PER_RUN:
+                    break
             else:
                 error_item = {**candidate, "status": "erro", "erro": response}
                 errors.append(error_item)
                 audit.append(error_item)
+                if send_attempts >= MAX_SEND_PER_RUN:
+                    break
         else:
             audit.append(candidate)
 
