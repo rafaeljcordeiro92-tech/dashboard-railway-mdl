@@ -37,7 +37,7 @@ APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 DASHBOARD_BUILD_VERSION = "V10.53"
 DASHBOARD_BUILD_TAG = "comissao_crediarista_fonte_unica_oficial"
 
-# V10.56: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
+# V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
 # V10.52: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
 # Mantém o dashboard principal funcionando, mas evita embutir bases pesadas no HTML
 # que travavam navegador antigo/fraco. Para voltar ao modo completo, use DASHBOARD_MODO_LEVE=0.
@@ -2878,9 +2878,19 @@ _vend_cli_atual   = None
 # disponível" como corte, pois isso zera os recebimentos de junho antes da virada.
 import json as _json_tmp
 
-_mes_atual_str = os.getenv("COBRANCA_COMPETENCIA", now_brasilia().strftime("%Y-%m")).strip()[:7]
-if not re.match(r"^\d{4}-\d{2}$", _mes_atual_str):
-    _mes_atual_str = now_brasilia().strftime("%Y-%m")
+# V10.57: competência da cobrança acompanha automaticamente o mês de Brasília.
+# Uma variável COBRANCA_COMPETENCIA antiga não pode manter o dashboard preso no mês anterior.
+# Override manual só é aceito quando COBRANCA_COMPETENCIA_ALLOW_OVERRIDE=1.
+_mes_sistema_str = now_brasilia().strftime("%Y-%m")
+_mes_env_str = os.getenv("COBRANCA_COMPETENCIA", "").strip()[:7]
+_allow_comp_override = str(os.getenv("COBRANCA_COMPETENCIA_ALLOW_OVERRIDE", "0")).strip().lower() in {"1","true","sim","yes","on"}
+if _allow_comp_override and re.match(r"^\d{4}-\d{2}$", _mes_env_str):
+    _mes_atual_str = _mes_env_str
+    print(f"🧪 V10.57 competência manual habilitada: {_mes_atual_str}")
+else:
+    _mes_atual_str = _mes_sistema_str
+    if _mes_env_str and _mes_env_str != _mes_sistema_str:
+        print(f"⚠️ V10.57 ignorando COBRANCA_COMPETENCIA antiga={_mes_env_str}; competência automática={_mes_sistema_str}")
 
 _month_start_str = f"{_mes_atual_str}-01"
 _month_start_parse = _dt.strptime(_month_start_str, "%Y-%m-%d")
@@ -11026,7 +11036,7 @@ function setMainTab(tab){
 }
 
 const WA_MASTER_MONITOR_URL='https://dashbboardcobvendasmdl.up.railway.app';
-let WA_MASTER_STATUS={}; let WA_MASTER_ITEMS=[]; let WA_MASTER_HISTORY=[]; let WA_MASTER_PAGE=1; const WA_MASTER_PAGE_SIZE=50;
+let WA_MASTER_STATUS={}; let WA_MASTER_ITEMS=[]; let WA_MASTER_HISTORY=[]; let WA_MASTER_PILOTO={}; let WA_MASTER_PAGE=1; const WA_MASTER_PAGE_SIZE=50;
 function waEscStatus(v){const x=String(v||'').toLowerCase();return x.includes('erro')?'wa-status-bad':(x.includes('enviado')||x.includes('ok')||x.includes('conect')?'wa-status-ok':'wa-status-warn')}
 function waFmtDate(v){try{return new Date(v).toLocaleString('pt-BR')}catch(e){return String(v||'—')}}
 function waItemStatus(x){return x.status||x.resultado||(x.erro?'erro':(x.motivo?'ignorado':'candidato'))}
@@ -11048,11 +11058,12 @@ async function fetchWaMasterStatus(){
 async function renderWhatsAppMasterTab(force=false){
   if(!whatsappMasterSection)return; if(usuarioAtual?.tipo!=='master'){whatsappMasterSection.innerHTML='<div class="empty">Acesso exclusivo do Master.</div>';return}
   whatsappMasterSection.innerHTML='<div class="lazy-loading"><div class="spin">⏳</div><div>Carregando acompanhamento do WhatsApp Master...</div></div>';
-  WA_MASTER_STATUS=await fetchWaMasterStatus(); WA_MASTER_ITEMS=waAllItems(WA_MASTER_STATUS); WA_MASTER_HISTORY=Array.isArray(WA_MASTER_STATUS?.__history)?WA_MASTER_STATUS.__history:[]; WA_MASTER_PAGE=1;
+  WA_MASTER_STATUS=await fetchWaMasterStatus(); try{WA_MASTER_PILOTO=await fetchJsonNoCache('whatsapp_master_piloto_f1.json')}catch(_e){WA_MASTER_PILOTO={ok:false,interacoes:[]}}; WA_MASTER_ITEMS=waAllItems(WA_MASTER_STATUS); WA_MASTER_HISTORY=Array.isArray(WA_MASTER_STATUS?.__history)?WA_MASTER_STATUS.__history:[]; WA_MASTER_PAGE=1;
   const d=WA_MASTER_STATUS||{}; const job=d.live_job||{}; const by=d.por_marco||{}; const svc=d.service||{}; const run=job.running?'Rodando':(d.ok?'Concluído':'Sem execução');
   whatsappMasterSection.innerHTML=`<div class="section-head"><div><h2>💬 WhatsApp Master · Preventiva</h2><div class="hint">Régua D-5, D-1, D0, D+1, D+3, D+7, D+10 e D+14. D+15 ou mais permanece na cobrança humana.</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn soft" onclick="renderWhatsAppMasterTab(true)">🔄 Atualizar</button><button class="btn primary" onclick="rodarWhatsMasterAgora()">▶ Rodar agora</button><button class="btn soft" onclick="window.open(WA_MASTER_MONITOR_URL,'_blank')">🛠️ Abrir monitor</button></div></div>
   <div class="msg-banner ${d.dry_run?'':'campaign-banner'}"><strong>Modo:</strong> ${d.dry_run?'🧪 DRY RUN — nenhuma mensagem real':'✅ ENVIO REAL'} · <strong>Automação:</strong> ${d.enabled?'habilitada':'desabilitada'} · <strong>Execução:</strong> <span class="${job.running?'wa-status-warn':(d.ok?'wa-status-ok':'wa-status-bad')}">${esc(run)}</span> · <strong>Última atualização:</strong> ${esc(waFmtDate(d.gerado_em||d.live_updated_at))}</div>
   <div class="wa-master-grid"><div class="wa-master-card"><div class="k">Elegíveis</div><div class="v">${Number(d.candidatos||0)}</div></div><div class="wa-master-card"><div class="k">Enviados</div><div class="v wa-status-ok">${Number(d.enviados_agora||0)}</div></div><div class="wa-master-card"><div class="k">Simulados</div><div class="v wa-status-warn">${d.dry_run?Number(d.candidatos||0):Number(d.simulados||0)}</div></div><div class="wa-master-card"><div class="k">Ignorados/bloqueados</div><div class="v">${Number(d.pulados||0)}</div></div><div class="wa-master-card"><div class="k">Erros</div><div class="v wa-status-bad">${Number(d.erros||0)}</div></div><div class="wa-master-card"><div class="k">CPFs D+15 bloqueados</div><div class="v">${Number(d.cpfs_bloqueados_d15_mais||0)}</div></div><div class="wa-master-card"><div class="k">Sessão/serviço</div><div class="v ${svc.ok?'wa-status-ok':'wa-status-warn'}" style="font-size:16px">${esc(svc.status||svc.session_status||(svc.ok?'Disponível':'Não confirmado'))}</div></div><div class="wa-master-card"><div class="k">Arquivo usado</div><div class="v" style="font-size:14px">${esc(d.arquivo||'—')}</div></div></div>
+  <div class="glass panel" style="margin-bottom:14px"><div class="section-head"><div><h3>👁️ Piloto F1 MATCOM · Sandy</h3><div class="hint">Acompanhamento sem resposta automática da IA. Login gerentef01 · nome global Sandy · filial F1.</div></div><button class="btn soft" onclick="renderWhatsAppMasterTab(true)">🔄 Sincronizar tela</button></div><div class="wa-master-grid"><div class="wa-master-card"><div class="k">Interações</div><div class="v">${Number(WA_MASTER_PILOTO?.totais?.interacoes||0)}</div></div><div class="wa-master-card"><div class="k">Respondidas</div><div class="v wa-status-ok">${Number(WA_MASTER_PILOTO?.totais?.respondidas||0)}</div></div><div class="wa-master-card"><div class="k">Sem resposta</div><div class="v wa-status-warn">${Number(WA_MASTER_PILOTO?.totais?.enviadas||0)}</div></div><div class="wa-master-card"><div class="k">Modo</div><div class="v" style="font-size:14px">IA somente observa</div></div></div><div class="wa-master-scroll" style="max-height:430px"><table class="wa-master-table"><thead><tr><th>Status</th><th>Cliente</th><th>CPF/CNPJ</th><th>Título</th><th>Marco</th><th>Última resposta</th><th>Responsável</th></tr></thead><tbody>${Array.isArray(WA_MASTER_PILOTO?.interacoes)&&WA_MASTER_PILOTO.interacoes.length?WA_MASTER_PILOTO.interacoes.slice(0,100).map(x=>`<tr><td class="${x.respostas?.length?'wa-status-ok':'wa-status-warn'}"><strong>${esc(x.status_acompanhamento||x.status||'enviada')}</strong></td><td><strong>${esc(x.cliente||'—')}</strong><div class="small muted">${esc(x.telefone||'')}</div></td><td>${esc(x.cpf_cnpj||'—')}</td><td>${esc((x.titulos&&x.titulos[0]?.titulo)||x.titulo||'—')}<div class="small muted">${esc((x.titulos&&x.titulos[0]?.parcela)||'')}</div></td><td>${esc(x.marco||'—')}</td><td>${esc(x.ultima_resposta||'Ainda sem resposta')}<div class="small muted">${esc(x.ultima_resposta_em||'')}</div></td><td>${esc(x.nome_perfil||'Sandy')}<div class="small muted">${esc(x.usuario_login||'gerentef01')}</div></td></tr>`).join(''):'<tr><td colspan="7"><div class="empty">Ainda não há interações sincronizadas da Sandy. O painel será preenchido após a primeira cobrança válida do piloto.</div></td></tr>'}</tbody></table></div></div>
   <div class="glass panel" style="margin-bottom:14px"><h3>📅 Resumo por marco</h3><div class="legend-inline">${['D-5','D-1','D0','D+1','D+3','D+7','D+10','D+14'].map(m=>{let raw=by&&by[m];if(raw&&typeof raw==='object')raw=raw.candidatos??raw.total??raw.quantidade??raw.count??0;const txt=String(raw??'').trim().replace(',','.');const n=parseFloat(txt);const val=Number.isFinite(n)?Math.max(0,Math.trunc(n)):0;return `<span><i class="dot" style="background:var(--green)"></i>${m}: ${val}</span>`}).join('')}</div></div>
   <div class="glass panel"><div class="section-head"><div><h3>🔎 Auditoria da preventiva</h3><div class="hint">50 registros por página. Pesquise por cliente, CPF, telefone, filial ou título.</div></div></div><div class="search-row" style="grid-template-columns:1fr 160px 180px"><div class="input-card"><label>Pesquisar</label><input id="waMasterSearch" oninput="WA_MASTER_PAGE=1;waRenderRows()" placeholder="Cliente, CPF, telefone, filial ou título"></div><div class="input-card"><label>Marco</label><select id="waMasterMarco" onchange="WA_MASTER_PAGE=1;waRenderRows()"><option value="">Todos</option>${['D-5','D-1','D0','D+1','D+3','D+7','D+10','D+14'].map(m=>`<option>${m}</option>`).join('')}</select></div><div class="input-card"><label>Status</label><select id="waMasterStatus" onchange="WA_MASTER_PAGE=1;waRenderRows()"><option value="">Todos</option><option value="simulado">Simulado</option><option value="enviado">Enviado</option><option value="ignorado">Ignorado</option><option value="erro">Erro</option><option value="candidato">Candidato</option></select></div></div><div id="waMasterRows"></div></div>
   <div class="glass panel" style="margin-top:14px"><h3>🗂️ Histórico das execuções</h3><div class="hint" style="margin-bottom:10px">Últimas ${Math.min(20,WA_MASTER_HISTORY.length)} execuções registradas.</div><div class="wa-master-scroll" style="max-height:360px"><table class="wa-master-table"><thead><tr><th>Data</th><th>Modo</th><th>Elegíveis</th><th>Enviados</th><th>Ignorados</th><th>Erros</th><th>CPFs D+15</th></tr></thead><tbody>${WA_MASTER_HISTORY.length?WA_MASTER_HISTORY.slice().reverse().slice(0,20).map(h=>`<tr><td>${esc(waFmtDate(h.gerado_em))}</td><td>${h.dry_run?'DRY RUN':(h.enabled?'REAL':'DESATIVADO')}</td><td>${Number(h.candidatos||0)}</td><td>${Number(h.enviados_agora||0)}</td><td>${Number(h.pulados||0)}</td><td class="${Number(h.erros||0)?'wa-status-bad':''}">${Number(h.erros||0)}</td><td>${Number(h.cpfs_bloqueados_d15_mais||0)}</td></tr>`).join(''):'<tr><td colspan="7"><div class="empty">Ainda não há histórico.</div></td></tr>'}</tbody></table></div></div>`;
@@ -19591,7 +19602,7 @@ Preparamos condições especiais para você comemorar com a gente.
 
 </script>
 <script>
-try{window.DASHBOARD_BUILD_VERSION='V10.56';console.log('[V10.56] resumo WhatsApp Master com contagens numéricas; bloqueios e comissão preservados');}catch(e){}
+try{window.DASHBOARD_BUILD_VERSION='V10.57-PILOTO-F1-SANDY';console.log('[V10.57] resumo WhatsApp Master com contagens numéricas; bloqueios e comissão preservados');}catch(e){}
 </script>
 
 </body>
