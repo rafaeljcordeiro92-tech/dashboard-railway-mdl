@@ -34,7 +34,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.53"
+DASHBOARD_BUILD_VERSION = "V10.59"
 DASHBOARD_BUILD_TAG = "comissao_crediarista_fonte_unica_oficial"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -2878,6 +2878,7 @@ _vend_cli_atual   = None
 # disponível" como corte, pois isso zera os recebimentos de junho antes da virada.
 import json as _json_tmp
 
+# V10.58: competência mensal + separação entre pago histórico e recebido do mês.
 # V10.57: competência da cobrança acompanha automaticamente o mês de Brasília.
 # Uma variável COBRANCA_COMPETENCIA antiga não pode manter o dashboard preso no mês anterior.
 # Override manual só é aceito quando COBRANCA_COMPETENCIA_ALLOW_OVERRIDE=1.
@@ -3087,6 +3088,26 @@ _nt = sum(1 for c in clientes_cobrar if c['faixa']=='atencao')
 _nr = sum(1 for v in recebido_faixa.values() if v.get('is_ativo'))
 print(f"👥 Clientes a cobrar: {len(clientes_cobrar)} ({_ng}g/{_na}a/{_nt}t)")
 print(f"💰 Vendedores com recebimento no período: {_nr}")
+
+# V10.58: o campo pago do relatório principal é histórico do título e não representa
+# necessariamente a competência atual. A partir daqui, o total oficial do painel
+# passa a ser exclusivamente a soma das baixas com pagamento >= início do mês.
+_total_pago_historico_relatorio_v1058 = float(total_bruto_pg or 0)
+_total_pago_competencia_v1058 = round(sum(
+    float(_rv.get("grave", 0) or 0) +
+    float(_rv.get("alerta", 0) or 0) +
+    float(_rv.get("atencao", 0) or 0)
+    for _rv in recebido_faixa.values()
+), 2)
+total_bruto_pg = _total_pago_competencia_v1058
+print(
+    f"🧾 V10.58 pago histórico do relatório preservado apenas para auditoria: "
+    f"R$ {_total_pago_historico_relatorio_v1058:,.2f}"
+)
+print(
+    f"✅ V10.58 recebido oficial da competência {_mes_atual_str}: "
+    f"R$ {_total_pago_competencia_v1058:,.2f}"
+)
 
 print(f"\U0001f465 Clientes a cobrar: {len(clientes_cobrar)} títulos ({_ng} grave / {_na} alerta / {_nt} atenção)")
 
@@ -3341,6 +3362,56 @@ inativos = df_inativos_raw.groupby(["vendedor","filial_erp"]).agg(
 ).reset_index()
 inativos.rename(columns={"filial_erp":"filial"}, inplace=True)
 inativos["is_gerente"] = False
+
+# V10.58: zera o pago histórico agregado e recompõe somente com as baixas da
+# competência atual identificadas linha a linha em recebido_faixa. O pendente
+# continua vindo do relatório principal, pois representa a carteira atual.
+ativos["pago"] = 0.0
+inativos["pago"] = 0.0
+
+def _nome_rateio_v1058(_txt):
+    return _colab_norm_key_py(limpar_nome_display(limpar_nome_erp(str(_txt or ""))))
+
+for _rec_key_v1058, _rec_v1058 in recebido_faixa.items():
+    _pg_v1058 = (
+        float(_rec_v1058.get("grave", 0) or 0) +
+        float(_rec_v1058.get("alerta", 0) or 0) +
+        float(_rec_v1058.get("atencao", 0) or 0)
+    )
+    if _pg_v1058 <= 0:
+        continue
+    _fil_v1058 = str(_rec_v1058.get("filial") or "").strip().upper()
+    _nom_v1058 = _nome_rateio_v1058(_rec_v1058.get("vendedor_nome") or "")
+    _is_ativo_v1058 = bool(_rec_v1058.get("is_ativo"))
+
+    if _is_ativo_v1058:
+        _mask_v1058 = (
+            (ativos["filial_vendedor"].astype(str).str.upper() == _fil_v1058) &
+            (ativos["vendedor"].apply(_nome_rateio_v1058) == _nom_v1058)
+        )
+        if _mask_v1058.any():
+            _idx_v1058 = ativos[_mask_v1058].index[0]
+            ativos.loc[_idx_v1058, "pago"] += _pg_v1058
+        else:
+            print(f"⚠️ V10.58 recebimento ativo sem linha de rateio: {_nom_v1058}/{_fil_v1058} R$ {_pg_v1058:,.2f}")
+    else:
+        _mask_v1058 = (
+            (inativos["filial"].astype(str).str.upper() == _fil_v1058) &
+            (inativos["vendedor"].apply(_nome_rateio_v1058) == _nom_v1058)
+        )
+        if _mask_v1058.any():
+            _idx_v1058 = inativos[_mask_v1058].index[0]
+            inativos.loc[_idx_v1058, "pago"] += _pg_v1058
+        else:
+            inativos = pd.concat([inativos, pd.DataFrame([{
+                "vendedor": _rec_v1058.get("vendedor_nome") or _nom_v1058,
+                "filial": _fil_v1058 or "OUTROS",
+                "pendente": 0.0,
+                "pago": _pg_v1058,
+                "is_gerente": False,
+            }])], ignore_index=True)
+
+print(f"✅ V10.58 rateio recomposto somente com recebimentos da competência: R$ {float(ativos['pago'].sum() + inativos['pago'].sum()):,.2f}")
 
 print(f"\n👥 Ativos (vendedor+gerente): {ativos['vendedor'].nunique()}")
 print(f"👥 Inativos:                  {inativos['vendedor'].nunique()}")
@@ -11450,7 +11521,7 @@ function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';
   const rentNote = c.rentUnlocked
     ? `Rentabilidade atual ${String(Number(c.rentAtual||0).toFixed(2)).replace('.',',')}% · faixa aplicada ${c.rentFaixaTxt}.`
     : `Rentabilidade atual ${String(Number(c.rentAtual||0).toFixed(2)).replace('.',',')}% · bloqueada até bater 50% da meta de cobrança.`;
-  return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,!(c.rentUnlocked && c.rentAtual>=48))}${moneyCell('Rentab 52,15%',c.rent52,!(c.rentUnlocked && c.rentAtual>=52.15))}${moneyCell('Rentab 55,50%',c.rent55,!(c.rentUnlocked && c.rentAtual>=55.50))}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo vendas ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)} · rentab exige cobrança 50% + mercantil ${pct(c.rentMinMercantil)}. ${rentNote}</div></div>`
+  return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,c.rentAppliedKey!=='rent48')}${moneyCell('Rentab 52,15%',c.rent52,c.rentAppliedKey!=='rent52')}${moneyCell('Rentab 55,50%',c.rent55,c.rentAppliedKey!=='rent55')}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo vendas ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)} · rentab exige cobrança 50% + mercantil ${pct(c.rentMinMercantil)} · prêmio por faixa única (não acumulativo). ${rentNote}</div></div>`
 }
 
 function backToMain(){currentDetailRef=null; try{renderLaranjitoNotify()}catch(e){}; detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden')}
@@ -11712,9 +11783,12 @@ function calcCommissionSummary(ent){
       }
     });
   }
-  const rent48=(rentUnlocked && rentAtual>=48.0)?Number(faixa.rent48||0):0;
-  const rent52=(rentUnlocked && rentAtual>=52.15)?Number(faixa.rent52||0):0;
-  const rent55=(rentUnlocked && rentAtual>=55.50)?Number(faixa.rent55||0):0;
+  // V10.59: prêmio de rentabilidade é por faixa única, nunca acumulativo.
+  // Ao atingir 55,50%, paga somente rent55; ao atingir 52,15%, somente rent52;
+  // entre 48% e 52,14%, somente rent48.
+  const rent48=(rentAppliedKey==='rent48')?Number(faixa.rent48||0):0;
+  const rent52=(rentAppliedKey==='rent52')?Number(faixa.rent52||0):0;
+  const rent55=(rentAppliedKey==='rent55')?Number(faixa.rent55||0):0;
   const metaAtingida=vendaPerc>=minVenda || geralMeta>=rentMin50;
 
   return {
@@ -11913,7 +11987,7 @@ function renderCampaignSummary(ent){
   </div>`;
 }
 
-function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';const c=calcCommissionSummary(ent); const totalLiberado = c.elegivelMercantil && c.elegivelServicos; const totalExibido = totalLiberado ? c.totalPrevisto : 0; const moneyCell=(title,val,locked=false,extra='')=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''} ${extra}"><div class="k">${title}</div><div class="v">${R(val||0)}</div></div>`; const pctCell=(title,val,locked=false)=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''}"><div class="k">${title}</div><div class="v">${String(Number(val||0).toFixed(2)).replace('.',',')}%</div></div>`; return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,!c.rentUnlocked)}${moneyCell('Rentab 52,15%',c.rent52,!c.rentUnlocked)}${moneyCell('Rentab 55,50%',c.rent55,!c.rentUnlocked)}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo vendas ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)} · rentab exige cobrança 50% + mercantil ${pct(c.rentMinMercantil)}.</div></div>`}
+function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';const c=calcCommissionSummary(ent); const totalLiberado = c.elegivelMercantil && c.elegivelServicos; const totalExibido = totalLiberado ? c.totalPrevisto : 0; const moneyCell=(title,val,locked=false,extra='')=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''} ${extra}"><div class="k">${title}</div><div class="v">${R(val||0)}</div></div>`; const pctCell=(title,val,locked=false)=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''}"><div class="k">${title}</div><div class="v">${String(Number(val||0).toFixed(2)).replace('.',',')}%</div></div>`; return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,c.rentAppliedKey!=='rent48')}${moneyCell('Rentab 52,15%',c.rent52,c.rentAppliedKey!=='rent52')}${moneyCell('Rentab 55,50%',c.rent55,c.rentAppliedKey!=='rent55')}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo vendas ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)} · rentab exige cobrança 50% + mercantil ${pct(c.rentMinMercantil)} · prêmio por faixa única (não acumulativo).</div></div>`}
 function backToMain(){currentDetailRef=null; try{renderLaranjitoNotify()}catch(e){}; detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden')}
 function renderMetaBox(title,color,obj){return `<div class="meta-card"><div class="meta-title">${title}</div><div class="meta-main" style="color:${color}">${pct(obj.perc||0)}</div><div class="meta-sub">Alvo: ${R(obj.alvo||0)}</div><div class="meta-sub">Recebido: ${R(obj.rec||0)}</div></div>`}
 function renderBonusBox(cfg,geral){const achieved=(geral>=100&&cfg.bonus_100)?100:(geral>=85&&cfg.bonus_85)?85:(geral>=75&&cfg.bonus_75)?75:(geral>=50&&cfg.bonus_50)?50:0; const items=[[50,cfg.bonus_50||'-'],[75,cfg.bonus_75||'-'],[85,cfg.bonus_85||'-'],[100,cfg.bonus_100||'-']];return `<div class="bonus-box"><h4>Faixas configuradas</h4><div class="bonus-list">${items.map(([p,t])=>`<div class="bonus-item ${achieved===p?'active':''}" style="${achieved===p?'box-shadow:0 0 0 2px rgba(59,130,246,.18),0 0 26px rgba(59,130,246,.2);animation:liquid 1.6s ease-in-out infinite alternate':''}"><div class="left"><span>🎯</span><span>${p}%</span></div><div style="display:flex;align-items:center;gap:10px">${achieved===p?`<img src="${LARANJITO}" alt="laranjito" style="width:34px;height:34px;border-radius:10px;object-fit:cover">`:''}<span>${esc(t)}</span></div></div>`).join('')}</div></div>`}
