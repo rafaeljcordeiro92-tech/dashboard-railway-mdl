@@ -34,7 +34,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.60"
+DASHBOARD_BUILD_VERSION = "V10.61"
 DASHBOARD_BUILD_TAG = "comissao_crediarista_fonte_unica_oficial"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -9908,7 +9908,7 @@ body.inicio-view .kpi .value{font-size:21px!important}
 .wa-status-ok{color:#31c48d}.wa-status-warn{color:#fbbf24}.wa-status-bad{color:#f05252}
 @media(max-width:900px){.wa-master-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:560px){.wa-master-grid{grid-template-columns:1fr}}
 
-/* V10.60 — Senhas legíveis e mensagens por faixa */
+/* V10.61 — Senhas legíveis e mensagens por faixa */
 .senhas-table-wrap{overflow-x:auto!important;overflow-y:visible!important;scrollbar-gutter:stable;border-radius:16px!important}
 .senhas-table{min-width:1540px!important;width:100%!important;table-layout:auto!important;font-size:12px!important}
 .senhas-table th,.senhas-table td{padding:10px 10px!important;overflow:visible!important;text-overflow:clip!important;white-space:normal!important}
@@ -9930,7 +9930,12 @@ body.inicio-view .kpi .value{font-size:21px!important}
 .cobranca-faixas-grid .preview-whats{min-height:190px}
 @media(max-width:1200px){.cobranca-faixas-grid{grid-template-columns:1fr}.senhas-table{min-width:1450px!important}}
 </style>
-</head>
+<style>
+.cobrador-name-panel{display:flex;justify-content:space-between;gap:14px;align-items:center;margin-bottom:12px;border-color:rgba(245,158,11,.35)}
+.cobrador-name-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.cobrador-name-actions input{min-width:220px}
+.audit-proof-box{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.proof-input{max-width:260px}
+@media(max-width:760px){.cobrador-name-panel{flex-direction:column;align-items:stretch}.cobrador-name-actions input{min-width:0;width:100%}.audit-proof-box{justify-content:flex-start}}
+</style></head>
 <body class="mdl-light-mode">
 <div id="loginScreen" class="login-wrap">
   <div class="glass login-card">
@@ -10204,6 +10209,8 @@ const LARANJITO='__LARANJITO__';
 const MDL_COIN_IMG='https://moveisdolar.com.br/colaborador/coin%20png.png';
 const API_CFG='config_meta_api.php';
 const API_COB='cobrancas_api.php';
+const API_COB_AUD='cobranca_auditoria_api.php';
+let COB_AUDITORIAS=[];
 const API_MSG='mensagens_api.php';
 const API_CRED='credenciais_api.php';
 const API_ACCESS_GUARD='access_guard_api.php';
@@ -11805,7 +11812,7 @@ function calcCommissionSummary(ent){
       }
     });
   }
-  // V10.60: prêmio de rentabilidade é por faixa única, nunca acumulativo.
+  // V10.61: prêmio de rentabilidade é por faixa única, nunca acumulativo.
   // Ao atingir 55,50%, paga somente rent55; ao atingir 52,15%, somente rent52;
   // entre 48% e 52,14%, somente rent48.
   const rent48=(rentAppliedKey==='rent48')?Number(faixa.rent48||0):0;
@@ -12304,6 +12311,64 @@ Para evitar novos encargos e restrições, pedimos que regularize o pagamento o 
 Caso já tenha pago, por gentileza desconsidere esta mensagem.`);
 }
 
+
+function cobradorNomeAtual(){
+  const login=String(usuarioAtual?.login||'').toLowerCase();
+  const u=(AUTH_STATE?.users||{})[login]||{};
+  return String(u.whatsapp_nome_global||usuarioAtual?.whatsapp_nome_global||usuarioAtual?.nome||'').trim();
+}
+async function salvarMeuNomeCobrador(entRef){
+  const el=document.getElementById('meuNomeCobrador');
+  const nome=String(el?.value||'').trim();
+  if(nome.length<2){toast('Informe seu primeiro nome.','warn');return;}
+  const login=String(usuarioAtual?.login||entRef?.login||'').toLowerCase();
+  if(!login){toast('Não identifiquei seu login.','warn');return;}
+  try{
+    const fd=new FormData(); fd.append('action','admin_update_whatsapp_name'); fd.append('login',login); fd.append('whatsapp_nome_global',nome);
+    const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json();
+    if(!j.ok) throw new Error(j.error||'erro');
+    await carregarCredenciaisOnline();
+    toast('Nome do cobrador salvo. As próximas mensagens usarão este nome.','success');
+    if(currentDetailRef) openEntity(currentDetailRef);
+  }catch(e){toast('Não consegui salvar o nome do cobrador.','warn');}
+}
+function auditoriaKey(reg){return [String(reg?.cpf_cnpj_normalizado||reg?.cpf_cnpj||'').replace(/\D/g,''),String(reg?.titulo||''),String(reg?.parcela||''),String(reg?.vencimento||'')].join('|')}
+function auditoriaDoTitulo(reg){const k=auditoriaKey(reg); return (COB_AUDITORIAS||[]).filter(a=>String(a.audit_key||'')===k).sort((a,b)=>String(a.server_time||'').localeCompare(String(b.server_time||''))).pop()||null}
+async function carregarAuditoriasCobranca(){
+  try{const r=await fetch(API_COB_AUD+'?_='+Date.now(),{cache:'no-store'}); const j=await r.json(); COB_AUDITORIAS=Array.isArray(j?.data)?j.data:[];}catch(e){COB_AUDITORIAS=[];}
+}
+function printAuditBox(reg,entRef){
+  const a=auditoriaDoTitulo(reg);
+  if(a){
+    const st=String(a.status||'aguardando_ia');
+    const lbl=st==='aprovado'?'✅ Auditoria aprovada':st==='recusado'?'❌ Auditoria recusada':'🤖 Aguardando auditoria da IA';
+    return `<div class="audit-proof-box"><strong>${lbl}</strong>${a.media_url?`<a class="btn soft btn-xs" target="_blank" href="${esc(a.media_url)}">🖼️ Ver print</a>`:''}<div class="small muted">${esc(a.motivo||'Print recebido e preservado para auditoria.')}</div></div>`;
+  }
+  const id='proof_'+Math.random().toString(36).slice(2);
+  return `<div class="audit-proof-box"><div><strong>Cliente respondeu?</strong><div class="small muted">Anexe o print contendo o contato e a resposta do cliente.</div></div><input id="${id}" type="file" accept="image/png,image/jpeg,image/webp" class="proof-input"><button class="btn primary btn-xs" onclick='enviarPrintCobranca(${JSON.stringify(reg)},${JSON.stringify(entRef)},"${id}")'>📎 Anexar print</button></div>`;
+}
+async function enviarPrintCobranca(reg,entRef,inputId){
+  const inp=document.getElementById(inputId); const file=inp?.files?.[0];
+  if(!file){toast('Selecione o print da resposta.','warn');return;}
+  if(file.size>8*1024*1024){toast('O print deve ter até 8 MB.','warn');return;}
+  const fd=new FormData(); fd.append('action','upload'); fd.append('media',file);
+  fd.append('audit_key',auditoriaKey(reg)); fd.append('cliente',reg.cliente||reg.nome||''); fd.append('cpf_cnpj',reg.cpf_cnpj||'');
+  fd.append('titulo',reg.titulo||''); fd.append('parcela',reg.parcela||''); fd.append('vencimento',reg.vencimento||'');
+  fd.append('telefone',Array.isArray(reg.telefones)?(reg.telefones[0]||''):(reg.contato||'')); fd.append('faixa',cobrancaFaixaNormalizada(reg));
+  fd.append('usuario_login',usuarioAtual?.login||entRef?.login||''); fd.append('usuario_nome',cobradorNomeAtual()); fd.append('filial',entRef?.filial||'');
+  try{
+    const r=await fetch(API_COB_AUD,{method:'POST',body:fd}); const j=await r.json();
+    if(!j.ok) throw new Error(j.error||'erro_upload');
+    await carregarAuditoriasCobranca(); toast('Print anexado. A cobrança foi enviada para auditoria.','success');
+    if(currentDetailRef) openEntity(currentDetailRef);
+  }catch(e){toast('Não consegui anexar o print.','warn');}
+}
+function renderMeuNomeCobrador(ent){
+  if(usuarioAtual?.tipo==='master') return '';
+  const nome=cobradorNomeAtual();
+  return `<div class="glass panel cobrador-name-panel"><div><strong>👤 Nome do cobrador nas mensagens</strong><div class="small muted">Salve apenas seu primeiro nome. Você pode conferir e alterar quando necessário.</div></div><div class="cobrador-name-actions"><input id="meuNomeCobrador" value="${esc(nome)}" placeholder="Ex: Dani"><button class="btn primary" onclick='salvarMeuNomeCobrador(${JSON.stringify({login:ent.login||'',filial:ent.filial||'',nome:ent.nome||''})})'>💾 Salvar nome</button></div></div>`;
+}
+
 function montarMensagemCobranca(reg){
   const st=reg?._cob_status||cobStatusTitulo(reg, phoneContext?.entRef||null);
   const tentativa=Number(st?.proxima_tentativa||1);
@@ -12326,6 +12391,8 @@ function montarMensagemCobranca(reg){
   Object.entries(dados).forEach(([k,v])=>{
     tpl=tpl.replaceAll(`{${k}}`, v);
   });
+  const cobrador=cobradorNomeAtual();
+  if(cobrador && !/^\s*ol[áa],?\s+aqui\s+[ée]/i.test(tpl)) tpl=`Olá, aqui é ${cobrador}.\n${tpl}`;
   return tpl;
 }
 function exemploMensagemCobranca(){
@@ -12471,7 +12538,7 @@ function renderCobrancasEnt(ent){
   };
 
   const faixas=['grave','alerta','atencao'];
-  const tabs=`<div class="tabs" style="justify-content:flex-start;margin:0 0 12px"><button class="tab active" data-cobtab="geral" onclick="switchCobTab(this,'geral')">Para cobrar</button><button class="tab" data-cobtab="novos" onclick="switchCobTab(this,'novos')">Novos Hoje</button><button class="tab" data-cobtab="cobrados" onclick="switchCobTab(this,'cobrados')">Cobrados Hoje</button><button class="tab" data-cobtab="aguardando" onclick="switchCobTab(this,'aguardando')">Aguardando 3 dias</button></div>`;
+  const tabs=`<div class="tabs" style="justify-content:flex-start;margin:0 0 12px"><button class="tab active" data-cobtab="geral" onclick="switchCobTab(this,'geral')">Para cobrar</button><button class="tab" data-cobtab="novos" onclick="switchCobTab(this,'novos')">Novos Hoje</button><button class="tab" data-cobtab="cobrados" onclick="switchCobTab(this,'cobrados')">Cobrados Hoje</button><button class="tab" data-cobtab="retorno" onclick="switchCobTab(this,'retorno')">Aguardando retorno cliente</button><button class="tab" data-cobtab="auditoria" onclick="switchCobTab(this,'auditoria')">Auditoria / prints</button><button class="tab" data-cobtab="aguardando" onclick="switchCobTab(this,'aguardando')">Aguardando 3 dias</button></div>`;
   let geral='';
   let aguardando=[];
   faixas.forEach(fx=>{
@@ -12486,6 +12553,8 @@ function renderCobrancasEnt(ent){
     const m=srcAll.find(r=>cobrancaRowKey(r)===cobrancaRowKey(x))||{};
     return decorateRow({cliente:x.cliente,titulo:x.titulo,parcela:x.parcela,vencimento:x.vencimento,pendente:x.pendente,vendedor:x.usuario||m.vendedor||'',dias:m.dias||'',telefones:Array.isArray(m.telefones)&&m.telefones.length?m.telefones:[x.telefone],contato:m.contato||x.telefone,avalista:m.avalista||'',restricao:m.restricao||'',faixa_label:m.faixa||'',novo:false,pagamento:m.pagamento||'',lancamento:m.lancamento||''});
   });
+  const retornoRows=aguardando.filter(r=>!auditoriaDoTitulo(r));
+  const auditoriaRows=aguardando.filter(r=>!!auditoriaDoTitulo(r));
   const exportId='cob_export_'+(++cobExportCounter);
   const exportRows=[];
   faixas.forEach(fx=>{((src[fx]||[]).map(r=>decorateRow({...r,faixa_label:fx}))).forEach(r=>exportRows.push(mdlCobExportRow(r,'Para cobrar')))});
@@ -12494,7 +12563,7 @@ function renderCobrancasEnt(ent){
   aguardando.forEach(r=>exportRows.push(mdlCobExportRow(r,'Aguardando 3 dias')));
   mdlRegisterExport(exportId, 'Relatorio de cobrancas - '+(ent?.nome||ent?.filial||'usuario'), exportRows);
 
-  return `<div style="display:flex;justify-content:flex-end;margin:0 0 10px">${mdlExportButtons(exportId)}</div>${tabs}<div class="cob-pane" data-cobpane="geral">${geral}</div><div class="cob-pane hidden" data-cobpane="novos">${renderRows(allHoje.map(r=>decorateRow({...r,faixa_label:r.faixa||''})).filter(shouldShowInGeral),true,'novos')}</div><div class="cob-pane hidden" data-cobpane="cobrados">${renderRows(cobradosRows,true,'cobrados')}</div><div class="cob-pane hidden" data-cobpane="aguardando">${renderRows(aguardando,true,'aguardando')}</div>`;
+  return `${renderMeuNomeCobrador(ent)}<div style="display:flex;justify-content:flex-end;margin:0 0 10px">${mdlExportButtons(exportId)}</div>${tabs}<div class="cob-pane" data-cobpane="geral">${geral}</div><div class="cob-pane hidden" data-cobpane="novos">${renderRows(allHoje.map(r=>decorateRow({...r,faixa_label:r.faixa||''})).filter(shouldShowInGeral),true,'novos')}</div><div class="cob-pane hidden" data-cobpane="cobrados">${renderRows(cobradosRows,true,'cobrados')}</div><div class="cob-pane hidden" data-cobpane="retorno">${retornoRows.length?retornoRows.map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · parcela ${esc(r.parcela||'')} · ${esc(r.faixa_label||'')}</div></div><div>${printAuditBox(r,{type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''})}</div></div></div>`).join(''):'<div class="empty">Nenhuma cobrança aguardando print de retorno.</div>'}</div><div class="cob-pane hidden" data-cobpane="auditoria">${auditoriaRows.length?auditoriaRows.map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · parcela ${esc(r.parcela||'')}</div></div><div>${printAuditBox(r,{type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''})}</div></div></div>`).join(''):'<div class="empty">Nenhum print enviado para auditoria.</div>'}</div><div class="cob-pane hidden" data-cobpane="aguardando">${renderRows(aguardando,true,'aguardando')}</div>`;
 }
 function switchCobTab(btn,name){const box=btn.closest('.acc-body'); box.querySelectorAll('[data-cobtab]').forEach(b=>b.classList.toggle('active',b===btn)); box.querySelectorAll('[data-cobpane]').forEach(p=>p.classList.toggle('hidden',p.dataset.cobpane!==name));}
 function abrirWhats(reg,entRef){const nums=normalizarListaTelefones((reg.telefones&&reg.telefones.length)?reg.telefones:reg.contato); if(!nums.length){toast('Cliente sem telefone válido.'); return} reg._cob_status=cobStatusTitulo(reg,entRef); phoneContext={reg,entRef}; if(nums.length===1){enviarWhats(nums[0]); return} const phoneList=document.getElementById('phoneList'); phoneList.innerHTML=nums.map(n=>`<button class="btn soft" style="width:100%" onclick="enviarWhats('${n}')">${n}</button>`).join(''); document.getElementById('phoneModal').classList.add('show')}
@@ -12520,7 +12589,7 @@ async function registrarCobrancaOnline(r,entRef,numero){
     const j=await resp.json();
     if(j.ok){
       if(payload.titulo==='REATIVACAO') registrarReativacaoLocal(payload);
-      await carregarCobrancasOnline();
+      await carregarCobrancasOnline(); await carregarAuditoriasCobranca();
       toast(payload.titulo==='REATIVACAO'?'Mensagem de reativação registrada.':'Cobrança registrada online com sucesso.','success');
       if(!detailScreen.classList.contains('hidden')){
         if(entRef.type==='crediarista'||entRef.is_crediarista){
@@ -12664,7 +12733,7 @@ async function carregarCobrancasOnline(){
   return {ok:true,apiConfirmada,totalOficial:(COB_LOGS_OFICIAIS||[]).length};
 }
 
-async function removerCobranca(id,cliente='',titulo='',parcela=''){if(!confirm('Remover esta cobrança do histórico?')) return; try{const r=await fetch(API_COB,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete',id,cliente,titulo,parcela})}); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} if(j.ok){toast('Cobrança removida.','success'); await carregarCobrancasOnline(); renderLogsTab(); renderList(); if(currentDetailRef) openEntity(currentDetailRef);}else{console.log('Falha remover cobrança:', txt); toast('Não consegui remover.')}}catch(e){console.log(e); toast('Falha ao remover cobrança.')}}
+async function removerCobranca(id,cliente='',titulo='',parcela=''){if(!confirm('Remover esta cobrança do histórico?')) return; try{const r=await fetch(API_COB,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete',id,cliente,titulo,parcela})}); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} if(j.ok){toast('Cobrança removida.','success'); await carregarCobrancasOnline(); await carregarAuditoriasCobranca(); renderLogsTab(); renderList(); if(currentDetailRef) openEntity(currentDetailRef);}else{console.log('Falha remover cobrança:', txt); toast('Não consegui remover.')}}catch(e){console.log(e); toast('Falha ao remover cobrança.')}}
 function toggleAcc(el){el.parentElement.classList.toggle('open')}
 function normalizarConfigMetaPayloadOnline(j){
   try{
@@ -20064,6 +20133,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado','version'=>'V10.44'], JSON_UNESCAPED_UNICODE);
 ?>"""
 
+COBRANCA_AUDITORIA_API_PHP = r"""<?php
+header('Content-Type: application/json; charset=utf-8');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type');
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
+date_default_timezone_set('America/Sao_Paulo');
+$file=__DIR__.'/cobranca_auditoria.json'; $dir=__DIR__.'/uploads_cobranca_auditoria';
+if(!file_exists($dir)) @mkdir($dir,0777,true); if(!file_exists($file)) @file_put_contents($file,'[]');
+function ar(){global $file; $j=json_decode(@file_get_contents($file),true); return is_array($j)?$j:[];}
+function sw($d){global $file; return @file_put_contents($file,json_encode($d,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),LOCK_EX)!==false;}
+$data=ar();
+if($_SERVER['REQUEST_METHOD']==='GET'){echo json_encode(['ok'=>true,'data'=>$data,'count'=>count($data),'version'=>'V10.61'],JSON_UNESCAPED_UNICODE);exit;}
+if($_SERVER['REQUEST_METHOD']==='POST'){
+  $action=$_POST['action']??'upload';
+  if($action==='set_status'){
+    $id=(string)($_POST['id']??''); $status=(string)($_POST['status']??'aguardando_ia'); $motivo=(string)($_POST['motivo']??'');
+    foreach($data as &$x){if((string)($x['id']??'')===$id){$x['status']=$status;$x['motivo']=$motivo;$x['updated_at']=date('c');}}
+    $ok=sw($data); echo json_encode(['ok'=>$ok],JSON_UNESCAPED_UNICODE);exit;
+  }
+  if(empty($_FILES['media']['tmp_name'])){echo json_encode(['ok'=>false,'error'=>'print_obrigatorio']);exit;}
+  if(($_FILES['media']['size']??0)>8388608){echo json_encode(['ok'=>false,'error'=>'arquivo_maior_8mb']);exit;}
+  $mime=mime_content_type($_FILES['media']['tmp_name']); $allowed=['image/png'=>'png','image/jpeg'=>'jpg','image/webp'=>'webp'];
+  if(!isset($allowed[$mime])){echo json_encode(['ok'=>false,'error'=>'formato_invalido']);exit;}
+  $name='audit_'.date('Ymd_His').'_'.bin2hex(random_bytes(5)).'.'.$allowed[$mime]; $dest=$dir.'/'.$name;
+  if(!move_uploaded_file($_FILES['media']['tmp_name'],$dest)){echo json_encode(['ok'=>false,'error'=>'falha_upload']);exit;}
+  $scheme=(!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off')?'https':'http'; $base=$scheme.'://'.$_SERVER['HTTP_HOST'].rtrim(dirname($_SERVER['SCRIPT_NAME']),'/\\');
+  $item=['id'=>uniqid('aud_',true),'audit_key'=>(string)($_POST['audit_key']??''),'cliente'=>(string)($_POST['cliente']??''),'cpf_cnpj'=>(string)($_POST['cpf_cnpj']??''),'titulo'=>(string)($_POST['titulo']??''),'parcela'=>(string)($_POST['parcela']??''),'vencimento'=>(string)($_POST['vencimento']??''),'telefone'=>(string)($_POST['telefone']??''),'faixa'=>(string)($_POST['faixa']??''),'usuario_login'=>(string)($_POST['usuario_login']??''),'usuario_nome'=>(string)($_POST['usuario_nome']??''),'filial'=>(string)($_POST['filial']??''),'media_url'=>$base.'/uploads_cobranca_auditoria/'.$name,'media_type'=>$mime,'status'=>'aguardando_ia','motivo'=>'Print recebido. Aguardando auditoria da IA.','server_time'=>date('c')];
+  $data[]=$item; $ok=sw($data); echo json_encode(['ok'=>$ok,'data'=>$item,'version'=>'V10.61'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;
+}
+echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado']);
+?>"""
+
 CONFIG_META_API_PHP = r"""<?php
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
@@ -20696,6 +20798,7 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
 
     # 2) APIs pequenas e essenciais.
     _ftp_upload_bytes_v1019('cobrancas_api.php', COBRANCAS_API_PHP.encode('utf-8'), label='cobrancas_api.php')
+    _ftp_upload_bytes_v1019('cobranca_auditoria_api.php', COBRANCA_AUDITORIA_API_PHP.encode('utf-8'), label='cobranca_auditoria_api.php')
     _ftp_upload_bytes_v1019('config_meta_api.php', CONFIG_META_API_PHP.encode('utf-8'), label='config_meta_api.php')
     _ftp_upload_bytes_v1019('mensagens_api.php', MESSAGES_API_PHP.encode('utf-8'), label='mensagens_api.php')
     _ftp_upload_bytes_v1019('access_guard_api.php', ACCESS_GUARD_API_PHP.encode('utf-8'), label='access_guard_api.php')
