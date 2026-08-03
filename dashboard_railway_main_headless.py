@@ -1,4 +1,4 @@
-# VERSAO: DASH2_0_V10_51_BLOQUEIO_SESSAO_TEMPO_REAL
+# VERSAO: DASH2_0_V10_63_IA_AUDITORIA_PRINT
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -16,6 +16,8 @@ import json
 import unicodedata
 import urllib.request
 import urllib.error
+import urllib.parse
+import base64
 import ssl
 import tempfile
 import shutil
@@ -34,7 +36,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.61"
+DASHBOARD_BUILD_VERSION = "V10.63"
 DASHBOARD_BUILD_TAG = "comissao_crediarista_fonte_unica_oficial"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -4889,6 +4891,11 @@ _config_meta_default_global = {
         {"faixa": "atencao", "pct": "1.00"},
         {"faixa": "alerta", "pct": "2.00"},
         {"faixa": "grave", "pct": "3.00"}
+    ],
+    "camp_cob_usuarios": [
+        {"faixa": "atencao", "pct": "0.50"},
+        {"faixa": "alerta", "pct": "1.00"},
+        {"faixa": "grave", "pct": "2.00"}
     ],
     "cob_cred_rateio_filial_pct": 50.0,
     "cob_cred_rateio_cred_pct": 50.0,
@@ -9908,7 +9915,7 @@ body.inicio-view .kpi .value{font-size:21px!important}
 .wa-status-ok{color:#31c48d}.wa-status-warn{color:#fbbf24}.wa-status-bad{color:#f05252}
 @media(max-width:900px){.wa-master-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:560px){.wa-master-grid{grid-template-columns:1fr}}
 
-/* V10.61 — Senhas legíveis e mensagens por faixa */
+/* V10.62 — Senhas legíveis e mensagens por faixa */
 .senhas-table-wrap{overflow-x:auto!important;overflow-y:visible!important;scrollbar-gutter:stable;border-radius:16px!important}
 .senhas-table{min-width:1540px!important;width:100%!important;table-layout:auto!important;font-size:12px!important}
 .senhas-table th,.senhas-table td{padding:10px 10px!important;overflow:visible!important;text-overflow:clip!important;white-space:normal!important}
@@ -11539,7 +11546,7 @@ function renderCrediaristaDetail(ent){
   `;
 }
 
-function openEntityCore(ref){if(ref && (ref.type==='crediarista' || ref.is_crediarista)){return openCrediaristaPanel(ref.login||'', ref.filial||'', ref.nome||'')} const ent=findEntity(ref); if(!ent) return; currentDetailRef={type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''}; mascotCongrats(ent); try{renderLaranjitoNotify(); showLaranjitoOncePerAccess()}catch(e){}; document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(ent.is_terceiro || ent.type==='terceiro'){return renderTerceiroDetail(ent)} if(ent.is_crediarista || ent.type==='crediarista'){return openCrediaristaPanel(ent.login||'', ent.filial||'', ent.nome||'')} const meta=calcMeta(ent); const bonus=getBonus(meta.cfg,meta.geral); const deltaVal=Number(ent.var_pago_delta||0); const prevBase=Math.max(Math.abs(Number(ent.pago||0)-deltaVal),1); const pctFallback=(Math.abs(deltaVal)/prevBase)*100; const compPerc=(ent.var_pago_perc==null || Math.abs(Number(ent.var_pago_perc||0))<0.01)?pctFallback:Math.abs(Number(ent.var_pago_perc||0)); detailScreen.innerHTML=`${usuarioAtual && usuarioAtual.tipo!=='master' ? renderInboxBanner() : ''}${renderUpdateStrip()}<div class="back-row">${renderBackButton()}<div><h2>${ent.type==='filial'?filialLabel(ent.filial):esc(ent.nome)}</h2><div class="sub">${ent.type==='filial'?'Painel individual da filial':'Painel individual do vendedor'} · ${ent.filial}</div></div><div class="badge">${ent.type==='filial'?'🏬 Filial':'👤 Vendedor'}</div></div><div class="detail-top"><div class="glass panel"><h3>🎯 Meta do mês <span class="note">· Não acumulativo</span></h3><div class="mega-progress"><div class="ring-wrap">${renderPiggyBank(meta.geral)}</div><div><div class="metrics-grid"><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">% da filial</div><div class="v">${pct(ent.perc_filial||100)}</div></div><div class="metric"><div class="k">Configuração usada</div><div class="v">${Number(meta.cfg.grave_pct||0)}/${Number(meta.cfg.alerta_pct||0)}/${Number(meta.cfg.atencao_pct||0)}</div></div><div class="metric"><div class="k">Comparado a ontem</div><div class="v" style="font-size:16px">${renderDeltaPill(ent.var_pago_delta,compPerc)} <span>${R(Math.abs(Number(ent.var_pago_delta||0)))}</span></div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave alvo ${R(meta.grave.alvo)} · recebido ${R(meta.grave.rec)}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta alvo ${R(meta.alerta.alvo)} · recebido ${R(meta.alerta.rec)}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção alvo ${R(meta.atencao.alvo)} · recebido ${R(meta.atencao.rec)}</span></div></div></div><div class="meta-grid">${renderMetaBox('Grave','var(--red)',meta.grave)}${renderMetaBox('Alerta','var(--orange)',meta.alerta)}${renderMetaBox('Atenção','var(--yellow)',meta.atencao)}${renderMetaBox('Meta geral','var(--blue)',{perc:meta.geral,alvo:meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,rec:meta.grave.rec+meta.alerta.rec+meta.atencao.rec})}</div><div style="height:18px"></div><h3>🌊 Gráfico Geral Contas a Receber</h3>${renderSingleBars(ent,meta,true)}<div style="height:16px"></div><div class="glass panel"><h3>🏆 Bônus e premiações <span class="note">· Não acumulativo</span></h3>${renderBonusBox(meta.cfg,meta.geral)}</div></div><div>${renderSalesPanel(ent)}<div style="height:16px"></div>${renderCommissionSummary(ent)}<div style="height:16px"></div>${renderCampaignSummary(ent)}</div></div>${renderReativacaoEnt(ent)}<div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span class="acc-hint">clique para ${'abrir'}</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span class="acc-hint">clique para ${'abrir'}</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
+function openEntityCore(ref){if(ref && (ref.type==='crediarista' || ref.is_crediarista)){return openCrediaristaPanel(ref.login||'', ref.filial||'', ref.nome||'')} const ent=findEntity(ref); if(!ent) return; currentDetailRef={type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''}; mascotCongrats(ent); try{renderLaranjitoNotify(); showLaranjitoOncePerAccess()}catch(e){}; document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(ent.is_terceiro || ent.type==='terceiro'){return renderTerceiroDetail(ent)} if(ent.is_crediarista || ent.type==='crediarista'){return openCrediaristaPanel(ent.login||'', ent.filial||'', ent.nome||'')} const meta=calcMeta(ent); const bonus=getBonus(meta.cfg,meta.geral); const deltaVal=Number(ent.var_pago_delta||0); const prevBase=Math.max(Math.abs(Number(ent.pago||0)-deltaVal),1); const pctFallback=(Math.abs(deltaVal)/prevBase)*100; const compPerc=(ent.var_pago_perc==null || Math.abs(Number(ent.var_pago_perc||0))<0.01)?pctFallback:Math.abs(Number(ent.var_pago_perc||0)); detailScreen.innerHTML=`${usuarioAtual && usuarioAtual.tipo!=='master' ? renderInboxBanner() : ''}${renderUpdateStrip()}<div class="back-row">${renderBackButton()}<div><h2>${ent.type==='filial'?filialLabel(ent.filial):esc(ent.nome)}</h2><div class="sub">${ent.type==='filial'?'Painel individual da filial':'Painel individual do vendedor'} · ${ent.filial}</div></div><div class="badge">${ent.type==='filial'?'🏬 Filial':'👤 Vendedor'}</div></div><div class="detail-top"><div class="glass panel"><h3>🎯 Meta do mês <span class="note">· Não acumulativo</span></h3><div class="mega-progress"><div class="ring-wrap">${renderPiggyBank(meta.geral)}</div><div><div class="metrics-grid"><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">% da filial</div><div class="v">${pct(ent.perc_filial||100)}</div></div><div class="metric"><div class="k">Configuração usada</div><div class="v">${Number(meta.cfg.grave_pct||0)}/${Number(meta.cfg.alerta_pct||0)}/${Number(meta.cfg.atencao_pct||0)}</div></div><div class="metric"><div class="k">Comparado a ontem</div><div class="v" style="font-size:16px">${renderDeltaPill(ent.var_pago_delta,compPerc)} <span>${R(Math.abs(Number(ent.var_pago_delta||0)))}</span></div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave alvo ${R(meta.grave.alvo)} · recebido ${R(meta.grave.rec)}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta alvo ${R(meta.alerta.alvo)} · recebido ${R(meta.alerta.rec)}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção alvo ${R(meta.atencao.alvo)} · recebido ${R(meta.atencao.rec)}</span></div></div></div><div class="meta-grid">${renderMetaBox('Grave','var(--red)',meta.grave)}${renderMetaBox('Alerta','var(--orange)',meta.alerta)}${renderMetaBox('Atenção','var(--yellow)',meta.atencao)}${renderMetaBox('Meta geral','var(--blue)',{perc:meta.geral,alvo:meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,rec:meta.grave.rec+meta.alerta.rec+meta.atencao.rec})}</div><div style="height:18px"></div><h3>🌊 Gráfico Geral Contas a Receber</h3>${renderSingleBars(ent,meta,true)}<div style="height:16px"></div><div class="glass panel"><h3>🏆 Bônus e premiações <span class="note">· Não acumulativo</span></h3>${renderBonusBox(meta.cfg,meta.geral)}</div></div><div>${renderSalesPanel(ent)}<div style="height:16px"></div>${renderCommissionSummary(ent)}<div style="height:16px"></div>${renderCobrancaUsuarioCommission(ent)}<div style="height:16px"></div>${renderCampaignSummary(ent)}</div></div>${renderReativacaoEnt(ent)}<div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span class="acc-hint">clique para ${'abrir'}</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span class="acc-hint">clique para ${'abrir'}</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
 function canVerComissionamento(){return usuarioAtual?.tipo==='master'}
 function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';
   const c=calcCommissionSummary(ent);
@@ -11701,7 +11708,8 @@ camp_dindin_vend:Array.isArray(cfg?.camp_dindin_vend)&&cfg.camp_dindin_vend.leng
 camp_dindin_ger:Array.isArray(cfg?.camp_dindin_ger)&&cfg.camp_dindin_ger.length?cfg.camp_dindin_ger:defaultCampDindinGer(),
 camp_admin:Array.isArray(cfg?.camp_admin)&&cfg.camp_admin.length?cfg.camp_admin:defaultCampAdmin(),
 camp_cobranca_terceiro:Array.isArray(cfg?.camp_cobranca_terceiro)&&cfg.camp_cobranca_terceiro.length?cfg.camp_cobranca_terceiro:defaultCampTerceiro(),
-camp_cob_crediarista:Array.isArray(cfg?.camp_cob_crediarista)&&cfg.camp_cob_crediarista.length?cfg.camp_cob_crediarista:defaultCampCrediarista()
+camp_cob_crediarista:Array.isArray(cfg?.camp_cob_crediarista)&&cfg.camp_cob_crediarista.length?cfg.camp_cob_crediarista:defaultCampCrediarista(),
+camp_cob_usuarios:Array.isArray(cfg?.camp_cob_usuarios)&&cfg.camp_cob_usuarios.length?cfg.camp_cob_usuarios:defaultCampUsuarios()
 }}
 function renderPolicyTable(id, rows, cols, headers){return `<div class="comm-scroll"><table class="comm-table"><thead><tr>${cols.map((c,i)=>`<th><input data-comm-head="${id}" data-index="${i}" value="${esc(headers?.[i]??c.label)}"></th>`).join('')}</tr></thead><tbody>${rows.map((r,i)=>`<tr>${cols.map(c=>`<td><input data-comm="${id}" data-row="${i}" data-key="${c.key}" value="${esc(r[c.key]??'')}"></td>`).join('')}</tr>`).join('')}</tbody></table></div>`}
 
@@ -11711,6 +11719,7 @@ function defaultCampDindinVend(){return [{atingido:'105',extra_pct:'0.50'},{atin
 function defaultCampDindinGer(){return [{atingido:'105',extra_pct:'0.50'},{atingido:'110',extra_pct:'1.00'}]}
 function defaultCampAdmin(){return [{atingido:'100',extra_pct:'0.15',colaboradores:'5'},{atingido:'105',extra_pct:'0.20',colaboradores:'5'},{atingido:'110',extra_pct:'0.22',colaboradores:'5'}]}
 function defaultCampCrediarista(){return [{faixa:'atencao',pct:'1.00'},{faixa:'alerta',pct:'2.00'},{faixa:'grave',pct:'3.00'}]}
+function defaultCampUsuarios(){return [{faixa:'atencao',pct:'0.50'},{faixa:'alerta',pct:'1.00'},{faixa:'grave',pct:'2.00'}]}
 function renderCommissionPanel(cfg){const pc=commissionCfg(cfg);
 const vendCols=[{key:'faixa1',label:'De'},{key:'faixa2',label:'Até'},{key:'comissao',label:'% Comissão'},{key:'bonus90',label:'Bônus 90%'},{key:'bonus100',label:'Bônus 100%'},{key:'bonus120',label:'Bônus 120%'},{key:'rent48',label:'Rentab 48%'},{key:'rent52',label:'Rentab 52,15%'},{key:'rent55',label:'Rentab 55,50%'},{key:'servico_pct',label:'% Serviços'},{key:'caminhao_pct',label:'% Caminhão'}];
 const gerCols=[{key:'faixa1',label:'De'},{key:'faixa2',label:'Até'},{key:'bonusLoja',label:'Classificação Loja'},{key:'comissao',label:'% Comissão'},{key:'rent48',label:'Rentab 48%'},{key:'rent52',label:'Rentab 52,15%'},{key:'rent55',label:'Rentab 55,50%'},{key:'servico_pct',label:'% Serviços'},{key:'caminhao_pct',label:'% Caminhão'}];
@@ -11718,6 +11727,7 @@ const cmdCols=[{key:'dias_uteis',label:'Dias úteis'},{key:'bonus_final',label:'
 const cdiCols=[{key:'atingido',label:'Atingiu %'},{key:'extra_pct',label:'Extra % sobre mercantil'}];
 const admCols=[{key:'atingido',label:'Atingiu % total geral'},{key:'extra_pct',label:'Extra % sobre mercantil lojas'},{key:'colaboradores',label:'Nº colaboradores'}];
 const credCols=[{key:'faixa',label:'Faixa'},{key:'pct',label:'% Comissão'}];
+const cobUserCols=[{key:'faixa',label:'Faixa'},{key:'pct',label:'% Comissão'}];
 const box=document.getElementById('commissionPanel'); if(!box) return;
 box.innerHTML=`<div class="comm-wrap">
 <div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">💰 Política de comissão</h2><div class="hint">Tabela global/individual para vendedores e gerente/filial.</div></div></div>
@@ -11730,8 +11740,9 @@ box.innerHTML=`<div class="comm-wrap">
 <div class="comm-box"><div class="comm-subtitle">🏢 CAMPANHA DINDIN NO BOLSO · administrativo</div><div class="hint">Tabela apenas para consulta manual. O cálculo do administrativo será feito manualmente depois.</div>${renderPolicyTable('cadm',pc.camp_admin,admCols,['Atingiu % total','Extra % lojas','Nº colaboradores'])}</div>
 <div class="comm-box"><div class="comm-subtitle">🤝 COMISSÃO COBRANÇA TERCEIRO · Cobrança10</div><div class="hint">Comissão por faixa somente para clientes realmente cobrados e recebidos no mês.</div>${renderPolicyTable('cter',pc.camp_cobranca_terceiro,credCols,['Faixa','% Comissão'])}</div>
 <div class="comm-box"><div class="comm-subtitle">🧾 COMISSÃO CREDIARISTAS · filiais</div><div class="hint">Configuração padrão para os usuários crediaristas por faixa.</div>${renderPolicyTable('ccred',pc.camp_cob_crediarista,credCols,['Faixa','% Comissão'])}</div>
+<div class="comm-box"><div class="comm-subtitle">📲 COMISSÃO DE COBRANÇA · vendedores e gerente/filial</div><div class="hint">Só entra após print aprovado na auditoria e baixa do mesmo título. Pode ser salva globalmente ou como configuração individual.</div>${renderPolicyTable('cuser',pc.camp_cob_usuarios,cobUserCols,['Faixa','% Comissão'])}</div>
 </div>`}
-function readCommissionPanel(){const vendRows=[], gerRows=[]; const vendHeaders=[], gerHeaders=[]; const cmdv=[], cmdg=[], cdiv=[], cdig=[], cadm=[], cter=[], ccred=[];
+function readCommissionPanel(){const vendRows=[], gerRows=[]; const vendHeaders=[], gerHeaders=[]; const cmdv=[], cmdg=[], cdiv=[], cdig=[], cadm=[], cter=[], ccred=[], cuser=[];
 document.querySelectorAll('[data-comm="vend"]').forEach(el=>{const i=Number(el.dataset.row||0); vendRows[i]=vendRows[i]||{}; vendRows[i][el.dataset.key]=el.value});
 document.querySelectorAll('[data-comm="ger"]').forEach(el=>{const i=Number(el.dataset.row||0); gerRows[i]=gerRows[i]||{}; gerRows[i][el.dataset.key]=el.value});
 document.querySelectorAll('[data-comm="cmdv"]').forEach(el=>{const i=Number(el.dataset.row||0); cmdv[i]=cmdv[i]||{}; cmdv[i][el.dataset.key]=el.value});
@@ -11741,6 +11752,7 @@ document.querySelectorAll('[data-comm="cdig"]').forEach(el=>{const i=Number(el.d
 document.querySelectorAll('[data-comm="cadm"]').forEach(el=>{const i=Number(el.dataset.row||0); cadm[i]=cadm[i]||{}; cadm[i][el.dataset.key]=el.value});
 document.querySelectorAll('[data-comm="cter"]').forEach(el=>{const i=Number(el.dataset.row||0); cter[i]=cter[i]||{}; cter[i][el.dataset.key]=el.value});
 document.querySelectorAll('[data-comm="ccred"]').forEach(el=>{const i=Number(el.dataset.row||0); ccred[i]=ccred[i]||{}; ccred[i][el.dataset.key]=el.value});
+document.querySelectorAll('[data-comm="cuser"]').forEach(el=>{const i=Number(el.dataset.row||0); cuser[i]=cuser[i]||{}; cuser[i][el.dataset.key]=el.value});
 document.querySelectorAll('[data-comm-head="vend"]').forEach(el=>{vendHeaders[Number(el.dataset.index||0)] = el.value});
 document.querySelectorAll('[data-comm-head="ger"]').forEach(el=>{gerHeaders[Number(el.dataset.index||0)] = el.value});
 return {
@@ -11754,7 +11766,8 @@ return {
   camp_dindin_ger:cdig.filter(Boolean),
   camp_admin:cadm.filter(Boolean),
   camp_cobranca_terceiro:cter.filter(Boolean),
-  camp_cob_crediarista:ccred.filter(Boolean)
+  camp_cob_crediarista:ccred.filter(Boolean),
+  camp_cob_usuarios:cuser.filter(Boolean)
 }}
 
 function moneyNum(s){return parseFloat(String(s||'').replace(/\./g,'').replace(',','.'))||0}
@@ -11812,7 +11825,7 @@ function calcCommissionSummary(ent){
       }
     });
   }
-  // V10.61: prêmio de rentabilidade é por faixa única, nunca acumulativo.
+  // V10.62: prêmio de rentabilidade é por faixa única, nunca acumulativo.
   // Ao atingir 55,50%, paga somente rent55; ao atingir 52,15%, somente rent52;
   // entre 48% e 52,14%, somente rent48.
   const rent48=(rentAppliedKey==='rent48')?Number(faixa.rent48||0):0;
@@ -12014,6 +12027,57 @@ function renderCampaignSummary(ent){
       Hoje: ${R(c.realizadoDia || 0)} ${c.pontoHoje ? '✅ ponto ganho' : '⏳ sem ponto'} .
     </div>
   </div>`;
+}
+
+
+function cobrancaAuditEntMatch(a,ent){
+  const login=String(ent?.login||'').toLowerCase();
+  const filial=String(ent?.filial||'').toUpperCase();
+  if(ent?.type==='filial') return String(a?.filial||'').toUpperCase()===filial;
+  return String(a?.usuario_login||'').toLowerCase()===login;
+}
+function quitadoDoAudit(a){
+  const doc=String(a?.cpf_cnpj||'').replace(/\D/g,'');
+  const tit=String(a?.titulo||'').trim(); const parc=String(a?.parcela||'').trim();
+  const dtAudit=parseCobDate(a?.server_time||a?.criado_em||a?.data||'');
+  const mesAtual=(typeof mesAtualComissao==='function'?mesAtualComissao():dateOnlyISO(new Date()).slice(0,7));
+  const cand=(QUITADOS_180||[]).filter(q=>{
+    const qdoc=String(q?.cpf_cnpj_normalizado||q?.cpf_cnpj||'').replace(/\D/g,'');
+    if(doc&&qdoc&&doc!==qdoc) return false;
+    if(tit&&String(q?.titulo||'').trim()!==tit) return false;
+    if(parc&&String(q?.parcela||'').trim()!==parc) return false;
+    if(dateOnlyISO(q?.pagamento||q?.data_pagamento||'').slice(0,7)!==mesAtual) return false;
+    const dp=parseDataBRjs(q?.pagamento||q?.data_pagamento||'');
+    return !dtAudit || (dp&&dp.getTime()>=dtAudit.getTime());
+  });
+  return cand.sort((x,y)=>Number(y?.pago||0)-Number(x?.pago||0))[0]||null;
+}
+function calcCobrancaUsuarioCommission(ent){
+  const cfg=commissionCfg(entityConfig(ent));
+  const policy=(cfg.camp_cob_usuarios||defaultCampUsuarios());
+  const fx={atencao:{pct:0,recebido:0,comissao:0},alerta:{pct:0,recebido:0,comissao:0},grave:{pct:0,recebido:0,comissao:0}};
+  policy.forEach(r=>{const k=String(r?.faixa||'').toLowerCase(); if(fx[k]) fx[k].pct=Number(String(r?.pct||0).replace(',','.'))||0});
+  const audits=(COB_AUDITORIAS||[]).filter(a=>cobrancaAuditEntMatch(a,ent));
+  const aprovados=audits.filter(a=>String(a?.status||'').toLowerCase()==='aprovado');
+  let aguardandoIa=audits.filter(a=>!['aprovado','recusado'].includes(String(a?.status||'').toLowerCase())).length;
+  let recusados=audits.filter(a=>String(a?.status||'').toLowerCase()==='recusado').length;
+  let aguardandoPagamento=0, pagos=0;
+  const usados=new Set();
+  aprovados.forEach(a=>{
+    const q=quitadoDoAudit(a); if(!q){aguardandoPagamento++;return;}
+    const uk=[String(q?.cpf_cnpj_normalizado||q?.cpf_cnpj||'').replace(/\D/g,''),String(q?.titulo||''),String(q?.parcela||''),String(q?.pagamento||'')].join('|');
+    if(usados.has(uk)) return; usados.add(uk); pagos++;
+    let k=String(a?.faixa||q?.faixa||'atencao').toLowerCase(); if(!fx[k]) k='atencao';
+    fx[k].recebido+=Number(q?.pago||0);
+  });
+  Object.values(fx).forEach(v=>v.comissao=v.recebido*(v.pct/100));
+  return {fx,total:Object.values(fx).reduce((a,b)=>a+b.comissao,0),aguardandoIa,aprovados:aprovados.length,recusados,aguardandoPagamento,pagos};
+}
+function renderCobrancaUsuarioCommission(ent){
+  if(!canVerComissionamento() || ent?.is_crediarista || ent?.is_terceiro) return '';
+  const c=calcCobrancaUsuarioCommission(ent), f=c.fx;
+  const item=(t,v,extra='')=>`<div class="commission-item unlocked ${extra}"><div class="k">${t}</div><div class="v">${v}</div></div>`;
+  return `<div class="glass panel commission-card"><h3>📲 Comissão de cobrança auditada <span class="note">· print aprovado + baixa do mesmo título</span></h3><div class="commission-grid">${item('Atenção %',String(f.atencao.pct.toFixed(2)).replace('.',',')+'%')}${item('Alerta %',String(f.alerta.pct.toFixed(2)).replace('.',',')+'%')}${item('Grave %',String(f.grave.pct.toFixed(2)).replace('.',',')+'%')}${item('Recebido atenção',R(f.atencao.recebido))}${item('Recebido alerta',R(f.alerta.recebido))}${item('Recebido grave',R(f.grave.recebido))}${item('Comissão atenção',R(f.atencao.comissao))}${item('Comissão alerta',R(f.alerta.comissao))}${item('Comissão grave',R(f.grave.comissao))}${item('Total previsto',R(c.total),'total-final')}${item('Prints aguardando IA',String(c.aguardandoIa))}${item('Auditorias aprovadas',String(c.aprovados))}${item('Aguardando pagamento',String(c.aguardandoPagamento))}${item('Pagamentos conciliados',String(c.pagos))}</div><div class="commission-note">${esc(CONFIG_META?.comissao_pagamento_texto||'A comissão reinicia a cada mês e o pagamento é previsto para o dia 25 do mês seguinte.')} O valor só aparece após auditoria aprovada e conciliação do mesmo CPF/título/parcela.</div></div>`;
 }
 
 function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';const c=calcCommissionSummary(ent); const totalLiberado = c.elegivelMercantil && c.elegivelServicos; const totalExibido = totalLiberado ? c.totalPrevisto : 0; const moneyCell=(title,val,locked=false,extra='')=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''} ${extra}"><div class="k">${title}</div><div class="v">${R(val||0)}</div></div>`; const pctCell=(title,val,locked=false)=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''}"><div class="k">${title}</div><div class="v">${String(Number(val||0).toFixed(2)).replace('.',',')}%</div></div>`; return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,c.rentAppliedKey!=='rent48')}${moneyCell('Rentab 52,15%',c.rent52,c.rentAppliedKey!=='rent52')}${moneyCell('Rentab 55,50%',c.rent55,c.rentAppliedKey!=='rent55')}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo vendas ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)} · rentab exige cobrança 50% + mercantil ${pct(c.rentMinMercantil)} · prêmio por faixa única (não acumulativo).</div></div>`}
@@ -12341,7 +12405,7 @@ function printAuditBox(reg,entRef){
   const a=auditoriaDoTitulo(reg);
   if(a){
     const st=String(a.status||'aguardando_ia');
-    const lbl=st==='aprovado'?'✅ Auditoria aprovada':st==='recusado'?'❌ Auditoria recusada':'🤖 Aguardando auditoria da IA';
+    const lbl=st==='aprovado'?'✅ Auditoria aprovada':st==='recusado'?'❌ Auditoria recusada':st==='revisao_master'?'🧑‍⚖️ Revisão do MASTER':'🤖 Aguardando auditoria da IA';
     return `<div class="audit-proof-box"><strong>${lbl}</strong>${a.media_url?`<a class="btn soft btn-xs" target="_blank" href="${esc(a.media_url)}">🖼️ Ver print</a>`:''}<div class="small muted">${esc(a.motivo||'Print recebido e preservado para auditoria.')}</div></div>`;
   }
   const id='proof_'+Math.random().toString(36).slice(2);
@@ -19765,12 +19829,192 @@ Preparamos condições especiais para você comemorar com a gente.
 
 </script>
 <script>
-try{window.DASHBOARD_BUILD_VERSION='V10.57-PILOTO-F1-SANDY';console.log('[V10.57] resumo WhatsApp Master com contagens numéricas; bloqueios e comissão preservados');}catch(e){}
+try{window.DASHBOARD_BUILD_VERSION='V10.63';console.log('[V10.63] comissão por usuários + auditoria visual de prints');}catch(e){}
 </script>
 
 </body>
 </html>
 """
+
+
+# =========================================
+# 🤖 V10.63 — AUDITORIA VISUAL DOS PRINTS DE COBRANÇA
+# =========================================
+COBRANCA_AUDITORIA_API_URL = os.getenv(
+    "COBRANCA_AUDITORIA_API_URL",
+    "https://moveisdolar.com.br/colaborador/cobranca_auditoria_api.php",
+).strip()
+COBRANCA_AUDITORIA_IA_ENABLED = os.getenv("COBRANCA_AUDITORIA_IA_ENABLED", "1") == "1"
+COBRANCA_AUDITORIA_IA_MODEL = os.getenv("COBRANCA_AUDITORIA_IA_MODEL", "gpt-4.1-mini").strip()
+COBRANCA_AUDITORIA_IA_MIN_CONFIDENCE = float(os.getenv("COBRANCA_AUDITORIA_IA_MIN_CONFIDENCE", "0.82"))
+COBRANCA_AUDITORIA_IA_MAX_PER_RUN = max(1, int(os.getenv("COBRANCA_AUDITORIA_IA_MAX_PER_RUN", "20")))
+
+
+def _http_json_v1063(url, *, data=None, headers=None, timeout=60):
+    req = urllib.request.Request(url, data=data, headers=headers or {})
+    with urllib.request.urlopen(req, timeout=timeout, context=ssl.create_default_context()) as resp:
+        raw = resp.read()
+    return json.loads(raw.decode("utf-8", errors="replace"))
+
+
+def _response_output_text_v1063(payload):
+    if isinstance(payload, dict) and isinstance(payload.get("output_text"), str):
+        return payload["output_text"]
+    parts = []
+    for item in (payload.get("output") or []) if isinstance(payload, dict) else []:
+        for content in item.get("content") or []:
+            txt = content.get("text")
+            if isinstance(txt, str):
+                parts.append(txt)
+    return "\n".join(parts).strip()
+
+
+def _parse_json_text_v1063(text):
+    text = (text or "").strip()
+    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.I | re.S).strip()
+    try:
+        return json.loads(text)
+    except Exception:
+        m = re.search(r"\{.*\}", text, flags=re.S)
+        if not m:
+            raise
+        return json.loads(m.group(0))
+
+
+def _analisar_print_cobranca_v1063(item, api_key):
+    media_url = str(item.get("media_url") or "").strip()
+    if not media_url:
+        return {"status": "revisao_master", "confidence": 0.0, "motivo": "Print sem URL de imagem."}
+
+    cliente = str(item.get("cliente") or "")
+    telefone = re.sub(r"\D", "", str(item.get("telefone") or ""))
+    titulo = str(item.get("titulo") or "")
+    parcela = str(item.get("parcela") or "")
+    faixa = str(item.get("faixa") or "")
+    prompt = f"""Você audita prints de conversas de cobrança das Lojas MDL.
+Analise SOMENTE o que está visível na imagem. Não invente texto oculto.
+
+DADOS ESPERADOS DO REGISTRO:
+- Cliente: {cliente}
+- Telefone esperado: {telefone}
+- Título: {titulo}
+- Parcela: {parcela}
+- Faixa: {faixa}
+
+CRITÉRIOS PARA APROVAR:
+1. O print mostra o cabeçalho do WhatsApp com nome ou telefone do contato, ou outro identificador suficiente para vincular a conversa ao cliente.
+2. Existe uma mensagem de cobrança/preventiva enviada pela loja OU contexto visível de parcela, vencimento, valor, boleto, PIX ou pagamento.
+3. Existe resposta recebida do cliente depois da cobrança. A resposta pode ser curta, por exemplo: “ok”, “vou pagar”, “pago amanhã”, “recebo dia 10”, “mande o boleto”, “gostaria de pagar a parcela”, “não consigo pagar agora”.
+4. A resposta demonstra que o cliente recebeu e entendeu a cobrança, mesmo que não prometa pagar.
+5. Balões recebidos e enviados devem ser coerentes com uma conversa real. Um print contendo apenas a mensagem enviada não é prova de retorno.
+
+EXEMPLO POSITIVO DE REFERÊNCIA:
+Uma cobrança preventiva aparece em balão enviado e, depois, o cliente responde em balão recebido “Boa tarde, gostaria de pagar a parcela”. Isso deve ser APROVADO, desde que o contato/cabeçalho esteja visível.
+
+REVISÃO DO MASTER:
+Use revisao_master quando houver resposta aparente, mas o nome/telefone estiver cortado, a ordem temporal estiver duvidosa, o texto estiver ilegível, a conversa estiver muito recortada ou não for possível casar com segurança o cliente.
+
+RECUSAR:
+- somente mensagem enviada, sem resposta recebida;
+- print de comprovante ou tela sem conversa;
+- resposta anterior à cobrança sem continuidade visível;
+- conversa claramente de outro contato/cliente;
+- imagem ilegível, editada de modo suspeito, ou sem contexto de cobrança;
+- conteúdo não relacionado.
+
+Retorne APENAS JSON válido com:
+{{
+  "status": "aprovado" | "revisao_master" | "recusado",
+  "confidence": número entre 0 e 1,
+  "contato_visivel": true|false,
+  "resposta_cliente_visivel": true|false,
+  "contexto_cobranca_visivel": true|false,
+  "ordem_temporal_coerente": true|false,
+  "cliente_ou_telefone_lido": "texto curto",
+  "resposta_cliente_resumida": "texto curto",
+  "motivo": "explicação objetiva em português"
+}}"""
+
+    body = {
+        "model": COBRANCA_AUDITORIA_IA_MODEL,
+        "input": [{
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": prompt},
+                {"type": "input_image", "image_url": media_url, "detail": "high"},
+            ],
+        }],
+        "store": False,
+    }
+    req = urllib.request.Request(
+        "https://api.openai.com/v1/responses",
+        data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json; charset=utf-8"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        raw = json.loads(resp.read().decode("utf-8", errors="replace"))
+    result = _parse_json_text_v1063(_response_output_text_v1063(raw))
+    status = str(result.get("status") or "revisao_master").lower().strip()
+    confidence = float(result.get("confidence") or 0.0)
+    if status == "aprovado" and confidence < COBRANCA_AUDITORIA_IA_MIN_CONFIDENCE:
+        status = "revisao_master"
+        result["motivo"] = f"Confiança {confidence:.0%} abaixo do mínimo automático. " + str(result.get("motivo") or "")
+    if status not in {"aprovado", "revisao_master", "recusado"}:
+        status = "revisao_master"
+    result["status"] = status
+    result["confidence"] = confidence
+    return result
+
+
+def _atualizar_status_auditoria_v1063(item, result):
+    motivo = str(result.get("motivo") or "Auditoria visual concluída.")[:1500]
+    payload = urllib.parse.urlencode({
+        "action": "set_status",
+        "id": str(item.get("id") or ""),
+        "status": str(result.get("status") or "revisao_master"),
+        "motivo": motivo,
+        "ia_confidence": f"{float(result.get('confidence') or 0.0):.4f}",
+        "ia_model": COBRANCA_AUDITORIA_IA_MODEL,
+        "ia_json": json.dumps(result, ensure_ascii=False),
+    }).encode("utf-8")
+    return _http_json_v1063(
+        COBRANCA_AUDITORIA_API_URL,
+        data=payload,
+        headers={"Content-Type": "application/x-www-form-urlencoded; charset=utf-8"},
+        timeout=60,
+    )
+
+
+def processar_auditorias_print_v1063():
+    if not COBRANCA_AUDITORIA_IA_ENABLED:
+        print("ℹ️ V10.63 auditoria visual desativada por COBRANCA_AUDITORIA_IA_ENABLED=0")
+        return
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        print("⚠️ V10.63 OPENAI_API_KEY não configurada; prints permanecerão aguardando IA.")
+        return
+    try:
+        listing = _http_json_v1063(COBRANCA_AUDITORIA_API_URL + "?_=" + str(int(time.time())), timeout=60)
+        items = listing.get("data") if isinstance(listing, dict) else []
+        pendentes = [x for x in (items or []) if str(x.get("status") or "aguardando_ia").lower() == "aguardando_ia"]
+        pendentes = pendentes[:COBRANCA_AUDITORIA_IA_MAX_PER_RUN]
+        print(f"🤖 V10.63 auditoria visual: {len(pendentes)} print(s) pendente(s) nesta execução")
+        for item in pendentes:
+            try:
+                result = _analisar_print_cobranca_v1063(item, api_key)
+                _atualizar_status_auditoria_v1063(item, result)
+                print(
+                    f"   {'✅' if result['status']=='aprovado' else '❌' if result['status']=='recusado' else '🧑‍⚖️'} "
+                    f"{item.get('cliente','')} · título {item.get('titulo','')} · {result['status']} · confiança {float(result.get('confidence') or 0):.0%}"
+                )
+            except Exception as exc:
+                print(f"⚠️ V10.63 falha analisando print {item.get('id','')}: {exc}")
+    except Exception as exc:
+        print(f"⚠️ V10.63 não conseguiu carregar fila de auditoria: {exc}")
+
+
+processar_auditorias_print_v1063()
 
 html = template
 repls = {
@@ -20145,12 +20389,13 @@ if(!file_exists($dir)) @mkdir($dir,0777,true); if(!file_exists($file)) @file_put
 function ar(){global $file; $j=json_decode(@file_get_contents($file),true); return is_array($j)?$j:[];}
 function sw($d){global $file; return @file_put_contents($file,json_encode($d,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),LOCK_EX)!==false;}
 $data=ar();
-if($_SERVER['REQUEST_METHOD']==='GET'){echo json_encode(['ok'=>true,'data'=>$data,'count'=>count($data),'version'=>'V10.61'],JSON_UNESCAPED_UNICODE);exit;}
+if($_SERVER['REQUEST_METHOD']==='GET'){echo json_encode(['ok'=>true,'data'=>$data,'count'=>count($data),'version'=>'V10.63'],JSON_UNESCAPED_UNICODE);exit;}
 if($_SERVER['REQUEST_METHOD']==='POST'){
   $action=$_POST['action']??'upload';
   if($action==='set_status'){
     $id=(string)($_POST['id']??''); $status=(string)($_POST['status']??'aguardando_ia'); $motivo=(string)($_POST['motivo']??'');
-    foreach($data as &$x){if((string)($x['id']??'')===$id){$x['status']=$status;$x['motivo']=$motivo;$x['updated_at']=date('c');}}
+    $ia_confidence=(string)($_POST['ia_confidence']??''); $ia_model=(string)($_POST['ia_model']??''); $ia_json=(string)($_POST['ia_json']??'');
+    foreach($data as &$x){if((string)($x['id']??'')===$id){$x['status']=$status;$x['motivo']=$motivo;$x['updated_at']=date('c');$x['ia_analisado_em']=date('c');$x['ia_confidence']=$ia_confidence;$x['ia_model']=$ia_model;if($ia_json!==''){$dec=json_decode($ia_json,true);$x['ia_resultado']=is_array($dec)?$dec:$ia_json;}}}
     $ok=sw($data); echo json_encode(['ok'=>$ok],JSON_UNESCAPED_UNICODE);exit;
   }
   if(empty($_FILES['media']['tmp_name'])){echo json_encode(['ok'=>false,'error'=>'print_obrigatorio']);exit;}
@@ -20161,7 +20406,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   if(!move_uploaded_file($_FILES['media']['tmp_name'],$dest)){echo json_encode(['ok'=>false,'error'=>'falha_upload']);exit;}
   $scheme=(!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off')?'https':'http'; $base=$scheme.'://'.$_SERVER['HTTP_HOST'].rtrim(dirname($_SERVER['SCRIPT_NAME']),'/\\');
   $item=['id'=>uniqid('aud_',true),'audit_key'=>(string)($_POST['audit_key']??''),'cliente'=>(string)($_POST['cliente']??''),'cpf_cnpj'=>(string)($_POST['cpf_cnpj']??''),'titulo'=>(string)($_POST['titulo']??''),'parcela'=>(string)($_POST['parcela']??''),'vencimento'=>(string)($_POST['vencimento']??''),'telefone'=>(string)($_POST['telefone']??''),'faixa'=>(string)($_POST['faixa']??''),'usuario_login'=>(string)($_POST['usuario_login']??''),'usuario_nome'=>(string)($_POST['usuario_nome']??''),'filial'=>(string)($_POST['filial']??''),'media_url'=>$base.'/uploads_cobranca_auditoria/'.$name,'media_type'=>$mime,'status'=>'aguardando_ia','motivo'=>'Print recebido. Aguardando auditoria da IA.','server_time'=>date('c')];
-  $data[]=$item; $ok=sw($data); echo json_encode(['ok'=>$ok,'data'=>$item,'version'=>'V10.61'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;
+  $data[]=$item; $ok=sw($data); echo json_encode(['ok'=>$ok,'data'=>$item,'version'=>'V10.63'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;
 }
 echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado']);
 ?>"""
