@@ -34,7 +34,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.59"
+DASHBOARD_BUILD_VERSION = "V10.60"
 DASHBOARD_BUILD_TAG = "comissao_crediarista_fonte_unica_oficial"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -9907,6 +9907,28 @@ body.inicio-view .kpi .value{font-size:21px!important}
 .wa-master-scroll{max-height:520px;overflow:auto;border:1px solid rgba(255,255,255,.09);border-radius:16px}
 .wa-status-ok{color:#31c48d}.wa-status-warn{color:#fbbf24}.wa-status-bad{color:#f05252}
 @media(max-width:900px){.wa-master-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:560px){.wa-master-grid{grid-template-columns:1fr}}
+
+/* V10.60 — Senhas legíveis e mensagens por faixa */
+.senhas-table-wrap{overflow-x:auto!important;overflow-y:visible!important;scrollbar-gutter:stable;border-radius:16px!important}
+.senhas-table{min-width:1540px!important;width:100%!important;table-layout:auto!important;font-size:12px!important}
+.senhas-table th,.senhas-table td{padding:10px 10px!important;overflow:visible!important;text-overflow:clip!important;white-space:normal!important}
+.senhas-table th:nth-child(1),.senhas-table td:nth-child(1){min-width:190px!important;width:190px!important}
+.senhas-table th:nth-child(2),.senhas-table td:nth-child(2){min-width:180px!important;width:180px!important}
+.senhas-table th:nth-child(3),.senhas-table td:nth-child(3){min-width:135px!important;width:135px!important}
+.senhas-table th:nth-child(4),.senhas-table td:nth-child(4){min-width:205px!important;width:205px!important}
+.senhas-table th:nth-child(5),.senhas-table td:nth-child(5){min-width:65px!important;width:65px!important}
+.senhas-table th:nth-child(6),.senhas-table td:nth-child(6){min-width:105px!important;width:105px!important}
+.senhas-table th:nth-child(7),.senhas-table td:nth-child(7){min-width:120px!important;width:120px!important}
+.senhas-table th:nth-child(8),.senhas-table td:nth-child(8){min-width:230px!important;width:230px!important}
+.senhas-table th:nth-child(9),.senhas-table td:nth-child(9){min-width:235px!important;width:235px!important}
+.senhas-table th:nth-child(10),.senhas-table td:nth-child(10){min-width:145px!important;width:145px!important}
+.senha-view-row,.senha-nova-row{display:flex!important;gap:6px!important;align-items:center!important;width:100%!important;flex-wrap:nowrap!important}
+.senha-view-row input,.senha-nova-row input{min-width:120px!important;width:100%!important;max-width:none!important;padding:9px 10px!important}
+.senhas-table .btn-xs{padding:8px 10px!important;white-space:nowrap!important}
+.cobranca-faixas-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.cobranca-faixas-grid .cobranca-template{min-height:220px}
+.cobranca-faixas-grid .preview-whats{min-height:190px}
+@media(max-width:1200px){.cobranca-faixas-grid{grid-template-columns:1fr}.senhas-table{min-width:1450px!important}}
 </style>
 </head>
 <body class="mdl-light-mode">
@@ -11783,7 +11805,7 @@ function calcCommissionSummary(ent){
       }
     });
   }
-  // V10.59: prêmio de rentabilidade é por faixa única, nunca acumulativo.
+  // V10.60: prêmio de rentabilidade é por faixa única, nunca acumulativo.
   // Ao atingir 55,50%, paga somente rent55; ao atingir 52,15%, somente rent52;
   // entre 48% e 52,14%, somente rent48.
   const rent48=(rentAppliedKey==='rent48')?Number(faixa.rent48||0):0;
@@ -12159,15 +12181,42 @@ function getCobradosHoje(ent){
   return (COB_LOGS||[]).filter(x=>isLogCobrancaReal(x) && isTodayStr(x.server_time||x.data||'') && String(x.filial||'')===String(ent.filial||'') && (ent.type==='filial' || String(x.destino_nome||'')===String(ent.nome||'')));
 }
 
-const DEFAULT_COBRANCA_TEMPLATE = `Olá, {primeiro_nome} tudo bem?
+const DEFAULT_COBRANCA_TEMPLATE_ATENCAO = `Olá, {primeiro_nome} tudo bem?
 Aqui é da Lojas MDL - Móveis do Lar.
 Passando para lembrar que tem uma parcelinha vencida na data de {vencimento}, no valor de {valor}.
 Caso o pagamento já tenha sido realizado, por gentileza, desconsidere esta mensagem.
 Se precisar do boleto, chave PIX ou tiver qualquer dúvida, fico à disposição para ajudar.`;
 
-function cobrancaTemplateAtual(){
-  return String(CONFIG_META?.cobranca_msg_template || DEFAULT_COBRANCA_TEMPLATE);
+const DEFAULT_COBRANCA_TEMPLATE_ALERTA = `Olá, {primeiro_nome}. Tudo bem?
+Aqui é da Lojas MDL - Móveis do Lar.
+Identificamos que a parcela vencida em {vencimento}, no valor de {valor}, continua em aberto.
+Pedimos que regularize o pagamento para evitar novos encargos e restrições.
+Caso já tenha pago, por gentileza desconsidere esta mensagem. Se precisar de ajuda, responda por aqui.`;
+
+const DEFAULT_COBRANCA_TEMPLATE_GRAVE = `Olá, {primeiro_nome}. Tudo bem?
+Aqui é da Lojas MDL - Móveis do Lar.
+A parcela vencida em {vencimento}, no valor de {valor}, permanece em aberto e já está na faixa grave de atraso.
+Precisamos da regularização ou de um retorno para evitar o prosseguimento da cobrança e possíveis restrições de crédito.
+Caso já tenha pago, desconsidere esta mensagem. Para falar com nossa equipe, responda por aqui.`;
+
+const DEFAULT_COBRANCA_TEMPLATE = DEFAULT_COBRANCA_TEMPLATE_ATENCAO;
+function cobrancaFaixaNormalizada(reg){
+  const raw=String(reg?.faixa||reg?.faixa_label||'').toLowerCase();
+  if(raw.includes('grave')) return 'grave';
+  if(raw.includes('alerta')) return 'alerta';
+  if(raw.includes('aten')) return 'atencao';
+  const dias=Number(reg?.dias||0);
+  if(dias>=60) return 'grave';
+  if(dias>=30) return 'alerta';
+  return 'atencao';
 }
+function cobrancaTemplateFaixaAtual(faixa){
+  faixa=String(faixa||'atencao').toLowerCase();
+  if(faixa==='grave') return String(CONFIG_META?.cobranca_msg_template_grave || DEFAULT_COBRANCA_TEMPLATE_GRAVE);
+  if(faixa==='alerta') return String(CONFIG_META?.cobranca_msg_template_alerta || DEFAULT_COBRANCA_TEMPLATE_ALERTA);
+  return String(CONFIG_META?.cobranca_msg_template_atencao || CONFIG_META?.cobranca_msg_template || DEFAULT_COBRANCA_TEMPLATE_ATENCAO);
+}
+function cobrancaTemplateAtual(){ return cobrancaTemplateFaixaAtual('atencao'); }
 function primeiroNomeClienteJs(nome){
   const s=String(nome||'').trim();
   return s ? s.split(/\s+/)[0] : 'Cliente';
@@ -12258,7 +12307,8 @@ Caso já tenha pago, por gentileza desconsidere esta mensagem.`);
 function montarMensagemCobranca(reg){
   const st=reg?._cob_status||cobStatusTitulo(reg, phoneContext?.entRef||null);
   const tentativa=Number(st?.proxima_tentativa||1);
-  let tpl=(tentativa>=3)?cobrancaTemplateTerceiraAtual():cobrancaTemplateAtual();
+  const faixa=cobrancaFaixaNormalizada(reg);
+  let tpl=(tentativa>=3)?cobrancaTemplateTerceiraAtual():cobrancaTemplateFaixaAtual(faixa);
   const dados={
     primeiro_nome: primeiroNomeClienteJs(reg.cliente||reg.nome||''),
     cliente: String(reg.cliente||reg.nome||''),
@@ -12290,102 +12340,72 @@ function exemploMensagemCobranca(){
     dias:25
   });
 }
+function exemploMensagemCobrancaFaixa(faixa){
+  return montarMensagemCobranca({
+    cliente:'MARIA APARECIDA DA SILVA', vencimento:'10/05/2026', pendente:199.90,
+    titulo:'123456', parcela:'03', filial:'F1', vendedor:'VENDEDOR EXEMPLO',
+    dias:faixa==='grave'?70:(faixa==='alerta'?40:20), faixa
+  });
+}
 function atualizarPreviewCobranca(){
-  const tpl=document.getElementById('cobMsgTemplate')?.value;
-  const tpl3=document.getElementById('cobMsgTemplate3')?.value;
-  const oldTpl=CONFIG_META.cobranca_msg_template;
-  const oldTpl3=CONFIG_META.cobranca_msg_template_terceira;
-  CONFIG_META.cobranca_msg_template=tpl || DEFAULT_COBRANCA_TEMPLATE;
-  CONFIG_META.cobranca_msg_template_terceira=tpl3 || cobrancaTemplateTerceiraAtual();
-  const el=document.getElementById('cobMsgPreview');
-  if(el) el.textContent=exemploMensagemCobranca();
+  const ids={atencao:'cobMsgTemplateAtencao',alerta:'cobMsgTemplateAlerta',grave:'cobMsgTemplateGrave'};
+  const olds={
+    atencao:CONFIG_META.cobranca_msg_template_atencao,
+    alerta:CONFIG_META.cobranca_msg_template_alerta,
+    grave:CONFIG_META.cobranca_msg_template_grave,
+    antiga:CONFIG_META.cobranca_msg_template,
+    terceira:CONFIG_META.cobranca_msg_template_terceira
+  };
+  CONFIG_META.cobranca_msg_template_atencao=document.getElementById(ids.atencao)?.value||DEFAULT_COBRANCA_TEMPLATE_ATENCAO;
+  CONFIG_META.cobranca_msg_template_alerta=document.getElementById(ids.alerta)?.value||DEFAULT_COBRANCA_TEMPLATE_ALERTA;
+  CONFIG_META.cobranca_msg_template_grave=document.getElementById(ids.grave)?.value||DEFAULT_COBRANCA_TEMPLATE_GRAVE;
+  CONFIG_META.cobranca_msg_template_terceira=document.getElementById('cobMsgTemplate3')?.value||cobrancaTemplateTerceiraAtual();
+  ['atencao','alerta','grave'].forEach(fx=>{const el=document.getElementById('cobMsgPreview_'+fx);if(el)el.textContent=exemploMensagemCobrancaFaixa(fx)});
   const el3=document.getElementById('cobMsgPreview3');
-  if(el3){
-    const exemplo={cliente:'MARIA APARECIDA DA SILVA',vencimento:'10/05/2026',pendente:199.90,titulo:'123456',parcela:'03',filial:'F1',vendedor:'VENDEDOR EXEMPLO',dias:25,_cob_status:{qtd:2,proxima_tentativa:3,ultima_fmt:'20/05/2026 10:30'}};
-    el3.textContent=montarMensagemCobranca(exemplo);
-  }
-  CONFIG_META.cobranca_msg_template=oldTpl;
-  CONFIG_META.cobranca_msg_template_terceira=oldTpl3;
+  if(el3){const ex={cliente:'MARIA APARECIDA DA SILVA',vencimento:'10/05/2026',pendente:199.90,titulo:'123456',parcela:'03',filial:'F1',vendedor:'VENDEDOR EXEMPLO',dias:40,faixa:'alerta',_cob_status:{qtd:2,proxima_tentativa:3,ultima_fmt:'20/05/2026 10:30'}};el3.textContent=montarMensagemCobranca(ex)}
+  CONFIG_META.cobranca_msg_template_atencao=olds.atencao; CONFIG_META.cobranca_msg_template_alerta=olds.alerta;
+  CONFIG_META.cobranca_msg_template_grave=olds.grave; CONFIG_META.cobranca_msg_template=olds.antiga;
+  CONFIG_META.cobranca_msg_template_terceira=olds.terceira;
 }
 async function salvarMensagemCobrancaGlobal(){
   const msgEl=document.getElementById('cobMsgSaveStatus');
-  const tpl=String(document.getElementById('cobMsgTemplate')?.value||'').trim();
-  const tpl3=String(document.getElementById('cobMsgTemplate3')?.value||'').trim();
-  if(!tpl){
-    if(msgEl) msgEl.textContent='⚠️ A mensagem não pode ficar vazia.';
-    return;
-  }
-  CONFIG_META.cobranca_msg_template=tpl;
-  if(tpl3) CONFIG_META.cobranca_msg_template_terceira=tpl3;
+  const atencao=String(document.getElementById('cobMsgTemplateAtencao')?.value||'').trim();
+  const alerta=String(document.getElementById('cobMsgTemplateAlerta')?.value||'').trim();
+  const grave=String(document.getElementById('cobMsgTemplateGrave')?.value||'').trim();
+  const terceira=String(document.getElementById('cobMsgTemplate3')?.value||'').trim();
+  if(!atencao||!alerta||!grave||!terceira){if(msgEl)msgEl.textContent='⚠️ Nenhuma mensagem pode ficar vazia.';return}
+  CONFIG_META.cobranca_msg_template_atencao=atencao;
+  CONFIG_META.cobranca_msg_template_alerta=alerta;
+  CONFIG_META.cobranca_msg_template_grave=grave;
+  CONFIG_META.cobranca_msg_template=atencao; // compatibilidade com versões anteriores
+  CONFIG_META.cobranca_msg_template_terceira=terceira;
   try{
     const payload={global:CONFIG_META,individual:CONFIG_META_IND};
     const resp=await fetch(API_CFG,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const j=await resp.json();
-    if(j.ok){
-      await carregarConfigOnline();
-      if(msgEl) msgEl.textContent='✅ Mensagem global de cobrança salva online.';
-      toast('Mensagem de cobrança atualizada.','success');
-      renderLogsTab();
-    }else{
-      if(msgEl) msgEl.textContent='⚠️ Não consegui salvar online.';
-    }
-  }catch(e){
-    console.log('Erro ao salvar mensagem de cobrança',e);
-    if(msgEl) msgEl.textContent='⚠️ Falha ao salvar online.';
-  }
+    if(j.ok){await carregarConfigOnline();if(msgEl)msgEl.textContent='✅ Mensagens por faixa salvas online.';toast('Mensagens de cobrança atualizadas.','success');renderLogsTab()}
+    else if(msgEl)msgEl.textContent='⚠️ Não consegui salvar online.';
+  }catch(e){console.log('Erro ao salvar mensagens',e);if(msgEl)msgEl.textContent='⚠️ Falha ao salvar online.'}
 }
 function restaurarMensagemCobrancaPadrao(){
-  const t=document.getElementById('cobMsgTemplate');
-  if(t) t.value=DEFAULT_COBRANCA_TEMPLATE;
-  const t3=document.getElementById('cobMsgTemplate3'); if(t3) t3.value=cobrancaTemplateTerceiraAtual();
+  const vals={cobMsgTemplateAtencao:DEFAULT_COBRANCA_TEMPLATE_ATENCAO,cobMsgTemplateAlerta:DEFAULT_COBRANCA_TEMPLATE_ALERTA,cobMsgTemplateGrave:DEFAULT_COBRANCA_TEMPLATE_GRAVE};
+  Object.entries(vals).forEach(([id,v])=>{const el=document.getElementById(id);if(el)el.value=v});
+  const t3=document.getElementById('cobMsgTemplate3');if(t3)t3.value=cobrancaTemplateTerceiraAtual();
   atualizarPreviewCobranca();
 }
-
 function renderCobrancaConfigPanel(){
-  const tpl=esc(cobrancaTemplateAtual());
+  const cfg=[
+    ['atencao','🟡 Atenção — 15 a 29 dias',cobrancaTemplateFaixaAtual('atencao')],
+    ['alerta','🟠 Alerta — 30 a 59 dias',cobrancaTemplateFaixaAtual('alerta')],
+    ['grave','🔴 Grave — 60 a 90 dias',cobrancaTemplateFaixaAtual('grave')]
+  ];
   const tpl3=esc(cobrancaTemplateTerceiraAtual());
   return `<div class="glass panel" style="margin-bottom:14px">
-    <div class="section-head" style="margin:0 0 10px">
-      <div>
-        <h2 style="margin:0">💬 Mensagens de cobrança</h2>
-        <div class="hint">Configuração global usada ao abrir WhatsApp. O sistema usa a mensagem padrão na 1ª e 2ª cobrança. A partir da 3ª, usa a Terceira Mensagem.</div>
-      </div>
-      <button class="btn primary" onclick="salvarMensagemCobrancaGlobal()">Salvar global</button>
-    </div>
-    <div class="cobranca-config-grid">
-      <div>
-        <div class="input-card">
-          <label>Mensagem padrão de cobrança</label>
-          <textarea id="cobMsgTemplate" class="cobranca-template" oninput="atualizarPreviewCobranca()">${tpl}</textarea>
-        </div>
-        <div class="input-card" style="margin-top:12px">
-          <label>Terceira Mensagem de Cobrança</label>
-          <textarea id="cobMsgTemplate3" class="cobranca-template" oninput="atualizarPreviewCobranca()">${tpl3}</textarea>
-        </div>
-        <div class="placeholder-list">
-          <code>{primeiro_nome}</code><code>{cliente}</code>
-          <code>{vencimento}</code><code>{valor}</code>
-          <code>{titulo}</code><code>{parcela}</code>
-          <code>{filial}</code><code>{vendedor}</code>
-          <code>{qtd_cobrancas}</code><code>{ultima_cobranca}</code><code>{tentativa}</code>
-        </div>
-        <div style="display:flex;gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap">
-          <button class="btn primary" onclick="salvarMensagemCobrancaGlobal()">Salvar global</button>
-          <button class="btn soft" onclick="restaurarMensagemCobrancaPadrao()">Restaurar padrão</button>
-          <span id="cobMsgSaveStatus" class="hint"></span>
-        </div>
-      </div>
-      <div>
-        <div class="input-card">
-          <label>Prévia mensagem padrão</label>
-          <div id="cobMsgPreview" class="preview-whats">${esc(exemploMensagemCobranca())}</div>
-        </div>
-        <div class="input-card" style="margin-top:12px">
-          <label>Prévia terceira mensagem</label>
-          <div id="cobMsgPreview3" class="preview-whats">${esc((()=>{const old=CONFIG_META.cobranca_msg_template_terceira; const ex={cliente:'MARIA APARECIDA DA SILVA',vencimento:'10/05/2026',pendente:199.90,titulo:'123456',parcela:'03',filial:'F1',vendedor:'VENDEDOR EXEMPLO',dias:25,_cob_status:{qtd:2,proxima_tentativa:3,ultima_fmt:'20/05/2026 10:30'}}; return montarMensagemCobranca(ex);})())}</div>
-        </div>
-      </div>
-    </div>
+    <div class="section-head" style="margin:0 0 10px"><div><h2 style="margin:0">💬 Mensagens de cobrança por faixa</h2><div class="hint">Na 1ª e 2ª cobrança, o texto segue a faixa atual do título. A partir da 3ª tentativa, permanece a Terceira Mensagem, independentemente da faixa.</div></div><button class="btn primary" onclick="salvarMensagemCobrancaGlobal()">💾 Salvar global</button></div>
+    <div class="cobranca-faixas-grid">${cfg.map(([fx,titulo,tpl])=>`<div class="input-card"><label>${titulo}</label><textarea id="cobMsgTemplate${fx[0].toUpperCase()+fx.slice(1)}" class="cobranca-template" oninput="atualizarPreviewCobranca()">${esc(tpl)}</textarea><label style="margin-top:10px">Prévia</label><div id="cobMsgPreview_${fx}" class="preview-whats">${esc(exemploMensagemCobrancaFaixa(fx))}</div></div>`).join('')}</div>
+    <div class="cobranca-config-grid" style="margin-top:14px"><div class="input-card"><label>🔁 Terceira mensagem de cobrança — repetição</label><textarea id="cobMsgTemplate3" class="cobranca-template" oninput="atualizarPreviewCobranca()">${tpl3}</textarea></div><div class="input-card"><label>Prévia da terceira mensagem</label><div id="cobMsgPreview3" class="preview-whats">${esc((()=>{const ex={cliente:'MARIA APARECIDA DA SILVA',vencimento:'10/05/2026',pendente:199.90,titulo:'123456',parcela:'03',filial:'F1',vendedor:'VENDEDOR EXEMPLO',dias:40,faixa:'alerta',_cob_status:{qtd:2,proxima_tentativa:3,ultima_fmt:'20/05/2026 10:30'}};return montarMensagemCobranca(ex)})())}</div></div></div>
+    <div class="placeholder-list"><code>{primeiro_nome}</code><code>{cliente}</code><code>{vencimento}</code><code>{valor}</code><code>{titulo}</code><code>{parcela}</code><code>{filial}</code><code>{vendedor}</code><code>{qtd_cobrancas}</code><code>{ultima_cobranca}</code><code>{tentativa}</code></div>
+    <div style="display:flex;gap:10px;margin-top:12px;align-items:center;flex-wrap:wrap"><button class="btn primary" onclick="salvarMensagemCobrancaGlobal()">💾 Salvar global</button><button class="btn soft" onclick="restaurarMensagemCobrancaPadrao()">Restaurar padrão</button><span id="cobMsgSaveStatus" class="hint"></span></div>
   </div>`;
 }
 
