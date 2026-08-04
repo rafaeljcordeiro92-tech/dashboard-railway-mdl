@@ -36,7 +36,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.68"
+DASHBOARD_BUILD_VERSION = "V10.70"
 DASHBOARD_BUILD_TAG = "comissao_crediarista_fonte_unica_oficial"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -3539,6 +3539,50 @@ else:
 
 # ===== RESULTADO FINAL (ativos + blocos consolidados)
 df_vend = df_normal.copy()
+
+# V10.70 — fechamento estrito do rateio da filial.
+# A carteira e os recebimentos da filial inteira ficam sempre em:
+#   • 60% para gerente/filial;
+#   • 40% divididos igualmente entre vendedores ativos.
+# Antes, a carteira própria de cada colaborador permanecia somada ao rateio de
+# inativos/FDEP. Isso podia deixar dois vendedores com bases próximas, porém não
+# exatamente em 20% cada quando havia dois vendedores, e ainda gerar divergência
+# entre o card "Recebido" e os percentuais das faixas.
+def _v1070_distribuir_exato(_df, _filial, _coluna):
+    _mask = _df["filial_vendedor"].astype(str).str.upper() == str(_filial).upper()
+    _idx_ger = list(_df[_mask & _df["is_gerente"].astype(bool)].index)
+    _idx_vend = list(_df[_mask & ~_df["is_gerente"].astype(bool)].index)
+    _total = round(float(_df.loc[_mask, _coluna].astype(float).sum()), 2)
+    if not _idx_ger and not _idx_vend:
+        return
+    if _idx_ger and _idx_vend:
+        _pool_ger = round(_total * PESO_GER, 2)
+        _pool_vend = round(_total - _pool_ger, 2)
+        _parts = [(_idx_ger, _pool_ger), (_idx_vend, _pool_vend)]
+    elif _idx_ger:
+        _parts = [(_idx_ger, _total)]
+    else:
+        _parts = [(_idx_vend, _total)]
+    for _idxs, _pool in _parts:
+        _base = round(_pool / len(_idxs), 2)
+        for _idx in _idxs:
+            _df.loc[_idx, _coluna] = _base
+        # Corrige centavos no último registro sem alterar o total da filial.
+        _dif = round(_pool - float(_df.loc[_idxs, _coluna].astype(float).sum()), 2)
+        _df.loc[_idxs[-1], _coluna] = round(float(_df.loc[_idxs[-1], _coluna]) + _dif, 2)
+
+for _fil_v1070 in ORDEM_FILIAIS:
+    if (df_vend["filial_vendedor"].astype(str).str.upper() == _fil_v1070).any():
+        _v1070_distribuir_exato(df_vend, _fil_v1070, "pendente")
+        _v1070_distribuir_exato(df_vend, _fil_v1070, "pago")
+        _sub_v1070 = df_vend[df_vend["filial_vendedor"].astype(str).str.upper() == _fil_v1070]
+        _ng_v1070 = int(_sub_v1070["is_gerente"].astype(bool).sum())
+        _nv_v1070 = int((~_sub_v1070["is_gerente"].astype(bool)).sum())
+        print(
+            f"✅ V10.70 rateio final estrito {_fil_v1070}: "
+            f"gerente(s)={_ng_v1070} com 60% total; vendedor(es)={_nv_v1070} dividindo 40%."
+        )
+
 df_vend["nome_exibicao"] = df_vend["vendedor"].apply(limpar_nome_display)
 df_vend["total"]         = df_vend["pendente"] + df_vend["pago"]
 
@@ -5877,22 +5921,38 @@ for key, vd in snapshot_hoje["vendedores"].items():
     _filial_vend = vd.get("filial", "")
     _is_ger      = vd.get("is_gerente", False)
 
-    # Próprio: apenas se é vendedor ativo registrado em recebido_faixa
-    _rv_proprio = recebido_faixa.get(key, {})
-    _grave_delta   = _rv_proprio.get('grave',   0.0) if _rv_proprio.get('is_ativo') else 0.0
-    _alerta_delta  = _rv_proprio.get('alerta',  0.0) if _rv_proprio.get('is_ativo') else 0.0
-    _atencao_delta = _rv_proprio.get('atencao', 0.0) if _rv_proprio.get('is_ativo') else 0.0
-
-    # Parcela de inativos + FDEP da filial
+    # V10.70: a meta por faixa precisa usar exatamente a mesma regra do card:
+    # soma TODO o recebido da filial (ativos, inativos e FDEP já atribuídos) e
+    # reparte 60% para gerente/filial e 40% entre vendedores ativos.
+    # Não soma mais "recebimento próprio" por fora, evitando percentual de meta
+    # com valor quando o card superior mostra recebido diferente.
+    _grave_delta = _alerta_delta = _atencao_delta = 0.0
     if _filial_vend:
-        _n_at = max(_pre_ativos_filial.get(_filial_vend, 1), 1)
-        for _fx in ['grave','alerta','atencao']:
-            _tot = (_pre_inat_rec.get(_filial_vend, {}).get(_fx, 0.0) +
-                    _pre_fdep_rec.get(_filial_vend, {}).get(_fx, 0.0))
-            _share = _tot * 0.60 if _is_ger else _tot * 0.40 / _n_at
-            if _fx == 'grave':    _grave_delta   += _share
-            elif _fx == 'alerta': _alerta_delta  += _share
-            else:                 _atencao_delta += _share
+        _totais_fx_v1070 = {'grave': 0.0, 'alerta': 0.0, 'atencao': 0.0}
+        for _rv_v1070 in recebido_faixa.values():
+            if str(_rv_v1070.get('filial') or '').upper() == str(_filial_vend).upper():
+                for _fx_v1070 in _totais_fx_v1070:
+                    _totais_fx_v1070[_fx_v1070] += float(_rv_v1070.get(_fx_v1070, 0.0) or 0.0)
+        _rows_fil_v1070 = snapshot_hoje.get('vendedores', {})
+        _vend_keys_v1070 = [
+            _k for _k, _v in _rows_fil_v1070.items()
+            if str(_v.get('filial') or '').upper() == str(_filial_vend).upper()
+            and not bool(_v.get('is_gerente'))
+        ]
+        _ger_keys_v1070 = [
+            _k for _k, _v in _rows_fil_v1070.items()
+            if str(_v.get('filial') or '').upper() == str(_filial_vend).upper()
+            and bool(_v.get('is_gerente'))
+        ]
+        if _is_ger:
+            _div_v1070 = max(len(_ger_keys_v1070), 1)
+            _fator_v1070 = PESO_GER / _div_v1070 if _vend_keys_v1070 else 1.0 / _div_v1070
+        else:
+            _div_v1070 = max(len(_vend_keys_v1070), 1)
+            _fator_v1070 = PESO_VEND / _div_v1070 if _ger_keys_v1070 else 1.0 / _div_v1070
+        _grave_delta = _totais_fx_v1070['grave'] * _fator_v1070
+        _alerta_delta = _totais_fx_v1070['alerta'] * _fator_v1070
+        _atencao_delta = _totais_fx_v1070['atencao'] * _fator_v1070
 
     # 🔥 CORREÇÃO: não acumular novamente a cada reprocessamento do mesmo período.
     # O gráfico do vendedor deve refletir os valores reais atuais do período, assim como já ocorre nas filiais.
@@ -12058,9 +12118,11 @@ function calcCobrancaUsuarioCommission(ent){
   const fx={atencao:{pct:0,recebido:0,comissao:0},alerta:{pct:0,recebido:0,comissao:0},grave:{pct:0,recebido:0,comissao:0}};
   policy.forEach(r=>{const k=String(r?.faixa||'').toLowerCase(); if(fx[k]) fx[k].pct=Number(String(r?.pct||0).replace(',','.'))||0});
   const audits=(COB_AUDITORIAS||[]).filter(a=>cobrancaAuditEntMatch(a,ent));
-  const aprovados=audits.filter(a=>String(a?.status||'').toLowerCase()==='aprovado');
-  let aguardandoIa=audits.filter(a=>!['aprovado','recusado'].includes(String(a?.status||'').toLowerCase())).length;
-  let recusados=audits.filter(a=>String(a?.status||'').toLowerCase()==='recusado').length;
+  const isAp=s=>['aprovado','aprovado_ia','aprovado_manual'].includes(String(s||'').toLowerCase());
+  const isRej=s=>['recusado','recusado_ia','recusado_manual'].includes(String(s||'').toLowerCase());
+  const aprovados=audits.filter(a=>isAp(a?.status));
+  let aguardandoIa=audits.filter(a=>!isAp(a?.status)&&!isRej(a?.status)).length;
+  let recusados=audits.filter(a=>isRej(a?.status)).length;
   let aguardandoPagamento=0, pagos=0;
   const usados=new Set();
   aprovados.forEach(a=>{
@@ -12430,8 +12492,11 @@ function auditAttachmentLinks(a){
 function printAuditBox(reg,entRef){
   const a=auditoriaDoTitulo(reg);
   if(a){
-    const st=String(a.status||'aguardando_ia');
-    const lbl=st==='aprovado'?'✅ Auditoria aprovada':st==='recusado'?'❌ Auditoria recusada':st==='revisao_master'?'🧑‍⚖️ Revisão do MASTER':'🤖 Aguardando auditoria da IA';
+    const st=String(a.status||'aguardando_ia').toLowerCase();
+    const aprovado=['aprovado','aprovado_ia','aprovado_manual'].includes(st);
+    const recusado=['recusado','recusado_ia','recusado_manual'].includes(st);
+    const lbl=aprovado?'✅ Auditoria aprovada automaticamente':recusado?'❌ Auditoria recusada':st==='revisao_master'?'🧑‍⚖️ Encaminhada ao MASTER':'🤖 IA analisando agora…';
+    if(st==='aguardando_ia'||st==='processando_ia') setTimeout(async()=>{await carregarAuditoriasCobranca(); if(currentDetailRef) openEntity(currentDetailRef);},5000);
     return `<div class="audit-proof-box"><strong>${lbl}</strong>${auditAttachmentLinks(a)}<div class="small muted">${esc(a.motivo||'Evidências recebidas e preservadas para auditoria.')}</div></div>`;
   }
   const id='proof_'+Math.random().toString(36).slice(2);
@@ -12453,7 +12518,7 @@ async function enviarPrintCobranca(reg,entRef,inputId){
   try{
     const r=await fetch(API_COB_AUD,{method:'POST',body:fd}); const j=await r.json();
     if(!j.ok){if(j.error==='evidencia_duplicada') throw new Error('Um dos arquivos já foi usado em outra cobrança.'); throw new Error(j.error||'erro_upload');}
-    await carregarAuditoriasCobranca(); toast(`${files.length} evidência(s) anexada(s). A cobrança foi enviada para auditoria antifraude.`,`success`);
+    await carregarAuditoriasCobranca(); toast(`${files.length} evidência(s) anexada(s). A IA iniciou a análise; o resultado aparecerá automaticamente.`,`success`);
     if(currentDetailRef) openEntity(currentDetailRef);
   }catch(e){toast(String(e?.message||'Não consegui anexar as evidências.'),'warn');}
 }
@@ -13063,14 +13128,17 @@ function renderTelegramTab(){
 
 function auditStatusLabel(st){
   st=String(st||'aguardando_ia').toLowerCase();
-  if(st==='aprovado') return '✅ Aprovado';
-  if(st==='recusado') return '❌ Recusado';
+  if(['aprovado','aprovado_ia'].includes(st)) return '✅ Aprovado automaticamente';
+  if(st==='aprovado_manual') return '✅ Aprovado pelo MASTER';
+  if(['recusado','recusado_ia'].includes(st)) return '❌ Recusado pela IA';
+  if(st==='recusado_manual') return '❌ Recusado pelo MASTER';
   if(st==='revisao_master') return '🧑‍⚖️ Revisão MASTER';
+  if(st==='processando_ia') return '⚙️ IA processando';
   return '🤖 Aguardando IA';
 }
 function auditStatusColor(st){
   st=String(st||'').toLowerCase();
-  return st==='aprovado'?'var(--green)':st==='recusado'?'var(--red)':st==='revisao_master'?'var(--orange)':'var(--blue)';
+  return ['aprovado','aprovado_ia','aprovado_manual'].includes(st)?'var(--green)':['recusado','recusado_ia','recusado_manual'].includes(st)?'var(--red)':st==='revisao_master'?'var(--orange)':'var(--blue)';
 }
 function auditEvidenceButton(a){
   return auditAttachmentLinks(a);
@@ -13078,34 +13146,31 @@ function auditEvidenceButton(a){
 function renderMasterAuditoriaPanel(){
   if(usuarioAtual?.tipo!=='master') return '';
   const rows=[...(COB_AUDITORIAS||[])].sort((a,b)=>String(b?.server_time||'').localeCompare(String(a?.server_time||'')));
-  const counts={aguardando_ia:0,revisao_master:0,aprovado:0,recusado:0};
-  rows.forEach(a=>{const s=String(a?.status||'aguardando_ia').toLowerCase();counts[s]=(counts[s]||0)+1});
-  const cards=`<div class="wa-master-grid" style="grid-template-columns:repeat(4,minmax(0,1fr))">
-    <div class="wa-master-card"><div class="k">Aguardando IA</div><div class="v">${counts.aguardando_ia||0}</div></div>
-    <div class="wa-master-card"><div class="k">Revisão MASTER</div><div class="v" style="color:var(--orange)">${counts.revisao_master||0}</div></div>
-    <div class="wa-master-card"><div class="k">Aprovadas</div><div class="v" style="color:var(--green)">${counts.aprovado||0}</div></div>
-    <div class="wa-master-card"><div class="k">Recusadas</div><div class="v" style="color:var(--red)">${counts.recusado||0}</div></div></div>`;
-  const opts=['todos','aguardando_ia','revisao_master','aprovado','recusado'].map(s=>`<option value="${s}">${s==='todos'?'Todos':auditStatusLabel(s)}</option>`).join('');
-  return `<div class="glass panel" style="margin-bottom:18px;border-color:rgba(245,158,11,.30)"><div class="section-head"><div><h2>🧑‍⚖️ Auditoria IA / MASTER</h2><div class="hint">A IA direciona automaticamente os casos duvidosos para Revisão MASTER. O MASTER pode abrir a evidência, aprovar ou negar. Somente aprovação + baixa do mesmo título libera comissão prevista.</div></div><button class="btn soft" onclick="carregarAuditoriasCobranca().then(()=>renderLogsTab())">🔄 Atualizar fila</button></div>${cards}<div class="input-card" style="max-width:320px;margin-bottom:12px"><label>Filtrar auditoria</label><select id="masterAuditFilter" onchange="renderMasterAuditRows()">${opts}</select></div><div id="masterAuditRows"></div></div>`;
+  const norm=s=>String(s||'aguardando_ia').toLowerCase();
+  const isAp=s=>['aprovado','aprovado_ia','aprovado_manual'].includes(norm(s));
+  const isRej=s=>['recusado','recusado_ia','recusado_manual'].includes(norm(s));
+  const counts={aguardando:0,revisao:0,aprovado:0,recusado:0};
+  let custoMes=0,custoHoje=0,analisadasMes=0; const hoje=new Date().toISOString().slice(0,10),mes=hoje.slice(0,7);
+  rows.forEach(a=>{const st=norm(a.status);if(isAp(st))counts.aprovado++;else if(isRej(st))counts.recusado++;else if(st==='revisao_master')counts.revisao++;else counts.aguardando++;const c=Number(a.custo_total_usd||a?.ia_resultado?.cost_total_usd||0);const dt=String(a.ia_analisado_em||a.updated_at||a.server_time||'');if(dt.slice(0,7)===mes){custoMes+=c;analisadasMes++;}if(dt.slice(0,10)===hoje)custoHoje+=c;});
+  const cards=`<div class="wa-master-grid" style="grid-template-columns:repeat(5,minmax(0,1fr))"><div class="wa-master-card"><div class="k">Pendentes MASTER</div><div class="v" style="color:var(--orange)">${counts.revisao}</div></div><div class="wa-master-card"><div class="k">Aprovadas</div><div class="v" style="color:var(--green)">${counts.aprovado}</div></div><div class="wa-master-card"><div class="k">Recusadas</div><div class="v" style="color:var(--red)">${counts.recusado}</div></div><div class="wa-master-card"><div class="k">Custo hoje</div><div class="v">US$ ${custoHoje.toFixed(4)}</div></div><div class="wa-master-card"><div class="k">Custo no mês</div><div class="v">US$ ${custoMes.toFixed(2)}</div><div class="small muted">${analisadasMes} auditoria(s)</div></div></div>`;
+  const opts=[['pendentes_master','Pendentes de decisão MASTER'],['aguardando','IA processando'],['aprovados','Aprovados automaticamente'],['recusados','Recusados / suspeitas'],['todos','Todos']].map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+  return `<div class="glass panel" style="margin-bottom:18px;border-color:rgba(245,158,11,.30)"><div class="section-head"><div><h2>🧑‍⚖️ Auditoria IA / MASTER</h2><div class="hint">Casos confiáveis são aprovados automaticamente. O MASTER recebe somente revisões, suspeitas e exceções. A comissão ainda exige a baixa conciliada do mesmo CPF, título e parcela.</div></div><button class="btn soft" onclick="carregarAuditoriasCobranca().then(()=>renderLogsTab())">🔄 Atualizar fila</button></div>${cards}<div class="input-card" style="max-width:340px;margin-bottom:12px"><label>Filtrar auditoria</label><select id="masterAuditFilter" onchange="renderMasterAuditRows()">${opts}</select></div><div id="masterAuditRows"></div></div>`;
 }
 function renderMasterAuditRows(){
   const box=document.getElementById('masterAuditRows'); if(!box) return;
-  const filtro=String(document.getElementById('masterAuditFilter')?.value||'todos');
+  const filtro=String(document.getElementById('masterAuditFilter')?.value||'pendentes_master');
+  const norm=s=>String(s||'aguardando_ia').toLowerCase();
+  const isAp=s=>['aprovado','aprovado_ia','aprovado_manual'].includes(norm(s));
+  const isRej=s=>['recusado','recusado_ia','recusado_manual'].includes(norm(s));
   let rows=[...(COB_AUDITORIAS||[])].sort((a,b)=>String(b?.server_time||'').localeCompare(String(a?.server_time||'')));
-  if(filtro!=='todos') rows=rows.filter(a=>String(a?.status||'aguardando_ia').toLowerCase()===filtro);
+  rows=rows.filter(a=>{const st=norm(a.status),fraude=a?.fraude_suspeita===true||String(a?.fraude_suspeita||'')==='1';if(filtro==='pendentes_master')return st==='revisao_master'||(fraude&&!isRej(st));if(filtro==='aguardando')return ['aguardando_ia','processando_ia'].includes(st);if(filtro==='aprovados')return isAp(st);if(filtro==='recusados')return isRej(st);return true;});
   if(!rows.length){box.innerHTML='<div class="empty">Nenhuma evidência nesta situação.</div>';return;}
-  box.innerHTML=rows.slice(0,200).map(a=>{
-    const st=String(a?.status||'aguardando_ia').toLowerCase();
-    const fraude=a?.fraude_suspeita===true||String(a?.fraude_suspeita||'')==='1';
-    const conf=Number(a?.ia_confidence||0); const confTxt=conf?`${Math.round(conf*100)}%`:'';
-    const trans=a?.audio_transcript?`<div class="small" style="margin-top:7px"><strong>Transcrição:</strong> ${esc(a.audio_transcript)}</div>`:'';
-    return `<div class="row-item" style="margin-bottom:10px;border-color:${fraude?'rgba(240,82,82,.55)':'rgba(255,255,255,.09)'}"><div class="row-top" style="grid-template-columns:1.25fr .8fr .8fr 1.4fr"><div><div class="name">${esc(a.cliente||'Cliente não informado')}</div><div class="small muted">CPF ${esc(a.cpf_cnpj||'-')} · título ${esc(a.titulo||'-')} · parcela ${esc(a.parcela||'-')}</div><div class="small muted">${esc(a.usuario_nome||a.usuario_login||'-')} · ${esc(a.filial||'-')} · ${esc(a.faixa||'-')}</div></div><div><strong style="color:${auditStatusColor(st)}">${auditStatusLabel(st)}</strong>${confTxt?`<div class="small muted">Confiança IA: ${confTxt}</div>`:''}${fraude?'<div class="unread-chip" style="margin-top:6px">⚠️ Suspeita de fraude</div>':''}</div><div>${auditEvidenceButton(a)}</div><div><div class="small">${esc(a.motivo||'Sem parecer.')}</div>${trans}<div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:9px"><button class="btn primary btn-xs" onclick="masterSetAuditStatus('${esc(a.id)}','aprovado')">✅ Aprovar</button><button class="btn danger btn-xs" onclick="masterSetAuditStatus('${esc(a.id)}','recusado')">❌ Negar</button><button class="btn soft btn-xs" onclick="masterSetAuditStatus('${esc(a.id)}','revisao_master')">🧑‍⚖️ Manter revisão</button></div></div></div></div>`;
-  }).join('');
+  box.innerHTML=rows.slice(0,200).map(a=>{const st=norm(a.status),fraude=a?.fraude_suspeita===true||String(a?.fraude_suspeita||'')==='1',conf=Number(a?.ia_confidence||a?.ia_resultado?.confidence||0),confTxt=conf?`${Math.round(conf*100)}%`:'',custo=Number(a?.custo_total_usd||a?.ia_resultado?.cost_total_usd||0);const trans=auditAttachments(a).filter(x=>String(x.mime||'').startsWith('audio/')).map(x=>x.transcript).filter(Boolean).map(t=>`<div class="small" style="margin-top:7px"><strong>Transcrição:</strong> ${esc(t)}</div>`).join('');const action=st==='revisao_master'?`<div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:9px"><button class="btn primary btn-xs" onclick="masterSetAuditStatus('${esc(a.id)}','aprovado_manual')">✅ Aprovar</button><button class="btn danger btn-xs" onclick="masterSetAuditStatus('${esc(a.id)}','recusado_manual')">❌ Negar</button><button class="btn soft btn-xs" onclick="masterSetAuditStatus('${esc(a.id)}','revisao_master')">🧑‍⚖️ Manter revisão</button></div>`:`<div class="small muted" style="margin-top:8px">Decisão concluída automaticamente. Este registro permanece somente para consulta.</div>`;return `<div class="row-item" style="margin-bottom:10px;border-color:${fraude?'rgba(240,82,82,.55)':'rgba(255,255,255,.09)'}"><div class="row-top" style="grid-template-columns:1.25fr .8fr .8fr 1.4fr"><div><div class="name">${esc(a.cliente||'Cliente não informado')}</div><div class="small muted">CPF ${esc(a.cpf_cnpj||'-')} · título ${esc(a.titulo||'-')} · parcela ${esc(a.parcela||'-')}</div><div class="small muted">${esc(a.usuario_nome||a.usuario_login||'-')} · ${esc(a.filial||'-')} · ${esc(a.faixa||'-')}</div></div><div><strong style="color:${auditStatusColor(st)}">${auditStatusLabel(st)}</strong>${confTxt?`<div class="small muted">Confiança IA: ${confTxt}</div>`:''}${fraude?'<div class="unread-chip" style="margin-top:6px">⚠️ Suspeita de fraude</div>':''}<div class="small muted">Custo: US$ ${custo.toFixed(4)}</div></div><div>${auditEvidenceButton(a)}</div><div><div class="small">${esc(a.motivo||'Sem parecer.')}</div>${trans}${action}</div></div></div>`;}).join('');
 }
 async function masterSetAuditStatus(id,status){
   if(usuarioAtual?.tipo!=='master') return toast('Somente o MASTER pode decidir auditorias.');
-  const label=status==='aprovado'?'aprovar':status==='recusado'?'negar':'manter em revisão';
-  const motivo=prompt(`Motivo para ${label} esta evidência:`, status==='aprovado'?'Aprovado manualmente pelo MASTER.':status==='recusado'?'Recusado manualmente pelo MASTER.':'Mantido para revisão do MASTER.');
+  const label=status==='aprovado_manual'?'aprovar':status==='recusado_manual'?'negar':'manter em revisão';
+  const motivo=prompt(`Motivo para ${label} esta evidência:`, status==='aprovado_manual'?'Aprovado manualmente pelo MASTER.':status==='recusado_manual'?'Recusado manualmente pelo MASTER.':'Mantido para revisão do MASTER.');
   if(motivo===null) return;
   const fd=new FormData();fd.append('action','set_status');fd.append('id',id);fd.append('status',status);fd.append('motivo',motivo);fd.append('ia_model','decisao_manual_master');
   try{const r=await fetch(API_COB_AUD,{method:'POST',body:fd});const j=await r.json();if(!j.ok) throw new Error(j.error||'falha');await carregarAuditoriasCobranca();renderLogsTab();toast('Auditoria atualizada pelo MASTER.','success');}catch(e){toast('Não consegui atualizar a auditoria.');}
@@ -19910,7 +19975,7 @@ Preparamos condições especiais para você comemorar com a gente.
 
 </script>
 <script>
-try{window.DASHBOARD_BUILD_VERSION='V10.68';console.log('[V10.68] auditoria multiarquivo + fallback SSL controlado');}catch(e){}
+try{window.DASHBOARD_BUILD_VERSION='V10.69';console.log('[V10.69] auditoria imediata + aprovação automática + controle de custo');}catch(e){}
 </script>
 
 </body>
@@ -19929,6 +19994,13 @@ COBRANCA_AUDITORIA_IA_ENABLED = os.getenv("COBRANCA_AUDITORIA_IA_ENABLED", "1") 
 COBRANCA_AUDITORIA_IA_MODEL = os.getenv("COBRANCA_AUDITORIA_IA_MODEL", "gpt-4.1-mini").strip()
 COBRANCA_AUDITORIA_IA_MIN_CONFIDENCE = float(os.getenv("COBRANCA_AUDITORIA_IA_MIN_CONFIDENCE", "0.82"))
 COBRANCA_AUDITORIA_IA_MAX_PER_RUN = max(1, int(os.getenv("COBRANCA_AUDITORIA_IA_MAX_PER_RUN", "20")))
+COBRANCA_AUDITORIA_IA_MAX_PER_DAY = max(1, int(os.getenv("COBRANCA_AUDITORIA_IA_MAX_PER_DAY", "300")))
+COBRANCA_AUDITORIA_IA_MAX_USD_PER_DAY = float(os.getenv("COBRANCA_AUDITORIA_IA_MAX_USD_PER_DAY", "3.00"))
+COBRANCA_AUDITORIA_IA_MAX_USD_PER_MONTH = float(os.getenv("COBRANCA_AUDITORIA_IA_MAX_USD_PER_MONTH", "30.00"))
+COBRANCA_AUDITORIA_IMAGE_MAX_WIDTH = max(640, int(os.getenv("COBRANCA_AUDITORIA_IMAGE_MAX_WIDTH", "1600")))
+COBRANCA_AUDITORIA_IMAGE_QUALITY = min(95, max(55, int(os.getenv("COBRANCA_AUDITORIA_IMAGE_QUALITY", "82"))))
+COBRANCA_AUDITORIA_PRICE_INPUT_PER_M = float(os.getenv("COBRANCA_AUDITORIA_PRICE_INPUT_PER_M", "0.40"))
+COBRANCA_AUDITORIA_PRICE_OUTPUT_PER_M = float(os.getenv("COBRANCA_AUDITORIA_PRICE_OUTPUT_PER_M", "1.60"))
 COBRANCA_AUDITORIA_AUDIO_MODEL = os.getenv("COBRANCA_AUDITORIA_AUDIO_MODEL", "gpt-4o-mini-transcribe").strip()
 COBRANCA_AUDITORIA_DHASH_DISTANCE = max(0, int(os.getenv("COBRANCA_AUDITORIA_DHASH_DISTANCE", "6")))
 
@@ -20065,6 +20137,27 @@ def _attachments_v1067(item):
     return []
 
 
+def _optimizar_imagem_v1069(data, mime):
+    try:
+        from PIL import Image
+        from io import BytesIO
+        im=Image.open(BytesIO(data)).convert("RGB")
+        if im.width>COBRANCA_AUDITORIA_IMAGE_MAX_WIDTH:
+            nh=max(1,round(im.height*COBRANCA_AUDITORIA_IMAGE_MAX_WIDTH/im.width)); im=im.resize((COBRANCA_AUDITORIA_IMAGE_MAX_WIDTH,nh))
+        out=BytesIO(); im.save(out,format="JPEG",quality=COBRANCA_AUDITORIA_IMAGE_QUALITY,optimize=True)
+        return out.getvalue(),"image/jpeg"
+    except Exception:
+        return data,mime or "image/jpeg"
+
+
+def _usage_cost_v1069(raw):
+    usage=raw.get("usage") if isinstance(raw,dict) else {}
+    usage=usage if isinstance(usage,dict) else {}
+    inp=int(usage.get("input_tokens") or 0); out=int(usage.get("output_tokens") or 0)
+    cost=(inp/1_000_000)*COBRANCA_AUDITORIA_PRICE_INPUT_PER_M+(out/1_000_000)*COBRANCA_AUDITORIA_PRICE_OUTPUT_PER_M
+    return {"input_tokens":inp,"output_tokens":out,"cost_total_usd":round(cost,8)}
+
+
 def _analisar_bundle_v1067(item,api_key,all_items):
     import base64
     attachments=_attachments_v1067(item)
@@ -20081,7 +20174,10 @@ def _analisar_bundle_v1067(item,api_key,all_items):
             dup=_find_duplicate_v1067(item,all_items,sha256=sha,dhash=dh)
             if dup:
                 typ,prev,metric=dup
-                return {"status":"recusado","confidence":1.0,"fraude_suspeita":True,"duplicate_type":typ,"motivo":f"Imagem duplicada ou visualmente semelhante já usada em {prev.get('cliente','')}, título {prev.get('titulo','')}, usuário {prev.get('usuario_login','')}.","attachments":processed+[rec]}
+                auto = typ=="exact_duplicate"
+                return {"status":"recusado_ia" if auto else "revisao_master","confidence":1.0 if auto else 0.70,"fraude_suspeita":True,"duplicate_type":typ,"motivo":f"{'Arquivo idêntico' if auto else 'Imagem visualmente semelhante'} já usado em {prev.get('cliente','')}, título {prev.get('titulo','')}, usuário {prev.get('usuario_login','')}.","attachments":processed+[rec]}
+            data,mime=_optimizar_imagem_v1069(data,mime)
+            rec["optimized_bytes"]=len(data)
             data_url=f"data:{mime or 'image/jpeg'};base64,{base64.b64encode(data).decode('ascii')}"
             image_contents.append({"type":"input_image","image_url":data_url,"detail":"high"})
         elif mime.startswith("audio/"):
@@ -20092,7 +20188,8 @@ def _analisar_bundle_v1067(item,api_key,all_items):
             dup=_find_duplicate_v1067(item,all_items,sha256=sha,transcript_norm=norm)
             if dup:
                 typ,prev,metric=dup
-                return {"status":"recusado","confidence":1.0,"fraude_suspeita":True,"duplicate_type":typ,"motivo":f"Áudio duplicado ou praticamente idêntico já usado em {prev.get('cliente','')}, título {prev.get('titulo','')}, usuário {prev.get('usuario_login','')}.","attachments":processed+[rec]}
+                auto = typ=="exact_duplicate"
+                return {"status":"recusado_ia" if auto else "revisao_master","confidence":1.0 if auto else 0.70,"fraude_suspeita":True,"duplicate_type":typ,"motivo":f"{'Arquivo de áudio idêntico' if auto else 'Transcrição de áudio muito semelhante'} já usado em {prev.get('cliente','')}, título {prev.get('titulo','')}, usuário {prev.get('usuario_login','')}.","attachments":processed+[rec]}
             transcripts.append(f"Áudio {idx}: {transcript}")
         processed.append(rec)
     if has_audio and not has_image:
@@ -20110,39 +20207,48 @@ Retorne somente JSON: {{"status":"aprovado|revisao_master|recusado","confidence"
     raw=_http_json_v1067("https://api.openai.com/v1/responses",data=json.dumps(body,ensure_ascii=False).encode("utf-8"),headers={"Authorization":f"Bearer {api_key}","Content-Type":"application/json; charset=utf-8"},timeout=240)
     result=_parse_json_text_v1067(_response_output_text_v1067(raw))
     status=str(result.get("status") or "revisao_master").lower().strip(); confidence=float(result.get("confidence") or 0.0)
-    if result.get("suspeita_app_gerador") and status=="aprovado": status="revisao_master"
-    if status=="aprovado" and confidence<COBRANCA_AUDITORIA_IA_MIN_CONFIDENCE: status="revisao_master"; result["motivo"]=f"Confiança {confidence:.0%} abaixo do mínimo. "+str(result.get("motivo") or "")
-    if status not in {"aprovado","revisao_master","recusado"}: status="revisao_master"
+    if result.get("suspeita_app_gerador") or result.get("sinais_manipulacao"): status="revisao_master"
+    if status=="aprovado": status="aprovado_ia" if confidence>=COBRANCA_AUDITORIA_IA_MIN_CONFIDENCE else "revisao_master"
+    elif status=="recusado": status="recusado_ia" if confidence>=COBRANCA_AUDITORIA_IA_MIN_CONFIDENCE else "revisao_master"
+    if status not in {"aprovado_ia","revisao_master","recusado_ia"}: status="revisao_master"
+    result.update(_usage_cost_v1069(raw))
     result.update({"status":status,"confidence":confidence,"attachments":processed,"has_audio":has_audio,"has_image":has_image})
     return result
 
 
 def _atualizar_status_v1067(item,result):
-    payload=urllib.parse.urlencode({"action":"set_status","id":str(item.get("id") or ""),"status":str(result.get("status") or "revisao_master"),"motivo":str(result.get("motivo") or "Auditoria concluída.")[:1800],"ia_confidence":f"{float(result.get('confidence') or 0):.4f}","ia_model":COBRANCA_AUDITORIA_IA_MODEL,"ia_json":json.dumps(result,ensure_ascii=False),"attachments_json":json.dumps(result.get("attachments") or [],ensure_ascii=False),"fraude_suspeita":"1" if result.get("fraude_suspeita") else "0"}).encode("utf-8")
+    payload=urllib.parse.urlencode({"action":"set_status","id":str(item.get("id") or ""),"status":str(result.get("status") or "revisao_master"),"motivo":str(result.get("motivo") or "Auditoria concluída.")[:1800],"ia_confidence":f"{float(result.get('confidence') or 0):.4f}","ia_model":COBRANCA_AUDITORIA_IA_MODEL,"ia_json":json.dumps(result,ensure_ascii=False),"attachments_json":json.dumps(result.get("attachments") or [],ensure_ascii=False),"fraude_suspeita":"1" if result.get("fraude_suspeita") else "0","input_tokens":str(result.get("input_tokens") or 0),"output_tokens":str(result.get("output_tokens") or 0),"custo_total_usd":f"{float(result.get('cost_total_usd') or 0):.8f}"}).encode("utf-8")
     return _http_json_v1067(COBRANCA_AUDITORIA_API_URL,data=payload,headers={"Content-Type":"application/x-www-form-urlencoded; charset=utf-8"},timeout=90)
 
 
 def processar_auditorias_v1067():
     if not COBRANCA_AUDITORIA_IA_ENABLED:
-        print("ℹ️ V10.67 auditoria IA desativada."); return
+        print("ℹ️ V10.69 auditoria IA desativada."); return
     api_key=os.getenv("OPENAI_API_KEY","").strip()
     if not api_key:
-        print("⚠️ V10.67 OPENAI_API_KEY ausente; fila permanecerá aguardando IA."); return
+        print("⚠️ V10.69 OPENAI_API_KEY ausente; fila permanecerá aguardando IA."); return
     try:
         listing=_http_json_v1067(COBRANCA_AUDITORIA_API_URL+"?_="+str(int(time.time())),timeout=90)
         items=listing.get("data") if isinstance(listing,dict) else []
+        hoje=now_brasilia().strftime('%Y-%m-%d'); mes=hoje[:7]
+        concl=[x for x in (items or []) if str(x.get('ia_analisado_em') or x.get('updated_at') or '').startswith((hoje,mes))]
+        qtd_hoje=sum(1 for x in items or [] if str(x.get('ia_analisado_em') or x.get('updated_at') or '').startswith(hoje))
+        custo_hoje=sum(float(x.get('custo_total_usd') or 0) for x in items or [] if str(x.get('ia_analisado_em') or x.get('updated_at') or '').startswith(hoje))
+        custo_mes=sum(float(x.get('custo_total_usd') or 0) for x in items or [] if str(x.get('ia_analisado_em') or x.get('updated_at') or '').startswith(mes))
+        if qtd_hoje>=COBRANCA_AUDITORIA_IA_MAX_PER_DAY or custo_hoje>=COBRANCA_AUDITORIA_IA_MAX_USD_PER_DAY or custo_mes>=COBRANCA_AUDITORIA_IA_MAX_USD_PER_MONTH:
+            print(f'🛑 V10.69 limite de auditoria atingido: hoje={qtd_hoje}, US$ hoje={custo_hoje:.4f}, US$ mês={custo_mes:.4f}'); return
         pend=[x for x in (items or []) if str(x.get("status") or "aguardando_ia").lower()=="aguardando_ia"][:COBRANCA_AUDITORIA_IA_MAX_PER_RUN]
-        print(f"🛡️ V10.67 auditoria multiarquivo: {len(pend)} caso(s) pendente(s)")
+        print(f"🛡️ V10.69 auditoria multiarquivo: {len(pend)} caso(s) pendente(s)")
         for item in pend:
             try:
                 result=_analisar_bundle_v1067(item,api_key,items or [])
                 _atualizar_status_v1067(item,result)
-                print(f"   {'✅' if result['status']=='aprovado' else '❌' if result['status']=='recusado' else '🧑‍⚖️'} {item.get('cliente','')} · título {item.get('titulo','')} · {result['status']} · confiança {float(result.get('confidence') or 0):.0%}")
+                print(f"   {'✅' if result['status'] in {'aprovado','aprovado_ia'} else '❌' if result['status'] in {'recusado','recusado_ia'} else '🧑‍⚖️'} {item.get('cliente','')} · título {item.get('titulo','')} · {result['status']} · confiança {float(result.get('confidence') or 0):.0%}")
             except Exception as exc:
-                print(f"⚠️ V10.67 falha no caso {item.get('id','')}: {type(exc).__name__}: {exc}")
-        print("✅ V10.67 ciclo de auditoria concluído")
+                print(f"⚠️ V10.69 falha no caso {item.get('id','')}: {type(exc).__name__}: {exc}")
+        print("✅ V10.69 ciclo de auditoria concluído")
     except Exception as exc:
-        print(f"⚠️ V10.67 não conseguiu carregar a fila: {type(exc).__name__}: {exc}")
+        print(f"⚠️ V10.69 não conseguiu carregar a fila: {type(exc).__name__}: {exc}")
 
 
 processar_auditorias_v1067()
@@ -20520,13 +20626,18 @@ if(!file_exists($dir))@mkdir($dir,0777,true);if(!file_exists($file))@file_put_co
 function ar(){global $file;$j=json_decode(@file_get_contents($file),true);return is_array($j)?$j:[];}
 function sw($d){global $file;return @file_put_contents($file,json_encode($d,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),LOCK_EX)!==false;}
 $data=ar();
-if($_SERVER['REQUEST_METHOD']==='GET'){echo json_encode(['ok'=>true,'data'=>$data,'count'=>count($data),'version'=>'V10.68'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}
+if($_SERVER['REQUEST_METHOD']==='GET'){echo json_encode(['ok'=>true,'data'=>$data,'count'=>count($data),'version'=>'V10.69'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}
 if($_SERVER['REQUEST_METHOD']==='POST'){
  $action=$_POST['action']??'upload_bundle';
+ if($action==='claim'){
+  $id=(string)($_POST['id']??'');$claimed=false;
+  foreach($data as &$x){if((string)($x['id']??'')===$id && in_array((string)($x['status']??''),['aguardando_ia','processando_ia'],true)){if((string)($x['status']??'')==='aguardando_ia'){$x['status']='processando_ia';$x['process_started_at']=date('c');$claimed=true;}}}
+  if($claimed)sw($data);echo json_encode(['ok'=>true,'claimed'=>$claimed],JSON_UNESCAPED_UNICODE);exit;
+ }
  if($action==='set_status'){
   $id=(string)($_POST['id']??'');$status=(string)($_POST['status']??'aguardando_ia');$motivo=(string)($_POST['motivo']??'');
-  foreach($data as &$x){if((string)($x['id']??'')===$id){$x['status']=$status;$x['motivo']=$motivo;$x['updated_at']=date('c');$x['ia_analisado_em']=date('c');$x['ia_confidence']=(string)($_POST['ia_confidence']??'');$x['ia_model']=(string)($_POST['ia_model']??'');$x['fraude_suspeita']=((string)($_POST['fraude_suspeita']??'0')==='1');if(!empty($_POST['ia_json'])){$d=json_decode($_POST['ia_json'],true);$x['ia_resultado']=is_array($d)?$d:$_POST['ia_json'];}if(!empty($_POST['attachments_json'])){$a=json_decode($_POST['attachments_json'],true);if(is_array($a))$x['attachments']=$a;}}}
-  $ok=sw($data);echo json_encode(['ok'=>$ok,'version'=>'V10.68'],JSON_UNESCAPED_UNICODE);exit;
+  foreach($data as &$x){if((string)($x['id']??'')===$id){$x['status']=$status;$x['motivo']=$motivo;$x['updated_at']=date('c');$x['ia_analisado_em']=date('c');$x['ia_confidence']=(string)($_POST['ia_confidence']??'');$x['ia_model']=(string)($_POST['ia_model']??'');$x['fraude_suspeita']=((string)($_POST['fraude_suspeita']??'0')==='1');$x['input_tokens']=(int)($_POST['input_tokens']??0);$x['output_tokens']=(int)($_POST['output_tokens']??0);$x['custo_total_usd']=(float)($_POST['custo_total_usd']??0);if(!empty($_POST['ia_json'])){$d=json_decode($_POST['ia_json'],true);$x['ia_resultado']=is_array($d)?$d:$_POST['ia_json'];}if(!empty($_POST['attachments_json'])){$a=json_decode($_POST['attachments_json'],true);if(is_array($a))$x['attachments']=$a;}}}
+  $ok=sw($data);echo json_encode(['ok'=>$ok,'version'=>'V10.69'],JSON_UNESCAPED_UNICODE);exit;
  }
  $files=[];
  if(isset($_FILES['media']) && is_array($_FILES['media']['name'])){
@@ -20548,10 +20659,12 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
  }
  if($hasAudio&&!$hasImage){echo json_encode(['ok'=>false,'error'=>'audio_exige_print']);exit;}
  $item=['id'=>uniqid('aud_',true),'audit_key'=>(string)($_POST['audit_key']??''),'cliente'=>(string)($_POST['cliente']??''),'cpf_cnpj'=>(string)($_POST['cpf_cnpj']??''),'titulo'=>(string)($_POST['titulo']??''),'parcela'=>(string)($_POST['parcela']??''),'vencimento'=>(string)($_POST['vencimento']??''),'telefone'=>(string)($_POST['telefone']??''),'faixa'=>(string)($_POST['faixa']??''),'usuario_login'=>(string)($_POST['usuario_login']??''),'usuario_nome'=>(string)($_POST['usuario_nome']??''),'filial'=>(string)($_POST['filial']??''),'attachments'=>$attachments,'evidence_count'=>count($attachments),'has_image'=>$hasImage,'has_audio'=>$hasAudio,'status'=>'aguardando_ia','motivo'=>'Conjunto de evidências recebido. Aguardando auditoria antifraude da IA.','server_time'=>date('c')];
- $data[]=$item;$ok=sw($data);echo json_encode(['ok'=>$ok,'data'=>$item,'version'=>'V10.68'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;
+ $data[]=$item;$ok=sw($data);$triggerUrl='__AUDIT_TRIGGER_URL__';$triggerSecret='__AUDIT_TRIGGER_SECRET__';if($ok&&$triggerUrl!==''){ $payload=json_encode(['id'=>$item['id']],JSON_UNESCAPED_UNICODE);$opts=['http'=>['method'=>'POST','header'=>"Content-Type: application/json\r\nX-Audit-Secret: ".$triggerSecret."\r\n",'content'=>$payload,'timeout'=>2,'ignore_errors'=>true]];@file_get_contents($triggerUrl,false,stream_context_create($opts)); }echo json_encode(['ok'=>$ok,'data'=>$item,'triggered'=>($triggerUrl!==''),'version'=>'V10.69'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;
 }
 echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado']);
 ?>"""
+
+COBRANCA_AUDITORIA_API_PHP = COBRANCA_AUDITORIA_API_PHP.replace("__AUDIT_TRIGGER_URL__", os.getenv("COBRANCA_AUDITORIA_TRIGGER_URL", "").strip()).replace("__AUDIT_TRIGGER_SECRET__", os.getenv("COBRANCA_AUDITORIA_WEBHOOK_SECRET", "").strip())
 
 CONFIG_META_API_PHP = r"""<?php
 header('Content-Type: application/json; charset=utf-8');
