@@ -36,7 +36,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.65"
+DASHBOARD_BUILD_VERSION = "V10.67"
 DASHBOARD_BUILD_TAG = "comissao_crediarista_fonte_unica_oficial"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -12417,31 +12417,45 @@ function auditoriaDoTitulo(reg){const k=auditoriaKey(reg); return (COB_AUDITORIA
 async function carregarAuditoriasCobranca(){
   try{const r=await fetch(API_COB_AUD+'?_='+Date.now(),{cache:'no-store'}); const j=await r.json(); COB_AUDITORIAS=Array.isArray(j?.data)?j.data:[];}catch(e){COB_AUDITORIAS=[];}
 }
+function auditAttachments(a){
+  if(Array.isArray(a?.attachments) && a.attachments.length) return a.attachments;
+  if(a?.media_url) return [{url:a.media_url,mime:a.media_type||'',evidence_type:a.evidence_type||''}];
+  return [];
+}
+function auditAttachmentLinks(a){
+  const arr=auditAttachments(a);
+  if(!arr.length) return '';
+  return `<div style="display:flex;gap:6px;flex-wrap:wrap">${arr.map((x,i)=>{const mime=String(x.mime||x.media_type||x.evidence_type||'').toLowerCase();const audio=mime.includes('audio');return `<a class="btn soft btn-xs" target="_blank" rel="noopener" href="${esc(x.url||x.media_url||'')}">${audio?'🎧 Áudio':'🖼️ Print'} ${i+1}</a>`}).join('')}</div>`;
+}
 function printAuditBox(reg,entRef){
   const a=auditoriaDoTitulo(reg);
   if(a){
     const st=String(a.status||'aguardando_ia');
     const lbl=st==='aprovado'?'✅ Auditoria aprovada':st==='recusado'?'❌ Auditoria recusada':st==='revisao_master'?'🧑‍⚖️ Revisão do MASTER':'🤖 Aguardando auditoria da IA';
-    return `<div class="audit-proof-box"><strong>${lbl}</strong>${a.media_url?`<a class="btn soft btn-xs" target="_blank" href="${esc(a.media_url)}">${String(a.media_type||'').startsWith('audio')?'🎧 Ouvir áudio':'🖼️ Ver print'}</a>`:''}<div class="small muted">${esc(a.motivo||'Print recebido e preservado para auditoria.')}</div></div>`;
+    return `<div class="audit-proof-box"><strong>${lbl}</strong>${auditAttachmentLinks(a)}<div class="small muted">${esc(a.motivo||'Evidências recebidas e preservadas para auditoria.')}</div></div>`;
   }
   const id='proof_'+Math.random().toString(36).slice(2);
-  return `<div class="audit-proof-box"><div><strong>Cliente respondeu?</strong><div class="small muted">Anexe o print contendo o contato e a resposta do cliente, ou o áudio recebido no WhatsApp.</div></div><input id="${id}" type="file" accept="image/png,image/jpeg,image/webp,audio/mpeg,audio/mp4,audio/x-m4a,audio/ogg,audio/wav,audio/webm,audio/aac" class="proof-input"><button class="btn primary btn-xs" onclick='enviarPrintCobranca(${JSON.stringify(reg)},${JSON.stringify(entRef)},"${id}")'>📎 Anexar print</button></div>`;
+  return `<div class="audit-proof-box"><div><strong>Cliente respondeu?</strong><div class="small muted">Selecione um ou vários prints e, se houver resposta em áudio, inclua também o arquivo de áudio. Para áudio, pelo menos um print da conversa é obrigatório.</div></div><input id="${id}" type="file" multiple accept="image/png,image/jpeg,image/webp,audio/mpeg,audio/mp4,audio/x-m4a,audio/ogg,audio/wav,audio/webm,audio/aac" class="proof-input"><button class="btn primary btn-xs" onclick='enviarPrintCobranca(${JSON.stringify(reg)},${JSON.stringify(entRef)},"${id}")'>📎 Anexar evidências</button></div>`;
 }
 async function enviarPrintCobranca(reg,entRef,inputId){
-  const inp=document.getElementById(inputId); const file=inp?.files?.[0];
-  if(!file){toast('Selecione o print da resposta.','warn');return;}
-  if(file.size>20*1024*1024){toast('A evidência deve ter até 20 MB.','warn');return;}
-  const fd=new FormData(); fd.append('action','upload'); fd.append('media',file);
+  const inp=document.getElementById(inputId); const files=Array.from(inp?.files||[]);
+  if(!files.length){toast('Selecione ao menos um print da resposta.','warn');return;}
+  if(files.length>10){toast('Envie no máximo 10 arquivos por cobrança.','warn');return;}
+  if(files.some(f=>f.size>20*1024*1024)){toast('Cada evidência deve ter até 20 MB.','warn');return;}
+  const hasAudio=files.some(f=>String(f.type||'').startsWith('audio/'));
+  const hasImage=files.some(f=>String(f.type||'').startsWith('image/'));
+  if(hasAudio && !hasImage){toast('Quando houver áudio, anexe também ao menos um print da conversa.','warn');return;}
+  const fd=new FormData(); fd.append('action','upload_bundle'); files.forEach(f=>fd.append('media[]',f));
   fd.append('audit_key',auditoriaKey(reg)); fd.append('cliente',reg.cliente||reg.nome||''); fd.append('cpf_cnpj',reg.cpf_cnpj||'');
   fd.append('titulo',reg.titulo||''); fd.append('parcela',reg.parcela||''); fd.append('vencimento',reg.vencimento||'');
   fd.append('telefone',Array.isArray(reg.telefones)?(reg.telefones[0]||''):(reg.contato||'')); fd.append('faixa',cobrancaFaixaNormalizada(reg));
   fd.append('usuario_login',usuarioAtual?.login||entRef?.login||''); fd.append('usuario_nome',cobradorNomeAtual()); fd.append('filial',entRef?.filial||'');
   try{
     const r=await fetch(API_COB_AUD,{method:'POST',body:fd}); const j=await r.json();
-    if(!j.ok){if(j.error==='evidencia_duplicada') throw new Error('Este mesmo arquivo já foi usado em outra cobrança.'); throw new Error(j.error||'erro_upload');}
-    await carregarAuditoriasCobranca(); toast('Evidência anexada. A cobrança foi enviada para auditoria antifraude.','success');
+    if(!j.ok){if(j.error==='evidencia_duplicada') throw new Error('Um dos arquivos já foi usado em outra cobrança.'); throw new Error(j.error||'erro_upload');}
+    await carregarAuditoriasCobranca(); toast(`${files.length} evidência(s) anexada(s). A cobrança foi enviada para auditoria antifraude.`,`success`);
     if(currentDetailRef) openEntity(currentDetailRef);
-  }catch(e){toast(String(e?.message||'Não consegui anexar a evidência.'),'warn');}
+  }catch(e){toast(String(e?.message||'Não consegui anexar as evidências.'),'warn');}
 }
 function renderMeuNomeCobrador(ent){
   if(usuarioAtual?.tipo==='master') return '';
@@ -13059,9 +13073,7 @@ function auditStatusColor(st){
   return st==='aprovado'?'var(--green)':st==='recusado'?'var(--red)':st==='revisao_master'?'var(--orange)':'var(--blue)';
 }
 function auditEvidenceButton(a){
-  if(!a?.media_url) return '';
-  const audio=String(a?.evidence_type||a?.media_type||'').toLowerCase().includes('audio');
-  return `<a class="btn soft btn-xs" href="${esc(a.media_url)}" target="_blank" rel="noopener">${audio?'🎧 Ouvir áudio':'🖼️ Abrir print'}</a>`;
+  return auditAttachmentLinks(a);
 }
 function renderMasterAuditoriaPanel(){
   if(usuarioAtual?.tipo!=='master') return '';
@@ -19898,7 +19910,7 @@ Preparamos condições especiais para você comemorar com a gente.
 
 </script>
 <script>
-try{window.DASHBOARD_BUILD_VERSION='V10.65';console.log('[V10.65] auditoria MASTER + comissão cobrança individual');}catch(e){}
+try{window.DASHBOARD_BUILD_VERSION='V10.67';console.log('[V10.67] auditoria multiarquivo + processamento IA robusto');}catch(e){}
 </script>
 
 </body>
@@ -19907,7 +19919,7 @@ try{window.DASHBOARD_BUILD_VERSION='V10.65';console.log('[V10.65] auditoria MAST
 
 
 # =========================================
-# 🤖 V10.65 — AUDITORIA ANTIFRAUDE DE PRINTS E ÁUDIOS DE COBRANÇA
+# 🤖 V10.67 — AUDITORIA ANTIFRAUDE MULTIARQUIVO (PRINTS + ÁUDIOS)
 # =========================================
 COBRANCA_AUDITORIA_API_URL = os.getenv(
     "COBRANCA_AUDITORIA_API_URL",
@@ -19919,269 +19931,202 @@ COBRANCA_AUDITORIA_IA_MIN_CONFIDENCE = float(os.getenv("COBRANCA_AUDITORIA_IA_MI
 COBRANCA_AUDITORIA_IA_MAX_PER_RUN = max(1, int(os.getenv("COBRANCA_AUDITORIA_IA_MAX_PER_RUN", "20")))
 COBRANCA_AUDITORIA_AUDIO_MODEL = os.getenv("COBRANCA_AUDITORIA_AUDIO_MODEL", "gpt-4o-mini-transcribe").strip()
 COBRANCA_AUDITORIA_DHASH_DISTANCE = max(0, int(os.getenv("COBRANCA_AUDITORIA_DHASH_DISTANCE", "6")))
-COBRANCA_AUDITORIA_BLOCK_EXACT_DUPLICATE = os.getenv("COBRANCA_AUDITORIA_BLOCK_EXACT_DUPLICATE", "1") == "1"
 
 
-def _http_json_v1063(url, *, data=None, headers=None, timeout=60):
-    req = urllib.request.Request(url, data=data, headers=headers or {})
-    with urllib.request.urlopen(req, timeout=timeout, context=ssl.create_default_context()) as resp:
-        raw = resp.read()
-    return json.loads(raw.decode("utf-8", errors="replace"))
+def _http_json_v1067(url, *, data=None, headers=None, timeout=90):
+    try:
+        req = urllib.request.Request(url, data=data, headers=headers or {})
+        with urllib.request.urlopen(req, timeout=timeout, context=ssl.create_default_context()) as resp:
+            raw = resp.read()
+        return json.loads(raw.decode("utf-8", errors="replace"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")[:2000]
+        raise RuntimeError(f"HTTP {exc.code} em {url}: {body}") from exc
 
 
-def _response_output_text_v1063(payload):
+def _response_output_text_v1067(payload):
     if isinstance(payload, dict) and isinstance(payload.get("output_text"), str):
         return payload["output_text"]
-    parts = []
+    parts=[]
     for item in (payload.get("output") or []) if isinstance(payload, dict) else []:
         for content in item.get("content") or []:
-            txt = content.get("text")
-            if isinstance(txt, str):
-                parts.append(txt)
+            txt=content.get("text")
+            if isinstance(txt,str): parts.append(txt)
     return "\n".join(parts).strip()
 
 
-def _parse_json_text_v1063(text):
-    text = (text or "").strip()
-    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.I | re.S).strip()
-    try:
-        return json.loads(text)
+def _parse_json_text_v1067(text):
+    text=(text or "").strip()
+    text=re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.I|re.S).strip()
+    try: return json.loads(text)
     except Exception:
-        m = re.search(r"\{.*\}", text, flags=re.S)
-        if not m:
-            raise
+        m=re.search(r"\{.*\}", text, flags=re.S)
+        if not m: raise ValueError(f"Resposta da IA sem JSON: {text[:500]}")
         return json.loads(m.group(0))
 
 
-def _download_media_v1064(url, timeout=90):
-    req = urllib.request.Request(url, headers={"User-Agent": "MDL-Auditoria/10.64"})
-    with urllib.request.urlopen(req, timeout=timeout, context=ssl.create_default_context()) as resp:
-        return resp.read(), str(resp.headers.get("Content-Type") or "").split(";")[0].lower()
+def _download_media_v1067(url, timeout=120):
+    req=urllib.request.Request(url,headers={"User-Agent":"MDL-Auditoria/10.67"})
+    with urllib.request.urlopen(req,timeout=timeout,context=ssl.create_default_context()) as resp:
+        return resp.read(),str(resp.headers.get("Content-Type") or "").split(";")[0].lower()
 
 
-def _sha256_v1064(data):
+def _sha256_v1067(data):
     import hashlib
     return hashlib.sha256(data).hexdigest()
 
 
-def _dhash_image_v1064(data):
+def _dhash_v1067(data):
     try:
         from PIL import Image
         import io
-        im = Image.open(io.BytesIO(data)).convert("L").resize((9, 8))
-        px = list(im.getdata())
-        bits = []
+        im=Image.open(io.BytesIO(data)).convert("L").resize((9,8))
+        px=list(im.getdata()); value=0
         for y in range(8):
-            row = px[y*9:(y+1)*9]
-            bits.extend(1 if row[x] > row[x+1] else 0 for x in range(8))
-        value = 0
-        for b in bits:
-            value = (value << 1) | b
+            row=px[y*9:(y+1)*9]
+            for x in range(8): value=(value<<1)|(1 if row[x]>row[x+1] else 0)
         return f"{value:016x}"
     except Exception:
         return ""
 
 
-def _hamming_hex_v1064(a, b):
-    try:
-        return (int(a, 16) ^ int(b, 16)).bit_count()
-    except Exception:
-        return 999
+def _hamming_v1067(a,b):
+    try: return (int(a,16)^int(b,16)).bit_count()
+    except Exception: return 999
 
 
-def _normalize_transcript_v1064(text):
+def _normalize_transcript_v1067(text):
     import unicodedata
-    t = unicodedata.normalize("NFKD", str(text or "")).encode("ascii", "ignore").decode("ascii").lower()
-    t = re.sub(r"\b(boa|bom)\s+(dia|tarde|noite)\b", " ", t)
-    t = re.sub(r"\W+", " ", t)
-    return re.sub(r"\s+", " ", t).strip()
+    t=unicodedata.normalize("NFKD",str(text or "")).encode("ascii","ignore").decode("ascii").lower()
+    t=re.sub(r"\b(boa|bom)\s+(dia|tarde|noite)\b"," ",t)
+    return re.sub(r"\s+"," ",re.sub(r"\W+"," ",t)).strip()
 
 
-def _multipart_audio_v1064(api_key, filename, media_type, data):
+def _multipart_audio_v1067(api_key,filename,media_type,data):
     import uuid
-    boundary = "----MDL" + uuid.uuid4().hex
-    fields = {"model": COBRANCA_AUDITORIA_AUDIO_MODEL, "response_format": "json", "language": "pt"}
-    parts = []
-    for k, v in fields.items():
-        parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n".encode())
-    parts.append((f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n"
-                  f"Content-Type: {media_type or 'application/octet-stream'}\r\n\r\n").encode())
-    parts.append(data)
-    parts.append(f"\r\n--{boundary}--\r\n".encode())
-    req = urllib.request.Request(
-        "https://api.openai.com/v1/audio/transcriptions",
-        data=b"".join(parts),
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": f"multipart/form-data; boundary={boundary}"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=180) as resp:
-        raw = json.loads(resp.read().decode("utf-8", errors="replace"))
-    return str(raw.get("text") or "").strip()
+    boundary="----MDL"+uuid.uuid4().hex
+    parts=[]
+    for k,v in {"model":COBRANCA_AUDITORIA_AUDIO_MODEL,"response_format":"json","language":"pt"}.items():
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode())
+    parts.append((f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\nContent-Type: {media_type or "application/octet-stream"}\r\n\r\n').encode())
+    parts.extend([data,f"\r\n--{boundary}--\r\n".encode()])
+    return _http_json_v1067("https://api.openai.com/v1/audio/transcriptions",data=b"".join(parts),headers={"Authorization":f"Bearer {api_key}","Content-Type":f"multipart/form-data; boundary={boundary}"},timeout=240).get("text","").strip()
 
 
-def _duplicate_check_v1064(item, all_items, file_hash, dhash="", transcript_norm=""):
-    current_id = str(item.get("id") or "")
-    for prev in all_items:
-        if str(prev.get("id") or "") == current_id:
-            continue
-        prev_hash = str(prev.get("file_sha256") or prev.get("upload_sha256") or "")
-        if file_hash and prev_hash and file_hash == prev_hash:
-            return {"type": "exact_duplicate", "previous": prev, "distance": 0}
-    if dhash:
-        best = None
-        for prev in all_items:
-            if str(prev.get("id") or "") == current_id:
-                continue
-            ph = str(prev.get("image_dhash") or "")
-            if not ph:
-                continue
-            d = _hamming_hex_v1064(dhash, ph)
-            if d <= COBRANCA_AUDITORIA_DHASH_DISTANCE and (best is None or d < best[0]):
-                best = (d, prev)
-        if best:
-            return {"type": "visual_duplicate", "previous": best[1], "distance": best[0]}
-    if transcript_norm and len(transcript_norm) >= 8:
-        import difflib
-        for prev in all_items:
-            if str(prev.get("id") or "") == current_id:
-                continue
-            pt = str(prev.get("audio_transcript_normalized") or "")
-            if not pt:
-                continue
-            ratio = difflib.SequenceMatcher(None, transcript_norm, pt).ratio()
-            if ratio >= 0.96:
-                return {"type": "audio_transcript_duplicate", "previous": prev, "similarity": ratio}
+def _iter_previous_attachments_v1067(items,current_id):
+    for prev in items or []:
+        if str(prev.get("id") or "")==str(current_id): continue
+        arr=prev.get("attachments") if isinstance(prev.get("attachments"),list) else []
+        if not arr and prev.get("media_url"):
+            arr=[{"url":prev.get("media_url"),"sha256":prev.get("file_sha256") or prev.get("upload_sha256"),"dhash":prev.get("image_dhash"),"transcript_normalized":prev.get("audio_transcript_normalized")}]
+        for att in arr: yield prev,att
+
+
+def _find_duplicate_v1067(item,items,sha256="",dhash="",transcript_norm=""):
+    import difflib
+    for prev,att in _iter_previous_attachments_v1067(items,item.get("id")):
+        psha=str(att.get("sha256") or att.get("file_sha256") or att.get("upload_sha256") or "")
+        if sha256 and psha and sha256==psha: return "exact_duplicate",prev,0
+        pdh=str(att.get("dhash") or att.get("image_dhash") or "")
+        if dhash and pdh:
+            d=_hamming_v1067(dhash,pdh)
+            if d<=COBRANCA_AUDITORIA_DHASH_DISTANCE: return "visual_duplicate",prev,d
+        pt=str(att.get("transcript_normalized") or att.get("audio_transcript_normalized") or "")
+        if transcript_norm and pt and len(transcript_norm)>=8:
+            ratio=difflib.SequenceMatcher(None,transcript_norm,pt).ratio()
+            if ratio>=0.96: return "audio_transcript_duplicate",prev,ratio
     return None
 
 
-def _analisar_evidencia_cobranca_v1064(item, api_key, all_items):
-    media_url = str(item.get("media_url") or "").strip()
-    media_type = str(item.get("media_type") or "").lower()
-    if not media_url:
-        return {"status": "revisao_master", "confidence": 0.0, "motivo": "Evidência sem URL."}
-    data, downloaded_type = _download_media_v1064(media_url)
-    media_type = media_type or downloaded_type
-    file_hash = _sha256_v1064(data)
-    cliente = str(item.get("cliente") or "")
-    telefone = re.sub(r"\D", "", str(item.get("telefone") or ""))
-    titulo = str(item.get("titulo") or "")
-    parcela = str(item.get("parcela") or "")
-    faixa = str(item.get("faixa") or "")
+def _attachments_v1067(item):
+    arr=item.get("attachments") if isinstance(item.get("attachments"),list) else []
+    if arr: return arr
+    if item.get("media_url"):
+        return [{"url":item.get("media_url"),"mime":item.get("media_type") or "","evidence_type":item.get("evidence_type") or ""}]
+    return []
 
-    if media_type.startswith("audio"):
-        filename = media_url.rsplit("/", 1)[-1] or "audio.ogg"
-        transcript = _multipart_audio_v1064(api_key, filename, media_type, data)
-        transcript_norm = _normalize_transcript_v1064(transcript)
-        dup = _duplicate_check_v1064(item, all_items, file_hash, transcript_norm=transcript_norm)
-        if dup:
-            prev = dup["previous"]
-            return {"status": "recusado", "confidence": 1.0, "fraude_suspeita": True,
-                    "duplicate_type": dup["type"], "file_sha256": file_hash,
-                    "audio_transcript": transcript, "audio_transcript_normalized": transcript_norm,
-                    "motivo": f"Áudio duplicado ou praticamente idêntico já usado no cliente {prev.get('cliente','')}, título {prev.get('titulo','')}, pelo usuário {prev.get('usuario_login','')}."}
-        prompt = f"""Você audita um ÁUDIO anexado como resposta de cliente a uma cobrança das Lojas MDL.
-Registro: cliente {cliente}; telefone {telefone}; título {titulo}; parcela {parcela}; faixa {faixa}.
-Transcrição do áudio: {transcript!r}
-Classifique se a fala é uma resposta plausível à cobrança e se contém intenção, negativa, dúvida, pedido de boleto/PIX, promessa ou informação de data de pagamento.
-Áudio sozinho não mostra identidade do contato; portanto, somente aprove automaticamente quando o conteúdo for claro e específico sobre pagamento/parcela e não houver indício de duplicidade. Caso genérico, vazio, música, ruído, voz sintetizada suspeita ou sem relação, use revisao_master ou recusado.
-Retorne apenas JSON: {{"status":"aprovado|revisao_master|recusado","confidence":0..1,"resposta_cliente_resumida":"...","possivel_voz_sintetica":true|false,"motivo":"..."}}"""
-        body = {"model": COBRANCA_AUDITORIA_IA_MODEL, "input": prompt, "store": False}
-        req = urllib.request.Request("https://api.openai.com/v1/responses", data=json.dumps(body, ensure_ascii=False).encode(),
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json; charset=utf-8"}, method="POST")
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            raw = json.loads(resp.read().decode("utf-8", errors="replace"))
-        result = _parse_json_text_v1063(_response_output_text_v1063(raw))
-        result.update({"file_sha256": file_hash, "audio_transcript": transcript, "audio_transcript_normalized": transcript_norm, "evidence_type": "audio"})
-    else:
-        dhash = _dhash_image_v1064(data)
-        dup = _duplicate_check_v1064(item, all_items, file_hash, dhash=dhash)
-        if dup:
-            prev = dup["previous"]
-            return {"status": "recusado", "confidence": 1.0, "fraude_suspeita": True,
-                    "duplicate_type": dup["type"], "duplicate_distance": dup.get("distance"),
-                    "file_sha256": file_hash, "image_dhash": dhash,
-                    "motivo": f"Imagem duplicada ou visualmente muito semelhante já usada no cliente {prev.get('cliente','')}, título {prev.get('titulo','')}, pelo usuário {prev.get('usuario_login','')}."}
-        prompt = f"""Você audita prints de conversas de cobrança das Lojas MDL e deve procurar também fraude/manipulação.
-DADOS: cliente {cliente}; telefone esperado {telefone}; título {titulo}; parcela {parcela}; faixa {faixa}.
-Aprovar somente se: cabeçalho/contato identificável; mensagem de cobrança ou contexto de parcela/pagamento; resposta RECEBIDA depois da cobrança; coerência com o registro.
-Recusar: só mensagem enviada; outro contato; sem resposta; conteúdo irrelevante; montagem evidente; interface incompatível; fontes, alinhamentos, horários, bolhas ou espaçamentos inconsistentes; artefatos de edição; aparência de aplicativo gerador de conversa falsa; resposta inserida artificialmente.
-Revisão MASTER: cabeçalho cortado, telefone oculto, dúvida de edição, conversa muito recortada ou vínculo insuficiente.
-Importante: aplicativos de criação de conversa podem imitar WhatsApp. Analise sinais visuais de manipulação, mas nunca afirme fraude com certeza sem sinais fortes.
-Retorne APENAS JSON: {{"status":"aprovado|revisao_master|recusado","confidence":0..1,"contato_visivel":true|false,"resposta_cliente_visivel":true|false,"contexto_cobranca_visivel":true|false,"ordem_temporal_coerente":true|false,"sinais_manipulacao":[],"suspeita_app_gerador":true|false,"cliente_ou_telefone_lido":"...","resposta_cliente_resumida":"...","motivo":"..."}}"""
-        body = {"model": COBRANCA_AUDITORIA_IA_MODEL, "input": [{"role":"user","content":[{"type":"input_text","text":prompt},{"type":"input_image","image_url":media_url,"detail":"high"}]}], "store": False}
-        req = urllib.request.Request("https://api.openai.com/v1/responses", data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json; charset=utf-8"}, method="POST")
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            raw = json.loads(resp.read().decode("utf-8", errors="replace"))
-        result = _parse_json_text_v1063(_response_output_text_v1063(raw))
-        result.update({"file_sha256": file_hash, "image_dhash": dhash, "evidence_type": "image"})
 
-    status = str(result.get("status") or "revisao_master").lower().strip()
-    confidence = float(result.get("confidence") or 0.0)
-    if result.get("suspeita_app_gerador") or result.get("possivel_voz_sintetica"):
-        if status == "aprovado": status = "revisao_master"
-        result["motivo"] = "Sinais de possível conteúdo sintético/manipulado; exige revisão do MASTER. " + str(result.get("motivo") or "")
-    if status == "aprovado" and confidence < COBRANCA_AUDITORIA_IA_MIN_CONFIDENCE:
-        status = "revisao_master"
-        result["motivo"] = f"Confiança {confidence:.0%} abaixo do mínimo automático. " + str(result.get("motivo") or "")
-    if status not in {"aprovado", "revisao_master", "recusado"}: status = "revisao_master"
-    result["status"] = status; result["confidence"] = confidence
+def _analisar_bundle_v1067(item,api_key,all_items):
+    import base64
+    attachments=_attachments_v1067(item)
+    if not attachments: return {"status":"revisao_master","confidence":0.0,"motivo":"Cobrança sem anexos."}
+    processed=[]; image_contents=[]; transcripts=[]; has_image=False; has_audio=False
+    for idx,att in enumerate(attachments,1):
+        url=str(att.get("url") or att.get("media_url") or "").strip()
+        data,mime=_download_media_v1067(url)
+        mime=str(att.get("mime") or att.get("media_type") or mime or "").lower()
+        sha=_sha256_v1067(data)
+        rec={"url":url,"mime":mime,"sha256":sha,"name":att.get("name") or url.rsplit('/',1)[-1]}
+        if mime.startswith("image/"):
+            has_image=True; dh=_dhash_v1067(data); rec["dhash"]=dh
+            dup=_find_duplicate_v1067(item,all_items,sha256=sha,dhash=dh)
+            if dup:
+                typ,prev,metric=dup
+                return {"status":"recusado","confidence":1.0,"fraude_suspeita":True,"duplicate_type":typ,"motivo":f"Imagem duplicada ou visualmente semelhante já usada em {prev.get('cliente','')}, título {prev.get('titulo','')}, usuário {prev.get('usuario_login','')}.","attachments":processed+[rec]}
+            data_url=f"data:{mime or 'image/jpeg'};base64,{base64.b64encode(data).decode('ascii')}"
+            image_contents.append({"type":"input_image","image_url":data_url,"detail":"high"})
+        elif mime.startswith("audio/"):
+            has_audio=True
+            transcript=_multipart_audio_v1067(api_key,rec["name"],mime,data)
+            norm=_normalize_transcript_v1067(transcript)
+            rec.update({"transcript":transcript,"transcript_normalized":norm})
+            dup=_find_duplicate_v1067(item,all_items,sha256=sha,transcript_norm=norm)
+            if dup:
+                typ,prev,metric=dup
+                return {"status":"recusado","confidence":1.0,"fraude_suspeita":True,"duplicate_type":typ,"motivo":f"Áudio duplicado ou praticamente idêntico já usado em {prev.get('cliente','')}, título {prev.get('titulo','')}, usuário {prev.get('usuario_login','')}.","attachments":processed+[rec]}
+            transcripts.append(f"Áudio {idx}: {transcript}")
+        processed.append(rec)
+    if has_audio and not has_image:
+        return {"status":"revisao_master","confidence":0.0,"motivo":"Resposta em áudio sem print da conversa. Print + áudio são obrigatórios.","attachments":processed}
+    cliente=str(item.get("cliente") or ""); telefone=re.sub(r"\D","",str(item.get("telefone") or "")); titulo=str(item.get("titulo") or ""); parcela=str(item.get("parcela") or ""); faixa=str(item.get("faixa") or "")
+    prompt=f"""Você audita um CONJUNTO de evidências de uma cobrança das Lojas MDL.
+Registro esperado: cliente {cliente}; telefone {telefone}; título {titulo}; parcela {parcela}; faixa {faixa}.
+Há {sum(1 for x in processed if x['mime'].startswith('image/'))} print(s) e {sum(1 for x in processed if x['mime'].startswith('audio/'))} áudio(s).
+Transcrições: {transcripts if transcripts else 'nenhuma'}.
+Analise os arquivos em conjunto. Aprove somente quando os prints mostram contato identificável, contexto da cobrança e resposta recebida depois da mensagem. Quando houver áudio, confirme que o print mostra mensagem de áudio recebida e que a transcrição é coerente com a conversa. Procure inconsistências de nomes, telefones, horários, fontes, bolhas, recortes, aplicativos simuladores, manipulação, arquivos de clientes diferentes e sequência temporal impossível.
+A resposta pode validar a cobrança mesmo sem promessa de pagamento, desde que demonstre que o cliente recebeu e compreendeu a cobrança. Classifique também o tipo de resposta.
+Retorne somente JSON: {{"status":"aprovado|revisao_master|recusado","confidence":0.0,"contato_compativel":true,"contexto_cobranca":true,"resposta_cliente":true,"audio_visivel_no_print":true,"ordem_temporal_coerente":true,"sinais_manipulacao":[],"suspeita_app_gerador":false,"resposta_cliente_resumida":"...","tipo_resposta":"promessa_pagamento|pedido_boleto_pix|data_pagamento|negativa|duvida|responsavel_terceiro|ciente_sem_promessa|outro","motivo":"..."}}"""
+    content=[{"type":"input_text","text":prompt},*image_contents]
+    body={"model":COBRANCA_AUDITORIA_IA_MODEL,"input":[{"role":"user","content":content}],"store":False}
+    raw=_http_json_v1067("https://api.openai.com/v1/responses",data=json.dumps(body,ensure_ascii=False).encode("utf-8"),headers={"Authorization":f"Bearer {api_key}","Content-Type":"application/json; charset=utf-8"},timeout=240)
+    result=_parse_json_text_v1067(_response_output_text_v1067(raw))
+    status=str(result.get("status") or "revisao_master").lower().strip(); confidence=float(result.get("confidence") or 0.0)
+    if result.get("suspeita_app_gerador") and status=="aprovado": status="revisao_master"
+    if status=="aprovado" and confidence<COBRANCA_AUDITORIA_IA_MIN_CONFIDENCE: status="revisao_master"; result["motivo"]=f"Confiança {confidence:.0%} abaixo do mínimo. "+str(result.get("motivo") or "")
+    if status not in {"aprovado","revisao_master","recusado"}: status="revisao_master"
+    result.update({"status":status,"confidence":confidence,"attachments":processed,"has_audio":has_audio,"has_image":has_image})
     return result
 
 
-def _atualizar_status_auditoria_v1063(item, result):
-    motivo = str(result.get("motivo") or "Auditoria visual concluída.")[:1500]
-    payload = urllib.parse.urlencode({
-        "action": "set_status",
-        "id": str(item.get("id") or ""),
-        "status": str(result.get("status") or "revisao_master"),
-        "motivo": motivo,
-        "ia_confidence": f"{float(result.get('confidence') or 0.0):.4f}",
-        "ia_model": COBRANCA_AUDITORIA_IA_MODEL,
-        "ia_json": json.dumps(result, ensure_ascii=False),
-        "file_sha256": str(result.get("file_sha256") or ""),
-        "image_dhash": str(result.get("image_dhash") or ""),
-        "audio_transcript": str(result.get("audio_transcript") or ""),
-        "audio_transcript_normalized": str(result.get("audio_transcript_normalized") or ""),
-        "fraude_suspeita": "1" if result.get("fraude_suspeita") else "0",
-    }).encode("utf-8")
-    return _http_json_v1063(
-        COBRANCA_AUDITORIA_API_URL,
-        data=payload,
-        headers={"Content-Type": "application/x-www-form-urlencoded; charset=utf-8"},
-        timeout=60,
-    )
+def _atualizar_status_v1067(item,result):
+    payload=urllib.parse.urlencode({"action":"set_status","id":str(item.get("id") or ""),"status":str(result.get("status") or "revisao_master"),"motivo":str(result.get("motivo") or "Auditoria concluída.")[:1800],"ia_confidence":f"{float(result.get('confidence') or 0):.4f}","ia_model":COBRANCA_AUDITORIA_IA_MODEL,"ia_json":json.dumps(result,ensure_ascii=False),"attachments_json":json.dumps(result.get("attachments") or [],ensure_ascii=False),"fraude_suspeita":"1" if result.get("fraude_suspeita") else "0"}).encode("utf-8")
+    return _http_json_v1067(COBRANCA_AUDITORIA_API_URL,data=payload,headers={"Content-Type":"application/x-www-form-urlencoded; charset=utf-8"},timeout=90)
 
 
-def processar_auditorias_print_v1064():
+def processar_auditorias_v1067():
     if not COBRANCA_AUDITORIA_IA_ENABLED:
-        print("ℹ️ V10.65 auditoria antifraude desativada por COBRANCA_AUDITORIA_IA_ENABLED=0")
-        return
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+        print("ℹ️ V10.67 auditoria IA desativada."); return
+    api_key=os.getenv("OPENAI_API_KEY","").strip()
     if not api_key:
-        print("⚠️ V10.65 OPENAI_API_KEY não configurada; prints permanecerão aguardando IA.")
-        return
+        print("⚠️ V10.67 OPENAI_API_KEY ausente; fila permanecerá aguardando IA."); return
     try:
-        listing = _http_json_v1063(COBRANCA_AUDITORIA_API_URL + "?_=" + str(int(time.time())), timeout=60)
-        items = listing.get("data") if isinstance(listing, dict) else []
-        pendentes = [x for x in (items or []) if str(x.get("status") or "aguardando_ia").lower() == "aguardando_ia"]
-        pendentes = pendentes[:COBRANCA_AUDITORIA_IA_MAX_PER_RUN]
-        print(f"🛡️ V10.65 auditoria antifraude: {len(pendentes)} evidência(s) pendente(s) nesta execução")
-        for item in pendentes:
+        listing=_http_json_v1067(COBRANCA_AUDITORIA_API_URL+"?_="+str(int(time.time())),timeout=90)
+        items=listing.get("data") if isinstance(listing,dict) else []
+        pend=[x for x in (items or []) if str(x.get("status") or "aguardando_ia").lower()=="aguardando_ia"][:COBRANCA_AUDITORIA_IA_MAX_PER_RUN]
+        print(f"🛡️ V10.67 auditoria multiarquivo: {len(pend)} caso(s) pendente(s)")
+        for item in pend:
             try:
-                result = _analisar_evidencia_cobranca_v1064(item, api_key, items or [])
-                _atualizar_status_auditoria_v1063(item, result)
-                print(
-                    f"   {'✅' if result['status']=='aprovado' else '❌' if result['status']=='recusado' else '🧑‍⚖️'} "
-                    f"{item.get('cliente','')} · título {item.get('titulo','')} · {result['status']} · confiança {float(result.get('confidence') or 0):.0%}"
-                )
+                result=_analisar_bundle_v1067(item,api_key,items or [])
+                _atualizar_status_v1067(item,result)
+                print(f"   {'✅' if result['status']=='aprovado' else '❌' if result['status']=='recusado' else '🧑‍⚖️'} {item.get('cliente','')} · título {item.get('titulo','')} · {result['status']} · confiança {float(result.get('confidence') or 0):.0%}")
             except Exception as exc:
-                print(f"⚠️ V10.65 falha analisando evidência {item.get('id','')}: {exc}")
+                print(f"⚠️ V10.67 falha no caso {item.get('id','')}: {type(exc).__name__}: {exc}")
+        print("✅ V10.67 ciclo de auditoria concluído")
     except Exception as exc:
-        print(f"⚠️ V10.65 não conseguiu carregar fila de auditoria: {exc}")
+        print(f"⚠️ V10.67 não conseguiu carregar a fila: {type(exc).__name__}: {exc}")
 
 
-processar_auditorias_print_v1064()
+processar_auditorias_v1067()
 
 html = template
 repls = {
@@ -20549,31 +20494,42 @@ header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
+if ($_SERVER['REQUEST_METHOD']==='OPTIONS'){http_response_code(204);exit;}
 date_default_timezone_set('America/Sao_Paulo');
-$file=__DIR__.'/cobranca_auditoria.json'; $dir=__DIR__.'/uploads_cobranca_auditoria';
-if(!file_exists($dir)) @mkdir($dir,0777,true); if(!file_exists($file)) @file_put_contents($file,'[]');
-function ar(){global $file; $j=json_decode(@file_get_contents($file),true); return is_array($j)?$j:[];}
-function sw($d){global $file; return @file_put_contents($file,json_encode($d,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),LOCK_EX)!==false;}
+$file=__DIR__.'/cobranca_auditoria.json';$dir=__DIR__.'/uploads_cobranca_auditoria';
+if(!file_exists($dir))@mkdir($dir,0777,true);if(!file_exists($file))@file_put_contents($file,'[]');
+function ar(){global $file;$j=json_decode(@file_get_contents($file),true);return is_array($j)?$j:[];}
+function sw($d){global $file;return @file_put_contents($file,json_encode($d,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),LOCK_EX)!==false;}
 $data=ar();
-if($_SERVER['REQUEST_METHOD']==='GET'){echo json_encode(['ok'=>true,'data'=>$data,'count'=>count($data),'version'=>'V10.65'],JSON_UNESCAPED_UNICODE);exit;}
+if($_SERVER['REQUEST_METHOD']==='GET'){echo json_encode(['ok'=>true,'data'=>$data,'count'=>count($data),'version'=>'V10.67'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}
 if($_SERVER['REQUEST_METHOD']==='POST'){
-  $action=$_POST['action']??'upload';
-  if($action==='set_status'){
-    $id=(string)($_POST['id']??''); $status=(string)($_POST['status']??'aguardando_ia'); $motivo=(string)($_POST['motivo']??'');
-    $ia_confidence=(string)($_POST['ia_confidence']??''); $ia_model=(string)($_POST['ia_model']??''); $ia_json=(string)($_POST['ia_json']??''); $file_sha256=(string)($_POST['file_sha256']??''); $image_dhash=(string)($_POST['image_dhash']??''); $audio_transcript=(string)($_POST['audio_transcript']??''); $audio_transcript_normalized=(string)($_POST['audio_transcript_normalized']??''); $fraude_suspeita=(string)($_POST['fraude_suspeita']??'0');
-    foreach($data as &$x){if((string)($x['id']??'')===$id){$x['status']=$status;$x['motivo']=$motivo;$x['updated_at']=date('c');$x['ia_analisado_em']=date('c');$x['ia_confidence']=$ia_confidence;$x['ia_model']=$ia_model;if($ia_json!==''){$dec=json_decode($ia_json,true);$x['ia_resultado']=is_array($dec)?$dec:$ia_json;} if($file_sha256!=='')$x['file_sha256']=$file_sha256; if($image_dhash!=='')$x['image_dhash']=$image_dhash; if($audio_transcript!=='')$x['audio_transcript']=$audio_transcript; if($audio_transcript_normalized!=='')$x['audio_transcript_normalized']=$audio_transcript_normalized; $x['fraude_suspeita']=($fraude_suspeita==='1');}}
-    $ok=sw($data); echo json_encode(['ok'=>$ok],JSON_UNESCAPED_UNICODE);exit;
-  }
-  if(empty($_FILES['media']['tmp_name'])){echo json_encode(['ok'=>false,'error'=>'print_obrigatorio']);exit;}
-  if(($_FILES['media']['size']??0)>20971520){echo json_encode(['ok'=>false,'error'=>'arquivo_maior_20mb']);exit;}
-  $mime=mime_content_type($_FILES['media']['tmp_name']); $allowed=['image/png'=>'png','image/jpeg'=>'jpg','image/webp'=>'webp','audio/mpeg'=>'mp3','audio/mp4'=>'m4a','audio/x-m4a'=>'m4a','audio/ogg'=>'ogg','audio/wav'=>'wav','audio/x-wav'=>'wav','audio/webm'=>'webm','audio/aac'=>'aac'];
-  if(!isset($allowed[$mime])){echo json_encode(['ok'=>false,'error'=>'formato_invalido']);exit;}
-  $sha256=hash_file('sha256',$_FILES['media']['tmp_name']); foreach($data as $old){if($sha256!=='' && (string)($old['upload_sha256']??$old['file_sha256']??'')===$sha256){echo json_encode(['ok'=>false,'error'=>'evidencia_duplicada','previous'=>['cliente'=>$old['cliente']??'','titulo'=>$old['titulo']??'','usuario_login'=>$old['usuario_login']??'']],JSON_UNESCAPED_UNICODE);exit;}} $name='audit_'.date('Ymd_His').'_'.bin2hex(random_bytes(5)).'.'.$allowed[$mime]; $dest=$dir.'/'.$name;
-  if(!move_uploaded_file($_FILES['media']['tmp_name'],$dest)){echo json_encode(['ok'=>false,'error'=>'falha_upload']);exit;}
-  $scheme=(!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off')?'https':'http'; $base=$scheme.'://'.$_SERVER['HTTP_HOST'].rtrim(dirname($_SERVER['SCRIPT_NAME']),'/\\');
-  $item=['id'=>uniqid('aud_',true),'audit_key'=>(string)($_POST['audit_key']??''),'cliente'=>(string)($_POST['cliente']??''),'cpf_cnpj'=>(string)($_POST['cpf_cnpj']??''),'titulo'=>(string)($_POST['titulo']??''),'parcela'=>(string)($_POST['parcela']??''),'vencimento'=>(string)($_POST['vencimento']??''),'telefone'=>(string)($_POST['telefone']??''),'faixa'=>(string)($_POST['faixa']??''),'usuario_login'=>(string)($_POST['usuario_login']??''),'usuario_nome'=>(string)($_POST['usuario_nome']??''),'filial'=>(string)($_POST['filial']??''),'media_url'=>$base.'/uploads_cobranca_auditoria/'.$name,'media_type'=>$mime,'upload_sha256'=>$sha256,'evidence_type'=>(strpos($mime,'audio/')===0?'audio':'image'),'status'=>'aguardando_ia','motivo'=>'Evidência recebida. Aguardando auditoria antifraude da IA.','server_time'=>date('c')];
-  $data[]=$item; $ok=sw($data); echo json_encode(['ok'=>$ok,'data'=>$item,'version'=>'V10.65'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;
+ $action=$_POST['action']??'upload_bundle';
+ if($action==='set_status'){
+  $id=(string)($_POST['id']??'');$status=(string)($_POST['status']??'aguardando_ia');$motivo=(string)($_POST['motivo']??'');
+  foreach($data as &$x){if((string)($x['id']??'')===$id){$x['status']=$status;$x['motivo']=$motivo;$x['updated_at']=date('c');$x['ia_analisado_em']=date('c');$x['ia_confidence']=(string)($_POST['ia_confidence']??'');$x['ia_model']=(string)($_POST['ia_model']??'');$x['fraude_suspeita']=((string)($_POST['fraude_suspeita']??'0')==='1');if(!empty($_POST['ia_json'])){$d=json_decode($_POST['ia_json'],true);$x['ia_resultado']=is_array($d)?$d:$_POST['ia_json'];}if(!empty($_POST['attachments_json'])){$a=json_decode($_POST['attachments_json'],true);if(is_array($a))$x['attachments']=$a;}}}
+  $ok=sw($data);echo json_encode(['ok'=>$ok,'version'=>'V10.67'],JSON_UNESCAPED_UNICODE);exit;
+ }
+ $files=[];
+ if(isset($_FILES['media']) && is_array($_FILES['media']['name'])){
+  for($i=0;$i<count($_FILES['media']['name']);$i++)$files[]=['name'=>$_FILES['media']['name'][$i],'tmp_name'=>$_FILES['media']['tmp_name'][$i],'size'=>$_FILES['media']['size'][$i],'error'=>$_FILES['media']['error'][$i]];
+ }elseif(isset($_FILES['media'])){$files[]=$_FILES['media'];}
+ if(!$files){echo json_encode(['ok'=>false,'error'=>'arquivo_obrigatorio']);exit;}
+ if(count($files)>10){echo json_encode(['ok'=>false,'error'=>'maximo_10_arquivos']);exit;}
+ $allowed=['image/png'=>'png','image/jpeg'=>'jpg','image/webp'=>'webp','audio/mpeg'=>'mp3','audio/mp4'=>'m4a','audio/x-m4a'=>'m4a','audio/ogg'=>'ogg','audio/wav'=>'wav','audio/x-wav'=>'wav','audio/webm'=>'webm','audio/aac'=>'aac'];
+ $attachments=[];$hasImage=false;$hasAudio=false;
+ foreach($files as $f){
+  if(($f['error']??UPLOAD_ERR_OK)!==UPLOAD_ERR_OK||empty($f['tmp_name'])){echo json_encode(['ok'=>false,'error'=>'falha_upload']);exit;}
+  if(($f['size']??0)>20971520){echo json_encode(['ok'=>false,'error'=>'arquivo_maior_20mb']);exit;}
+  $mime=mime_content_type($f['tmp_name']);if(!isset($allowed[$mime])){echo json_encode(['ok'=>false,'error'=>'formato_invalido','mime'=>$mime]);exit;}
+  $sha=hash_file('sha256',$f['tmp_name']);foreach($data as $old){$oldAtt=is_array($old['attachments']??null)?$old['attachments']:[];if(!$oldAtt&&isset($old['upload_sha256']))$oldAtt=[['sha256'=>$old['upload_sha256']]];foreach($oldAtt as $oa){if($sha!==''&&(string)($oa['sha256']??$oa['upload_sha256']??'')===$sha){echo json_encode(['ok'=>false,'error'=>'evidencia_duplicada','previous'=>['cliente'=>$old['cliente']??'','titulo'=>$old['titulo']??'','usuario_login'=>$old['usuario_login']??'']],JSON_UNESCAPED_UNICODE);exit;}}}
+  $name='audit_'.date('Ymd_His').'_'.bin2hex(random_bytes(5)).'.'.$allowed[$mime];$dest=$dir.'/'.$name;if(!move_uploaded_file($f['tmp_name'],$dest)){echo json_encode(['ok'=>false,'error'=>'falha_upload']);exit;}
+  $scheme=(!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off')?'https':'http';$base=$scheme.'://'.$_SERVER['HTTP_HOST'].rtrim(dirname($_SERVER['SCRIPT_NAME']),'/\\');
+  $attachments[]=['url'=>$base.'/uploads_cobranca_auditoria/'.$name,'mime'=>$mime,'name'=>(string)($f['name']??$name),'sha256'=>$sha,'evidence_type'=>(strpos($mime,'audio/')===0?'audio':'image')];
+  if(strpos($mime,'image/')===0)$hasImage=true;if(strpos($mime,'audio/')===0)$hasAudio=true;
+ }
+ if($hasAudio&&!$hasImage){echo json_encode(['ok'=>false,'error'=>'audio_exige_print']);exit;}
+ $item=['id'=>uniqid('aud_',true),'audit_key'=>(string)($_POST['audit_key']??''),'cliente'=>(string)($_POST['cliente']??''),'cpf_cnpj'=>(string)($_POST['cpf_cnpj']??''),'titulo'=>(string)($_POST['titulo']??''),'parcela'=>(string)($_POST['parcela']??''),'vencimento'=>(string)($_POST['vencimento']??''),'telefone'=>(string)($_POST['telefone']??''),'faixa'=>(string)($_POST['faixa']??''),'usuario_login'=>(string)($_POST['usuario_login']??''),'usuario_nome'=>(string)($_POST['usuario_nome']??''),'filial'=>(string)($_POST['filial']??''),'attachments'=>$attachments,'evidence_count'=>count($attachments),'has_image'=>$hasImage,'has_audio'=>$hasAudio,'status'=>'aguardando_ia','motivo'=>'Conjunto de evidências recebido. Aguardando auditoria antifraude da IA.','server_time'=>date('c')];
+ $data[]=$item;$ok=sw($data);echo json_encode(['ok'=>$ok,'data'=>$item,'version'=>'V10.67'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;
 }
 echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado']);
 ?>"""
