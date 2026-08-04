@@ -36,7 +36,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.70"
+DASHBOARD_BUILD_VERSION = "V10.71"
 DASHBOARD_BUILD_TAG = "comissao_crediarista_fonte_unica_oficial"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -5889,6 +5889,43 @@ for _kk, _rv in recebido_faixa.items():
                     _pre_fdep_rec[_ff2][_fx] += _rv.get(_fx, 0.0) * _w2 / tw
 
 # Atualiza meta de vendedores
+# V10.71 — fonte única para recebido por faixa.
+# recebido_faixa pode conter aliases do mesmo gerente (ex.: GERENTE F5 e nome nominal),
+# por isso não pode ser somado diretamente para formar a meta. Primeiro preservamos
+# apenas a PROPORÇÃO das faixas e escalamos para o recebido oficial da filial, que é
+# o mesmo valor exibido no card e já fecha com o relatório da competência.
+def _v1071_recebido_oficial_faixas_filial(_filial):
+    _raw = {"grave": 0.0, "alerta": 0.0, "atencao": 0.0}
+    for _rv in recebido_faixa.values():
+        if str(_rv.get("filial") or "").upper() != str(_filial or "").upper():
+            continue
+        for _fx in _raw:
+            _raw[_fx] += max(float(_rv.get(_fx, 0.0) or 0.0), 0.0)
+    _oficial = max(float((snapshot_hoje.get("filiais", {}).get(_filial, {}) or {}).get("pago", 0.0) or 0.0), 0.0)
+    _raw_total = sum(_raw.values())
+    if _oficial <= 0 or _raw_total <= 0:
+        return {"grave": 0.0, "alerta": 0.0, "atencao": 0.0}
+    _out = {k: round(_oficial * (v / _raw_total), 2) for k, v in _raw.items()}
+    _dif = round(_oficial - sum(_out.values()), 2)
+    _out["atencao"] = round(_out["atencao"] + _dif, 2)
+    return _out
+
+def _v1071_fator_participante(_filial, _is_gerente):
+    _rows = snapshot_hoje.get("vendedores", {}) or {}
+    _vend = [k for k,v in _rows.items() if str(v.get("filial") or "").upper()==str(_filial or "").upper() and not bool(v.get("is_gerente"))]
+    _ger = [k for k,v in _rows.items() if str(v.get("filial") or "").upper()==str(_filial or "").upper() and bool(v.get("is_gerente"))]
+    if _is_gerente:
+        return ((PESO_GER if _vend else 1.0) / max(len(_ger),1)) if _ger else 0.0
+    return ((PESO_VEND if _ger else 1.0) / max(len(_vend),1)) if _vend else 0.0
+
+def _v1071_base_participante(_filial, _is_gerente, _pendente_total):
+    # A base por faixa usa a base da FILIAL e o mesmo fator 60/40 do card.
+    _base_fil = get_base_faixas_filial(_filial, float((snapshot_hoje.get("filiais", {}).get(_filial, {}) or {}).get("pendente", 0.0) or 0.0))
+    _fator = _v1071_fator_participante(_filial, _is_gerente)
+    if _fator <= 0:
+        return get_base_faixas_vendedor("", _pendente_total)
+    return {fx: round(float(_base_fil.get(fx,0) or 0) * _fator, 2) for fx in ["grave","alerta","atencao"]}
+
 for key, vd in snapshot_hoje["vendedores"].items():
     ant_pago = 0.0
     if snap_ontem:
@@ -5921,38 +5958,16 @@ for key, vd in snapshot_hoje["vendedores"].items():
     _filial_vend = vd.get("filial", "")
     _is_ger      = vd.get("is_gerente", False)
 
-    # V10.70: a meta por faixa precisa usar exatamente a mesma regra do card:
-    # soma TODO o recebido da filial (ativos, inativos e FDEP já atribuídos) e
-    # reparte 60% para gerente/filial e 40% entre vendedores ativos.
-    # Não soma mais "recebimento próprio" por fora, evitando percentual de meta
-    # com valor quando o card superior mostra recebido diferente.
+    # V10.71: usa o recebido OFICIAL da filial, elimina aliases duplicados e aplica
+    # exatamente o mesmo fator 60/40 do card. Assim, recebido do topo e das faixas
+    # sempre fecham entre si.
     _grave_delta = _alerta_delta = _atencao_delta = 0.0
     if _filial_vend:
-        _totais_fx_v1070 = {'grave': 0.0, 'alerta': 0.0, 'atencao': 0.0}
-        for _rv_v1070 in recebido_faixa.values():
-            if str(_rv_v1070.get('filial') or '').upper() == str(_filial_vend).upper():
-                for _fx_v1070 in _totais_fx_v1070:
-                    _totais_fx_v1070[_fx_v1070] += float(_rv_v1070.get(_fx_v1070, 0.0) or 0.0)
-        _rows_fil_v1070 = snapshot_hoje.get('vendedores', {})
-        _vend_keys_v1070 = [
-            _k for _k, _v in _rows_fil_v1070.items()
-            if str(_v.get('filial') or '').upper() == str(_filial_vend).upper()
-            and not bool(_v.get('is_gerente'))
-        ]
-        _ger_keys_v1070 = [
-            _k for _k, _v in _rows_fil_v1070.items()
-            if str(_v.get('filial') or '').upper() == str(_filial_vend).upper()
-            and bool(_v.get('is_gerente'))
-        ]
-        if _is_ger:
-            _div_v1070 = max(len(_ger_keys_v1070), 1)
-            _fator_v1070 = PESO_GER / _div_v1070 if _vend_keys_v1070 else 1.0 / _div_v1070
-        else:
-            _div_v1070 = max(len(_vend_keys_v1070), 1)
-            _fator_v1070 = PESO_VEND / _div_v1070 if _ger_keys_v1070 else 1.0 / _div_v1070
-        _grave_delta = _totais_fx_v1070['grave'] * _fator_v1070
-        _alerta_delta = _totais_fx_v1070['alerta'] * _fator_v1070
-        _atencao_delta = _totais_fx_v1070['atencao'] * _fator_v1070
+        _fx_oficial = _v1071_recebido_oficial_faixas_filial(_filial_vend)
+        _fator_v1071 = _v1071_fator_participante(_filial_vend, _is_ger)
+        _grave_delta = float(_fx_oficial.get('grave',0) or 0) * _fator_v1071
+        _alerta_delta = float(_fx_oficial.get('alerta',0) or 0) * _fator_v1071
+        _atencao_delta = float(_fx_oficial.get('atencao',0) or 0) * _fator_v1071
 
     # 🔥 CORREÇÃO: não acumular novamente a cada reprocessamento do mesmo período.
     # O gráfico do vendedor deve refletir os valores reais atuais do período, assim como já ocorre nas filiais.
@@ -5978,7 +5993,7 @@ for key, vd in snapshot_hoje["vendedores"].items():
         })
 
     # Base mensal do relatório, se existir, prevalece como alvo do mês
-    _faixas_base_vm = get_base_faixas_vendedor(key, vd.get("pendente", 0))
+    _faixas_base_vm = _v1071_base_participante(_filial_vend, _is_ger, vd.get("pendente", 0))
     _alvos_base_vm = calc_metas_alvo(_faixas_base_vm, _cfg_key)
     vm["grave_pend"] = _faixas_base_vm["grave"]
     vm["alerta_pend"] = _faixas_base_vm["alerta"]
@@ -6032,15 +6047,10 @@ for f, fd in snapshot_hoje["filiais"].items():
     # =========================================
     # 🔥 CORREÇÃO DEFINITIVA
     # =========================================
-    _f_grave_delta  = 0.0
-    _f_alerta_delta = 0.0
-    _f_atenc_delta  = 0.0
-
-    for _rv in recebido_faixa.values():
-        if _rv.get("filial") == f:
-            _f_grave_delta  += _rv.get("grave", 0.0)
-            _f_alerta_delta += _rv.get("alerta", 0.0)
-            _f_atenc_delta  += _rv.get("atencao", 0.0)
+    _fx_oficial_f1071 = _v1071_recebido_oficial_faixas_filial(f)
+    _f_grave_delta  = float(_fx_oficial_f1071.get("grave", 0.0) or 0.0)
+    _f_alerta_delta = float(_fx_oficial_f1071.get("alerta", 0.0) or 0.0)
+    _f_atenc_delta  = float(_fx_oficial_f1071.get("atencao", 0.0) or 0.0)
 
     # 🔥 VALOR REAL DO PERÍODO (NÃO ACUMULA)
     fm["grave_rec"]   = round(_f_grave_delta,  2)
@@ -6097,6 +6107,10 @@ with open(meta_file, "w", encoding="utf-8") as f:
     json.dump(meta_mes, f, ensure_ascii=False, indent=2)
 
 print(f"🎯 Meta do mês atualizada: {meta_file}")
+for _f1071 in ORDEM_FILIAIS:
+    if _f1071 in snapshot_hoje.get("filiais", {}):
+        _fx1071=_v1071_recebido_oficial_faixas_filial(_f1071)
+        print(f"✅ V10.71 recebido oficial {_f1071}: card={snapshot_hoje['filiais'][_f1071].get('pago',0):,.2f} faixas={sum(_fx1071.values()):,.2f}")
 print("\n===== DEBUG FILIAL F5 =====")
 
 for k, v in recebido_faixa.items():
@@ -11684,10 +11698,26 @@ function serviceOfficialOverride(ent,key,row){
 }
 
 function rowMatchesFilial(ent,row){const joined=normSalesText([salesCell(row,['Filial','Filial_2','Vendedor','Vendedor_2','Nome','Nome_2']),salesCell(row,['Subgrupo'])].join(' ')); return filialAliases(ent.filial).some(a=>joined.includes(normSalesText(a)))}
-function vendedorNomeAlvo(row,key){if(key==='venda_filial_vendedor_meta' || key==='servico_filial_vendedor_ouro_fob') return salesCell(row,['Vendedor_2','Nome_2','Nome','Vendedor']); return salesCell(row,['Vendedor','Vendedor_2','Nome','Nome_2'])}
+function vendedorNomeAlvo(row,key,ent){
+  const keys=['Vendedor_2','Vendedor.1','Vendedor_1','Nome_2','Nome.1','Nome_1','Nome','Vendedor'];
+  const vals=keys.map(k=>salesCell(row,[k])).filter(Boolean);
+  if(!vals.length) return '';
+  if(!ent?.nome) return vals[0];
+  const alvo=normSalesText(ent.nome); const toks=alvo.split(' ').filter(x=>x.length>1);
+  vals.sort((a,b)=>{const score=x=>{const n=normSalesText(x); return toks.reduce((z,t)=>z+(n.includes(t)?1:0),0)+(n===alvo?100:0)}; return score(b)-score(a)});
+  return vals[0];
+}
 function fuzzyContainsAllTokens(target, query){const t=normSalesText(target); const q=normSalesText(query); const toks=q.split(' ').filter(x=>x && x.length>1); return toks.length ? toks.every(tok=>t.includes(tok)) : false}
-function rowMatchesVendedor(ent,row,key=''){const vendedorCampo=vendedorNomeAlvo(row,key); const filialCampo=salesCell(row,['Filial','Filial_2','Vendedor']); const byNome = fuzzyContainsAllTokens(vendedorCampo, ent.nome) || fuzzyContainsAllTokens(ent.nome, vendedorCampo); const byFilial = !filialCampo || filialAliases(ent.filial).some(a=>normSalesText(filialCampo).includes(normSalesText(a))) || rowMatchesFilial(ent,row); return byNome && byFilial}
-function getSalesRows(ent, key){const base=METAS_VENDAS?.metas?.[key]; if(!base || !base.ok) return []; const rows=Array.isArray(base.linhas)?base.linhas:[]; return rows.filter(r=>ent.type==='filial'?rowMatchesFilial(ent,r):rowMatchesVendedor(ent,r,key))}
+function rowMatchesVendedor(ent,row,key=''){
+  const vendedorCampo=vendedorNomeAlvo(row,key,ent);
+  const byNome=fuzzyContainsAllTokens(vendedorCampo,ent.nome)||fuzzyContainsAllTokens(ent.nome,vendedorCampo);
+  if(!byNome) return false;
+  const allText=Object.values(row||{}).filter(v=>typeof v==='string'||typeof v==='number').join(' ');
+  const detected=(allText.match(/(?:FILIAL\s*0?|\bF\s*0?)(\d{1,2})/i)||[])[1];
+  if(!detected) return true;
+  return ('F'+Number(detected))===String(ent.filial||'').toUpperCase();
+}
+function getSalesRows(ent,key){const base=METAS_VENDAS?.metas?.[key];if(!base||!base.ok)return[];const rows=Array.isArray(base.linhas)?base.linhas:[];return rows.filter(r=>ent.type==='filial'?rowMatchesFilial(ent,r):rowMatchesVendedor(ent,r,key))}
 function salesTitleForRow(ent,row,key=''){return salesCell(row, ent.type==='filial'?['Subgrupo','Filial','Vendedor_2','Vendedor']:['Subgrupo','Vendedor_2','Vendedor','Filial']) || (ent.type==='filial'?filialLabel(ent.filial):ent.nome)}
 function salesPercentClass(v){const n=parseFloat(String(v||'').replace('%','').replace(',','.'))||0; if(n>=100) return 'gold'; if(n>=80) return 'good'; if(n>=50) return 'warn'; return 'low'}
 function salesNum(v){return parseFloat(String(v||'').replace('%','').replace(/\./g,'').replace(',','.'))||0}
@@ -12476,8 +12506,13 @@ async function salvarMeuNomeCobrador(entRef){
 }
 function auditoriaKey(reg){return [String(reg?.cpf_cnpj_normalizado||reg?.cpf_cnpj||'').replace(/\D/g,''),String(reg?.titulo||''),String(reg?.parcela||''),String(reg?.vencimento||'')].join('|')}
 function auditoriaDoTitulo(reg){const k=auditoriaKey(reg); return (COB_AUDITORIAS||[]).filter(a=>String(a.audit_key||'')===k).sort((a,b)=>String(a.server_time||'').localeCompare(String(b.server_time||''))).pop()||null}
-async function carregarAuditoriasCobranca(){
-  try{const r=await fetch(API_COB_AUD+'?_='+Date.now(),{cache:'no-store'}); const j=await r.json(); COB_AUDITORIAS=Array.isArray(j?.data)?j.data:[];}catch(e){COB_AUDITORIAS=[];}
+let COB_AUDITORIAS_LAST_LOAD=0; let COB_AUDITORIAS_LOADING=null;
+async function carregarAuditoriasCobranca(force=false){
+  const agora=Date.now();
+  if(!force && COB_AUDITORIAS_LAST_LOAD && (agora-COB_AUDITORIAS_LAST_LOAD)<30000) return COB_AUDITORIAS;
+  if(COB_AUDITORIAS_LOADING) return COB_AUDITORIAS_LOADING;
+  COB_AUDITORIAS_LOADING=(async()=>{try{const r=await fetch(API_COB_AUD+'?_='+agora,{cache:'no-store'});const j=await r.json();COB_AUDITORIAS=Array.isArray(j?.data)?j.data:[];COB_AUDITORIAS_LAST_LOAD=Date.now();}catch(e){console.warn('auditoria indisponível',e)}finally{COB_AUDITORIAS_LOADING=null}return COB_AUDITORIAS;})();
+  return COB_AUDITORIAS_LOADING;
 }
 function auditAttachments(a){
   if(Array.isArray(a?.attachments) && a.attachments.length) return a.attachments;
@@ -12518,7 +12553,7 @@ async function enviarPrintCobranca(reg,entRef,inputId){
   try{
     const r=await fetch(API_COB_AUD,{method:'POST',body:fd}); const j=await r.json();
     if(!j.ok){if(j.error==='evidencia_duplicada') throw new Error('Um dos arquivos já foi usado em outra cobrança.'); throw new Error(j.error||'erro_upload');}
-    await carregarAuditoriasCobranca(); toast(`${files.length} evidência(s) anexada(s). A IA iniciou a análise; o resultado aparecerá automaticamente.`,`success`);
+    await carregarAuditoriasCobranca(true); toast(`${files.length} evidência(s) anexada(s). A IA iniciou a análise; o resultado aparecerá automaticamente.`,`success`);
     if(currentDetailRef) openEntity(currentDetailRef);
   }catch(e){toast(String(e?.message||'Não consegui anexar as evidências.'),'warn');}
 }
@@ -12748,7 +12783,7 @@ async function registrarCobrancaOnline(r,entRef,numero){
     const j=await resp.json();
     if(j.ok){
       if(payload.titulo==='REATIVACAO') registrarReativacaoLocal(payload);
-      await carregarCobrancasOnline(); await carregarAuditoriasCobranca();
+      await carregarCobrancasOnline();
       toast(payload.titulo==='REATIVACAO'?'Mensagem de reativação registrada.':'Cobrança registrada online com sucesso.','success');
       if(!detailScreen.classList.contains('hidden')){
         if(entRef.type==='crediarista'||entRef.is_crediarista){
@@ -13154,7 +13189,7 @@ function renderMasterAuditoriaPanel(){
   rows.forEach(a=>{const st=norm(a.status);if(isAp(st))counts.aprovado++;else if(isRej(st))counts.recusado++;else if(st==='revisao_master')counts.revisao++;else counts.aguardando++;const c=Number(a.custo_total_usd||a?.ia_resultado?.cost_total_usd||0);const dt=String(a.ia_analisado_em||a.updated_at||a.server_time||'');if(dt.slice(0,7)===mes){custoMes+=c;analisadasMes++;}if(dt.slice(0,10)===hoje)custoHoje+=c;});
   const cards=`<div class="wa-master-grid" style="grid-template-columns:repeat(5,minmax(0,1fr))"><div class="wa-master-card"><div class="k">Pendentes MASTER</div><div class="v" style="color:var(--orange)">${counts.revisao}</div></div><div class="wa-master-card"><div class="k">Aprovadas</div><div class="v" style="color:var(--green)">${counts.aprovado}</div></div><div class="wa-master-card"><div class="k">Recusadas</div><div class="v" style="color:var(--red)">${counts.recusado}</div></div><div class="wa-master-card"><div class="k">Custo hoje</div><div class="v">US$ ${custoHoje.toFixed(4)}</div></div><div class="wa-master-card"><div class="k">Custo no mês</div><div class="v">US$ ${custoMes.toFixed(2)}</div><div class="small muted">${analisadasMes} auditoria(s)</div></div></div>`;
   const opts=[['pendentes_master','Pendentes de decisão MASTER'],['aguardando','IA processando'],['aprovados','Aprovados automaticamente'],['recusados','Recusados / suspeitas'],['todos','Todos']].map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
-  return `<div class="glass panel" style="margin-bottom:18px;border-color:rgba(245,158,11,.30)"><div class="section-head"><div><h2>🧑‍⚖️ Auditoria IA / MASTER</h2><div class="hint">Casos confiáveis são aprovados automaticamente. O MASTER recebe somente revisões, suspeitas e exceções. A comissão ainda exige a baixa conciliada do mesmo CPF, título e parcela.</div></div><button class="btn soft" onclick="carregarAuditoriasCobranca().then(()=>renderLogsTab())">🔄 Atualizar fila</button></div>${cards}<div class="input-card" style="max-width:340px;margin-bottom:12px"><label>Filtrar auditoria</label><select id="masterAuditFilter" onchange="renderMasterAuditRows()">${opts}</select></div><div id="masterAuditRows"></div></div>`;
+  return `<div class="glass panel" style="margin-bottom:18px;border-color:rgba(245,158,11,.30)"><div class="section-head"><div><h2>🧑‍⚖️ Auditoria IA / MASTER</h2><div class="hint">Casos confiáveis são aprovados automaticamente. O MASTER recebe somente revisões, suspeitas e exceções. A comissão ainda exige a baixa conciliada do mesmo CPF, título e parcela.</div></div><button class="btn soft" onclick="carregarAuditoriasCobranca(true).then(()=>renderLogsTab())">🔄 Atualizar fila</button></div>${cards}<div class="input-card" style="max-width:340px;margin-bottom:12px"><label>Filtrar auditoria</label><select id="masterAuditFilter" onchange="renderMasterAuditRows()">${opts}</select></div><div id="masterAuditRows"></div></div>`;
 }
 function renderMasterAuditRows(){
   const box=document.getElementById('masterAuditRows'); if(!box) return;
