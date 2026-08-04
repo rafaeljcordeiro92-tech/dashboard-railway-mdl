@@ -36,7 +36,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.64"
+DASHBOARD_BUILD_VERSION = "V10.65"
 DASHBOARD_BUILD_TAG = "comissao_crediarista_fonte_unica_oficial"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -12073,8 +12073,24 @@ function calcCobrancaUsuarioCommission(ent){
   Object.values(fx).forEach(v=>v.comissao=v.recebido*(v.pct/100));
   return {fx,total:Object.values(fx).reduce((a,b)=>a+b.comissao,0),aguardandoIa,aprovados:aprovados.length,recusados,aguardandoPagamento,pagos};
 }
+function canVerCobrancaUsuarioCommission(ent){
+  try{
+    if(!ent || ent?.is_crediarista || ent?.is_terceiro) return false;
+    if(usuarioAtual?.tipo==='master' || usuarioAtual?.is_viewer) return true;
+    if(!usuarioAtual) return false;
+    const norm=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim();
+    const uf=String(usuarioAtual.filial||'').toUpperCase();
+    const ef=String(ent.filial||'').toUpperCase();
+    const isGer=!!(usuarioAtual.is_gerente || usuarioAtual.is_gerente_filial_fixo || /^gerentef\d{2}$/i.test(String(usuarioAtual.login||'')) || /gerente/i.test(String(usuarioAtual.tipo||'')));
+    if(ent.type==='filial') return !!(isGer && uf && ef && uf===ef);
+    const ul=String(usuarioAtual.login||'').toLowerCase();
+    const el=String(ent.login||'').toLowerCase();
+    if(ul && el && ul===el) return true;
+    return !!(uf===ef && norm(usuarioAtual.nome)===norm(ent.nome));
+  }catch(e){return false}
+}
 function renderCobrancaUsuarioCommission(ent){
-  if(!canVerComissionamento() || ent?.is_crediarista || ent?.is_terceiro) return '';
+  if(!canVerCobrancaUsuarioCommission(ent)) return '';
   const c=calcCobrancaUsuarioCommission(ent), f=c.fx;
   const item=(t,v,extra='')=>`<div class="commission-item unlocked ${extra}"><div class="k">${t}</div><div class="v">${v}</div></div>`;
   return `<div class="glass panel commission-card"><h3>📲 Comissão de cobrança auditada <span class="note">· print aprovado + baixa do mesmo título</span></h3><div class="commission-grid">${item('Atenção %',String(f.atencao.pct.toFixed(2)).replace('.',',')+'%')}${item('Alerta %',String(f.alerta.pct.toFixed(2)).replace('.',',')+'%')}${item('Grave %',String(f.grave.pct.toFixed(2)).replace('.',',')+'%')}${item('Recebido atenção',R(f.atencao.recebido))}${item('Recebido alerta',R(f.alerta.recebido))}${item('Recebido grave',R(f.grave.recebido))}${item('Comissão atenção',R(f.atencao.comissao))}${item('Comissão alerta',R(f.alerta.comissao))}${item('Comissão grave',R(f.grave.comissao))}${item('Total previsto',R(c.total),'total-final')}${item('Prints aguardando IA',String(c.aguardandoIa))}${item('Auditorias aprovadas',String(c.aprovados))}${item('Aguardando pagamento',String(c.aguardandoPagamento))}${item('Pagamentos conciliados',String(c.pagos))}</div><div class="commission-note">${esc(CONFIG_META?.comissao_pagamento_texto||'A comissão reinicia a cada mês e o pagamento é previsto para o dia 25 do mês seguinte.')} O valor só aparece após auditoria aprovada e conciliação do mesmo CPF/título/parcela.</div></div>`;
@@ -13030,7 +13046,60 @@ function renderTelegramTab(){
   <div class="glass panel" style="margin-top:14px"><h3>Como pegar o Chat ID</h3><div class="hint">1) Crie/adicone o bot em um grupo. 2) Mande uma mensagem no grupo. 3) No navegador, abra: https://api.telegram.org/botSEU_TOKEN/getUpdates. 4) Procure o campo <b>chat</b> e copie o <b>id</b>. Grupo normalmente começa com -100.</div></div>`;
 }
 
-function renderLogsTab(){const cfgPanel=renderCobrancaConfigPanel(); const LOGS_REAIS=(COB_LOGS||[]).filter(isLogCobrancaReal); const filOpts=['<option value="">Todas as filiais</option>',...ORDEM.map(f=>`<option value="${f}">${f}</option>`)].join(''); const vendOpts=['<option value="">Todos os usuários</option>',...Array.from(new Set(LOGS_REAIS.map(x=>x.usuario).filter(Boolean))).sort().map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)].join(''); logSection.innerHTML=cfgPanel+`<div class="section-head"><div><h2>🧾 Histórico de cobranças</h2><div class="hint">Filtre por data, usuário ou filial. Histórico consolidado do JSON principal + backups de segurança (WAL).</div></div></div><div class="glass panel"><div class="search-row"><div class="input-card"><label>Buscar cliente/título</label><input id="logQ" placeholder="Nome, título, parcela"></div><div class="input-card"><label>Data inicial</label><input id="logDe" type="date"></div><div class="input-card"><label>Data final</label><input id="logAte" type="date"></div><div class="input-card"><label>Filial</label><select id="logFil">${filOpts}</select></div></div><div class="search-row" style="margin-top:10px"><div class="input-card"><label>Usuário</label><select id="logVend">${vendOpts}</select></div><div style="display:flex;align-items:end;gap:10px"><button class="btn primary" onclick="applyLogFilter()">Filtrar</button><button class="btn soft" onclick="clearLogFilter()">Limpar</button></div></div><div id="logsList" class="logs-list"></div></div>`; applyLogFilter()}
+
+function auditStatusLabel(st){
+  st=String(st||'aguardando_ia').toLowerCase();
+  if(st==='aprovado') return '✅ Aprovado';
+  if(st==='recusado') return '❌ Recusado';
+  if(st==='revisao_master') return '🧑‍⚖️ Revisão MASTER';
+  return '🤖 Aguardando IA';
+}
+function auditStatusColor(st){
+  st=String(st||'').toLowerCase();
+  return st==='aprovado'?'var(--green)':st==='recusado'?'var(--red)':st==='revisao_master'?'var(--orange)':'var(--blue)';
+}
+function auditEvidenceButton(a){
+  if(!a?.media_url) return '';
+  const audio=String(a?.evidence_type||a?.media_type||'').toLowerCase().includes('audio');
+  return `<a class="btn soft btn-xs" href="${esc(a.media_url)}" target="_blank" rel="noopener">${audio?'🎧 Ouvir áudio':'🖼️ Abrir print'}</a>`;
+}
+function renderMasterAuditoriaPanel(){
+  if(usuarioAtual?.tipo!=='master') return '';
+  const rows=[...(COB_AUDITORIAS||[])].sort((a,b)=>String(b?.server_time||'').localeCompare(String(a?.server_time||'')));
+  const counts={aguardando_ia:0,revisao_master:0,aprovado:0,recusado:0};
+  rows.forEach(a=>{const s=String(a?.status||'aguardando_ia').toLowerCase();counts[s]=(counts[s]||0)+1});
+  const cards=`<div class="wa-master-grid" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+    <div class="wa-master-card"><div class="k">Aguardando IA</div><div class="v">${counts.aguardando_ia||0}</div></div>
+    <div class="wa-master-card"><div class="k">Revisão MASTER</div><div class="v" style="color:var(--orange)">${counts.revisao_master||0}</div></div>
+    <div class="wa-master-card"><div class="k">Aprovadas</div><div class="v" style="color:var(--green)">${counts.aprovado||0}</div></div>
+    <div class="wa-master-card"><div class="k">Recusadas</div><div class="v" style="color:var(--red)">${counts.recusado||0}</div></div></div>`;
+  const opts=['todos','aguardando_ia','revisao_master','aprovado','recusado'].map(s=>`<option value="${s}">${s==='todos'?'Todos':auditStatusLabel(s)}</option>`).join('');
+  return `<div class="glass panel" style="margin-bottom:18px;border-color:rgba(245,158,11,.30)"><div class="section-head"><div><h2>🧑‍⚖️ Auditoria IA / MASTER</h2><div class="hint">A IA direciona automaticamente os casos duvidosos para Revisão MASTER. O MASTER pode abrir a evidência, aprovar ou negar. Somente aprovação + baixa do mesmo título libera comissão prevista.</div></div><button class="btn soft" onclick="carregarAuditoriasCobranca().then(()=>renderLogsTab())">🔄 Atualizar fila</button></div>${cards}<div class="input-card" style="max-width:320px;margin-bottom:12px"><label>Filtrar auditoria</label><select id="masterAuditFilter" onchange="renderMasterAuditRows()">${opts}</select></div><div id="masterAuditRows"></div></div>`;
+}
+function renderMasterAuditRows(){
+  const box=document.getElementById('masterAuditRows'); if(!box) return;
+  const filtro=String(document.getElementById('masterAuditFilter')?.value||'todos');
+  let rows=[...(COB_AUDITORIAS||[])].sort((a,b)=>String(b?.server_time||'').localeCompare(String(a?.server_time||'')));
+  if(filtro!=='todos') rows=rows.filter(a=>String(a?.status||'aguardando_ia').toLowerCase()===filtro);
+  if(!rows.length){box.innerHTML='<div class="empty">Nenhuma evidência nesta situação.</div>';return;}
+  box.innerHTML=rows.slice(0,200).map(a=>{
+    const st=String(a?.status||'aguardando_ia').toLowerCase();
+    const fraude=a?.fraude_suspeita===true||String(a?.fraude_suspeita||'')==='1';
+    const conf=Number(a?.ia_confidence||0); const confTxt=conf?`${Math.round(conf*100)}%`:'';
+    const trans=a?.audio_transcript?`<div class="small" style="margin-top:7px"><strong>Transcrição:</strong> ${esc(a.audio_transcript)}</div>`:'';
+    return `<div class="row-item" style="margin-bottom:10px;border-color:${fraude?'rgba(240,82,82,.55)':'rgba(255,255,255,.09)'}"><div class="row-top" style="grid-template-columns:1.25fr .8fr .8fr 1.4fr"><div><div class="name">${esc(a.cliente||'Cliente não informado')}</div><div class="small muted">CPF ${esc(a.cpf_cnpj||'-')} · título ${esc(a.titulo||'-')} · parcela ${esc(a.parcela||'-')}</div><div class="small muted">${esc(a.usuario_nome||a.usuario_login||'-')} · ${esc(a.filial||'-')} · ${esc(a.faixa||'-')}</div></div><div><strong style="color:${auditStatusColor(st)}">${auditStatusLabel(st)}</strong>${confTxt?`<div class="small muted">Confiança IA: ${confTxt}</div>`:''}${fraude?'<div class="unread-chip" style="margin-top:6px">⚠️ Suspeita de fraude</div>':''}</div><div>${auditEvidenceButton(a)}</div><div><div class="small">${esc(a.motivo||'Sem parecer.')}</div>${trans}<div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:9px"><button class="btn primary btn-xs" onclick="masterSetAuditStatus('${esc(a.id)}','aprovado')">✅ Aprovar</button><button class="btn danger btn-xs" onclick="masterSetAuditStatus('${esc(a.id)}','recusado')">❌ Negar</button><button class="btn soft btn-xs" onclick="masterSetAuditStatus('${esc(a.id)}','revisao_master')">🧑‍⚖️ Manter revisão</button></div></div></div></div>`;
+  }).join('');
+}
+async function masterSetAuditStatus(id,status){
+  if(usuarioAtual?.tipo!=='master') return toast('Somente o MASTER pode decidir auditorias.');
+  const label=status==='aprovado'?'aprovar':status==='recusado'?'negar':'manter em revisão';
+  const motivo=prompt(`Motivo para ${label} esta evidência:`, status==='aprovado'?'Aprovado manualmente pelo MASTER.':status==='recusado'?'Recusado manualmente pelo MASTER.':'Mantido para revisão do MASTER.');
+  if(motivo===null) return;
+  const fd=new FormData();fd.append('action','set_status');fd.append('id',id);fd.append('status',status);fd.append('motivo',motivo);fd.append('ia_model','decisao_manual_master');
+  try{const r=await fetch(API_COB_AUD,{method:'POST',body:fd});const j=await r.json();if(!j.ok) throw new Error(j.error||'falha');await carregarAuditoriasCobranca();renderLogsTab();toast('Auditoria atualizada pelo MASTER.','success');}catch(e){toast('Não consegui atualizar a auditoria.');}
+}
+
+function renderLogsTab(){const cfgPanel=renderCobrancaConfigPanel(); const auditPanel=renderMasterAuditoriaPanel(); const LOGS_REAIS=(COB_LOGS||[]).filter(isLogCobrancaReal); const filOpts=['<option value="">Todas as filiais</option>',...ORDEM.map(f=>`<option value="${f}">${f}</option>`)].join(''); const vendOpts=['<option value="">Todos os usuários</option>',...Array.from(new Set(LOGS_REAIS.map(x=>x.usuario).filter(Boolean))).sort().map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)].join(''); logSection.innerHTML=cfgPanel+auditPanel+`<div class="section-head"><div><h2>🧾 Histórico de cobranças</h2><div class="hint">Filtre por data, usuário ou filial. Histórico consolidado do JSON principal + backups de segurança (WAL).</div></div></div><div class="glass panel"><div class="search-row"><div class="input-card"><label>Buscar cliente/título</label><input id="logQ" placeholder="Nome, título, parcela"></div><div class="input-card"><label>Data inicial</label><input id="logDe" type="date"></div><div class="input-card"><label>Data final</label><input id="logAte" type="date"></div><div class="input-card"><label>Filial</label><select id="logFil">${filOpts}</select></div></div><div class="search-row" style="margin-top:10px"><div class="input-card"><label>Usuário</label><select id="logVend">${vendOpts}</select></div><div style="display:flex;align-items:end;gap:10px"><button class="btn primary" onclick="applyLogFilter()">Filtrar</button><button class="btn soft" onclick="clearLogFilter()">Limpar</button></div></div><div id="logsList" class="logs-list"></div></div>`; applyLogFilter(); renderMasterAuditRows()}
 function parseDateBR(s){if(!s) return null; const v=String(s).trim(); let m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/); if(m){let y=Number(m[3]); if(y<100)y+=2000; const d=new Date(y, Number(m[2])-1, Number(m[1])); return isNaN(d.getTime())?null:d} m=v.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/); if(m){const d=new Date(Number(m[1]),Number(m[2])-1,Number(m[3]),Number(m[4]||0),Number(m[5]||0),Number(m[6]||0)); return isNaN(d.getTime())?null:d} const d=new Date(v); return isNaN(d.getTime())?null:d}
 function parseDate(s){return parseDateBR(s)}
 function dateOnlyISO(s){const d=parseDateBR(s); if(!d) return ''; const y=d.getFullYear(); const m=String(d.getMonth()+1).padStart(2,'0'); const da=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${da}`}
@@ -19829,7 +19898,7 @@ Preparamos condições especiais para você comemorar com a gente.
 
 </script>
 <script>
-try{window.DASHBOARD_BUILD_VERSION='V10.64';console.log('[V10.64] auditoria antifraude de prints e áudios');}catch(e){}
+try{window.DASHBOARD_BUILD_VERSION='V10.65';console.log('[V10.65] auditoria MASTER + comissão cobrança individual');}catch(e){}
 </script>
 
 </body>
@@ -19838,7 +19907,7 @@ try{window.DASHBOARD_BUILD_VERSION='V10.64';console.log('[V10.64] auditoria anti
 
 
 # =========================================
-# 🤖 V10.64 — AUDITORIA ANTIFRAUDE DE PRINTS E ÁUDIOS DE COBRANÇA
+# 🤖 V10.65 — AUDITORIA ANTIFRAUDE DE PRINTS E ÁUDIOS DE COBRANÇA
 # =========================================
 COBRANCA_AUDITORIA_API_URL = os.getenv(
     "COBRANCA_AUDITORIA_API_URL",
@@ -20086,18 +20155,18 @@ def _atualizar_status_auditoria_v1063(item, result):
 
 def processar_auditorias_print_v1064():
     if not COBRANCA_AUDITORIA_IA_ENABLED:
-        print("ℹ️ V10.64 auditoria antifraude desativada por COBRANCA_AUDITORIA_IA_ENABLED=0")
+        print("ℹ️ V10.65 auditoria antifraude desativada por COBRANCA_AUDITORIA_IA_ENABLED=0")
         return
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
-        print("⚠️ V10.64 OPENAI_API_KEY não configurada; prints permanecerão aguardando IA.")
+        print("⚠️ V10.65 OPENAI_API_KEY não configurada; prints permanecerão aguardando IA.")
         return
     try:
         listing = _http_json_v1063(COBRANCA_AUDITORIA_API_URL + "?_=" + str(int(time.time())), timeout=60)
         items = listing.get("data") if isinstance(listing, dict) else []
         pendentes = [x for x in (items or []) if str(x.get("status") or "aguardando_ia").lower() == "aguardando_ia"]
         pendentes = pendentes[:COBRANCA_AUDITORIA_IA_MAX_PER_RUN]
-        print(f"🛡️ V10.64 auditoria antifraude: {len(pendentes)} evidência(s) pendente(s) nesta execução")
+        print(f"🛡️ V10.65 auditoria antifraude: {len(pendentes)} evidência(s) pendente(s) nesta execução")
         for item in pendentes:
             try:
                 result = _analisar_evidencia_cobranca_v1064(item, api_key, items or [])
@@ -20107,9 +20176,9 @@ def processar_auditorias_print_v1064():
                     f"{item.get('cliente','')} · título {item.get('titulo','')} · {result['status']} · confiança {float(result.get('confidence') or 0):.0%}"
                 )
             except Exception as exc:
-                print(f"⚠️ V10.64 falha analisando evidência {item.get('id','')}: {exc}")
+                print(f"⚠️ V10.65 falha analisando evidência {item.get('id','')}: {exc}")
     except Exception as exc:
-        print(f"⚠️ V10.64 não conseguiu carregar fila de auditoria: {exc}")
+        print(f"⚠️ V10.65 não conseguiu carregar fila de auditoria: {exc}")
 
 
 processar_auditorias_print_v1064()
@@ -20487,7 +20556,7 @@ if(!file_exists($dir)) @mkdir($dir,0777,true); if(!file_exists($file)) @file_put
 function ar(){global $file; $j=json_decode(@file_get_contents($file),true); return is_array($j)?$j:[];}
 function sw($d){global $file; return @file_put_contents($file,json_encode($d,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),LOCK_EX)!==false;}
 $data=ar();
-if($_SERVER['REQUEST_METHOD']==='GET'){echo json_encode(['ok'=>true,'data'=>$data,'count'=>count($data),'version'=>'V10.64'],JSON_UNESCAPED_UNICODE);exit;}
+if($_SERVER['REQUEST_METHOD']==='GET'){echo json_encode(['ok'=>true,'data'=>$data,'count'=>count($data),'version'=>'V10.65'],JSON_UNESCAPED_UNICODE);exit;}
 if($_SERVER['REQUEST_METHOD']==='POST'){
   $action=$_POST['action']??'upload';
   if($action==='set_status'){
@@ -20504,7 +20573,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   if(!move_uploaded_file($_FILES['media']['tmp_name'],$dest)){echo json_encode(['ok'=>false,'error'=>'falha_upload']);exit;}
   $scheme=(!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off')?'https':'http'; $base=$scheme.'://'.$_SERVER['HTTP_HOST'].rtrim(dirname($_SERVER['SCRIPT_NAME']),'/\\');
   $item=['id'=>uniqid('aud_',true),'audit_key'=>(string)($_POST['audit_key']??''),'cliente'=>(string)($_POST['cliente']??''),'cpf_cnpj'=>(string)($_POST['cpf_cnpj']??''),'titulo'=>(string)($_POST['titulo']??''),'parcela'=>(string)($_POST['parcela']??''),'vencimento'=>(string)($_POST['vencimento']??''),'telefone'=>(string)($_POST['telefone']??''),'faixa'=>(string)($_POST['faixa']??''),'usuario_login'=>(string)($_POST['usuario_login']??''),'usuario_nome'=>(string)($_POST['usuario_nome']??''),'filial'=>(string)($_POST['filial']??''),'media_url'=>$base.'/uploads_cobranca_auditoria/'.$name,'media_type'=>$mime,'upload_sha256'=>$sha256,'evidence_type'=>(strpos($mime,'audio/')===0?'audio':'image'),'status'=>'aguardando_ia','motivo'=>'Evidência recebida. Aguardando auditoria antifraude da IA.','server_time'=>date('c')];
-  $data[]=$item; $ok=sw($data); echo json_encode(['ok'=>$ok,'data'=>$item,'version'=>'V10.64'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;
+  $data[]=$item; $ok=sw($data); echo json_encode(['ok'=>$ok,'data'=>$item,'version'=>'V10.65'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;
 }
 echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado']);
 ?>"""
