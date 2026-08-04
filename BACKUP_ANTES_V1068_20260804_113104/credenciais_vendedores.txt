@@ -1,0 +1,39 @@
+======================================================================
+   CREDENCIAIS DASHBOARD – MÓVEIS DOLAR
+======================================================================
+
+  MASTER             login: master   senha: mdladm01
+  DIRETOR COMERCIAL  login: diretorcomercial   senha atual: 5467
+  PAINEL            login: painel   senha atual: painelmdl10
+
+----------------------------------------------------------------------
+  LOGIN                NOME                                SENHA          FILIAL TIPO
+----------------------------------------------------------------------
+  adriana              ADRIANA APARECIDA SIMER             140188         F9     VENDEDOR
+  amanda               AMANDA SCHVIK DE OLIVEIRA           Mariana180409. F9     GERENTE
+  beatriz              BEATRIZ FATIMA CORDEIRO D SILVA     arthur11       F2     VENDEDOR
+  camila               CAMILA DOS ANJOS DA SILVA           24231112       F6     VENDEDOR
+  cleovane             CLEOVANE APARECIDA LOPES            cleo10         F4     GERENTE
+  cobranca10           Cobrança10                          teste1         FTER   COBRANÇA TERCEIRO
+  crediaristaf02_01    Crediarista F2 01                   teste10        F2     CREDIARISTA
+  crediaristaf03_01    Crediarista F3 01                   teste10        F3     CREDIARISTA
+  crediaristaf04_01    Crediarista F4 01                   souza1229      F4     CREDIARISTA
+  crediaristaf06_01    Crediarista F6 01                   STELA103060    F6     CREDIARISTA
+  crediaristaf09_01    Crediarista F9 01                   manuelatw      F9     CREDIARISTA
+  daniele              DANIELE APARECIDA LOURENÇO DA SILVA teste10        F3     VENDEDOR
+  dienifer             DIENIFER SILVA DA LUZ               469621         F5     VENDEDOR
+  eva                  EVA MARIA RODRIGUES DE ALMEIDA      eva2026        F3     GERENTE
+  francieli            FRANCIELI DE SOUZA BUENO            Fr@nmdl        F5     VENDEDOR
+  gerente              GERENTE F5                          202419         F5     GERENTE
+  jeane                JEANE PEREIRA MACHADO               jeane10        F8     GERENTE
+  jennifer             JENNIFER SANTOS SOUZA               102845         F2     VENDEDOR
+  kauany               KAUANY OLIVEIRA DA CONCEIÇÃO        237428         F3     VENDEDOR
+  milena               MILENA DO PRADO SILVA ROSA          102030         F9     VENDEDOR
+  painel               Painel                              painelmdl10    ---    VISUALIZAÇÃO
+  sandy                SANDY OLIVEIRA DA SILVA             SANDY25        F1     GERENTE
+  soelen               SOELEN MARIA FERREIRA DE SOUZA      SOELEN2014     F2     GERENTE
+  stefani              STEFANI MEIRA                       teste10        F8     VENDEDOR
+  valdeci              VALDECI DA COSTA                    GER06          F6     GERENTE
+  yasmim               YASMIM OLIVEIRA SANTOS              yasmin10       F4     VENDEDOR
+
+======================================================================

@@ -1,0 +1,2266 @@
+{
+  "mes": "2026-06",
+  "criado_em": "2026-06-11",
+  "ultima_atualizacao": "2026-06-18",
+  "snapshots_count": 13,
+  "vendedores": {
+    "SANDY OLIVEIRA DA SILVA_F1": {
+      "nome": "SANDY OLIVEIRA DA SILVA",
+      "filial": "F1",
+      "is_gerente": true,
+      "grave_rec": 0.0,
+      "alerta_rec": 699.93,
+      "atencao_rec": 1469.54,
+      "grave_alvo": 2194.67,
+      "alerta_alvo": 3950.4,
+      "atencao_alvo": 7022.94,
+      "grave_pend": 21946.69,
+      "alerta_pend": 13168.01,
+      "atencao_pend": 8778.68,
+      "snapshots": [
+        {
+          "data": "2026-06-11",
+          "delta": 36677.11,
+          "grave_delta": 0.0,
+          "alerta_delta": 0.0,
+          "atencao_delta": 905.84
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 0.0,
+          "atencao_delta": 1712.78
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 0.0,
+          "atencao_delta": 1712.78
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 0.0,
+          "atencao_delta": 1712.78
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 0.0,
+          "atencao_delta": 1712.78
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 0.0,
+          "atencao_delta": 1712.78
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 0.0,
+          "atencao_delta": 1712.78
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 0.0,
+          "atencao_delta": 1712.78
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 0.0,
+          "atencao_delta": 1712.78
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 0.0,
+          "atencao_delta": 1712.78
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 0.0,
+          "atencao_delta": 1712.78
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 0.0,
+          "atencao_delta": 1712.78
+        },
+        {
+          "data": "2026-06-18",
+          "delta": 507.25,
+          "grave_delta": 0.0,
+          "alerta_delta": 699.9300000000001,
+          "atencao_delta": 1469.54
+        }
+      ],
+      "grave_perc": 0.0,
+      "alerta_perc": 17.7,
+      "atencao_perc": 20.9,
+      "perc_meta": 7.2
+    },
+    "SOELEN MARIA FERREIRA DE SOUZA_F2": {
+      "nome": "SOELEN MARIA FERREIRA DE SOUZA",
+      "filial": "F2",
+      "is_gerente": true,
+      "grave_rec": 808.37,
+      "alerta_rec": 1608.5,
+      "atencao_rec": 3958.55,
+      "grave_alvo": 2144.68,
+      "alerta_alvo": 3860.42,
+      "atencao_alvo": 6862.97,
+      "grave_pend": 21446.77,
+      "alerta_pend": 12868.06,
+      "atencao_pend": 8578.71,
+      "snapshots": [
+        {
+          "data": "2026-06-11",
+          "delta": 58568.63,
+          "grave_delta": 535.67,
+          "alerta_delta": 954.98,
+          "atencao_delta": 2414.68
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 808.37,
+          "alerta_delta": 1615.66,
+          "atencao_delta": 3560.55
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 808.37,
+          "alerta_delta": 1615.66,
+          "atencao_delta": 3560.55
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 808.37,
+          "alerta_delta": 1615.66,
+          "atencao_delta": 3560.55
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 808.37,
+          "alerta_delta": 1615.66,
+          "atencao_delta": 3560.55
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 808.37,
+          "alerta_delta": 1615.66,
+          "atencao_delta": 3560.55
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 808.37,
+          "alerta_delta": 1615.66,
+          "atencao_delta": 3560.55
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0.0,
+          "grave_delta": 808.37,
+          "alerta_delta": 1615.66,
+          "atencao_delta": 3475.75
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0.0,
+          "grave_delta": 808.37,
+          "alerta_delta": 1615.66,
+          "atencao_delta": 3475.75
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0.0,
+          "grave_delta": 808.37,
+          "alerta_delta": 1615.66,
+          "atencao_delta": 3475.75
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0.0,
+          "grave_delta": 808.37,
+          "alerta_delta": 1615.66,
+          "atencao_delta": 3475.75
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0.0,
+          "grave_delta": 808.37,
+          "alerta_delta": 1615.66,
+          "atencao_delta": 3475.75
+        },
+        {
+          "data": "2026-06-18",
+          "delta": 0.0,
+          "grave_delta": 808.37,
+          "alerta_delta": 1608.5,
+          "atencao_delta": 3958.55
+        }
+      ],
+      "grave_perc": 37.7,
+      "alerta_perc": 41.7,
+      "atencao_perc": 57.7,
+      "perc_meta": 40.1
+    },
+    "JENNIFER SANTOS SOUZA_F2": {
+      "nome": "JENNIFER SANTOS SOUZA",
+      "filial": "F2",
+      "is_gerente": false,
+      "grave_rec": 618.01,
+      "alerta_rec": 1965.73,
+      "atencao_rec": 7108.63,
+      "grave_alvo": 3049.29,
+      "alerta_alvo": 5488.72,
+      "atencao_alvo": 9757.73,
+      "grave_pend": 30492.9,
+      "alerta_pend": 18295.74,
+      "atencao_pend": 12197.16,
+      "snapshots": [
+        {
+          "data": "2026-06-11",
+          "delta": 85876.7,
+          "grave_delta": 618.01,
+          "alerta_delta": 1082.8200000000002,
+          "atencao_delta": 2223.83
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 618.01,
+          "alerta_delta": 1768.38,
+          "atencao_delta": 4854.31
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 618.01,
+          "alerta_delta": 1768.38,
+          "atencao_delta": 4854.31
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 618.01,
+          "alerta_delta": 1768.38,
+          "atencao_delta": 4854.31
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 618.01,
+          "alerta_delta": 1768.38,
+          "atencao_delta": 4854.31
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 618.01,
+          "alerta_delta": 1768.38,
+          "atencao_delta": 4854.31
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 618.01,
+          "alerta_delta": 1768.38,
+          "atencao_delta": 4854.31
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 1881.1100000000006,
+          "grave_delta": 618.01,
+          "alerta_delta": 1965.73,
+          "atencao_delta": 6486.04
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 1881.1100000000006,
+          "grave_delta": 618.01,
+          "alerta_delta": 1965.73,
+          "atencao_delta": 6486.04
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 1881.1100000000006,
+          "grave_delta": 618.01,
+          "alerta_delta": 1965.73,
+          "atencao_delta": 6486.04
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 1881.1100000000006,
+          "grave_delta": 618.01,
+          "alerta_delta": 1965.73,
+          "atencao_delta": 6486.04
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 1881.1100000000006,
+          "grave_delta": 618.01,
+          "alerta_delta": 1965.73,
+          "atencao_delta": 6486.04
+        },
+        {
+          "data": "2026-06-18",
+          "delta": 79.72999999999593,
+          "grave_delta": 618.01,
+          "alerta_delta": 1965.73,
+          "atencao_delta": 7108.63
+        }
+      ],
+      "grave_perc": 20.3,
+      "alerta_perc": 35.8,
+      "atencao_perc": 72.9,
+      "perc_meta": 28.4
+    },
+    "BEATRIZ FATIMA CORDEIRO D SILVA_F2": {
+      "nome": "BEATRIZ FATIMA CORDEIRO D SILVA",
+      "filial": "F2",
+      "is_gerente": false,
+      "grave_rec": 817.59,
+      "alerta_rec": 1871.55,
+      "atencao_rec": 4445.98,
+      "grave_alvo": 2079.16,
+      "alerta_alvo": 3742.49,
+      "atencao_alvo": 6653.31,
+      "grave_pend": 20791.6,
+      "alerta_pend": 12474.96,
+      "atencao_pend": 8316.64,
+      "snapshots": [
+        {
+          "data": "2026-06-11",
+          "delta": 61594.06,
+          "grave_delta": 817.59,
+          "alerta_delta": 1099.43,
+          "atencao_delta": 1720.95
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 817.59,
+          "alerta_delta": 1573.56,
+          "atencao_delta": 3244.06
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 817.59,
+          "alerta_delta": 1573.56,
+          "atencao_delta": 3244.06
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 817.59,
+          "alerta_delta": 1573.56,
+          "atencao_delta": 3244.06
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 817.59,
+          "alerta_delta": 1573.56,
+          "atencao_delta": 3244.06
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 817.59,
+          "alerta_delta": 1573.56,
+          "atencao_delta": 3244.06
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 817.59,
+          "alerta_delta": 1573.56,
+          "atencao_delta": 3458.27
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 429.88000000000466,
+          "grave_delta": 817.59,
+          "alerta_delta": 1871.55,
+          "atencao_delta": 3978.45
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 429.88000000000466,
+          "grave_delta": 817.59,
+          "alerta_delta": 1871.55,
+          "atencao_delta": 3978.45
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 429.88000000000466,
+          "grave_delta": 817.59,
+          "alerta_delta": 1871.55,
+          "atencao_delta": 3978.45
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 429.88000000000466,
+          "grave_delta": 817.59,
+          "alerta_delta": 1871.55,
+          "atencao_delta": 3978.45
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 429.88000000000466,
+          "grave_delta": 817.59,
+          "alerta_delta": 1871.55,
+          "atencao_delta": 3978.45
+        },
+        {
+          "data": "2026-06-18",
+          "delta": 31.720000000001164,
+          "grave_delta": 817.59,
+          "alerta_delta": 1871.55,
+          "atencao_delta": 4445.98
+        }
+      ],
+      "grave_perc": 39.3,
+      "alerta_perc": 50.0,
+      "atencao_perc": 66.8,
+      "perc_meta": 44.4
+    },
+    "EVA MARIA RODRIGUES DE ALMEIDA_F3": {
+      "nome": "EVA MARIA RODRIGUES DE ALMEIDA",
+      "filial": "F3",
+      "is_gerente": true,
+      "grave_rec": 581.93,
+      "alerta_rec": 131.81,
+      "atencao_rec": 2303.47,
+      "grave_alvo": 743.99,
+      "alerta_alvo": 1339.18,
+      "atencao_alvo": 2380.75,
+      "grave_pend": 7439.86,
+      "alerta_pend": 4463.92,
+      "atencao_pend": 2975.94,
+      "snapshots": [
+        {
+          "data": "2026-06-11",
+          "delta": 15551.95,
+          "grave_delta": 640.22,
+          "alerta_delta": 344.24,
+          "atencao_delta": 313.24
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 581.93,
+          "alerta_delta": 131.81,
+          "atencao_delta": 1681.78
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 581.93,
+          "alerta_delta": 131.81,
+          "atencao_delta": 1681.78
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 581.93,
+          "alerta_delta": 131.81,
+          "atencao_delta": 1681.78
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 581.93,
+          "alerta_delta": 131.81,
+          "atencao_delta": 1681.78
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 581.93,
+          "alerta_delta": 131.81,
+          "atencao_delta": 1681.78
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 581.93,
+          "alerta_delta": 131.81,
+          "atencao_delta": 1681.78
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0.0,
+          "grave_delta": 581.93,
+          "alerta_delta": 131.81,
+          "atencao_delta": 1990.23
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0.0,
+          "grave_delta": 581.93,
+          "alerta_delta": 131.81,
+          "atencao_delta": 1990.23
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0.0,
+          "grave_delta": 581.93,
+          "alerta_delta": 131.81,
+          "atencao_delta": 1990.23
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0.0,
+          "grave_delta": 581.93,
+          "alerta_delta": 131.81,
+          "atencao_delta": 1990.23
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0.0,
+          "grave_delta": 581.93,
+          "alerta_delta": 131.81,
+          "atencao_delta": 1990.23
+        },
+        {
+          "data": "2026-06-18",
+          "delta": 0.0,
+          "grave_delta": 581.93,
+          "alerta_delta": 131.81,
+          "atencao_delta": 2303.47
+        }
+      ],
+      "grave_perc": 78.2,
+      "alerta_perc": 9.8,
+      "atencao_perc": 96.8,
+      "perc_meta": 55.2
+    },
+    "KAUANY OLIVEIRA DA CONCEIÇÃO_F3": {
+      "nome": "KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "filial": "F3",
+      "is_gerente": false,
+      "grave_rec": 1309.97,
+      "alerta_rec": 4087.98,
+      "atencao_rec": 5180.08,
+      "grave_alvo": 3400.61,
+      "alerta_alvo": 6121.11,
+      "atencao_alvo": 10881.97,
+      "grave_pend": 34006.14,
+      "alerta_pend": 20403.69,
+      "atencao_pend": 13602.46,
+      "snapshots": [
+        {
+          "data": "2026-06-11",
+          "delta": 85999.12,
+          "grave_delta": 571.43,
+          "alerta_delta": 2273.41,
+          "atencao_delta": 1611.23
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 1309.97,
+          "alerta_delta": 3336.16,
+          "atencao_delta": 3447.64
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 1309.97,
+          "alerta_delta": 3336.16,
+          "atencao_delta": 3447.64
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 1309.97,
+          "alerta_delta": 3336.16,
+          "atencao_delta": 3447.64
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 1309.97,
+          "alerta_delta": 3336.16,
+          "atencao_delta": 3447.64
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 1309.97,
+          "alerta_delta": 3336.16,
+          "atencao_delta": 3447.64
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 1309.97,
+          "alerta_delta": 3336.16,
+          "atencao_delta": 3447.64
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 950.9399999999878,
+          "grave_delta": 1309.97,
+          "alerta_delta": 3885.7,
+          "atencao_delta": 4636.15
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 950.9399999999878,
+          "grave_delta": 1309.97,
+          "alerta_delta": 3885.7,
+          "atencao_delta": 4636.15
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 950.9399999999878,
+          "grave_delta": 1309.97,
+          "alerta_delta": 3885.7,
+          "atencao_delta": 4636.15
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 950.9399999999878,
+          "grave_delta": 1309.97,
+          "alerta_delta": 3885.7,
+          "atencao_delta": 4636.15
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 950.9399999999878,
+          "grave_delta": 1309.97,
+          "alerta_delta": 3885.7,
+          "atencao_delta": 4636.15
+        },
+        {
+          "data": "2026-06-18",
+          "delta": 126.9200000000128,
+          "grave_delta": 1309.97,
+          "alerta_delta": 4087.98,
+          "atencao_delta": 5180.08
+        }
+      ],
+      "grave_perc": 38.5,
+      "alerta_perc": 66.8,
+      "atencao_perc": 47.6,
+      "perc_meta": 48.9
+    },
+    "DANIELE APARECIDA LOURENÇO DA SILVA_F3": {
+      "nome": "DANIELE APARECIDA LOURENÇO DA SILVA",
+      "filial": "F3",
+      "is_gerente": false,
+      "grave_rec": 93.0,
+      "alerta_rec": 2841.63,
+      "atencao_rec": 9203.5,
+      "grave_alvo": 3022.34,
+      "alerta_alvo": 5440.21,
+      "atencao_alvo": 9671.48,
+      "grave_pend": 30223.37,
+      "alerta_pend": 18134.02,
+      "atencao_pend": 12089.35,
+      "snapshots": [
+        {
+          "data": "2026-06-11",
+          "delta": 117696.47,
+          "grave_delta": 0.0,
+          "alerta_delta": 1210.05,
+          "atencao_delta": 2841.25
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 93.0,
+          "alerta_delta": 2533.9900000000002,
+          "atencao_delta": 6256.44
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 93.0,
+          "alerta_delta": 2533.9900000000002,
+          "atencao_delta": 6256.44
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 93.0,
+          "alerta_delta": 2533.9900000000002,
+          "atencao_delta": 6256.44
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 93.0,
+          "alerta_delta": 2533.9900000000002,
+          "atencao_delta": 6256.44
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 93.0,
+          "alerta_delta": 2533.9900000000002,
+          "atencao_delta": 6256.44
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 93.0,
+          "alerta_delta": 2533.9900000000002,
+          "atencao_delta": 6256.44
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 1319.199999999997,
+          "grave_delta": 93.0,
+          "alerta_delta": 2691.39,
+          "atencao_delta": 7157.25
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 1319.199999999997,
+          "grave_delta": 93.0,
+          "alerta_delta": 2691.39,
+          "atencao_delta": 7157.25
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 1319.199999999997,
+          "grave_delta": 93.0,
+          "alerta_delta": 2691.39,
+          "atencao_delta": 7157.25
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 1319.199999999997,
+          "grave_delta": 93.0,
+          "alerta_delta": 2691.39,
+          "atencao_delta": 7157.25
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 1319.199999999997,
+          "grave_delta": 93.0,
+          "alerta_delta": 2691.39,
+          "atencao_delta": 7157.25
+        },
+        {
+          "data": "2026-06-18",
+          "delta": 2303.550000000003,
+          "grave_delta": 93.0,
+          "alerta_delta": 2841.63,
+          "atencao_delta": 9203.5
+        }
+      ],
+      "grave_perc": 3.1,
+      "alerta_perc": 52.2,
+      "atencao_perc": 95.2,
+      "perc_meta": 24.9
+    },
+    "CLEOVANE APARECIDA LOPES_F4": {
+      "nome": "CLEOVANE APARECIDA LOPES",
+      "filial": "F4",
+      "is_gerente": true,
+      "grave_rec": 0.0,
+      "alerta_rec": 134.73,
+      "atencao_rec": 1616.34,
+      "grave_alvo": 273.55,
+      "alerta_alvo": 492.4,
+      "atencao_alvo": 875.37,
+      "grave_pend": 2735.53,
+      "alerta_pend": 1641.32,
+      "atencao_pend": 1094.21,
+      "snapshots": [
+        {
+          "data": "2026-06-11",
+          "delta": 16017.81,
+          "grave_delta": 0.0,
+          "alerta_delta": 134.73,
+          "atencao_delta": 0.0
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 134.73,
+          "atencao_delta": 1058.76
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 134.73,
+          "atencao_delta": 1058.76
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 134.73,
+          "atencao_delta": 1058.76
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 134.73,
+          "atencao_delta": 1058.76
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 134.73,
+          "atencao_delta": 1058.76
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 134.73,
+          "atencao_delta": 1058.76
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 352.9500000000007,
+          "grave_delta": 0.0,
+          "alerta_delta": 134.73,
+          "atencao_delta": 1718.12
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 352.9500000000007,
+          "grave_delta": 0.0,
+          "alerta_delta": 134.73,
+          "atencao_delta": 1718.12
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 352.9500000000007,
+          "grave_delta": 0.0,
+          "alerta_delta": 134.73,
+          "atencao_delta": 1718.12
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 352.9500000000007,
+          "grave_delta": 0.0,
+          "alerta_delta": 134.73,
+          "atencao_delta": 1718.12
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 352.9500000000007,
+          "grave_delta": 0.0,
+          "alerta_delta": 134.73,
+          "atencao_delta": 1718.12
+        },
+        {
+          "data": "2026-06-18",
+          "delta": 0.0,
+          "grave_delta": 0.0,
+          "alerta_delta": 134.73,
+          "atencao_delta": 1616.34
+        }
+      ],
+      "grave_perc": 0.0,
+      "alerta_perc": 27.4,
+      "atencao_perc": 100,
+      "perc_meta": 14.6
+    },
+    "YASMIM OLIVEIRA SANTOS_F4": {
+      "nome": "YASMIM OLIVEIRA SANTOS",
+      "filial": "F4",
+      "is_gerente": false,
+      "grave_rec": 0.0,
+      "alerta_rec": 1622.9,
+      "atencao_rec": 4774.42,
+      "grave_alvo": 770.46,
+      "alerta_alvo": 1386.83,
+      "atencao_alvo": 2465.48,
+      "grave_pend": 7704.61,
+      "alerta_pend": 4622.77,
+      "atencao_pend": 3081.85,
+      "snapshots": [
+        {
+          "data": "2026-06-11",
+          "delta": 81781.48,
+          "grave_delta": 0.0,
+          "alerta_delta": 728.48,
+          "atencao_delta": 2002.56
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 1622.9,
+          "atencao_delta": 3957.59
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 1622.9,
+          "atencao_delta": 3957.59
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 1622.9,
+          "atencao_delta": 3957.59
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 1622.9,
+          "atencao_delta": 3957.59
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 1622.9,
+          "atencao_delta": 3957.59
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 1622.9,
+          "atencao_delta": 3957.59
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 141.4499999999971,
+          "grave_delta": 0.0,
+          "alerta_delta": 1622.9,
+          "atencao_delta": 4807.49
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 141.4499999999971,
+          "grave_delta": 0.0,
+          "alerta_delta": 1622.9,
+          "atencao_delta": 4807.49
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 141.4499999999971,
+          "grave_delta": 0.0,
+          "alerta_delta": 1622.9,
+          "atencao_delta": 4807.49
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 141.4499999999971,
+          "grave_delta": 0.0,
+          "alerta_delta": 1622.9,
+          "atencao_delta": 4807.49
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 141.4499999999971,
+          "grave_delta": 0.0,
+          "alerta_delta": 1622.9,
+          "atencao_delta": 4807.49
+        },
+        {
+          "data": "2026-06-18",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 1622.9,
+          "atencao_delta": 4774.42
+        }
+      ],
+      "grave_perc": 0.0,
+      "alerta_perc": 100,
+      "atencao_perc": 100,
+      "perc_meta": 40.0
+    },
+    "GERENTE F5_F5": {
+      "nome": "GERENTE F5",
+      "filial": "F5",
+      "is_gerente": true,
+      "grave_rec": 320.59,
+      "alerta_rec": 625.1,
+      "atencao_rec": 1880.01,
+      "grave_alvo": 1201.7,
+      "alerta_alvo": 2163.06,
+      "atencao_alvo": 3845.43,
+      "grave_pend": 12016.98,
+      "alerta_pend": 7210.19,
+      "atencao_pend": 4806.79,
+      "snapshots": [
+        {
+          "data": "2026-06-11",
+          "delta": 40572.23,
+          "grave_delta": 0.0,
+          "alerta_delta": 835.3499999999999,
+          "atencao_delta": 349.86
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 59.25,
+          "alerta_delta": 738.6099999999999,
+          "atencao_delta": 2141.38
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 59.25,
+          "alerta_delta": 738.6099999999999,
+          "atencao_delta": 2141.38
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 59.25,
+          "alerta_delta": 738.6099999999999,
+          "atencao_delta": 2141.38
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 59.25,
+          "alerta_delta": 738.6099999999999,
+          "atencao_delta": 2141.38
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 59.25,
+          "alerta_delta": 738.6099999999999,
+          "atencao_delta": 2141.38
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 59.25,
+          "alerta_delta": 738.6099999999999,
+          "atencao_delta": 2141.38
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0.0,
+          "grave_delta": 59.25,
+          "alerta_delta": 543.1,
+          "atencao_delta": 2293.55
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0.0,
+          "grave_delta": 59.25,
+          "alerta_delta": 543.1,
+          "atencao_delta": 2293.55
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0.0,
+          "grave_delta": 59.25,
+          "alerta_delta": 543.1,
+          "atencao_delta": 2293.55
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0.0,
+          "grave_delta": 59.25,
+          "alerta_delta": 543.1,
+          "atencao_delta": 2293.55
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0.0,
+          "grave_delta": 59.25,
+          "alerta_delta": 543.1,
+          "atencao_delta": 2293.55
+        },
+        {
+          "data": "2026-06-18",
+          "delta": 0.0,
+          "grave_delta": 320.59,
+          "alerta_delta": 625.1,
+          "atencao_delta": 1880.01
+        }
+      ],
+      "grave_perc": 26.7,
+      "alerta_perc": 28.9,
+      "atencao_perc": 48.9,
+      "perc_meta": 28.6
+    },
+    "FRANCIELI DE SOUZA BUENO_F5": {
+      "nome": "FRANCIELI DE SOUZA BUENO",
+      "filial": "F5",
+      "is_gerente": false,
+      "grave_rec": 150.0,
+      "alerta_rec": 662.47,
+      "atencao_rec": 1066.37,
+      "grave_alvo": 402.83,
+      "alerta_alvo": 725.1,
+      "atencao_alvo": 1289.07,
+      "grave_pend": 4028.35,
+      "alerta_pend": 2417.01,
+      "atencao_pend": 1611.34,
+      "snapshots": [
+        {
+          "data": "2026-06-11",
+          "delta": 15180.71,
+          "grave_delta": 0.0,
+          "alerta_delta": 662.47,
+          "atencao_delta": 300.82
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 150.0,
+          "alerta_delta": 662.47,
+          "atencao_delta": 817.1899999999999
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 150.0,
+          "alerta_delta": 662.47,
+          "atencao_delta": 817.1899999999999
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 150.0,
+          "alerta_delta": 662.47,
+          "atencao_delta": 817.1899999999999
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 150.0,
+          "alerta_delta": 662.47,
+          "atencao_delta": 817.1899999999999
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 150.0,
+          "alerta_delta": 662.47,
+          "atencao_delta": 817.1899999999999
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 150.0,
+          "alerta_delta": 662.47,
+          "atencao_delta": 817.1899999999999
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 124.58999999999992,
+          "grave_delta": 150.0,
+          "alerta_delta": 984.42,
+          "atencao_delta": 1066.37
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 124.58999999999992,
+          "grave_delta": 150.0,
+          "alerta_delta": 984.42,
+          "atencao_delta": 1066.37
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 124.58999999999992,
+          "grave_delta": 150.0,
+          "alerta_delta": 984.42,
+          "atencao_delta": 1066.37
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 124.58999999999992,
+          "grave_delta": 150.0,
+          "alerta_delta": 984.42,
+          "atencao_delta": 1066.37
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 124.58999999999992,
+          "grave_delta": 150.0,
+          "alerta_delta": 984.42,
+          "atencao_delta": 1066.37
+        },
+        {
+          "data": "2026-06-18",
+          "delta": 0.0,
+          "grave_delta": 150.0,
+          "alerta_delta": 662.47,
+          "atencao_delta": 1066.37
+        }
+      ],
+      "grave_perc": 37.2,
+      "alerta_perc": 91.4,
+      "atencao_perc": 82.7,
+      "perc_meta": 58.4
+    },
+    "DIENIFER SILVA DA LUZ_F5": {
+      "nome": "DIENIFER SILVA DA LUZ",
+      "filial": "F5",
+      "is_gerente": false,
+      "grave_rec": 0.0,
+      "alerta_rec": 288.55,
+      "atencao_rec": 629.8,
+      "grave_alvo": 402.83,
+      "alerta_alvo": 725.1,
+      "atencao_alvo": 1289.07,
+      "grave_pend": 4028.35,
+      "alerta_pend": 2417.01,
+      "atencao_pend": 1611.34,
+      "snapshots": [
+        {
+          "data": "2026-06-11",
+          "delta": 15180.71,
+          "grave_delta": 0.0,
+          "alerta_delta": 288.55,
+          "atencao_delta": 227.12
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 288.55,
+          "atencao_delta": 629.8
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 288.55,
+          "atencao_delta": 629.8
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 288.55,
+          "atencao_delta": 629.8
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 288.55,
+          "atencao_delta": 629.8
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 288.55,
+          "atencao_delta": 629.8
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 288.55,
+          "atencao_delta": 629.8
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 124.58999999999992,
+          "grave_delta": 0.0,
+          "alerta_delta": 309.94,
+          "atencao_delta": 629.8
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 124.58999999999992,
+          "grave_delta": 0.0,
+          "alerta_delta": 309.94,
+          "atencao_delta": 629.8
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 124.58999999999992,
+          "grave_delta": 0.0,
+          "alerta_delta": 309.94,
+          "atencao_delta": 629.8
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 124.58999999999992,
+          "grave_delta": 0.0,
+          "alerta_delta": 309.94,
+          "atencao_delta": 629.8
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 124.58999999999992,
+          "grave_delta": 0.0,
+          "alerta_delta": 309.94,
+          "atencao_delta": 629.8
+        },
+        {
+          "data": "2026-06-18",
+          "delta": 0.0,
+          "grave_delta": 0.0,
+          "alerta_delta": 288.55,
+          "atencao_delta": 629.8
+        }
+      ],
+      "grave_perc": 0.0,
+      "alerta_perc": 39.8,
+      "atencao_perc": 48.9,
+      "perc_meta": 16.4
+    },
+    "VALDECI DA COSTA_F6": {
+      "nome": "VALDECI DA COSTA",
+      "filial": "F6",
+      "is_gerente": true,
+      "grave_rec": 0.0,
+      "alerta_rec": 1831.52,
+      "atencao_rec": 2919.79,
+      "grave_alvo": 2561.49,
+      "alerta_alvo": 4610.67,
+      "atencao_alvo": 8196.75,
+      "grave_pend": 25614.85,
+      "alerta_pend": 15368.91,
+      "atencao_pend": 10245.94,
+      "snapshots": [
+        {
+          "data": "2026-06-11",
+          "delta": 50033.38,
+          "grave_delta": 0.0,
+          "alerta_delta": 795.16,
+          "atencao_delta": 1697.76
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 1437.69,
+          "atencao_delta": 2200.07
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 1437.69,
+          "atencao_delta": 2200.07
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 1437.69,
+          "atencao_delta": 2200.07
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 1437.69,
+          "atencao_delta": 2200.07
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 1437.69,
+          "atencao_delta": 2200.07
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 1437.69,
+          "atencao_delta": 2200.07
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0.0,
+          "grave_delta": 0.0,
+          "alerta_delta": 1437.69,
+          "atencao_delta": 2382.18
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0.0,
+          "grave_delta": 0.0,
+          "alerta_delta": 1437.69,
+          "atencao_delta": 2382.18
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0.0,
+          "grave_delta": 0.0,
+          "alerta_delta": 1437.69,
+          "atencao_delta": 2382.18
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0.0,
+          "grave_delta": 0.0,
+          "alerta_delta": 1579.58,
+          "atencao_delta": 2382.18
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0.0,
+          "grave_delta": 0.0,
+          "alerta_delta": 1790.15,
+          "atencao_delta": 2382.18
+        },
+        {
+          "data": "2026-06-18",
+          "delta": 8.369999999999997,
+          "grave_delta": 0.0,
+          "alerta_delta": 1831.52,
+          "atencao_delta": 2919.79
+        }
+      ],
+      "grave_perc": 0.0,
+      "alerta_perc": 39.7,
+      "atencao_perc": 35.6,
+      "perc_meta": 15.7
+    },
+    "CAMILA DOS ANJOS DA SILVA_F6": {
+      "nome": "CAMILA DOS ANJOS DA SILVA",
+      "filial": "F6",
+      "is_gerente": false,
+      "grave_rec": 70.82,
+      "alerta_rec": 3966.92,
+      "atencao_rec": 6486.68,
+      "grave_alvo": 2350.55,
+      "alerta_alvo": 4230.99,
+      "atencao_alvo": 7521.75,
+      "grave_pend": 23505.49,
+      "alerta_pend": 14103.29,
+      "atencao_pend": 9402.19,
+      "snapshots": [
+        {
+          "data": "2026-06-11",
+          "delta": 51485.16,
+          "grave_delta": 0.0,
+          "alerta_delta": 2830.95,
+          "atencao_delta": 1905.51
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 70.82,
+          "alerta_delta": 3484.12,
+          "atencao_delta": 3491.77
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 70.82,
+          "alerta_delta": 3484.12,
+          "atencao_delta": 3491.77
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 70.82,
+          "alerta_delta": 3484.12,
+          "atencao_delta": 3491.77
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 70.82,
+          "alerta_delta": 3484.12,
+          "atencao_delta": 3491.77
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 70.82,
+          "alerta_delta": 3484.12,
+          "atencao_delta": 3491.77
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 70.82,
+          "alerta_delta": 3484.12,
+          "atencao_delta": 3491.77
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 177.13999999999942,
+          "grave_delta": 70.82,
+          "alerta_delta": 3484.12,
+          "atencao_delta": 4420.25
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 177.13999999999942,
+          "grave_delta": 70.82,
+          "alerta_delta": 3484.12,
+          "atencao_delta": 4420.25
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 177.13999999999942,
+          "grave_delta": 70.82,
+          "alerta_delta": 3484.12,
+          "atencao_delta": 4420.25
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 177.13999999999942,
+          "grave_delta": 70.82,
+          "alerta_delta": 3554.75,
+          "atencao_delta": 4420.25
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 959.0,
+          "grave_delta": 70.82,
+          "alerta_delta": 3966.92,
+          "atencao_delta": 5104.97
+        },
+        {
+          "data": "2026-06-18",
+          "delta": 863.6600000000035,
+          "grave_delta": 70.82,
+          "alerta_delta": 3966.92,
+          "atencao_delta": 6486.68
+        }
+      ],
+      "grave_perc": 3.0,
+      "alerta_perc": 93.8,
+      "atencao_perc": 86.2,
+      "perc_meta": 38.9
+    },
+    "LUCIANA MAINARDI DE SOUZA BUENO_F6": {
+      "nome": "LUCIANA MAINARDI DE SOUZA BUENO",
+      "filial": "F6",
+      "is_gerente": false,
+      "grave_rec": 0.0,
+      "alerta_rec": 347.65,
+      "atencao_rec": 510.53,
+      "grave_alvo": 938.4,
+      "alerta_alvo": 1689.12,
+      "atencao_alvo": 3002.89,
+      "grave_pend": 9384.01,
+      "alerta_pend": 5630.41,
+      "atencao_pend": 3753.61,
+      "snapshots": [
+        {
+          "data": "2026-06-11",
+          "delta": 20117.03,
+          "grave_delta": 0.0,
+          "alerta_delta": 347.65,
+          "atencao_delta": 510.53
+        }
+      ],
+      "grave_perc": 0.0,
+      "alerta_perc": 20.6,
+      "atencao_perc": 17.0,
+      "perc_meta": 8.1
+    },
+    "JEANE PEREIRA MACHADO_F8": {
+      "nome": "JEANE PEREIRA MACHADO",
+      "filial": "F8",
+      "is_gerente": true,
+      "grave_rec": 0.0,
+      "alerta_rec": 233.34,
+      "atencao_rec": 1430.59,
+      "grave_alvo": 227.06,
+      "alerta_alvo": 408.72,
+      "atencao_alvo": 726.61,
+      "grave_pend": 2270.64,
+      "alerta_pend": 1362.39,
+      "atencao_pend": 908.26,
+      "snapshots": [
+        {
+          "data": "2026-06-11",
+          "delta": 12852.8,
+          "grave_delta": 0.0,
+          "alerta_delta": 233.34,
+          "atencao_delta": 281.40999999999997
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 233.34,
+          "atencao_delta": 598.84
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 233.34,
+          "atencao_delta": 598.84
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 233.34,
+          "atencao_delta": 598.84
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 233.34,
+          "atencao_delta": 598.84
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 233.34,
+          "atencao_delta": 598.84
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 0.0,
+          "alerta_delta": 233.34,
+          "atencao_delta": 598.84
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 338.90000000000146,
+          "grave_delta": 0.0,
+          "alerta_delta": 233.34,
+          "atencao_delta": 1028.81
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 338.90000000000146,
+          "grave_delta": 0.0,
+          "alerta_delta": 233.34,
+          "atencao_delta": 1028.81
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 338.90000000000146,
+          "grave_delta": 0.0,
+          "alerta_delta": 233.34,
+          "atencao_delta": 1028.81
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 338.90000000000146,
+          "grave_delta": 0.0,
+          "alerta_delta": 233.34,
+          "atencao_delta": 1028.81
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 338.90000000000146,
+          "grave_delta": 0.0,
+          "alerta_delta": 233.34,
+          "atencao_delta": 1028.81
+        },
+        {
+          "data": "2026-06-18",
+          "delta": 0.0,
+          "grave_delta": 0.0,
+          "alerta_delta": 233.34,
+          "atencao_delta": 1430.59
+        }
+      ],
+      "grave_perc": 0.0,
+      "alerta_perc": 57.1,
+      "atencao_perc": 100,
+      "perc_meta": 25.0
+    },
+    "STEFANI MEIRA_F8": {
+      "nome": "STEFANI MEIRA",
+      "filial": "F8",
+      "is_gerente": false,
+      "grave_rec": 380.25,
+      "alerta_rec": 1481.88,
+      "atencao_rec": 3303.87,
+      "grave_alvo": 1218.7,
+      "alerta_alvo": 2193.66,
+      "atencao_alvo": 3899.84,
+      "grave_pend": 12186.99,
+      "alerta_pend": 7312.19,
+      "atencao_pend": 4874.8,
+      "snapshots": [
+        {
+          "data": "2026-06-11",
+          "delta": 52256.49,
+          "grave_delta": 0.0,
+          "alerta_delta": 827.8199999999999,
+          "atencao_delta": 1960.31
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 380.25,
+          "alerta_delta": 1189.3,
+          "atencao_delta": 2884.03
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 380.25,
+          "alerta_delta": 1189.3,
+          "atencao_delta": 2884.03
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 380.25,
+          "alerta_delta": 1189.3,
+          "atencao_delta": 2884.03
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 380.25,
+          "alerta_delta": 1189.3,
+          "atencao_delta": 2884.03
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 380.25,
+          "alerta_delta": 1189.3,
+          "atencao_delta": 2884.03
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 380.25,
+          "alerta_delta": 1189.3,
+          "atencao_delta": 2884.03
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0,
+          "grave_delta": 380.25,
+          "alerta_delta": 1189.3,
+          "atencao_delta": 3296.46
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0,
+          "grave_delta": 380.25,
+          "alerta_delta": 1189.3,
+          "atencao_delta": 3296.46
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0,
+          "grave_delta": 380.25,
+          "alerta_delta": 1189.3,
+          "atencao_delta": 3296.46
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0,
+          "grave_delta": 380.25,
+          "alerta_delta": 1189.3,
+          "atencao_delta": 3296.46
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0,
+          "grave_delta": 380.25,
+          "alerta_delta": 1189.3,
+          "atencao_delta": 3296.46
+        },
+        {
+          "data": "2026-06-18",
+          "delta": 0,
+          "grave_delta": 380.25,
+          "alerta_delta": 1481.8799999999999,
+          "atencao_delta": 3303.87
+        }
+      ],
+      "grave_perc": 31.2,
+      "alerta_perc": 67.6,
+      "atencao_perc": 84.7,
+      "perc_meta": 46.6
+    },
+    "AMANDA SCHVIK DE OLIVEIRA_F9": {
+      "nome": "AMANDA SCHVIK DE OLIVEIRA",
+      "filial": "F9",
+      "is_gerente": true,
+      "grave_rec": 344.24,
+      "alerta_rec": 1393.07,
+      "atencao_rec": 2682.82,
+      "grave_alvo": 1785.15,
+      "alerta_alvo": 3213.26,
+      "atencao_alvo": 5712.46,
+      "grave_pend": 17851.46,
+      "alerta_pend": 10710.88,
+      "atencao_pend": 7140.58,
+      "snapshots": [
+        {
+          "data": "2026-06-11",
+          "delta": 41033.58,
+          "grave_delta": 581.93,
+          "alerta_delta": 563.0799999999999,
+          "atencao_delta": 1149.06
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 344.24,
+          "alerta_delta": 1318.14,
+          "atencao_delta": 1259.6299999999999
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 344.24,
+          "alerta_delta": 1318.14,
+          "atencao_delta": 1259.6299999999999
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 344.24,
+          "alerta_delta": 1318.14,
+          "atencao_delta": 1259.6299999999999
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 344.24,
+          "alerta_delta": 1318.14,
+          "atencao_delta": 1259.6299999999999
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 344.24,
+          "alerta_delta": 1318.14,
+          "atencao_delta": 1259.6299999999999
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 344.24,
+          "alerta_delta": 1318.14,
+          "atencao_delta": 1259.6299999999999
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0,
+          "grave_delta": 344.24,
+          "alerta_delta": 1318.14,
+          "atencao_delta": 1760.69
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0,
+          "grave_delta": 344.24,
+          "alerta_delta": 1318.14,
+          "atencao_delta": 1760.69
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0,
+          "grave_delta": 344.24,
+          "alerta_delta": 1318.14,
+          "atencao_delta": 1760.69
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0,
+          "grave_delta": 344.24,
+          "alerta_delta": 1318.14,
+          "atencao_delta": 1760.69
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0,
+          "grave_delta": 344.24,
+          "alerta_delta": 1318.14,
+          "atencao_delta": 1941.02
+        },
+        {
+          "data": "2026-06-18",
+          "delta": 217.35999999999967,
+          "grave_delta": 344.24,
+          "alerta_delta": 1393.07,
+          "atencao_delta": 2682.82
+        }
+      ],
+      "grave_perc": 19.3,
+      "alerta_perc": 43.4,
+      "atencao_perc": 47.0,
+      "perc_meta": 29.1
+    },
+    "ADRIANA APARECIDA SIMER_F9": {
+      "nome": "ADRIANA APARECIDA SIMER",
+      "filial": "F9",
+      "is_gerente": false,
+      "grave_rec": 464.92,
+      "alerta_rec": 3464.83,
+      "atencao_rec": 7631.93,
+      "grave_alvo": 5199.66,
+      "alerta_alvo": 9359.39,
+      "atencao_alvo": 16638.92,
+      "grave_pend": 51996.64,
+      "alerta_pend": 31197.98,
+      "atencao_pend": 20798.65,
+      "snapshots": [
+        {
+          "data": "2026-06-11",
+          "delta": 106076.44,
+          "grave_delta": 138.92,
+          "alerta_delta": 2849.63,
+          "atencao_delta": 2834.39
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 464.92,
+          "alerta_delta": 2589.6,
+          "atencao_delta": 6482.07
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 464.92,
+          "alerta_delta": 2589.6,
+          "atencao_delta": 6482.07
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 464.92,
+          "alerta_delta": 2589.6,
+          "atencao_delta": 6482.07
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 464.92,
+          "alerta_delta": 2589.6,
+          "atencao_delta": 6482.07
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 464.92,
+          "alerta_delta": 2589.6,
+          "atencao_delta": 6482.07
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 464.92,
+          "alerta_delta": 2589.6,
+          "atencao_delta": 6482.07
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0,
+          "grave_delta": 464.92,
+          "alerta_delta": 3117.87,
+          "atencao_delta": 7112.71
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0,
+          "grave_delta": 464.92,
+          "alerta_delta": 3117.87,
+          "atencao_delta": 7112.71
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0,
+          "grave_delta": 464.92,
+          "alerta_delta": 3117.87,
+          "atencao_delta": 7112.71
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 0,
+          "grave_delta": 464.92,
+          "alerta_delta": 3117.87,
+          "atencao_delta": 7112.71
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 126.68000000000757,
+          "grave_delta": 464.92,
+          "alerta_delta": 3117.87,
+          "atencao_delta": 7449.31
+        },
+        {
+          "data": "2026-06-18",
+          "delta": 0,
+          "grave_delta": 464.92,
+          "alerta_delta": 3464.83,
+          "atencao_delta": 7631.93
+        }
+      ],
+      "grave_perc": 8.9,
+      "alerta_perc": 37.0,
+      "atencao_perc": 45.9,
+      "perc_meta": 20.6
+    },
+    "MILENA DO PRADO SILVA ROSA_F9": {
+      "nome": "MILENA DO PRADO SILVA ROSA",
+      "filial": "F9",
+      "is_gerente": false,
+      "grave_rec": 191.02,
+      "alerta_rec": 1780.09,
+      "atencao_rec": 3907.82,
+      "grave_alvo": 1336.55,
+      "alerta_alvo": 2405.78,
+      "atencao_alvo": 4276.95,
+      "grave_pend": 13365.47,
+      "alerta_pend": 8019.28,
+      "atencao_pend": 5346.19,
+      "snapshots": [
+        {
+          "data": "2026-06-11",
+          "delta": 56289.42,
+          "grave_delta": 0.0,
+          "alerta_delta": 555.05,
+          "atencao_delta": 1846.55
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 191.02,
+          "alerta_delta": 1632.63,
+          "atencao_delta": 2928.08
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 191.02,
+          "alerta_delta": 1632.63,
+          "atencao_delta": 2928.08
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 191.02,
+          "alerta_delta": 1632.63,
+          "atencao_delta": 2928.08
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 191.02,
+          "alerta_delta": 1632.63,
+          "atencao_delta": 2928.08
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 191.02,
+          "alerta_delta": 1632.63,
+          "atencao_delta": 2928.08
+        },
+        {
+          "data": "2026-06-16",
+          "delta": 0,
+          "grave_delta": 191.02,
+          "alerta_delta": 1632.63,
+          "atencao_delta": 2928.08
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 1252.6900000000023,
+          "grave_delta": 191.02,
+          "alerta_delta": 1780.0900000000001,
+          "atencao_delta": 3623.93
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 1252.6900000000023,
+          "grave_delta": 191.02,
+          "alerta_delta": 1780.0900000000001,
+          "atencao_delta": 3623.93
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 1252.6900000000023,
+          "grave_delta": 191.02,
+          "alerta_delta": 1780.0900000000001,
+          "atencao_delta": 3623.93
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 1252.6900000000023,
+          "grave_delta": 191.02,
+          "alerta_delta": 1780.0900000000001,
+          "atencao_delta": 3623.93
+        },
+        {
+          "data": "2026-06-17",
+          "delta": 1252.6900000000023,
+          "grave_delta": 191.02,
+          "alerta_delta": 1780.0900000000001,
+          "atencao_delta": 3690.37
+        },
+        {
+          "data": "2026-06-18",
+          "delta": 556.8899999999994,
+          "grave_delta": 191.02,
+          "alerta_delta": 1780.0900000000001,
+          "atencao_delta": 3907.82
+        }
+      ],
+      "grave_perc": 14.3,
+      "alerta_perc": 74.0,
+      "atencao_perc": 91.4,
+      "perc_meta": 39.0
+    }
+  },
+  "filiais": {
+    "F1": {
+      "grave_rec": 0.0,
+      "alerta_rec": 699.93,
+      "atencao_rec": 1469.54,
+      "grave_alvo": 2194.67,
+      "alerta_alvo": 3950.4,
+      "atencao_alvo": 7022.94,
+      "grave_pend": 21946.69,
+      "alerta_pend": 13168.01,
+      "atencao_pend": 8778.68,
+      "grave_perc": 0.0,
+      "alerta_perc": 17.7,
+      "atencao_perc": 20.9,
+      "perc_meta": 7.2
+    },
+    "F2": {
+      "grave_rec": 2243.97,
+      "alerta_rec": 5445.78,
+      "atencao_rec": 15513.16,
+      "grave_alvo": 7273.13,
+      "alerta_alvo": 13091.63,
+      "atencao_alvo": 23274.01,
+      "grave_pend": 72731.27,
+      "alerta_pend": 43638.76,
+      "atencao_pend": 29092.51,
+      "grave_perc": 30.9,
+      "alerta_perc": 41.6,
+      "atencao_perc": 66.7,
+      "perc_meta": 36.4
+    },
+    "F3": {
+      "grave_rec": 1984.9,
+      "alerta_rec": 7061.42,
+      "atencao_rec": 16687.05,
+      "grave_alvo": 7166.94,
+      "alerta_alvo": 12900.49,
+      "atencao_alvo": 22934.2,
+      "grave_pend": 71669.37,
+      "alerta_pend": 43001.62,
+      "atencao_pend": 28667.75,
+      "grave_perc": 27.7,
+      "alerta_perc": 54.7,
+      "atencao_perc": 72.8,
+      "perc_meta": 39.4
+    },
+    "F4": {
+      "grave_rec": 0.0,
+      "alerta_rec": 1757.63,
+      "atencao_rec": 6390.76,
+      "grave_alvo": 1044.01,
+      "alerta_alvo": 1879.22,
+      "atencao_alvo": 3340.85,
+      "grave_pend": 10440.14,
+      "alerta_pend": 6264.08,
+      "atencao_pend": 4176.06,
+      "grave_perc": 0.0,
+      "alerta_perc": 93.5,
+      "atencao_perc": 100,
+      "perc_meta": 37.7
+    },
+    "F5": {
+      "grave_rec": 470.59,
+      "alerta_rec": 1576.12,
+      "atencao_rec": 3576.18,
+      "grave_alvo": 2007.37,
+      "alerta_alvo": 3613.26,
+      "atencao_alvo": 6423.58,
+      "grave_pend": 20073.68,
+      "alerta_pend": 12044.21,
+      "atencao_pend": 8029.47,
+      "grave_perc": 23.4,
+      "alerta_perc": 43.6,
+      "atencao_perc": 55.7,
+      "perc_meta": 32.1
+    },
+    "F6": {
+      "grave_rec": 70.82,
+      "alerta_rec": 5798.44,
+      "atencao_rec": 9406.47,
+      "grave_alvo": 4912.03,
+      "alerta_alvo": 8841.66,
+      "atencao_alvo": 15718.5,
+      "grave_pend": 49120.34,
+      "alerta_pend": 29472.2,
+      "atencao_pend": 19648.13,
+      "grave_perc": 1.4,
+      "alerta_perc": 65.6,
+      "atencao_perc": 59.8,
+      "perc_meta": 26.8
+    },
+    "F8": {
+      "grave_rec": 380.25,
+      "alerta_rec": 1715.22,
+      "atencao_rec": 4734.46,
+      "grave_alvo": 1445.76,
+      "alerta_alvo": 2602.37,
+      "atencao_alvo": 4626.44,
+      "grave_pend": 14457.64,
+      "alerta_pend": 8674.58,
+      "atencao_pend": 5783.05,
+      "grave_perc": 26.3,
+      "alerta_perc": 65.9,
+      "atencao_perc": 100,
+      "perc_meta": 43.8
+    },
+    "F9": {
+      "grave_rec": 1000.18,
+      "alerta_rec": 6637.99,
+      "atencao_rec": 14222.57,
+      "grave_alvo": 8321.36,
+      "alerta_alvo": 14978.44,
+      "atencao_alvo": 26628.34,
+      "grave_pend": 83213.56,
+      "alerta_pend": 49928.14,
+      "atencao_pend": 33285.42,
+      "grave_perc": 12.0,
+      "alerta_perc": 44.3,
+      "atencao_perc": 53.4,
+      "perc_meta": 25.4
+    }
+  }
+}

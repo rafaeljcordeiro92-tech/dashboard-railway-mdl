@@ -1,0 +1,3841 @@
+{
+  "gerado_em": "2026-06-17T14:14:56.369431-03:00",
+  "total_removidos": 767,
+  "removidos": [
+    {
+      "key": "ABDUL KAYUM *COB|15358|04 / 08|13/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "ADAN SAMPAIO DO PRADO *COB (909869)|22828|03 / 06|21/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ADRIAN VINICIUS CARNEIRO FERREIRA *COB|25581|06 / 14|11/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ADRIANA APARECIDA AMARAL *COB (33941)|26778|04 / 15|25/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ADRIANA PAULA  PEDROSO DA SILVA *COB (901008)|26530|04 / 05|28/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ADRIANE CORDEIRO GALDINO *COB|24919|10 / 11|22/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ADRIANE SCHREDERHOF *ADV (905624)|4134|14 / 17|15/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ADRIANO ALVES DE OLIVEIRA *COB (32916)|22902|02 / 14|28/03/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ADRIANO ALVES DE OLIVEIRA *COB (32916)|22902|04 / 14|28/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "AGATA VITORIA MARTINS DIAS DA LUZ *COB|28765|02 / 14|02/06/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ALANA MAINARDES DE OLIVEIRA *COB|4652|03 / 06|20/05/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ALEF WILLIAN RIBEIRO *COB|13164|12 / 12|16/04/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "ALESSANDRO ANTONIO DOS SANTOS PINTO *COB|21828|06 / 14|19/03/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ALESSANDRO DE JESUS SOARES NUNES *COB|13059|13 / 14|05/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "ALEX SERRA SANTOS *COB|22699|14 / 14|06/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ALEXANDRA MARTINS FONTOURA *COB (904211)|13195|13 / 14|22/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "ALEXANDRE JEREMIAS DIAS RODRIGUES *COB (C.83911)|4271|10 / 10|15/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ALICE VERIDIANA FURTUOSO ROLIM *COB|24311|09 / 11|08/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ALIFER FERNANDO DA SILVA VICENTE *COB|23244|12 / 12|06/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ALIFER FERNANDO DA SILVA VICENTE *COB|26089|04 / 14|19/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ALINE APARECIDA MORAIS *COB|24166|09 / 14|25/03/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ALINE PEDROSO CASTANHO  (C.72525)|23621|01 / 08|28/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ALINE PRESTES CAPELA *COB (C.79480)|26380|05 / 14|10/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ALINE PRESTES CAPELA *COB (C.79480)|26380|06 / 14|10/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ALLANA LUCIA RAMOS DE ALMEIDA *COB (C.84871)|24137|11 / 11|14/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ALTEVIR CARNEIRO FILHO *COB (909493)|23210|13 / 14|02/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ALTEVIR CARNEIRO FILHO *COB (909493)|24124|10 / 10|21/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ALYSSON DANIEL RABE DE LIMA *COB (C.79365)|25072|08 / 12|04/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ALYSSON DANIEL RABE DE LIMA *COB (C.79365)|26048|06 / 12|14/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "AMANDA NUNES STOCKLER *COB|23351|12 / 12|15/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ANA CARLA DA SILVA BONETE *COB|24485|10 / 10|13/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ANA CARLA DA SILVA BONETE *COB|26849|04 / 14|08/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ANA CLAUDIA CAMAARGO PINHEIRO *COB|15019|05 / 14|01/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "ANA FLAVIA LOURENCO DA SILVA *COB (C.82369)|24413|09 / 10|16/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ANA JULIA ERTEL RIBAS *COB|27133|03 / 14|22/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ANA JULIA ERTEL RIBAS *COB|27133|04 / 14|22/04/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ANA JULIA ERTEL RIBAS *COB|27133|05 / 14|22/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ANA PAULA DE OLIVEIRA DOS SANTOS *COB (C.85449)|22175|06 / 06|08/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ANA PAULA DE OLIVEIRA DOS SANTOS *COB (C.85449)|22595|05 / 14|20/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ANA PAULA DE OLIVEIRA DOS SANTOS *COB (C.85449)|23052|03 / 14|12/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ANA PAULA ESSER HARMS  (C.82868)|16247|01 / 01|30/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "ANA PAULA MOREIRA DE ARAUJO *COB|25291|09 / 11|20/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ANDERSON RAMOS ALVES MORAIS *COB|25719|07 / 11|20/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ANDERSON RAMOS ALVES MORAIS *COB|25719|08 / 11|20/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ANDRE FELIPE BUENO *COB (C.71254)|15840|01 / 11|04/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "ANDRE NOWATZKI DOS SANTOS *COB|20824|11 / 14|17/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ANDRE NOWATZKI DOS SANTOS *COB|20824|12 / 14|17/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ANDREIA CRISTINA GONÇALVES DOS SANTOS *COB (27668)|12778|14 / 14|25/04/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "ANDREIA DE FATIMA FURTUOSO LEAL *COB|23473|11 / 12|26/03/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ANDREIA PAES DE ALMEIDA *COB|13083|12 / 12|08/04/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "ANDRESSA APARECIDA QUADROS DA SILVA *COB (919445)|26379|04 / 14|16/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ANDRESSA MOREIRA DE SIQUEIRA *COB (C.73090)|25582|07 / 08|10/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ANDRESSA MOREIRA DE SIQUEIRA *COB (C.73090)|25858|06 / 14|02/04/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ANGELA APARECIDA RIBAS DE SOUZA *COB (C.86072)|21858|07 / 12|24/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ANGELA APARECIDA RIBAS DE SOUZA *COB (C.86072)|21858|08 / 12|24/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ANTONIEL ROBERTO DE OLIVEIRA *COB (907012)|25407|05 / 12|23/03/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ANTONIEL ROBERTO DE OLIVEIRA *COB (907012)|25946|05 / 14|08/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ANTONIO CARLOS CASTANHO *COB (30692)|25087|06 / 12|24/03/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ANTONIO CARLOS CASTANHO *COB (30692)|25087|07 / 12|24/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ANTONIO CARLOS CASTANHO *COB (30692)|25087|08 / 12|24/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ANTONIO DE  JESUS CORDEIRO DOS SANTOS *COB (918811|23945|10 / 15|07/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ANTONIO DE  JESUS CORDEIRO DOS SANTOS *COB (918811|23945|11 / 15|07/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ANTONIO DE  JESUS CORDEIRO DOS SANTOS *COB (918811|24684|08 / 10|14/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ANTONIO MARCELO ZACARIAS DA ROSA *COB (801651)|15409|02 / 10|22/03/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "ANTONIO MARCELO ZACARIAS DA ROSA *COB (801651)|15409|04 / 10|22/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "ANTONIO MARCOS RIBEIRO DA SILVA *COB (915740)|25548|05 / 14|10/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ANTONIO OSCAR VICENTE *COB (41334)|24872|06 / 10|30/03/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "APARECIDO PEREIRA DE ANHAIA *COB (210198)|21613|07 / 12|19/03/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "APARECIDO PEREIRA DE ANHAIA *COB (210198)|21679|09 / 10|26/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ARI LUIZ FERREIRA *COB|25914|06 / 14|07/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ARI LUIZ FERREIRA *COB|25914|07 / 14|07/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ARI LUIZ FERREIRA *COB|26094|06 / 08|17/04/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ARIANE SILVA DE ABREU *COB|24419|10 / 14|09/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ARIANE SILVA DE ABREU *COB|24567|10 / 10|23/04/2026",
+      "removido_de": "vendedor:AMANDA SCHVIK DE OLIVEIRA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ARIANE SILVA DE ABREU *COB|25735|07 / 10|22/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ARIANE SILVA DE ABREU *COB|25735|08 / 10|22/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ARIANE SILVA DE ABREU *COB|25980|06 / 10|08/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ARIANE SILVA DE ABREU *COB|25980|07 / 10|08/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ARLETE MOREIRA PEREIRA *COB (802849)|25564|07 / 14|09/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ARLETE MOREIRA PEREIRA *COB (802849)|25832|06 / 14|01/04/2026",
+      "removido_de": "vendedor:AMANDA SCHVIK DE OLIVEIRA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ARLETE MOREIRA PEREIRA *COB (802849)|26050|06 / 12|14/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ARLETE MOREIRA PEREIRA *COB (802849)|26050|07 / 12|14/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ARLETE MOREIRA PEREIRA *COB (802849)|26772|05 / 14|03/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ATHOS BUENO *COB (919240)|4584|03 / 07|29/04/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "BIANCA CAROLINE TOLEDO RIBEIRO *COB|24877|10 / 10|17/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "BIANCA EDUARDA DOMINGUES DE OLIVEIRA *COB|25204|06 / 10|04/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "BIANCA EDUARDA DOMINGUES DE OLIVEIRA *COB|25204|07 / 10|04/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "BIANCA EDUARDA DOMINGUES DE OLIVEIRA *COB|26306|04 / 05|08/05/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "BRENDA KAUANE DO NASCOIMENTO CASTANHA *COB|14617|06 / 12|14/04/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "BRENDA STEILOR DA SILVA PRADO *COB|26763|05 / 08|02/05/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "BRENDA STEILOR DA SILVA PRADO *COB|26763|06 / 08|02/06/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "BRUNA CRISTINA CARNEIRO *COB (C.74900)|14559|06 / 10|07/04/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "BRUNA FERNANDA FERREIRA *COB|26140|05 / 08|22/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "BRUNA FERNANDA FERREIRA *COB|26140|07 / 08|22/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "BRUNA GABRIELI RIBEIRO DE OLIVEIRA *COB|21380|08 / 14|24/03/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "BRUNA GABRIELI RIBEIRO DE OLIVEIRA *COB|21380|10 / 14|24/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "BRUNA SILVA DE ALMEIDA *COB|25504|06 / 12|07/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "BRUNA SILVA DE ALMEIDA *COB|25785|05 / 09|28/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "BRUNO COIMBRA ALVES *COB|24733|09 / 11|08/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "BRUNO COIMBRA ALVES *COB|24733|10 / 11|08/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "BRUNO COIMBRA ALVES *COB|26171|05 / 14|24/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "BRUNO COIMBRA ALVES *COB|26171|07 / 14|24/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "BRUNO DA LUZ DOS SANTOS *COB (37566)|24780|08 / 14|22/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "BRUNO FELIPE ALMEIDA DO PRADO *COB (806726)|24525|08 / 12|28/03/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "BRUNO FELIPE ALMEIDA DO PRADO *COB (806726)|24525|10 / 12|28/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "CALVINO ALVES DA CRUZ *COB|26228|05 / 14|30/03/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "CALVINO ALVES DA CRUZ *COB|26228|07 / 14|30/05/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "CAMILA ALANA DE ASSIS *COB (C.80503)|13931|09 / 10|17/04/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "CAMILA ALANA DE ASSIS *COB (C.80503)|13931|10 / 10|17/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "CAMILA APARECIDA CORDEIRO AVELINO *COB|16495|06 / 14|23/03/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "CAMILA APARECIDA CORDEIRO AVELINO *COB|21080|10 / 10|20/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "CAROLAINE SILVA RIBEIRO *COB|24271|10 / 11|27/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "CAROLAINE SILVA RIBEIRO *COB|25458|09 / 11|30/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "CAROLINA APARECIDA ALVES PIEDADE *COB (38151)|27883|03 / 14|04/05/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "CAROLINA APARECIDA ALVES PIEDADE *COB (38151)|4525|04 / 10|10/05/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "CAROLINE APARECIDA SOARES DE AGOSTINHO *COB|22275|05 / 14|18/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "CESAR LEAL *COB (40454)|16690|05 / 11|03/04/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "CEZAR AUGUSTO SILVA CASTANHO *COB|15197|13 / 14|30/04/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "CEZAR AUGUSTO SILVA CASTANHO *COB|15197|14 / 14|30/05/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "CEZAR RODRIGUES DE ALMEIDA  OLIVEIRA *CURTY (32998|4677|02 / 03|06/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "CLAUDEMIR DOS SANTOS FRANCISCO *COB|24509|10 / 11|17/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "CLAUDEMIR DOS SANTOS FRANCISCO *COB|24509|11 / 11|17/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "CLAUDEMIR DOS SANTOS FRANCISCO *COB|24614|10 / 11|27/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "CLAUDENIR DA ROCHA *COB|25028|10 / 11|31/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "CLAUDENIR DA ROCHA *COB|25462|08 / 10|01/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "CLAUDENIR DA ROCHA *COB|26827|05 / 14|06/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "CLAUDENIR DA ROCHA *COB|27231|03 / 12|26/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "CLAUDENIR DA ROCHA *COB|27231|05 / 12|26/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "CLAUDENIR DA ROCHA *COB|27592|04 / 10|20/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "CLAUDETE TEXEIRA GUIMARAES *COB (913203)|23053|03 / 14|12/05/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "CLEIDE APARECIDA DE SOUZA FELICIANO FERREIRA *COB|25391|07 / 11|25/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "CLEIDE APARECIDA DE SOUZA FELICIANO FERREIRA *COB|25391|08 / 11|25/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "CLEISON GOMES RIBEIRO *COB|23414|11 / 11|10/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "CLEVERSON DE ARAUJO SANTOS *COB|27236|01 / 01|05/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "CRISLAINE SILVA RIBEIRO *COB|23926|11 / 11|30/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "CRISTIANE APARECIDA DE SOUZA ALMEIDA *COB (C.81574|26409|05 / 14|11/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "CRISTIANO DUARTE KRUMMENAUER *COB|4545|04 / 10|11/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "DAIANE SILVA FERREIRA *COB|26003|04 / 09|11/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "DAIANE SILVA FERREIRA *COB|26003|05 / 09|11/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "DAISY RENATA DE OLIVEIRA *COB (906918)|26552|05 / 14|28/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "DANIEL AUGUSTO CAMARGO *COB (C.77604)|25837|06 / 14|29/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "DANIEL AUGUSTO CAMARGO *COB (C.77604)|26919|02 / 04|12/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "DANIEL PEREIRA XAVIER*COB (C.77006)|15357|03 / 14|13/04/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "DANIEL PEREIRA XAVIER*COB (C.77006)|15357|04 / 14|13/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "DANIELE CARNEIRO E SILVA *COB (C.69090)|16375|09 / 12|02/06/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "DANIELE PEREIRA DA SILVA *COB (C.73541)|27464|03 / 05|12/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "DANIELE PEREIRA DA SILVA *COB (C.73541)|27464|04 / 05|12/05/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "DANIELLY APARECIDA RODRIGUES *COB (805455)|24489|10 / 14|22/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "DANIELLY APARECIDA RODRIGUES *COB (805455)|25057|08 / 12|19/05/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "DANIELLY APARECIDA RODRIGUES *COB (805455)|25345|06 / 12|16/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "DEBORA CONTADOR ALMEIDA *COB|26053|07 / 10|14/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "DELAIR DE PAULA *COB (32312)|24512|10 / 14|25/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "DENIVAL ALVES DA SILVA *COB|25460|07 / 12|30/03/2026",
+      "removido_de": "vendedor:AMANDA SCHVIK DE OLIVEIRA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "DENIVAL ALVES DA SILVA *COB|25628|08 / 09|11/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "DEOCLICIANO GUIMARAES *COB (903566)|26944|04 / 10|15/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "DEOCLICIANO GUIMARAES *COB (903566)|26944|05 / 10|15/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "DEOCLICIANO GUIMARAES *COB (903566)|27493|04 / 14|13/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "DEVANDIR DOS SANTOS CASTANHO *COB (C.79325)|25279|06 / 14|08/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "DEVANDIR DOS SANTOS CASTANHO *COB (C.79325)|25346|06 / 12|16/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "DEVANDIR DOS SANTOS CASTANHO *COB (C.79325)|25346|07 / 12|16/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "DEVANDIR DOS SANTOS CASTANHO *COB (C.79325)|25384|05 / 14|22/03/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "DEVANDIR DOS SANTOS CASTANHO *COB (C.79325)|25384|06 / 14|22/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "DEVANDIR DOS SANTOS CASTANHO *COB (C.79325)|25384|07 / 14|22/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "DIEGO BASTOS *COB (912278)|26128|06 / 14|21/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "DIEGO DE OLIVEIRA RIBEIRO (33445)|29080|01 / 01|28/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "DIENIFER SILVA DOS SANTOS  *COB|24504|08 / 08|24/03/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "DIMAS BARBOSA RIBAS NETO (150308)|13526|12 / 14|29/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "DINACIR BOMFIM DO NASCIMENTO *COB (31778)|24331|10 / 15|09/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "DIONE RIBEIRO OLIVEIRA *COB (36247)|27754|03 / 10|27/04/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "DIONE RIBEIRO OLIVEIRA *COB (36247)|27754|04 / 10|27/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "DIONE RIBEIRO OLIVEIRA *COB (36247)|28611|02 / 14|25/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "DOUGLAS JOAREZ CARNEIRO  *COB (33990)|23011|14 / 14|14/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "DOUGLAS MAINARDES MACHADO *COB (38106)|25253|07 / 12|09/05/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "EDICARLA RODRIGUES DOS SANTOS *COB|23510|11 / 12|28/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "EDICARLA RODRIGUES DOS SANTOS *COB|23781|12 / 12|16/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "EDICARLA RODRIGUES DOS SANTOS *COB|25266|07 / 10|19/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "EDICARLA RODRIGUES DOS SANTOS *COB|25266|08 / 10|19/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "EDICARLA RODRIGUES DOS SANTOS *COB|25266|09 / 10|19/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "EDICARLA RODRIGUES DOS SANTOS *COB|26038|07 / 12|13/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "EDICLEIA APARECIDA RODRIGUES DE ALMEIDA *COB (8031|23615|11 / 12|07/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "EDICLEIA APARECIDA RODRIGUES DE ALMEIDA *COB (8031|23615|12 / 12|07/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "EDICLEIA APARECIDA RODRIGUES DE ALMEIDA *COB (8031|24615|08 / 14|07/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "EDILAINE FELIX DA SILVA *COB|28242|02 / 15|27/04/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "EDILSEIA KUFF FERRAZ *COB (32924)|15964|01 / 01|01/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "EDILSON GERALDO DE SOUZA *COB|25585|05 / 14|11/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "EDSON JOSE FERREIRA *COB (908918)|22447|05 / 12|05/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "EDUARDO FABIANO CALIZARIO *COB|25679|08 / 11|17/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ELAINE APARECIDA RIBEIRO CAMARGO*COB|21374|10 / 14|23/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ELCIO DAVID GARCIA DA SILVA *COB|27476|04 / 14|30/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ELCIO DAVID GARCIA DA SILVA *COB|27476|05 / 14|30/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ELIANE APARECIDA DE LIMA *COB (907839)|23873|11 / 11|02/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ELIANE APARECIDA DE LIMA *COB (907839)|24135|09 / 14|23/03/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ELIANE APARECIDA DE LIMA *COB (907839)|25323|07 / 10|14/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ELIANE MORAIS *COB (33488)|25165|08 / 14|01/06/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ELIAS DOS SANTOS FERRAZ CHAVES *COB|24935|08 / 11|23/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ELIAS DOS SANTOS FERRAZ CHAVES *COB|24935|09 / 11|23/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ELIAS DOS SANTOS FERRAZ CHAVES *COB|24935|10 / 11|23/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ELISA SILVEIRA *COB (70019)|15282|04 / 08|30/04/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "ELISETE DE JESUS BONFIM *COB (C.69632)|24692|09 / 14|14/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ELISNGELA SOARES DE SOUZA ALVES *COB (904537)|27188|04 / 14|23/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ELOINA DE FATIMA MARTINS *COB (C.76229)|25052|09 / 10|01/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ELOINA DE FATIMA MARTINS *COB (C.76229)|25868|07 / 14|03/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ELZITA FATIMA FERRAZ *COB|24828|09 / 11|12/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ELZITA FATIMA FERRAZ *COB|26272|05 / 05|04/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ELZITA LUCIO DE RAMOS *COB|24952|07 / 08|08/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "EMERSON OLIVEIRA GONÇALVES *COB (C.69717)|28699|01 / 14|30/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "EMILIANE DA SILVA DOS SANTOS *ADV (805397)|4151|14 / 36|28/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "EMILY DE JESUS RIBAS *COB|12558|14 / 14|21/03/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "EMILY TAINARA DE JESUS *COB|14239|07 / 12|22/03/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "EMILY TAINARA DE JESUS *COB|14239|08 / 12|22/04/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "ERICA CARNEIRO DOS SANTOS *COB (913563)|25694|07 / 14|18/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ERICA CARNEIRO DOS SANTOS *COB (913563)|26466|06 / 09|17/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ERICA CARNEIRO DOS SANTOS *COB (913563)|26916|05 / 10|12/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ERICA CARNEIRO DOS SANTOS *COB (913563)|27158|03 / 03|22/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ERICA CARNEIRO DOS SANTOS *COB (913563)|27440|03 / 14|10/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ERICA LOPES DOS SANTOS|14482|08 / 10|26/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "ERYAN OLIVEIRA DE PAULA *COB|25494|08 / 11|04/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ESTER DE AZEVEDO *COB (921163)|28615|01 / 14|25/04/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ETELVINA DA LUZ TEIXEIRA *COB (917077)|25074|07 / 12|22/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ETELVINA DA LUZ TEIXEIRA *COB (917077)|25074|08 / 12|22/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "EUNICE APARECIDA BOUMAYER VIANA (25757)|23431|02 / 08|30/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "EVA APARECIDA DA SILVA MARTINS *COB|24287|09 / 10|07/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "EVA APARECIDA DA SILVA MARTINS *COB|24287|10 / 10|07/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "EVA LUCIANA PEREIRA *COB (C.76101)|13085|12 / 12|10/04/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "EVELIN APARECIDA FRANCISCA DE ANHAIA *COB|28212|03 / 14|25/05/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "EVELIN LIMA MACHADO *CURTY *COB (32652)|4579|03 / 10|25/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "EVERTON BRUNO DE SOUZA LIMA PROCOPIO *COB (C.72323|27304|01 / 10|22/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "EVERTON DANISLAU GOMES COB (806461)|21112|10 / 12|25/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "EVERTON DANISLAU GOMES COB (806461)|21715|09 / 10|02/06/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "EVERTON DOUGLAS TRALESKI DOS SANTOS *COB (33942)|15270|12 / 12|09/04/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "EVERTON JOSE SANTOS RODRIGUES *COB (C.82618)|16105|10 / 12|23/05/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "EVERTON MAINARDES (C.81138)|23654|01 / 12|02/06/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "EVILLYN CRISTINA BARRETO DE MELLO *COB|26923|04 / 12|13/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "EZETE APARECIDA SANTOS *COB (911153)|24518|09 / 14|25/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "FABIANA APARECIDA BARBOSA *COB (901761)|25582|05 / 05|11/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "FABIANE APARECIDA FERREIRA *COB|25306|08 / 11|21/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "FABIANE APARECIDA FERREIRA *COB|25306|09 / 11|21/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "FABIANE PAIVA SAMPAIO *COB (917019)|21003|10 / 14|10/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "FABIANO MARTINS *COB|16860|04 / 10|02/04/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "FABIANO MARTINS *COB|16860|06 / 10|02/06/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "FABIANO MARTINS *COB|26038|05 / 14|15/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "FABIO DANIEL DA SILVA *COB|23121|03 / 04|21/05/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "FABRICIO ROBERTO BANISKI *COB|21935|06 / 10|08/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "FABRICIO ROBERTO BANISKI *COB|21935|07 / 10|08/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "FATIMA DO ROSARIO ALMEIDA *COB (17641)|24696|08 / 14|15/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "FATIMA DO ROSARIO ALMEIDA *COB (17641)|24696|09 / 14|15/05/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "FELIPE BILCHEMAN MACHADO *COB|22089|05 / 09|28/03/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "FELIPE BILCHEMAN MACHADO *COB|22089|07 / 09|28/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "FELIPE DE ANDRADE *COB|27608|02 / 10|21/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "FELIPE DE ANDRADE *COB|27608|03 / 10|21/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "FELIPE DE OLIVEIRA ALVES *COB|14875|06 / 14|18/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "FELIPE DE OLIVEIRA ALVES *COB|15571|03 / 08|12/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "FELIPE JUNIOR MATIAS DE ALMEIDA *COB (C.72159)|25243|06 / 14|08/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "FELIPE JUNIOR MATIAS DE ALMEIDA *COB (C.72159)|25539|05 / 14|08/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "FELIPE MATHEUS DE SOUZA *COB (C.85637)|20854|10 / 10|22/03/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "FERNANDA APARECIDA DE OLIVEIRA *COB|19808|14 / 14|24/03/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "FERNANDA DAS GRAÇAS DE MORAIS *COB (C.85466)|15802|11 / 11|12/05/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "FERNANDA TRINDADE COREA *COB|20540|12 / 12|16/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "FERNANDES HENRIQUE PEDROSO *COB|15273|13 / 14|09/05/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "FERNANDES HENRIQUE PEDROSO *COB|15430|04 / 12|26/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "FERNANDO DA SILVA *COB|25911|06 / 14|07/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "FERNANDO RABE FRAGOSO *COB|25879|06 / 14|04/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "FERNANDO RABE FRAGOSO *COB|25879|07 / 14|04/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "FERNANDO SALOMAO GABRIEL DE OLIVEIRA  (32680)|4524|03 / 07|03/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "FILOMENA DE JESUS SANTIAGO *COB (916156)|25685|04 / 08|21/03/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "FRANCIELLE MARIE SBITIKOWSKI (28608)|23168|03 / 14|02/06/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "GABRIELLE MARTINS DE OLIVEIRA *COB|25883|07 / 12|04/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "GABRIELY  BILCHEMAN DE GOVEIA *COB (C.73042)|21909|07 / 08|04/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "GABRIELY  BILCHEMAN DE GOVEIA *COB (C.73042)|22038|06 / 08|23/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "GABRIELY DOS SANTOS *COB|21807|08 / 08|13/05/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "GIOVANA APARECIDA DE ALMEIDA *COB|23306|12 / 12|09/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "GIOVANA APARECIDA DE ALMEIDA *COB|24756|09 / 14|22/05/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "GISELE DO ROCIO DE MORAES *COB|23870|10 / 15|02/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "GISELE DO ROCIO DE MORAES *COB|24202|10 / 10|28/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "GISELE DO ROCIO DE MORAES *COB|25229|07 / 14|07/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "GISELE DO ROCIO DE MORAES *COB|25333|06 / 10|15/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "GISELLE PINHEIRO DALMORO COB|4553|02 / 02|20/03/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "GLEICI ANGELICA GONCALVES DA SILVA *COB (33209)|24778|08 / 14|22/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "GLEICI ANGELICA GONCALVES DA SILVA *COB (33209)|24778|09 / 14|22/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "GRAZIELLI MARTINS DOS SANTOS *COB|24275|10 / 11|27/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "GUILHERME CARNEIRO E SILVA *COB (919925)|25077|08 / 10|23/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "GUILHERME DOS SANTOS MOREIRA *COB|26748|05 / 08|02/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "GUSTAVO ALVES TEIXEIRA *COB|25039|09 / 11|30/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "GUSTAVO ALVES TEIXEIRA *COB|26352|06 / 08|08/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "HADNEY RANILSON GANZERT FERREIRA *COB|23342|12 / 15|12/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "HADNEY RANILSON GANZERT FERREIRA *COB|23342|13 / 15|12/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "HELENA DE FATIMA CAETANO DE PAULA COB|24940|08 / 11|23/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "HELENA DE FATIMA CAETANO DE PAULA COB|26487|04 / 14|19/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "HIGOR MARTINS RADION *COB|25065|10 / 14|02/06/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "IAGO DE JESUS SOARES DA LUZ|4715|02 / 16|28/05/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "IDALINA RODRIGUES DE JESUS *COB (C.76650)|22529|04 / 04|15/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "IGOR HENRIQUE TABORDA VIDAL DOS SANTOS *COB|25226|08 / 11|14/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "IGOR HENRIQUE TABORDA VIDAL DOS SANTOS *COB|25226|09 / 11|14/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "IGOR MATHEUS BARBOSA *COB|22573|03 / 10|20/03/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "IGOR MATHEUS BARBOSA *COB|22573|05 / 10|20/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "INES APARECIDA RIBEIRO DA CUNHA *COB|20682|11 / 12|05/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "INGRID LOPES DE MELLO *COB|25311|07 / 11|21/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "INGRID LOPES DE MELLO *COB|25311|08 / 11|21/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "INGRID LOPES DE MELLO *COB|25311|09 / 11|21/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "INGRID PAOLA DE SOUZA *COB|25680|05 / 05|19/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "INGRITY CARLA MARCONDES *COB|21099|10 / 12|21/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "INGRITY CARLA MARCONDES *COB|25601|05 / 10|12/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "IRAIDES DE FATIMA SCURUPA *COB (26135)|21789|08 / 14|12/05/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "IRAIDES DE FATIMA SCURUPA *COB (26135)|25173|06 / 14|02/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "IRAIDES DE FATIMA SCURUPA *COB (26135)|25173|07 / 14|02/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ISABELA CRISTINA GONÇALVES FAUSTINO *COB|12613|14 / 14|28/03/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "ITAMAR FELIPE OLIVEIRA CASTANHO  *COB|21934|06 / 10|08/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ITAMAR FELIPE OLIVEIRA CASTANHO  *COB|21934|07 / 10|08/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "IVETE GONÇALVES MESSIAS *COB (C.84266)|25414|07 / 14|26/03/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "IVO MOREIRA PEREIRA *COB (911183)|26151|06 / 14|22/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "IVO MOREIRA PEREIRA *COB (911183)|26151|07 / 14|22/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "IVONETE PINTO DE ANHAIA *COB (902020)|26218|07 / 12|30/05/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "IZABELA CAROLINA SANTOS RABE  *COB (37665)|25339|06 / 12|16/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "IZABELA CAROLINA SANTOS RABE  *COB (37665)|25339|07 / 12|16/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JACIR JOSE PEDROSO DA CRUZ *COB|23537|13 / 14|02/06/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JAIME WILLIAN DE SOUZA *COB (C.82129)|25456|05 / 14|30/03/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JAIRO ALVES DE OLIVEIRA *COB|23817|12 / 13|26/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JANAINA DOS SANTOS *COB|25783|06 / 12|27/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JANAINA DOS SANTOS *COB|25783|07 / 12|27/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JANAINA DOS SANTOS *COB|26216|06 / 14|30/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JANAINA DOS SANTOS *COB|26216|07 / 14|30/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JANAINA MENDES *COB|20307|12 / 12|30/03/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "JANDIRA MACHADO GOMES *COB (28889)|22962|14 / 15|08/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JANE DE FATIMA TEIXEIRA *COB (804928)|21759|08 / 14|06/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "JANE DOS ANJOS TEIXEIRA MARTINS *COB (31988)|26011|05 / 06|11/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JAQUELINE APARACIDA DOS SANTOS *COB|23822|10 / 12|28/03/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JAQUELINE LIMA DOS SANTOS *COB|20907|10 / 14|10/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "JAQUELINE LIMA DOS SANTOS *COB|25029|07 / 14|17/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JAQUELINE LIMA DOS SANTOS *COB|25029|08 / 14|17/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JEFERSON DO ROCIO CAMARGO DE LIMA *COB|25751|06 / 14|27/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JEFERSON PEREIRA DO PRADO *COB (910950)|27492|03 / 12|13/04/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JEFFERSON DE MELLO AUGUSTYN *COB (C.86463)|21089|10 / 12|21/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "JERUSA MOREIRA DE SIQUEIRA *COB (C.73137)|25002|08 / 11|28/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JERUSA MOREIRA DE SIQUEIRA *COB (C.73137)|25041|08 / 08|31/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JERUSA MOREIRA DE SIQUEIRA *COB (C.73137)|25209|09 / 11|13/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JERUSA MOREIRA DE SIQUEIRA *COB (C.73137)|25665|07 / 11|16/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JERUSA MOREIRA DE SIQUEIRA *COB (C.73137)|25665|08 / 11|16/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JERUSA MOREIRA DE SIQUEIRA *COB (C.73137)|25795|06 / 09|29/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JERUSA MOREIRA DE SIQUEIRA *COB (C.73137)|25795|07 / 09|29/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JERUSA MOREIRA DE SIQUEIRA *COB (C.73137)|25795|08 / 09|29/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JESSE FERREIRA CORDEIRO *COB (920583)|14856|05 / 06|13/04/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "JESSICA DE ALMEIDA NOGA *COB|25422|07 / 10|27/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JESSICA DE ALMEIDA NOGA *COB|25422|08 / 10|27/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JESSICA DE ALMEIDA NOGA *COB|25422|09 / 10|27/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JEZIEL TOBIAS COIMBRA *COB|23930|11 / 11|30/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JHENNIFER MAYARA APARECIDA SALVADOR *COB (36671)|26497|04 / 05|26/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JHENNIFER MAYARA APARECIDA SALVADOR *COB (36671)|27242|01 / 11|15/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JHENNIFER RANCOSKI MARQUES *COB|25222|07 / 14|06/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JOAO CARLOS XAVIER DOS SANTOS *COB (914999)|23520|11 / 14|02/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JOAO MARIA BARBOSA *COB (27207)|23982|11 / 14|10/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JOAO VITOR DOS ANJOS SILVA *COB|24001|11 / 11|07/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JOCEMAR APARECIDO RODRIGUES ALVES *COB (804849)|20552|12 / 12|19/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "JOCEMAR APARECIDO RODRIGUES ALVES *COB (804849)|20565|12 / 14|22/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "JOCEMAR APARECIDO RODRIGUES ALVES *COB (804849)|20565|13 / 14|22/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "JOELCIO LUIZ DE OLIVEIRA *COB (33070)|25590|06 / 14|11/05/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "JOICE DOS ANJOS CORTES *COB|23477|01 / 14|02/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "JOICE DOS ANJOS CORTES *COB|23477|02 / 14|02/06/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "JONATHAN WILLIAN DA LUZ *COB (C.86718)|25108|06 / 14|05/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "JORGE PALHANO *COB (211629)|24276|10 / 11|28/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JORGE PALHANO *COB (211629)|24276|11 / 11|28/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JORGE PALHANO *COB (211629)|25817|05 / 14|30/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JORGE PALHANO *COB (211629)|26781|04 / 12|04/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JOSANE FERRAZ NUNES *COB|24867|10 / 11|16/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JOSANE FERRAZ NUNES *COB|25819|06 / 14|30/03/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JOSANE FERRAZ NUNES *COB|25819|07 / 14|30/04/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JOSE ARILDO SANTOS DE OLIVEIRA *COB|26779|03 / 12|25/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JOSE CARLOS DA ROSA *COB (9955)|22087|06 / 09|28/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "JOSE CLARICIO MOREIRA MENDES *COB (C.84324)|24023|12 / 12|08/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JOSE DANIEL DORIS *COB (C.78568)|25000|08 / 14|13/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JOSE DANIEL DORIS *COB (C.78568)|27265|01 / 03|17/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JOSE GILBERTO DE MATOS *COB|24284|10 / 14|07/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JOSE GILBERTO DE MATOS *COB|25200|07 / 12|04/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JOSE GILBERTO DE MATOS *COB|27067|01 / 01|10/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JOSE GODOY DA SILVA *COB (800820)|15756|10 / 11|06/04/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "JOSE GODOY DA SILVA *COB (800820)|15756|11 / 11|06/05/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "JOSE HENRIQUE BISCAIA VAZ *COB (C.86538)|24613|10 / 10|27/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JOSE HENRIQUE BISCAIA VAZ *COB (C.86538)|26527|04 / 14|25/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JOSE HENRIQUE BISCAIA VAZ *COB (C.86538)|26527|05 / 14|25/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JOSE IRES CAETANO DOS SANTOS *COB (918424)|23217|13 / 15|03/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JOSE IRES CAETANO DOS SANTOS *COB (918424)|24858|07 / 12|29/03/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "JOSE IRES CAETANO DOS SANTOS *COB (918424)|24881|08 / 14|01/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JOSE IRES CAETANO DOS SANTOS *COB (918424)|24953|07 / 12|08/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JOSE IRES CAETANO DOS SANTOS *COB (918424)|24953|08 / 12|08/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JOSE JUAREZ PEDROSO *COB|23413|11 / 14|22/03/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JOSE TORQUATO ZANELATTO *COB (917432)|21997|07 / 12|16/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "JOSELIA DE FATIMA REIS CASTANHA *COB|25768|06 / 14|27/03/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JOSELIA DE FATIMA REIS CASTANHA *COB|25768|08 / 14|27/05/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JOSIANE NUNES DOMINGUES *COB (805696)|24112|10 / 11|18/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JOYCE DO PRADO DA SILVA|26708|03 / 12|16/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "JULIANA APARECIDA PRADO DE PAULA (910160)|25818|08 / 12|30/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JULIANA APARECIDA PRADO DE PAULA (910160)|27197|05 / 14|23/05/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JULIANA DA SILVA SEPANSKI *COB|26109|06 / 14|18/04/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JULIANA DA SILVA SEPANSKI *COB|26109|07 / 14|18/05/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JULIANA DA SILVA SEPANSKI *COB|26226|07 / 08|30/05/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JULIANA DA SILVA SEPANSKI *COB|27295|04 / 12|03/05/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JULIANA MACIEL RIBEIRO *COB (806919)|24720|09 / 11|07/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JULIETA DA APARECIDA QUADROS *COB (24567)|21233|10 / 10|09/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "JULIETA DA APARECIDA QUADROS *COB (24567)|22102|05 / 05|30/03/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "JULIO CESAR MELO RODRIGUES  *COB|21598|08 / 14|18/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "JULIO CESAR MELO RODRIGUES  *COB|21598|09 / 14|18/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "JULIO CESAR MELO RODRIGUES  *COB|21758|07 / 10|06/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "JULIO CESAR MELO RODRIGUES  *COB|21758|08 / 10|06/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "JULIO ELIAS DE ALMEIDA *COB|24913|08 / 11|21/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JULIO ELIAS DE ALMEIDA *COB|25210|08 / 11|13/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JULIO ELIAS DE ALMEIDA *COB|25210|09 / 11|13/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "JUSSARA DE OLIVEIRA BUENO *COB (C.75824)|14911|06 / 14|24/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "KALINE VICTORIA CAMARGO DIDRES  *COB|21765|07 / 10|08/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "KAMILLY EDUARDA CORDEIRO OLIVEIRA *COB|26425|06 / 10|12/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "KARINA DE ALMEIDA *COB (C.69708)|20530|12 / 12|16/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "KAROL KUSDRA PROENÇA *COB|26121|06 / 10|21/04/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "KAROLAINE DOS SANTOS *COB (37671)|20955|10 / 12|07/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "KAROLAINE VITORIA CORREA DA SILVA *COB|23269|01 / 13|13/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "KATIA REGINA SOUZA ALVES  *COB (C.70065)|21422|08 / 14|10/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "KATIA REGINA SOUZA ALVES  *COB (C.70065)|22083|06 / 14|28/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "KATIA REGINA SOUZA ALVES  *COB (C.70065)|22770|04 / 10|12/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "KATLEN CAROLINE DA SILVA MATSEN  *COB|22217|06 / 10|14/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "KAUAN CARDOSO PINHEIRO *COB (C.86665)|25411|06 / 08|23/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "KAUAN CARDOSO PINHEIRO *COB (C.86665)|25411|07 / 08|23/05/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "KAUANE ANHAIA DE OLIVEIRA|15934|01 / 11|23/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "KAUANE APARECIDA FELIX DA SILVA *COB|24139|11 / 11|14/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "KAUANE APARECIDA MARCONDES DOS SANTOS *COB (C.8558|21662|07 / 12|22/03/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "KAYQUE FARIA ALMEIDA *COB|24487|10 / 14|13/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "KELL FLORIANO DOS SANTOS *COB (37806)|22425|04 / 10|02/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "KELL FLORIANO DOS SANTOS *COB (37806)|22425|05 / 10|02/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "KELL FLORIANO DOS SANTOS *COB (37806)|22425|06 / 10|02/06/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "KELL FLORIANO DOS SANTOS *COB (37806)|22717|04 / 09|02/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "KELL FLORIANO DOS SANTOS *COB (37806)|22717|05 / 09|02/06/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "KESSIA DE FATIMA RODRIGUES *COB|23376|12 / 12|17/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "KETELLY MANUELY APARECIDA KUFF SOLEK *COB|27199|01 / 14|10/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "KETLIN FERNANDA DE ARRUDA *COB|21902|08 / 14|02/06/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "KEVYN MATHEUS MATSEN *COB|24792|08 / 12|22/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "KLEBERSON RODRIGUES MARINHO (921905)|15226|05 / 11|22/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "KLEIDERSON APARECIDO FERREIRA *COB|28013|02 / 14|10/04/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "LAURA REGINA GAULIKI DOS SANTOS *COB|25859|07 / 12|02/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "LAURA REGINA GAULIKI DOS SANTOS *COB|27775|04 / 14|28/05/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "LAURIANE PEREIRA DA SILVA *COB (C.71022)|26866|04 / 14|08/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "LAURIANE PEREIRA DA SILVA *COB (C.71022)|26866|05 / 14|08/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "LEANDRO CORDEIRO  *COB (40656)|14840|14 / 14|11/04/2026",
+      "removido_de": "vendedor:CLEOVANE APARECIDA LOPES",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "LEANDRO CORDEIRO  *COB (40656)|15708|10 / 12|30/03/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "LEANDRO FELIX DA SILVA COB|26628|06 / 10|29/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "LEANDRO FELIX DA SILVA COB|28246|03 / 14|28/05/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "LEANDRO KAUAN DOS SANTOS DA LUZ *COB|4695|02 / 11|15/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "LEANDRO PATRICK BUENO MACHADO *COB|20410|13 / 14|08/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "LEANDRO PATRICK BUENO MACHADO *COB|20410|14 / 14|08/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "LEANDRO RODRIGUES DO NASCIMENTO *COB (C.76878)|28319|01 / 12|07/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "LEANDRO RODRIGUES DO NASCIMENTO *COB (C.76878)|28319|02 / 12|07/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "LEDY CAROLINE ARPS FERREIRA DOS SANTOS *COB (C.866|22517|14 / 15|21/03/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "LEDY CAROLINE ARPS FERREIRA DOS SANTOS *COB (C.866|22517|15 / 15|21/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "LEILA APARECIDA CASTRO MACHADO *COB (31685)|21303|09 / 10|15/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "LEILA APARECIDA CASTRO MACHADO *COB (31685)|21303|10 / 10|15/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "LEILICIANE CARNEIRO DA SILVA *COB (901987)|23726|12 / 14|16/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "LEONILDA GOMES CRUZ *COB|25311|06 / 08|14/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "LEONILDA GOMES CRUZ *COB|25311|07 / 08|14/05/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "LEONILDA GOMES CRUZ *COB|25658|05 / 10|17/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "LEONORA RODRIGUES DA SILVA  *COB (912096)|25123|08 / 10|27/05/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "LEONORA RODRIGUES DA SILVA  *COB (912096)|25542|05 / 14|08/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "LEONORA RODRIGUES DA SILVA  *COB (912096)|25542|06 / 14|08/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "LEONORA RODRIGUES DA SILVA  *COB (912096)|26742|04 / 11|19/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "LEROM HODINI FERREIRA *COB|24536|09 / 10|20/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "LEROM HODINI FERREIRA *COB|24536|10 / 10|20/04/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "LETICIA APARECIDA VICENTE SAMPAIO *COB (801642)|22988|02 / 12|07/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "LETICIA APARECIDA VICENTE SAMPAIO *COB (801642)|22988|03 / 12|07/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "LETICIA APARECIDA VICENTE SAMPAIO *COB (801642)|22989|02 / 12|07/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "LETICIA APARECIDA VICENTE SAMPAIO *COB (801642)|23441|01 / 14|30/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "LIENE TEIXEIRA DE OLIVEIRA *COB|24958|08 / 09|24/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "LILIAN CRISTINA NUNES *COB|21626|07 / 14|21/03/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "LILIANE AUGUSTA DE JESUS DA SILVA *COB|22706|14 / 14|07/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "LILIANE DO ROCIO MACHADO *COB (920840)|15934|11 / 11|22/05/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "LINDAMIR CORREIA DOS SANTOS *COB (910865)|21688|07 / 12|27/03/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "LINDAMIR CORREIA DOS SANTOS *COB (910865)|21688|09 / 12|27/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "LINDAMIR CORREIA DOS SANTOS *COB (910865)|21846|06 / 14|22/03/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "LIRIANE DE SOUZA MARCONDES *COB (38218)|25419|05 / 14|24/03/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "LIRIANE DE SOUZA MARCONDES *COB (38218)|25419|06 / 14|24/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "LOANA APARECIDA BARBOSA *COB|13058|13 / 14|10/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "LOREN BRUNA DE OLIVEIRA SOUZA *COB (C.71619)|21048|10 / 14|16/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "LORETE CRISTIANE DA SILVA *COB|4628|03 / 12|10/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "LOURECIR JORGE BUENO *COB|14874|06 / 14|17/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "LUAN DOMINGUES DE OLIVEIRA COB (33721)|25107|08 / 14|26/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "LUAN DOMINGUES DE OLIVEIRA COB (33721)|26770|03 / 15|24/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "LUANA DOS SANTOS PIMENTEL *COB (C.81157)|24477|08 / 13|21/03/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "LUANA DOS SANTOS PIMENTEL *COB (C.81157)|24477|10 / 13|21/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "LUANA DOS SANTOS PIMENTEL *COB (C.81157)|26626|02 / 05|09/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "LUANA ISABELLE FERREIRA FEITOZA *COB (903765)|24094|10 / 11|17/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "LUCAS COSTA DE OLIVEIRA *COB (800868)|22975|03 / 14|06/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "LUCAS DORIA DE OLIVEIRA *COB (806302)|20585|11 / 14|25/03/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "LUCAS DORIA DE OLIVEIRA *COB (806302)|20585|12 / 14|25/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "LUCIANE APARECIDA BUENO RIBEIRO *COB|24824|07 / 12|26/03/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "LUCIANE CRISTIANA DE ALMEIDA *COB|15101|04 / 10|11/04/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "LUCIANE CRISTIANA DE ALMEIDA *COB|15101|05 / 10|11/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "LUCIANO APARECIDO CARNEIRO *COB (C.79056)|26483|04 / 14|19/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "LUCIANO APARECIDO CARNEIRO *COB (C.79056)|26483|05 / 14|19/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "LUCIMARA DE OLIVEIRA FERRAZ *COB|26632|04 / 06|29/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "LUCIMARA DE OLIVEIRA FERRAZ *COB|26632|05 / 06|29/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "LUCIMARA DE OLIVEIRA FERRAZ *COB|26845|05 / 14|06/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "LUCIMARA DE OLIVEIRA FERRAZ *COB|27102|03 / 10|22/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "LUCIMARA DE OLIVEIRA FERRAZ *COB|27102|04 / 10|22/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "LUCIMARA DOS SANTOS DONATO *COB (908065)|15655|12 / 12|26/05/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "LUCIMARA DOS SANTOS DONATO *COB (908065)|16643|07 / 12|22/05/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "LUCIMARA DOS SANTOS DONATO *COB (908065)|17099|04 / 12|14/05/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "LUDIMILA APARECIDA DUKTO *COB|25730|06 / 14|20/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "LUIS FERNANDO SOUZA *COB|13135|13 / 14|15/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "LUIZ ANTONIO SANTOS DE OLIVEIRA  *COB|23637|11 / 11|09/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "LUIZ ANTONIO SANTOS DE OLIVEIRA  *COB|23961|10 / 12|07/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "LUIZ ANTONIO SANTOS DE OLIVEIRA  *COB|23961|11 / 12|07/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "LUIZ FELIPE GONCALVES DO SANTOS *COB (921863)|22218|06 / 07|14/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "LUZIMERI DA SILVA FRAGOSO  *COB (C.82087)|27011|03 / 14|19/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "LUZIMERI DA SILVA FRAGOSO  *COB (C.82087)|27011|04 / 14|19/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "LUZIMERI DA SILVA FRAGOSO  *COB (C.82087)|27011|05 / 14|19/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MAICON BARRETO *COB (801139)|21616|08 / 10|19/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MAICON BARRETO *COB (801139)|21616|09 / 10|19/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MAICON GUERREIRO *COB|24634|11 / 11|28/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MAIKON APARECIDO DE RAMOS *COB|26817|04 / 14|06/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MARCELA APARECIDA GARCIA DE MELLO *COB (C.83354)|25428|07 / 08|27/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MARCELA KAUANE SILVA PRADO *COB|26541|02 / 12|02/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "MARCIELI DE INGRID ROSA RAMOS *COB|21695|08 / 12|28/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MARCIO ANTONIO DA SILVA *COB (919171)|21155|10 / 12|01/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MARCIO ANTONIO DA SILVA *COB (919171)|21155|11 / 12|01/06/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MARCOS AURELIO DE OLIVEIRA *COB (33124)|22955|14 / 14|07/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "MARCOS AURELIO DE OLIVEIRA *COB (33124)|24991|07 / 14|11/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "MARCOS HENRIQUE MIRA *COB (904248)|27260|05 / 07|30/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MARCOS VINICIUS WESTPHAL FERNANDES *COB|21281|10 / 12|14/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MARCOS WILLIAN OLIVEIRA *COB (C.81498)|21169|11 / 14|02/06/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MARIA APARECIDA RODRIGUES DE MELLO *COB (908978)|20302|14 / 14|17/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MARIA CRISLAINE MAINARDES MARCONDES *COB|25048|10 / 11|01/06/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MARIA CRISLAINE MAINARDES MARCONDES *COB|25085|08 / 11|05/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MARIA DA LUZ PEDROSO *COB (916382)|21896|08 / 14|01/06/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MARIA DANIELE TEIXEIRA DA SILVA *COB (C.74315)|22868|03 / 04|23/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MARIA DANIELE TEIXEIRA DA SILVA *COB (C.74315)|22868|04 / 04|23/05/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MARIA DANIELE TEIXEIRA DA SILVA *COB (C.74315)|22990|02 / 12|07/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MARIA DANIELE TEIXEIRA DA SILVA *COB (C.74315)|22990|03 / 12|07/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MARIA DANIELE TEIXEIRA DA SILVA *COB (C.74315)|26966|02 / 03|17/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "MARIA DAS GRAÇAS SIQUEIRA *COB|24358|10 / 10|04/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MARIA DE FATIMA RABE DA SILVA *COB|24117|11 / 11|13/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MARIA DE FATIMA RABE DA SILVA *COB|24209|10 / 11|21/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MARIA DE FATIMA RABE DA SILVA *COB|24209|11 / 11|21/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MARIA EDUARDA DE ALMEIDA KLEMPOVUS *COB|24823|07 / 12|26/03/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "MARIA EDUARDA DE ALMEIDA KLEMPOVUS *COB|24823|08 / 12|26/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "MARIA EDUARDA DE ALMEIDA KLEMPOVUS *COB|24823|09 / 12|26/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "MARIA EDUARDA DE ALMEIDA KLEMPOVUS *COB|25160|07 / 08|30/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "MARIA EVA DO ROCIO DA SILVA COB|24067|11 / 14|16/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "MARIA EVA DO ROCIO DA SILVA COB|24379|09 / 15|14/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MARIA EVA DO ROCIO DA SILVA COB|24379|10 / 15|14/05/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MARIA FERNANDA BONFIM *COB|24596|08 / 10|04/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "MARIA FERNANDA BONFIM *COB|24596|09 / 10|04/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "MARIA GORETE MAIA *COB (C.79873)|25164|08 / 08|09/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MARIA GORETE MAIA *COB (C.79873)|25413|07 / 11|26/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MARIA GORETE MAIA *COB (C.79873)|25413|08 / 11|26/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MARIA JOSE APARECIDA DO SANTOS *COB (920065)|25128|07 / 15|27/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MARIA JOSE APARECIDA DO SANTOS *COB (920065)|26787|03 / 15|26/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "MARIA JULIS SILVA DA CRUZ *COB (18381)|25166|07 / 14|01/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "MARIA MADALENA SILVA RODRIGUES *COB|20920|10 / 14|10/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MARIA MADALENA SILVA RODRIGUES *COB|20920|11 / 14|10/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MARIA VITORIA TELLES *COB|25297|07 / 13|21/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MARIELLI ELIAS *COB|23177|12 / 14|30/03/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "MARILDA APARECIDA GOMES CASTANHO *COB (806474)|16228|09 / 12|12/05/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "MARILDA APARECIDA GOMES CASTANHO *COB (806474)|21998|07 / 14|16/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MARILEI DE OLIVEIRA (920213)|4421|08 / 09|25/05/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MARILZA BILCHEMAM *COB|22889|02 / 07|28/03/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MARILZA BILCHEMAM *COB|22889|03 / 07|28/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MARILZA BILCHEMAM *COB|22889|04 / 07|28/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MARIO EVANDRO ALENCAR DA SILVA *COB (70799)|20435|14 / 14|02/06/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MARLENE TOBIAS DE LIMA *COB (908335)|23379|12 / 12|17/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "MARLENE TOBIAS DE LIMA *COB (908335)|23513|11 / 13|30/03/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "MARLI MENDOKA *COB|26066|07 / 12|15/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MARLI RODRIGUES MARTINS *COB|24314|09 / 12|08/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MARLON APARECIDO RIBEIRO PEREIRA *COB|25395|07 / 14|25/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MARLON APARECIDO RIBEIRO PEREIRA *COB|25395|08 / 14|25/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MATEUS APARECIDO DO NASCIMENTO *COB|27193|05 / 14|23/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MATEUS APARECIDO DO NASCIMENTO *COB|27252|03 / 10|30/03/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MAURICIO DIAS DA SILVA *COB|26756|04 / 14|02/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MAURICIO DIAS DA SILVA *COB|26756|06 / 14|02/06/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MAYARA ESTEVES MACIEL *COB|26024|04 / 14|13/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "MAYCON ALVES BUENO  *COB|14857|06 / 10|13/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "MAYCON CARNEIRO DA SILVA *COB|14470|08 / 10|24/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "MAYRA APARECIDA SILVA DE SOUZA *COB|22183|06 / 14|11/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MAYSA DE FATIMA RODRIGUES DA SILVA *COB (C.86670)|24874|08 / 14|03/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "MICHAEL SOLEK *COB (29743)|24909|10 / 11|19/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MICHELE DOS SANTOS MACHADO *COB (C.79543)|24294|09 / 12|08/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "MICHELI QUADROS DA SILVA *COB|25646|06 / 10|14/05/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MILAINE ANHAIA DO PRADO *COB|28392|01 / 14|09/04/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MOACIR FONTANA NETO *COB (C.74942)|23116|03 / 06|20/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MONALIZE FELIX DE CARVALHO *COB (32595)|23240|13 / 14|08/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MONALIZE FELIX DE CARVALHO *COB (32595)|23240|14 / 14|08/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "MURILO FELIPE DE SOUZA ROSA *COB|23359|02 / 04|25/05/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "MURILO RUAN SANTOS MARCONDES  *COB|15368|03 / 14|14/04/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "MURILO RUAN SANTOS MARCONDES  *COB|15368|04 / 14|14/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "NATHALIA CRISTINE SOARES *COB (C.84713)|22519|14 / 14|21/03/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "NELCI APARECIDA DA SILVA DELGADO *COB (904399)|12969|13 / 14|25/04/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "NELCI APARECIDA DA SILVA DELGADO *COB (904399)|24313|09 / 14|08/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "NELCI RODRIGUES DA SILVA *COB|21865|08 / 14|26/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "NEUZA APARECIDA CROPOLATO *COB (33241)|14964|13 / 14|05/04/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "NICOLE APARECIDA CAMARGO PINHEIRO  *COB|24038|10 / 12|14/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "NICOLE APARECIDA CAMARGO PINHEIRO  *COB|24038|11 / 12|14/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "NICOLY CRISTHINI DE OLIVEIRA SOARES *COB|4630|02 / 12|10/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ORELIS ANTONIO SANTOS *COB (C.74848)|14902|05 / 12|22/04/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "ORELIS ANTONIO SANTOS *COB (C.74848)|14902|06 / 12|22/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "ORLEI PEREIRA COSTA ROSA *COB (36713)|23764|12 / 14|21/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ORLEI PEREIRA COSTA ROSA *COB (36713)|25110|07 / 12|26/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "OSNI DE JESUS RAPOSO *COB (800994)|13885|10 / 10|12/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "PAMELA  ROSA CAMARGO *COB (C.85702)|24420|11 / 11|09/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "PAMELA TAIS SCHALLENBERG *COB (C.85019)|25698|07 / 08|19/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "PAMELA TAIS SCHALLENBERG *COB (C.85019)|25698|08 / 08|19/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "PATRICIA  DE FATIMA SANTOS *COB (C.83927)|24394|10 / 10|15/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "PATRICIA RODRIGUES DA SILVA *COB (26871)|26531|04 / 10|28/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "PAULO SERGIO SILVA *COB (908112)|26942|05 / 12|15/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "PEDRO RAIMUNDO DE PAULA *COB (C.81526)|24567|08 / 14|31/03/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "PEDRO RAIMUNDO DE PAULA *COB (C.81526)|24567|10 / 14|31/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "PRISCILA MACHADO GOMES DA SILVA *COB (C.81518)|25018|07 / 14|15/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "PRISCILA MACHADO GOMES DA SILVA *COB (C.81518)|25018|08 / 14|15/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "PRYSCILA DA SILVA MACHADO  *COB (C.83268)|24598|08 / 09|04/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "PRYSCILA DA SILVA MACHADO  *COB (C.83268)|24598|09 / 09|04/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "RAFAEL LUIZ DA SILVA ALVES *COB|24279|09 / 14|07/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "RAFAEL LUIZ DA SILVA ALVES *COB|24875|08 / 14|30/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "RAFAELA  JENSEN FADEL *COB|24341|10 / 10|02/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "RAFAELA APARECIDA NUNES  FURQUIN *COB|24017|10 / 10|12/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "RAFAELA APARECIDA NUNES  FURQUIN *COB|26603|03 / 14|07/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "RAFAELLA DE FATIMA GONCALVES ALMEIDA E SILVA  *COB|24956|08 / 08|24/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "RAFAELLA DE FATIMA GONCALVES ALMEIDA E SILVA  *COB|26043|06 / 14|13/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "RAMONN ROLIM MILEK *COB (C.78675)|20577|13 / 14|23/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "RAMONN ROLIM MILEK *COB (C.78675)|22420|04 / 12|01/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "RAYANE RODRIGUES MARCONDES *COB (36051)|21577|07 / 14|20/03/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "RAYANE RODRIGUES MARCONDES *COB (36051)|21577|08 / 14|20/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "RAYANE RODRIGUES MARCONDES *COB (36051)|24997|08 / 14|12/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "RAYANE SILVA SANTOS *COB|21877|07 / 14|27/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "RAYARA KAWANE PACHECO SIQUEIRA *COB (37419)|21544|08 / 14|12/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "RAYARA KAWANE PACHECO SIQUEIRA *COB (37419)|21544|09 / 14|12/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "REGEANE MARTINS BUENO *COB|24285|11 / 11|28/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "REGEANE MARTINS BUENO *COB|24443|10 / 11|10/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "REGEANE MARTINS BUENO *COB|24506|10 / 11|16/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "REGEANE MARTINS BUENO *COB|24506|11 / 11|16/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "REGIANE DE FATIMA TEIXEIRA DA SILVA *COB (916003)|26502|02 / 14|26/03/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "REGIANE DE FATIMA TEIXEIRA DA SILVA *COB (916003)|26502|04 / 14|26/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "REGIANE DE OLIVEIRA MAINARDES *COB (802354)|24804|07 / 09|23/03/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "REGINALDO LOPES DE OLIVEIRA *COB (921270)|15641|10 / 11|24/03/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "REGINALDO LOPES DE OLIVEIRA *COB (921270)|15641|11 / 11|24/04/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "RENATA LUIZA SILVA DOS SANTOS *COB (211148)|24045|11 / 15|16/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "REWERTON LUIS FREITAS DE MORAIS (31287)|26521|04 / 14|23/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "RICARDO MELO *COB (28510)|23515|01 / 01|20/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ROBERTO CROPOLATO|4727|01 / 02|02/05/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ROBERTO CROPOLATO|4727|02 / 02|01/06/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "RODRIGO ALVES PADILHA *COB|13188|13 / 14|19/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "RODRIGO TEIXEIRA LEPEKI (802056)|24146|11 / 14|23/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ROGER GABRIEL OLIVEIRA DOS PASS *COB|23065|12 / 14|20/03/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ROGER GABRIEL OLIVEIRA DOS PASS *COB|23065|13 / 14|20/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ROGER GABRIEL OLIVEIRA DOS PASS *COB|23065|14 / 14|20/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ROGER GABRIEL OLIVEIRA DOS PASS *COB|25724|04 / 06|24/03/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ROGER GABRIEL OLIVEIRA DOS PASS *COB|25724|06 / 06|24/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ROGER GABRIEL OLIVEIRA DOS PASS *COB|26933|01 / 14|13/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ROGER GABRIEL OLIVEIRA DOS PASS *COB|26933|02 / 14|13/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "RONALD ANHAIA DO PRADO *COB (36806)|4718|01 / 04|30/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "RONALD ANHAIA DO PRADO *COB (36806)|4718|02 / 04|30/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ROSANA ANHAIA *COB|26379|05 / 14|10/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ROSANE OLESCOSVISKI *COB (911532)|22928|04 / 14|28/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ROSANGELA MARIA ROSAS *COB (903645)|23546|11 / 11|03/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ROSANGELA MARIA ROSAS *COB (903645)|23889|11 / 15|03/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ROSANGELA MARIA ROSAS *COB (903645)|24969|08 / 10|10/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ROSELI DA SILVA *COB (C.71804)|23091|13 / 14|22/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ROSELI DA SILVA *COB (C.71804)|24960|08 / 14|09/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ROSELI DA SILVA *COB (C.71804)|25167|08 / 12|01/06/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ROSEMARY VICENTE DE OLIVEIRA *COB|21862|08 / 10|26/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ROSEMARY VICENTE DE OLIVEIRA *COB|22974|03 / 08|06/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ROSILDA APARECIDA DE OLIVEIRA CARNEIRO *COB (90556|23957|10 / 14|15/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ROSMARI DE ARAUJO *COB|23841|11 / 15|30/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ROSMARI DE ARAUJO *COB|23841|12 / 15|30/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ROSMARI DE ARAUJO *COB|24218|09 / 11|30/03/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ROSMARI DE ARAUJO *COB|24880|08 / 10|30/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "ROZANA MARCIA RODRIGUES  *COB|25739|06 / 14|23/03/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ROZANA MARCIA RODRIGUES  *COB|25739|07 / 14|23/04/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ROZANA MARCIA RODRIGUES  *COB|25739|08 / 14|23/05/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "RULIANO FELIPE OLIVEIRA PINHEIRO *COB (C.70533)|20480|13 / 14|07/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "SAMARA BATISTA DA SILVA *COB (C.85570)|23821|11 / 14|28/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "SAMIRA APARECIDA CARNEIRO DO PRADO *COB (C.81160)|27286|03 / 14|03/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "SAMUEL DA ROSA SILVA COB|4757|01 / 04|20/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "SANDRA APARECIDA BARRETO *COB (806169)|21844|06 / 08|22/03/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "SANDRA APARECIDA BARRETO *COB (806169)|21844|07 / 08|22/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "SANDRA APARECIDA BARRETO *COB (806169)|21844|08 / 08|22/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "SANDRA DE FATIMA GONCALVES DA COSTA *COB (806442)|26101|06 / 12|18/04/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "SERGIO ANTONIO DE JESUS *COB (C.72086)|23672|11 / 12|12/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "SERGIO ANTONIO DE JESUS *COB (C.72086)|23672|12 / 12|12/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "SHAYANA REGINA BISCAIA DA SILVA *COB (C.74954)|23030|03 / 14|12/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "SHAYANA REGINA BISCAIA DA SILVA *COB (C.74954)|26731|02 / 08|19/04/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "SHEILA APARECIDA DE LIMA *COB (C.79852)|26023|05 / 14|14/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "SHEILA APARECIDA DE LIMA *COB (C.79852)|28500|02 / 14|14/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "SILMARA DE FATIMA ANTUNES SILVA *COB (905780)|24118|11 / 11|13/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "SILMARA FERREIRA DO NASCIMENTO *COB (41674)|26792|01 / 08|26/03/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "SILMARA FERREIRA DO NASCIMENTO *COB (41674)|26792|02 / 08|26/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "SILVANA FATIMA BATISTA *COB|21561|09 / 14|12/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "SILVANA RODRIGUES *COB (802528)|23613|11 / 14|07/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "SILVANA RODRIGUES *COB (802528)|23993|11 / 12|10/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "SILVIA MARIA PEREIRA TOBIAS *COB (800691)|23226|13 / 14|03/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "SILVIANE ROSA  *COB|13821|09 / 12|05/04/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "SIMONE DE JESUS *COB|22663|03 / 08|24/03/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "SIMONE DE JESUS *COB|22663|04 / 08|24/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "SIRLENE DE OLIVEIRA *COB (C.78642)|26869|02 / 10|07/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "SIRLENE DE OLIVEIRA *COB (C.78642)|27030|02 / 04|25/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "SOLANGE GONÇALVES DOS SANTOS *COB (916996)|23035|14 / 14|15/05/2026",
+      "removido_de": "vendedor:SOELEN MARIA FERREIRA DE SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "SONIA MARIA ALVES *COB (904149)|24509|08 / 14|06/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "STEVE ELIS OLIVEIRA LOBO     COD 24221 *COB (41241|16157|09 / 10|04/05/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "STEVE ELIS OLIVEIRA LOBO     COD 24221 *COB (41241|16707|05 / 11|05/04/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "SUELEN FERNANDA DE OLIVEIRA *COB (C.85147)|24867|09 / 14|25/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "SUELEN MARA SCHILIGOSKI DE MATTOS *COB (909358)|24462|08 / 14|19/03/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "SUELEN MARA SCHILIGOSKI DE MATTOS *COB (909358)|24462|09 / 14|19/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "SUELEN SOARES TEIXEIRA *COB|24865|10 / 12|16/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "SUELLEN ALMEIDA DOS SANTOS COB|4610|02 / 08|05/04/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "SUELLEN ALMEIDA DOS SANTOS COB|4610|03 / 08|05/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "SUSANA DOS SANTOS NOGA *COB (916755)|24973|08 / 08|26/03/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "SUSANA DOS SANTOS NOGA *COB (916755)|26300|05 / 10|05/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "SUSANA DOS SANTOS NOGA *COB (916755)|26503|04 / 14|22/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "SUSANA DOS SANTOS NOGA *COB (916755)|26503|06 / 14|22/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "SUSICLEIA APARECIDA DA SILVA *COB (C.74828)|23501|11 / 14|28/03/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "SUSICLEIA APARECIDA DA SILVA *COB (C.74828)|23501|13 / 14|28/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "SUSICLEIA APARECIDA DA SILVA *COB (C.74828)|23986|11 / 14|10/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "TADEU CARNEIRO DE OLIVEIRA *COB|14693|05 / 06|23/03/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "TAINA SABRINA PINHEIRO *COB|4605|02 / 08|02/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "TAIS CRISTINA DOS SANTOS *COB|24701|09 / 11|05/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "TAMIRES MAYARA MARCONDES LEAL  *COB|23859|12 / 12|02/06/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "TATIANE DA SILVA PIRES DO PRADO  *COB|25415|08 / 14|26/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "TATIANE DA SILVA PIRES DO PRADO  *COB|25415|09 / 14|26/05/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "TATIELLI CRISTINE DA SILVA DE SOUZA *COB|23402|01 / 01|10/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "TEREZINHA PEDROSO SANTOS VALERIO *COB|14396|07 / 14|13/04/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "TEREZINHA PEDROSO SANTOS VALERIO *COB|14396|08 / 14|13/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "THAIS APARECIDA TEIXEIRA GUIMARAES *COB|25390|08 / 11|25/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "THAIS RIBEIRO PEREIRA DA SILVA *COB|25792|08 / 14|29/05/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "THALIA DA SILVA *COB|25421|07 / 08|27/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "THALIA DA SILVA *COB|25421|08 / 08|27/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "THAMARA LUIZA DOS SANTOS STRICKER *COB|25282|07 / 12|10/05/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "THIAGO GONCALVES RIBEIRO *COB (210641)|26131|05 / 10|21/03/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "THIAGO GONCALVES RIBEIRO *COB (210641)|26131|06 / 10|21/04/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "THIAGO GONCALVES RIBEIRO *COB (210641)|26131|07 / 10|21/05/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "TIAGO GONÇALVES DOS SANTOS *COB|25563|08 / 12|09/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ULIEVERSON ALMEIDA ORTIZ *COB (C.77374)|24694|09 / 12|14/05/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "VALDECI MARTINS *COB (17645)|25096|08 / 14|06/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "VALDECI MARTINS *COB (17645)|25794|08 / 14|29/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "VALDINEI FARIAS DOS SANTOS *COB (904012)|15330|03 / 14|07/04/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "VALDINEI FARIAS DOS SANTOS *COB (904012)|15330|04 / 14|07/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "VALDINEI PINHEIRO *COB (901615)|26074|06 / 14|15/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "VALDINEI PINHEIRO *COB (901615)|26074|07 / 14|15/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "VALDINEI PINHEIRO *COB (901615)|26240|05 / 08|30/03/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "VALDINEI PINHEIRO *COB (901615)|26240|07 / 08|30/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "VALMIR PEREIRA SILVA *COB (33228)|22999|02 / 14|09/04/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "VALMIR PEREIRA SILVA *COB (33228)|22999|03 / 14|09/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "VANDERSON LUIZ DE ALMEIDA JUNIOR *COB|19811|14 / 14|25/03/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "VANESSA DA SILVA DOS SANTOS *COB|13583|10 / 10|09/04/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "VANESSA DE FATIMA DA SILVA ASSIS *COB|13167|13 / 14|16/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "VANUSA DA SILVA MACHADO *COB|23442|11 / 13|24/03/2026",
+      "removido_de": "vendedor:DANIELE APARECIDA LOURENÇO DA SILVA",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "VERCELI DOS SANTOS *COB (910053)|24353|11 / 11|03/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "VILMA MARCONDES RIBAS *COB|4550|04 / 10|05/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "VILMAR DE JESUS CAMARGO *COB (36275)|26962|04 / 10|16/04/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "VILMAR DE JESUS CAMARGO *COB (36275)|26962|05 / 10|16/05/2026",
+      "removido_de": "vendedor:MILENA DO PRADO SILVA ROSA",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "VILMAR DE JESUS CAMARGO *COB (36275)|4296|09 / 09|25/03/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "VINICIUS FERREIRA DA ROSA *COB (C.72605)|26607|02 / 14|07/04/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "VINICIUS FERREIRA DA ROSA *COB (C.72605)|26607|03 / 14|07/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "VITORIA FRANÇA DOURADO *COB|25881|05 / 14|03/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "WAGNER FERREIRA DA ROSA *COB (C.72064)|24996|08 / 14|12/05/2026",
+      "removido_de": "vendedor:KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "mantido_em": "crediarista:crediaristaf03_01"
+    },
+    {
+      "key": "WALTER RODRIGUES JUNIOR *COB (37758)|15662|02 / 14|06/05/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "WESLEY FERREIRA DE OLIVEIRA *COB|16496|06 / 08|23/03/2026",
+      "removido_de": "vendedor:YASMIM OLIVEIRA SANTOS",
+      "mantido_em": "crediarista:crediaristaf04_01"
+    },
+    {
+      "key": "WILIAN SOUZA DE OLIVEIRA *COB|15566|02 / 14|11/04/2026",
+      "removido_de": "vendedor:CAMILA DOS ANJOS DA SILVA",
+      "mantido_em": "crediarista:crediaristaf06_01"
+    },
+    {
+      "key": "WILLIAM FAUSTINO DE LIMA *COB|23217|02 / 10|07/05/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "WILLIAM FAUSTINO DE LIMA *COB|29143|01 / 01|30/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "WILLIAM FAUSTINO DE LIMA *COB|29143|01 / 14|30/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "WILLIAN DE LIMA BUENO *COB (32235)|24864|08 / 12|29/05/2026",
+      "removido_de": "vendedor:BEATRIZ FATIMA CORDEIRO D SILVA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "WILLIEN OLIVEIRA DE SOUZA (908451)|21842|08 / 14|20/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "YASMIN GABRIELLE COSTA FONTOURA *COB|21518|09 / 14|09/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "YASMIN GABRIELLE COSTA FONTOURA *COB|21665|09 / 14|23/05/2026",
+      "removido_de": "vendedor:JENNIFER SANTOS SOUZA",
+      "mantido_em": "crediarista:crediaristaf02_01"
+    },
+    {
+      "key": "ZENIRO BARRETO *COB (210745)|26377|05 / 14|10/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ZENIRO BARRETO *COB (210745)|26470|06 / 12|18/05/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    },
+    {
+      "key": "ZENIRO BARRETO *COB (210745)|26625|05 / 10|29/04/2026",
+      "removido_de": "vendedor:ADRIANA APARECIDA SIMER",
+      "mantido_em": "crediarista:crediaristaf09_01"
+    }
+  ]
+}

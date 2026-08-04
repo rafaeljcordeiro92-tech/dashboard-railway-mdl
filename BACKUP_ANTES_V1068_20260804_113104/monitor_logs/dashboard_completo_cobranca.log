@@ -1,0 +1,1469 @@
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-16T16:37:29.876154-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 170, in <module>
+    driver = iniciar_driver_chrome()
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 145, in iniciar_driver_chrome
+    print(f"\U0001f9ed Iniciando Chrome tentativa {tentativa}/3")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\U0001f9ed' in position 0: character maps to <undefined>
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-16T16:38:35.312759-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 170, in <module>
+    driver = iniciar_driver_chrome()
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 145, in iniciar_driver_chrome
+    print(f"\U0001f9ed Iniciando Chrome tentativa {tentativa}/3")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\U0001f9ed' in position 0: character maps to <undefined>
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-16T16:50:01.379819-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 170, in <module>
+    driver = iniciar_driver_chrome()
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 145, in iniciar_driver_chrome
+    print(f"\U0001f9ed Iniciando Chrome tentativa {tentativa}/3")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\U0001f9ed' in position 0: character maps to <undefined>
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-16T16:53:32.260761-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+🧭 Iniciando Chrome tentativa 1/3
+   IS_RAILWAY=False DISPLAY=None
+   Chrome binary=
+   ChromeDriver=Selenium Manager
+   Profile=C:\Users\Rafa\AppData\Local\Temp\chrome-profile-mdl-5668-1781639613033-1
+TITLE: Sólidus
+URL ATUAL: https://smart.sgisistemas.com.br/login
+✅ Campo usuário encontrado em: name = usuario
+✅ Filial OK
+✅ Filiais OK
+✅ Mais filtros
+✅ Formas OK
+✅ Formato XLS
+📥 Gerando XLS... aguardando download...
+⏳ Ainda baixando...
+✅ Download OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\cc7b99ad-a291-4d09-af0e-e91533491075_relatorio_contas_pagar_receber_20260616165412_administrativo01_moveisdolar.xls
+📋 9176 linhas lidas
+
+📊 Iniciando coleta de metas/vendas do mês atual...
+📋 Metas listadas na tela: 4
+➡️ Abrindo resultados: Venda / Filial / Meta Filial -> https://smart.sgisistemas.com.br/metas/consulta/214
+   ↳ Colunas lidas: ['Filial', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 10
+✅ Venda / Filial / Meta Filial: 10 linha(s)
+➡️ Abrindo resultados: Venda / Filial-Vendedor / Meta Vendedor -> https://smart.sgisistemas.com.br/metas/consulta/215
+   ↳ Colunas lidas: ['Vendedor', 'Vendedor_2', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 21
+✅ Venda / Filial-Vendedor / Meta Vendedor: 21 linha(s)
+⚠️ Meta não encontrada: Venda / Filial-Subgrupo / Caminhão 20K
+➡️ Abrindo resultados: Serviço / Filial / Ouro-FOB -> https://smart.sgisistemas.com.br/metas/consulta/216
+   ↳ Colunas lidas: ['Filial', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 9
+✅ Serviço / Filial / Ouro-FOB: 9 linha(s)
+➡️ Abrindo resultados: Serviço / Filial-Vendedor / Ouro-FOB -> https://smart.sgisistemas.com.br/metas/consulta/218
+   ↳ Colunas lidas: ['Vendedor', 'Vendedor_2', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 14
+✅ Serviço / Filial-Vendedor / Ouro-FOB: 14 linha(s)
+⚠️ Meta não encontrada: Venda / Vendedor-Subgrupo / Caminhão 20K
+✅ Total xlsx [venda_filial_meta]: meta=860000.00  real=331003.91  ating=38.49%  proj=614721.55
+✅ Total xlsx [servico_filial_ouro_fob]: meta=56200.00  real=20497.09  ating=36.47%  proj=38066.02
+⚠️ Sheet não encontrada no xlsx: venda_filial_subgrupo_20k
+💾 Metas JSON: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_mes_atual.json
+💾 Metas XLSX: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_mes_atual.xlsx
+
+🎯 Iniciando coleta de META DIÁRIA pelo Sólidus (16/06/2026)...
+➡️ Meta diária: abrindo Meta diária / Venda / Filial -> https://smart.sgisistemas.com.br/metas/consulta/214 (tentativa 1/3)
+✅ Meta diária / Venda / Filial: 10 linha(s), 4 acima de 100% no período do dia
+➡️ Meta diária: abrindo Meta diária / Venda / Filial-Vendedor -> https://smart.sgisistemas.com.br/metas/consulta/215 (tentativa 1/3)
+✅ Meta diária / Venda / Filial-Vendedor: 21 linha(s), 6 acima de 100% no período do dia
+➡️ Meta diária: abrindo Meta diária / Serviço / Filial -> https://smart.sgisistemas.com.br/metas/consulta/216 (tentativa 1/3)
+✅ Meta diária / Serviço / Filial: 9 linha(s), 2 acima de 100% no período do dia
+➡️ Meta diária: abrindo Meta diária / Serviço / Filial-Vendedor -> https://smart.sgisistemas.com.br/metas/consulta/218 (tentativa 1/3)
+✅ Meta diária / Serviço / Filial-Vendedor: 14 linha(s), 2 acima de 100% no período do dia
+💾 Meta diária Sólidus JSON: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_dia_atual.json
+💾 Meta diária Sólidus XLSX: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_dia_atual.xlsx
+
+📈 Iniciando coleta de Margem Bruta/Rentabilidade do mês atual...
+✅ Operações de Devolução: 4 opções marcadas
+✅ Formato XLS para Margem Bruta
+📈 Gerando Margem Bruta por FILIAL...
+✅ Download margem OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\b00a7b88-6b61-41e6-a322-a959496a30d0_relatorio_margem_bruta_20260616165602_administrativo01_moveisdolar.xls
+✅ Margem por FILIAL: 9 registro(s)
+✅ Operações de Devolução: 4 opções marcadas
+✅ Formato XLS para Margem Bruta
+📈 Gerando Margem Bruta por VENDEDOR...
+✅ Download margem OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\22229f85-e18f-4f89-acb6-a9495509b056_relatorio_margem_bruta_20260616165615_administrativo01_moveisdolar.xls
+✅ Margem por VENDEDOR: 19 registro(s)
+💾 Margens JSON: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\margens_brutas_mes_atual.json
+💾 Margens XLSX: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\margens_brutas_mes_atual.xlsx
+🧭 Colunas detectadas: Observações=18 Avalistas=19
+
+📊 TOTAL BRUTO (deve bater com Total Geral do XLS):
+   Pendente : R$   684,525.24
+   Pago     : R$ 1,001,892.09
+
+🔎 Iniciando relatório complementar de QUITADOS 180 dias...
+✅ Situação Quitados OK via situacao=quitados
+✅ Filiais OK quitados
+✅ Mais filtros quitados
+✅ Data último pagamento: 18/12/2025 até 16/06/2026
+✅ Formas OK quitados
+✅ Formato XLS quitados
+📥 Gerando XLS quitados... aguardando download...
+⏳ Quitados tentativa 0/75 | baixando=False
+⏳ Quitados tentativa 5/75 | baixando=False
+⏳ Quitados tentativa 10/75 | baixando=False
+⏳ Quitados tentativa 15/75 | baixando=False
+⏳ Quitados tentativa 20/75 | baixando=False
+✅ Download quitados OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\70a610d5-3920-407c-b8af-c317a5e518d7_relatorio_contas_pagar_receber_20260616165639_administrativo01_moveisdolar.xls
+✅ Quitados 180d lidos: 2612 título(s)
+💾 Quitados JSON: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\quitados_180d_contas_receber.json
+💾 Quitados XLSX: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\quitados_180d_contas_receber.xlsx
+📅 Referência do mês (base): 01/06/2026 → acumulando desde início do mês
+👥 Clientes a cobrar: 3177 (1255g/1287a/635t)
+💰 Vendedores com recebimento no período: 14
+👥 Clientes a cobrar: 3177 títulos (1255 grave / 1287 alerta / 635 atenção)
+🤝 Cobrança10 separado com 635 títulos (20% do total único)
+🧩 Gerentes sintéticos criados para manter rateio 60/40: F5
+
+👥 Ativos (vendedor+gerente): 18
+👥 Inativos:                  27
+  ↳ Inativos→F1: pendente rateado=14,573.58; pago histórico NÃO rateado=7,904.08
+  ↳ Inativos→F2: pendente rateado=49,265.41; pago histórico NÃO rateado=69,482.00
+  ↳ Inativos→F3: pendente rateado=349.99; pago histórico NÃO rateado=766.47
+  ↳ Inativos→F4: pendente rateado=0.00; pago histórico NÃO rateado=1,869.98
+  ↳ Inativos→F5: pendente rateado=37,594.20; pago histórico NÃO rateado=60,256.96
+  ↳ Inativos→F6: pendente rateado=75,324.35; pago histórico NÃO rateado=66,690.20
+  ↳ Inativos→F8: pendente rateado=0.00; pago histórico NÃO rateado=83.21
+  ↳ Inativos→F9: pendente rateado=31,461.03; pago histórico NÃO rateado=35,194.93
+
+💰 FDEP a ratear: pend=94,595.56  pago=0.00 (ativos=0.00 + inativos pend=94,595.56; pago inativo histórico=107,176.31)
+  ↳ FDEP→F1: pend=4,799.88 pago=0.00
+  ↳ FDEP→F2: pend=18,147.82 pago=0.00
+  ↳ FDEP→F3: pend=23,495.66 pago=0.00
+  ↳ FDEP→F4: pend=7,538.42 pago=0.00
+  ↳ FDEP→F5: pend=3,125.98 pago=0.00
+  ↳ FDEP→F6: pend=9,434.14 pago=0.00
+  ↳ FDEP→F8: pend=6,103.00 pago=0.00
+  ↳ FDEP→F9: pend=21,950.65 pago=0.00
+✅ Rateio FDEP concluído
+
+=======================================================
+📊 TOTAIS POR FILIAL (após rateio):
+  F1: pend=   45,824.14  pago=   22,016.33  (1 vendedores)
+  F2: pend=  144,336.26  pago=  112,161.15  (3 vendedores)
+  F3: pend=  138,866.76  pago=  193,215.88  (3 vendedores)
+  F4: pend=   20,367.54  pago=   86,178.82  (2 vendedores)
+  F5: pend=   40,810.94  pago=    3,371.02  (2 vendedores)
+  F6: pend=   98,684.94  pago=   34,655.09  (2 vendedores)
+  F8: pend=   29,104.94  pago=   57,153.58  (2 vendedores)
+  F9: pend=  166,529.71  pago=  143,716.08  (3 vendedores)
+
+  TOTAL ativos   : pend=  684,525.24  pago=  652,467.95
+  TOTAL consolid.: pend=        0.00  pago=  349,424.14
+  TOTAL GERAL    : pend=  684,525.24  pago=1,001,892.09
+  BRUTO original : pend=  684,525.24  pago=1,001,892.09
+  DIFERENÇA      : pend=       +0.00  pago=       -0.00  ✅ OK
+=======================================================
+✅ V23_USUARIOS_VENDAS_AUTO: criados usuários vindos das metas de vendas/serviços: DIENIFER SILVA DA LUZ (F5)
+✅ V27D rateio novos vendedores: F5 dividido entre 2 vendedores do bloco de 40%
+
+💾 CSV salvo: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_vendedores.csv
+🔄 Credenciais remotas sincronizadas do FTP.
+🔐 Credenciais: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\credenciais_vendedores.txt (26 vendedores)
+⚙️  Config meta global: Grave=10% Alerta=30% Atenção=80% | Pesos: 60/35/5
+⚙️  Configs individuais: 0 sobreposições
+💾 Snapshot salvo: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\cache_historico\snapshot_2026-06-16.json
+   🆕 Clientes novos hoje: 169
+🎯 Meta do mês atualizada: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\cache_historico\meta_2026-06.json
+
+===== DEBUG FILIAL F5 =====
+FRANCIELI DE SOUZA BUENO_F5 {'grave': 150.0, 'alerta': 662.47, 'atencao': 817.1899999999999, 'is_ativo': True, 'is_fdep': False, 'filial': 'F5'}
+GERENTE F5_F5 {'grave': 59.25, 'alerta': 738.6099999999999, 'atencao': 2141.38, 'is_ativo': True, 'is_fdep': False, 'filial': 'F5'}
+DIENIFER SILVA DA LUZ_F5 {'grave': 0, 'alerta': 288.55, 'atencao': 629.8, 'is_ativo': True, 'is_fdep': False, 'filial': 'F5'}
+📊 Histórico: 3 snapshots disponíveis
+🎯 Meta diária BATIDA pré-calculada para o HTML: 10 item(ns)
+✅ Total xlsx [venda_filial_meta]: meta=860000.00  real=331003.91  ating=38.49%  proj=614721.55
+✅ Total xlsx [servico_filial_ouro_fob]: meta=56200.00  real=20497.09  ating=36.47%  proj=38066.02
+⚠️ Sheet não encontrada no xlsx: venda_filial_subgrupo_20k
+📊 _sales_emp carregado do xlsx:
+   Mercantil  : R$   331,003.91  proj R$   614,721.55  ating 38.49%
+   Serviços   : R$    20,497.09  proj R$    38,066.02  ating 36.47%
+   Caminhão   : R$         0.00  proj R$         0.00  ating 0.00%
+🎯 Meta diária histórica atualizada: 2026-06-16 (base anterior: 2026-06-11)
+🗂️ Histórico diário salvo: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\cache_historico\historico_dashboard.json
+📋 Clientes por filial (gerente):
+  F1: 174 títulos
+  F2: 564 títulos
+  F3: 485 títulos
+  F4: 67 títulos
+  F5: 173 títulos
+  F6: 320 títulos
+  F8: 96 títulos
+  F9: 663 títulos
+📋 Clientes por vendedor: 16 vendedores com títulos
+🧯 Anti-duplicidade operacional aplicado: 759 título(s) removido(s) de listas duplicadas.
+ℹ️ Download clientes sem movimento desativado por BAIXAR_CLIENTES_SEM_MOVIMENTO=0 (padrão). Scheduler libera 1x ao dia às 07h.
+ℹ️ Download aniversariantes desativado por BAIXAR_ANIVERSARIANTES=0
+🧡 Clientes sem movimento: 9 XLS encontrado(s) para leitura
+   ✅ FILIAL_01_relatorio_clientes_sem_movimento_20260616160744.xls → 155 cliente(s) com telefone
+   ✅ FILIAL_02_relatorio_clientes_sem_movimento_20260616160813.xls → 2446 cliente(s) com telefone
+   ✅ FILIAL_03_relatorio_clientes_sem_movimento_20260616160843.xls → 2098 cliente(s) com telefone
+   ✅ FILIAL_04_relatorio_clientes_sem_movimento_20260616160901.xls → 810 cliente(s) com telefone
+   ✅ FILIAL_05_relatorio_clientes_sem_movimento_20260616160916.xls → 970 cliente(s) com telefone
+   ✅ FILIAL_06_relatorio_clientes_sem_movimento_20260616160930.xls → 1422 cliente(s) com telefone
+   ✅ FILIAL_08_relatorio_clientes_sem_movimento_20260616160949.xls → 188 cliente(s) com telefone
+   ✅ FILIAL_09_relatorio_clientes_sem_movimento_20260616161008.xls → 1941 cliente(s) com telefone
+   ✅ FILIAL_90_99_relatorio_clientes_sem_movimento_20260616161026.xls → 178 cliente(s) com telefone
+💾 Clientes sem movimento JSON atualizado: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\clientes_sem_movimento.json (10176 cliente(s))
+🧡 Clientes sem movimento carregados: F1: 303 · F2: 2446 · F3: 2098 · F4: 810 · F5: 969 · F6: 1422 · F8: 188 · F9: 1940
+🎂 Aniversariantes: 1 XLS encontrado(s) para leitura
+🎂 Aniversariantes carregados: 21 cliente(s)
+✅ Check anti-duplicidade da carteira: nenhum conflito entre responsáveis.
+🌐 HTML salvo: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_vendedores.html
+🧪 MODO_TESTE_LOCAL=1 ativo: NÃO envia arquivos ao FTP de produção.
+
+ℹ️ FTP não configurado. Envie manualmente:
+   C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_vendedores.html → /public_html/colaborador/dashboard_vendedores.html
+
+🔥 FINALIZADO!
+🔎 Fechamento automático em ambiente Railway
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-16T17:21:56.516238-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+🧭 Iniciando Chrome tentativa 1/3
+   IS_RAILWAY=False DISPLAY=None
+   Chrome binary=
+   ChromeDriver=Selenium Manager
+   Profile=C:\Users\Rafa\AppData\Local\Temp\chrome-profile-mdl-20668-1781641317837-1
+TITLE: Sólidus
+URL ATUAL: https://smart.sgisistemas.com.br/login
+✅ Campo usuário encontrado em: name = usuario
+✅ Filial OK
+✅ Filiais OK
+✅ Mais filtros
+✅ Formas OK
+✅ Formato XLS
+📥 Gerando XLS... aguardando download...
+⏳ Ainda baixando...
+✅ Download OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\a51ed9ac-4164-46f3-834f-dd7f65feca56_relatorio_contas_pagar_receber_20260616172235_administrativo01_moveisdolar.xls
+📋 9176 linhas lidas
+
+📊 Iniciando coleta de metas/vendas do mês atual...
+📋 Metas listadas na tela: 4
+➡️ Abrindo resultados: Venda / Filial / Meta Filial -> https://smart.sgisistemas.com.br/metas/consulta/214
+   ↳ Colunas lidas: ['Filial', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 10
+✅ Venda / Filial / Meta Filial: 10 linha(s)
+➡️ Abrindo resultados: Venda / Filial-Vendedor / Meta Vendedor -> https://smart.sgisistemas.com.br/metas/consulta/215
+   ↳ Colunas lidas: ['Vendedor', 'Vendedor_2', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 21
+✅ Venda / Filial-Vendedor / Meta Vendedor: 21 linha(s)
+⚠️ Meta não encontrada: Venda / Filial-Subgrupo / Caminhão 20K
+➡️ Abrindo resultados: Serviço / Filial / Ouro-FOB -> https://smart.sgisistemas.com.br/metas/consulta/216
+   ↳ Colunas lidas: ['Filial', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 9
+✅ Serviço / Filial / Ouro-FOB: 9 linha(s)
+➡️ Abrindo resultados: Serviço / Filial-Vendedor / Ouro-FOB -> https://smart.sgisistemas.com.br/metas/consulta/218
+   ↳ Colunas lidas: ['Vendedor', 'Vendedor_2', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 14
+✅ Serviço / Filial-Vendedor / Ouro-FOB: 14 linha(s)
+⚠️ Meta não encontrada: Venda / Vendedor-Subgrupo / Caminhão 20K
+✅ Total xlsx [venda_filial_meta]: meta=860000.00  real=335204.49  ating=38.98%  proj=622522.62
+✅ Total xlsx [servico_filial_ouro_fob]: meta=56200.00  real=20978.51  ating=37.33%  proj=38960.09
+⚠️ Sheet não encontrada no xlsx: venda_filial_subgrupo_20k
+💾 Metas JSON: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_mes_atual.json
+💾 Metas XLSX: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_mes_atual.xlsx
+
+🎯 Iniciando coleta de META DIÁRIA pelo Sólidus (16/06/2026)...
+➡️ Meta diária: abrindo Meta diária / Venda / Filial -> https://smart.sgisistemas.com.br/metas/consulta/214 (tentativa 1/3)
+✅ Meta diária / Venda / Filial: 10 linha(s), 4 acima de 100% no período do dia
+➡️ Meta diária: abrindo Meta diária / Venda / Filial-Vendedor -> https://smart.sgisistemas.com.br/metas/consulta/215 (tentativa 1/3)
+✅ Meta diária / Venda / Filial-Vendedor: 21 linha(s), 6 acima de 100% no período do dia
+➡️ Meta diária: abrindo Meta diária / Serviço / Filial -> https://smart.sgisistemas.com.br/metas/consulta/216 (tentativa 1/3)
+✅ Meta diária / Serviço / Filial: 9 linha(s), 2 acima de 100% no período do dia
+➡️ Meta diária: abrindo Meta diária / Serviço / Filial-Vendedor -> https://smart.sgisistemas.com.br/metas/consulta/218 (tentativa 1/3)
+✅ Meta diária / Serviço / Filial-Vendedor: 14 linha(s), 2 acima de 100% no período do dia
+💾 Meta diária Sólidus JSON: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_dia_atual.json
+💾 Meta diária Sólidus XLSX: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_dia_atual.xlsx
+
+📈 Iniciando coleta de Margem Bruta/Rentabilidade do mês atual...
+✅ Operações de Devolução: 4 opções marcadas
+✅ Formato XLS para Margem Bruta
+📈 Gerando Margem Bruta por FILIAL...
+✅ Download margem OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\482aff6c-7349-4efc-b5c0-fcee79753222_relatorio_margem_bruta_20260616172427_administrativo01_moveisdolar.xls
+✅ Margem por FILIAL: 9 registro(s)
+✅ Operações de Devolução: 4 opções marcadas
+✅ Formato XLS para Margem Bruta
+📈 Gerando Margem Bruta por VENDEDOR...
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 1977, in <module>
+    margens_brutas_info = coletar_margens_brutas_mes_atual()
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 1781, in coletar_margens_brutas_mes_atual
+    res_vend = _gerar_relatorio_margem("vendedor")
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 1734, in _gerar_relatorio_margem
+    time.sleep(2)
+    ~~~~~~~~~~^^^
+KeyboardInterrupt
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-16T17:30:40.013093-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+🧭 Iniciando Chrome tentativa 1/3
+   IS_RAILWAY=False DISPLAY=None
+   Chrome binary=
+   ChromeDriver=Selenium Manager
+   Profile=C:\Users\Rafa\AppData\Local\Temp\chrome-profile-mdl-20444-1781641840829-1
+TITLE: Sólidus
+URL ATUAL: https://smart.sgisistemas.com.br/login
+✅ Campo usuário encontrado em: name = usuario
+✅ Filial OK
+✅ Filiais OK
+✅ Mais filtros
+✅ Formas OK
+✅ Formato XLS
+📥 Gerando XLS... aguardando download...
+⏳ Ainda baixando...
+✅ Download OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\d4caaf8d-29fc-4c06-a619-513347d52043_relatorio_contas_pagar_receber_20260616173121_administrativo01_moveisdolar.xls
+📋 9176 linhas lidas
+
+📊 Iniciando coleta de metas/vendas do mês atual...
+📋 Metas listadas na tela: 4
+➡️ Abrindo resultados: Venda / Filial / Meta Filial -> https://smart.sgisistemas.com.br/metas/consulta/214
+   ↳ Colunas lidas: ['Filial', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 10
+✅ Venda / Filial / Meta Filial: 10 linha(s)
+➡️ Abrindo resultados: Venda / Filial-Vendedor / Meta Vendedor -> https://smart.sgisistemas.com.br/metas/consulta/215
+   ↳ Colunas lidas: ['Vendedor', 'Vendedor_2', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 21
+✅ Venda / Filial-Vendedor / Meta Vendedor: 21 linha(s)
+⚠️ Meta não encontrada: Venda / Filial-Subgrupo / Caminhão 20K
+➡️ Abrindo resultados: Serviço / Filial / Ouro-FOB -> https://smart.sgisistemas.com.br/metas/consulta/216
+   ↳ Colunas lidas: ['Filial', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 9
+✅ Serviço / Filial / Ouro-FOB: 9 linha(s)
+➡️ Abrindo resultados: Serviço / Filial-Vendedor / Ouro-FOB -> https://smart.sgisistemas.com.br/metas/consulta/218
+   ↳ Colunas lidas: ['Vendedor', 'Vendedor_2', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 14
+✅ Serviço / Filial-Vendedor / Ouro-FOB: 14 linha(s)
+⚠️ Meta não encontrada: Venda / Vendedor-Subgrupo / Caminhão 20K
+✅ Total xlsx [venda_filial_meta]: meta=860000.00  real=335393.49  ating=39.30%  proj=622873.62
+✅ Total xlsx [servico_filial_ouro_fob]: meta=56200.00  real=20978.51  ating=37.33%  proj=38960.09
+⚠️ Sheet não encontrada no xlsx: venda_filial_subgrupo_20k
+💾 Metas JSON: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_mes_atual.json
+💾 Metas XLSX: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_mes_atual.xlsx
+
+🎯 Iniciando coleta de META DIÁRIA pelo Sólidus (16/06/2026)...
+➡️ Meta diária: abrindo Meta diária / Venda / Filial -> https://smart.sgisistemas.com.br/metas/consulta/214 (tentativa 1/3)
+✅ Meta diária / Venda / Filial: 10 linha(s), 4 acima de 100% no período do dia
+➡️ Meta diária: abrindo Meta diária / Venda / Filial-Vendedor -> https://smart.sgisistemas.com.br/metas/consulta/215 (tentativa 1/3)
+✅ Meta diária / Venda / Filial-Vendedor: 21 linha(s), 7 acima de 100% no período do dia
+➡️ Meta diária: abrindo Meta diária / Serviço / Filial -> https://smart.sgisistemas.com.br/metas/consulta/216 (tentativa 1/3)
+✅ Meta diária / Serviço / Filial: 9 linha(s), 2 acima de 100% no período do dia
+➡️ Meta diária: abrindo Meta diária / Serviço / Filial-Vendedor -> https://smart.sgisistemas.com.br/metas/consulta/218 (tentativa 1/3)
+✅ Meta diária / Serviço / Filial-Vendedor: 14 linha(s), 2 acima de 100% no período do dia
+💾 Meta diária Sólidus JSON: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_dia_atual.json
+💾 Meta diária Sólidus XLSX: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_dia_atual.xlsx
+
+📈 Iniciando coleta de Margem Bruta/Rentabilidade do mês atual...
+✅ Operações de Devolução: 4 opções marcadas
+✅ Formato XLS para Margem Bruta
+📈 Gerando Margem Bruta por FILIAL...
+✅ Download margem OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\1a85b9fe-eb03-49b1-bf73-2a39fbdee659_relatorio_margem_bruta_20260616173314_administrativo01_moveisdolar.xls
+✅ Margem por FILIAL: 9 registro(s)
+✅ Operações de Devolução: 4 opções marcadas
+✅ Formato XLS para Margem Bruta
+📈 Gerando Margem Bruta por VENDEDOR...
+✅ Download margem OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\c6e55fab-cf6d-4517-96d3-aeafa0b9f98f_relatorio_margem_bruta_20260616173331_administrativo01_moveisdolar.xls
+✅ Margem por VENDEDOR: 20 registro(s)
+💾 Margens JSON: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\margens_brutas_mes_atual.json
+💾 Margens XLSX: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\margens_brutas_mes_atual.xlsx
+🧭 Colunas detectadas: Observações=18 Avalistas=19
+
+📊 TOTAL BRUTO (deve bater com Total Geral do XLS):
+   Pendente : R$   684,325.72
+   Pago     : R$ 1,002,106.30
+
+🔎 Iniciando relatório complementar de QUITADOS 180 dias...
+✅ Situação Quitados OK via situacao=quitados
+✅ Filiais OK quitados
+✅ Mais filtros quitados
+✅ Data último pagamento: 18/12/2025 até 16/06/2026
+✅ Formas OK quitados
+✅ Formato XLS quitados
+📥 Gerando XLS quitados... aguardando download...
+⏳ Quitados tentativa 0/75 | baixando=False
+⏳ Quitados tentativa 5/75 | baixando=False
+⏳ Quitados tentativa 10/75 | baixando=False
+⏳ Quitados tentativa 15/75 | baixando=False
+⏳ Quitados tentativa 20/75 | baixando=False
+⏳ Quitados tentativa 25/75 | baixando=False
+⏳ Quitados tentativa 30/75 | baixando=False
+⏳ Quitados tentativa 35/75 | baixando=False
+⏳ Quitados tentativa 40/75 | baixando=False
+✅ Download quitados OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\64389809-4ba7-471e-9539-d9fc48c57e46_relatorio_contas_pagar_receber_20260616173354_administrativo01_moveisdolar.xls
+✅ Quitados 180d lidos: 2613 título(s)
+💾 Quitados JSON: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\quitados_180d_contas_receber.json
+💾 Quitados XLSX: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\quitados_180d_contas_receber.xlsx
+📅 Referência do mês (base): 01/06/2026 → acumulando desde início do mês
+👥 Clientes a cobrar: 3176 (1255g/1287a/634t)
+💰 Vendedores com recebimento no período: 14
+👥 Clientes a cobrar: 3176 títulos (1255 grave / 1287 alerta / 634 atenção)
+🤝 Cobrança10 separado com 635 títulos (20% do total único)
+🧩 Gerentes sintéticos criados para manter rateio 60/40: F5
+
+👥 Ativos (vendedor+gerente): 18
+👥 Inativos:                  27
+  ↳ Inativos→F1: pendente rateado=14,573.58; pago histórico NÃO rateado=7,904.08
+  ↳ Inativos→F2: pendente rateado=49,265.41; pago histórico NÃO rateado=69,482.00
+  ↳ Inativos→F3: pendente rateado=349.99; pago histórico NÃO rateado=766.47
+  ↳ Inativos→F4: pendente rateado=0.00; pago histórico NÃO rateado=1,869.98
+  ↳ Inativos→F5: pendente rateado=37,594.20; pago histórico NÃO rateado=60,256.96
+  ↳ Inativos→F6: pendente rateado=75,324.35; pago histórico NÃO rateado=66,690.20
+  ↳ Inativos→F8: pendente rateado=0.00; pago histórico NÃO rateado=83.21
+  ↳ Inativos→F9: pendente rateado=31,461.03; pago histórico NÃO rateado=35,194.93
+
+💰 FDEP a ratear: pend=94,595.56  pago=0.00 (ativos=0.00 + inativos pend=94,595.56; pago inativo histórico=107,176.31)
+  ↳ FDEP→F1: pend=4,799.82 pago=0.00
+  ↳ FDEP→F2: pend=18,148.73 pago=0.00
+  ↳ FDEP→F3: pend=23,495.39 pago=0.00
+  ↳ FDEP→F4: pend=7,538.33 pago=0.00
+  ↳ FDEP→F5: pend=3,125.95 pago=0.00
+  ↳ FDEP→F6: pend=9,434.02 pago=0.00
+  ↳ FDEP→F8: pend=6,102.93 pago=0.00
+  ↳ FDEP→F9: pend=21,950.39 pago=0.00
+✅ Rateio FDEP concluído
+
+=======================================================
+📊 TOTAIS POR FILIAL (após rateio):
+  F1: pend=   45,824.08  pago=   22,016.33  (1 vendedores)
+  F2: pend=  144,137.65  pago=  112,375.36  (3 vendedores)
+  F3: pend=  138,866.49  pago=  193,215.88  (3 vendedores)
+  F4: pend=   20,367.45  pago=   86,178.82  (2 vendedores)
+  F5: pend=   40,810.91  pago=    3,371.02  (2 vendedores)
+  F6: pend=   98,684.82  pago=   34,655.09  (2 vendedores)
+  F8: pend=   29,104.87  pago=   57,153.58  (2 vendedores)
+  F9: pend=  166,529.45  pago=  143,716.08  (3 vendedores)
+
+  TOTAL ativos   : pend=  684,325.72  pago=  652,682.16
+  TOTAL consolid.: pend=        0.00  pago=  349,424.14
+  TOTAL GERAL    : pend=  684,325.72  pago=1,002,106.30
+  BRUTO original : pend=  684,325.72  pago=1,002,106.30
+  DIFERENÇA      : pend=       +0.00  pago=       +0.00  ✅ OK
+=======================================================
+✅ V23_USUARIOS_VENDAS_AUTO: criados usuários vindos das metas de vendas/serviços: DIENIFER SILVA DA LUZ (F5)
+✅ V27D rateio novos vendedores: F5 dividido entre 2 vendedores do bloco de 40%
+
+💾 CSV salvo: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_vendedores.csv
+🔄 Credenciais remotas sincronizadas do FTP.
+🔐 Credenciais: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\credenciais_vendedores.txt (26 vendedores)
+⚙️  Config meta global: Grave=10% Alerta=30% Atenção=80% | Pesos: 60/35/5
+⚙️  Configs individuais: 0 sobreposições
+💾 Snapshot salvo: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\cache_historico\snapshot_2026-06-16.json
+   🆕 Clientes novos hoje: 168
+🎯 Meta do mês atualizada: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\cache_historico\meta_2026-06.json
+
+===== DEBUG FILIAL F5 =====
+FRANCIELI DE SOUZA BUENO_F5 {'grave': 150.0, 'alerta': 662.47, 'atencao': 817.1899999999999, 'is_ativo': True, 'is_fdep': False, 'filial': 'F5'}
+GERENTE F5_F5 {'grave': 59.25, 'alerta': 738.6099999999999, 'atencao': 2141.38, 'is_ativo': True, 'is_fdep': False, 'filial': 'F5'}
+DIENIFER SILVA DA LUZ_F5 {'grave': 0, 'alerta': 288.55, 'atencao': 629.8, 'is_ativo': True, 'is_fdep': False, 'filial': 'F5'}
+📊 Histórico: 3 snapshots disponíveis
+🎯 Meta diária BATIDA pré-calculada para o HTML: 11 item(ns)
+✅ Total xlsx [venda_filial_meta]: meta=860000.00  real=335393.49  ating=39.30%  proj=622873.62
+✅ Total xlsx [servico_filial_ouro_fob]: meta=56200.00  real=20978.51  ating=37.33%  proj=38960.09
+⚠️ Sheet não encontrada no xlsx: venda_filial_subgrupo_20k
+📊 _sales_emp carregado do xlsx:
+   Mercantil  : R$   335,393.49  proj R$   622,873.62  ating 39.30%
+   Serviços   : R$    20,978.51  proj R$    38,960.09  ating 37.33%
+   Caminhão   : R$         0.00  proj R$         0.00  ating 0.00%
+🎯 Meta diária histórica atualizada: 2026-06-16 (base anterior: 2026-06-11)
+🗂️ Histórico diário salvo: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\cache_historico\historico_dashboard.json
+📋 Clientes por filial (gerente):
+  F1: 177 títulos
+  F2: 563 títulos
+  F3: 483 títulos
+  F4: 68 títulos
+  F5: 173 títulos
+  F6: 319 títulos
+  F8: 96 títulos
+  F9: 662 títulos
+📋 Clientes por vendedor: 16 vendedores com títulos
+🧯 Anti-duplicidade operacional aplicado: 755 título(s) removido(s) de listas duplicadas.
+ℹ️ Download clientes sem movimento desativado por BAIXAR_CLIENTES_SEM_MOVIMENTO=0 (padrão). Scheduler libera 1x ao dia às 07h.
+ℹ️ Download aniversariantes desativado por BAIXAR_ANIVERSARIANTES=0
+🧡 Clientes sem movimento: 9 XLS encontrado(s) para leitura
+   ✅ FILIAL_01_relatorio_clientes_sem_movimento_20260616160744.xls → 155 cliente(s) com telefone
+   ✅ FILIAL_02_relatorio_clientes_sem_movimento_20260616160813.xls → 2446 cliente(s) com telefone
+   ✅ FILIAL_03_relatorio_clientes_sem_movimento_20260616160843.xls → 2098 cliente(s) com telefone
+   ✅ FILIAL_04_relatorio_clientes_sem_movimento_20260616160901.xls → 810 cliente(s) com telefone
+   ✅ FILIAL_05_relatorio_clientes_sem_movimento_20260616160916.xls → 970 cliente(s) com telefone
+   ✅ FILIAL_06_relatorio_clientes_sem_movimento_20260616160930.xls → 1422 cliente(s) com telefone
+   ✅ FILIAL_08_relatorio_clientes_sem_movimento_20260616160949.xls → 188 cliente(s) com telefone
+   ✅ FILIAL_09_relatorio_clientes_sem_movimento_20260616161008.xls → 1941 cliente(s) com telefone
+   ✅ FILIAL_90_99_relatorio_clientes_sem_movimento_20260616161026.xls → 178 cliente(s) com telefone
+💾 Clientes sem movimento JSON atualizado: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\clientes_sem_movimento.json (10176 cliente(s))
+🧡 Clientes sem movimento carregados: F1: 303 · F2: 2446 · F3: 2098 · F4: 810 · F5: 969 · F6: 1422 · F8: 188 · F9: 1940
+🎂 Aniversariantes: 1 XLS encontrado(s) para leitura
+🎂 Aniversariantes carregados: 21 cliente(s)
+✅ Check anti-duplicidade da carteira: nenhum conflito entre responsáveis.
+🌐 HTML salvo: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_vendedores.html
+🧪 MODO_TESTE_LOCAL=1 ativo: NÃO envia arquivos ao FTP de produção.
+
+ℹ️ FTP não configurado. Envie manualmente:
+   C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_vendedores.html → /public_html/colaborador/dashboard_vendedores.html
+
+🔥 FINALIZADO!
+🔎 Fechamento automático em ambiente Railway
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-16T17:39:15.368522-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+🧭 Iniciando Chrome tentativa 1/3
+   IS_RAILWAY=False DISPLAY=None
+   Chrome binary=
+   ChromeDriver=Selenium Manager
+   Profile=C:\Users\Rafa\AppData\Local\Temp\chrome-profile-mdl-9840-1781642356076-1
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 1811, in <module>
+    time.sleep(8)
+    ~~~~~~~~~~^^^
+KeyboardInterrupt
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-16T17:43:41.675702-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+🧭 Iniciando Chrome tentativa 1/3
+   IS_RAILWAY=False DISPLAY=None
+   Chrome binary=
+   ChromeDriver=Selenium Manager
+   Profile=C:\Users\Rafa\AppData\Local\Temp\chrome-profile-mdl-1044-1781642622899-1
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 1811, in <module>
+    time.sleep(8)
+    ~~~~~~~~~~^^^
+KeyboardInterrupt
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-16T17:47:54.542228-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+🧭 Iniciando Chrome tentativa 1/3
+   IS_RAILWAY=False DISPLAY=None
+   Chrome binary=
+   ChromeDriver=Selenium Manager
+   Profile=C:\Users\Rafa\AppData\Local\Temp\chrome-profile-mdl-20548-1781642875287-1
+TITLE: Sólidus
+URL ATUAL: https://smart.sgisistemas.com.br/login
+✅ Campo usuário encontrado em: name = usuario
+✅ Filial OK
+Traceback (most recent call last):
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 1450, in getresponse
+    response.begin()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 336, in begin
+    version, status, reason = self._read_status()
+                              ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 297, in _read_status
+    line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
+               ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\socket.py", line 725, in readinto
+    return self._sock.recv_into(b)
+           ~~~~~~~~~~~~~~~~~~~~^^^
+ConnectionResetError: [WinError 10054] Foi forçado o cancelamento de uma conexão existente pelo host remoto
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 1870, in <module>
+    driver.get(URL + "/relatorio_contas_receber")
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\webdriver.py", line 363, in get
+    self.execute(Command.GET, {"url": url})
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\webdriver.py", line 352, in execute
+    response = self.command_executor.execute(driver_command, params)
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\remote_connection.py", line 306, in execute
+    return self._request(command_info[0], url, body=data)
+           ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\remote_connection.py", line 326, in _request
+    response = self._conn.request(method, url, body=body, headers=headers)
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\_request_methods.py", line 143, in request
+    return self.request_encode_body(
+           ~~~~~~~~~~~~~~~~~~~~~~~~^
+        method, url, fields=fields, headers=headers, **urlopen_kw
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\_request_methods.py", line 278, in request_encode_body
+    return self.urlopen(method, url, **extra_kw)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\poolmanager.py", line 457, in urlopen
+    response = conn.urlopen(method, u.request_uri, **kw)
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+        conn,
+    ...<10 lines>...
+        **response_kw,
+    )
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connectionpool.py", line 534, in _make_request
+    response = conn.getresponse()
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connection.py", line 571, in getresponse
+    httplib_response = super().getresponse()
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 1452, in getresponse
+    self.close()
+    ~~~~~~~~~~^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connection.py", line 375, in close
+    def close(self) -> None:
+    
+KeyboardInterrupt
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-16T17:50:31.929067-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+🧭 Iniciando Chrome tentativa 1/3
+   IS_RAILWAY=False DISPLAY=None
+   Chrome binary=
+   ChromeDriver=Selenium Manager
+   Profile=C:\Users\Rafa\AppData\Local\Temp\chrome-profile-mdl-18424-1781643032687-1
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 1811, in <module>
+    time.sleep(8)
+    ~~~~~~~~~~^^^
+KeyboardInterrupt
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-16T17:52:02.198328-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+🧭 Iniciando Chrome tentativa 1/3
+   IS_RAILWAY=False DISPLAY=None
+   Chrome binary=
+   ChromeDriver=Selenium Manager
+   Profile=C:\Users\Rafa\AppData\Local\Temp\chrome-profile-mdl-21860-1781643122948-1
+Traceback (most recent call last):
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 1450, in getresponse
+    response.begin()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 336, in begin
+    version, status, reason = self._read_status()
+                              ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 297, in _read_status
+    line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
+               ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\socket.py", line 725, in readinto
+    return self._sock.recv_into(b)
+           ~~~~~~~~~~~~~~~~~~~~^^^
+ConnectionResetError: [WinError 10054] Foi forçado o cancelamento de uma conexão existente pelo host remoto
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 1810, in <module>
+    driver.get(URL)
+    ~~~~~~~~~~^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\webdriver.py", line 363, in get
+    self.execute(Command.GET, {"url": url})
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\webdriver.py", line 352, in execute
+    response = self.command_executor.execute(driver_command, params)
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\remote_connection.py", line 306, in execute
+    return self._request(command_info[0], url, body=data)
+           ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\remote_connection.py", line 326, in _request
+    response = self._conn.request(method, url, body=body, headers=headers)
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\_request_methods.py", line 143, in request
+    return self.request_encode_body(
+           ~~~~~~~~~~~~~~~~~~~~~~~~^
+        method, url, fields=fields, headers=headers, **urlopen_kw
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\_request_methods.py", line 278, in request_encode_body
+    return self.urlopen(method, url, **extra_kw)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\poolmanager.py", line 457, in urlopen
+    response = conn.urlopen(method, u.request_uri, **kw)
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+        conn,
+    ...<10 lines>...
+        **response_kw,
+    )
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connectionpool.py", line 534, in _make_request
+    response = conn.getresponse()
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connection.py", line 571, in getresponse
+    httplib_response = super().getresponse()
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 1452, in getresponse
+    self.close()
+    ~~~~~~~~~~^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connection.py", line 375, in close
+    def close(self) -> None:
+    
+KeyboardInterrupt
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-16T17:52:52.098456-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+🧭 Iniciando Chrome tentativa 1/3
+   IS_RAILWAY=False DISPLAY=None
+   Chrome binary=
+   ChromeDriver=Selenium Manager
+   Profile=C:\Users\Rafa\AppData\Local\Temp\chrome-profile-mdl-23916-1781643172770-1
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 1811, in <module>
+    time.sleep(8)
+    ~~~~~~~~~~^^^
+KeyboardInterrupt
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-16T17:55:39.669578-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+🧭 Iniciando Chrome tentativa 1/3
+   IS_RAILWAY=False DISPLAY=None
+   Chrome binary=
+   ChromeDriver=Selenium Manager
+   Profile=C:\Users\Rafa\AppData\Local\Temp\chrome-profile-mdl-15444-1781643340654-1
+Traceback (most recent call last):
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 1450, in getresponse
+    response.begin()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 336, in begin
+    version, status, reason = self._read_status()
+                              ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 297, in _read_status
+    line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
+               ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\socket.py", line 725, in readinto
+    return self._sock.recv_into(b)
+           ~~~~~~~~~~~~~~~~~~~~^^^
+ConnectionResetError: [WinError 10054] Foi forçado o cancelamento de uma conexão existente pelo host remoto
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 1810, in <module>
+    driver.get(URL)
+    ~~~~~~~~~~^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\webdriver.py", line 363, in get
+    self.execute(Command.GET, {"url": url})
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\webdriver.py", line 352, in execute
+    response = self.command_executor.execute(driver_command, params)
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\remote_connection.py", line 306, in execute
+    return self._request(command_info[0], url, body=data)
+           ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\remote_connection.py", line 326, in _request
+    response = self._conn.request(method, url, body=body, headers=headers)
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\_request_methods.py", line 143, in request
+    return self.request_encode_body(
+           ~~~~~~~~~~~~~~~~~~~~~~~~^
+        method, url, fields=fields, headers=headers, **urlopen_kw
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\_request_methods.py", line 278, in request_encode_body
+    return self.urlopen(method, url, **extra_kw)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\poolmanager.py", line 457, in urlopen
+    response = conn.urlopen(method, u.request_uri, **kw)
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+        conn,
+    ...<10 lines>...
+        **response_kw,
+    )
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connectionpool.py", line 534, in _make_request
+    response = conn.getresponse()
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connection.py", line 571, in getresponse
+    httplib_response = super().getresponse()
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 1452, in getresponse
+    self.close()
+    ~~~~~~~~~~^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connection.py", line 375, in close
+    def close(self) -> None:
+    
+KeyboardInterrupt
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-16T18:04:01.631470-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 9, in <module>
+    import pandas as pd
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pandas\__init__.py", line 46, in <module>
+    from pandas._config import (
+    ...<6 lines>...
+    )
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pandas\_config\__init__.py", line 19, in <module>
+    from pandas._config import config
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pandas\_config\config.py", line 63, in <module>
+    from pandas._typing import F
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\pandas\_typing.py", line 200, in <module>
+    | np.random.Generator
+      ^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\numpy\__init__.py", line 731, in __getattr__
+    import numpy.random as random
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\numpy\random\__init__.py", line 180, in <module>
+    from . import _bounded_integers, _common, _pickle
+  File "numpy/random/_bounded_integers.pyx", line 1, in init numpy.random._bounded_integers
+  File "numpy/random/bit_generator.pyx", line 1, in init numpy.random.bit_generator
+  File "numpy/random/_common.pyx", line 21, in init numpy.random._common
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\collections\__init__.py", line 412, in namedtuple
+    seen = set()
+KeyboardInterrupt
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-16T18:05:47.256526-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+🧭 Iniciando Chrome tentativa 1/3
+   IS_RAILWAY=False DISPLAY=None
+   Chrome binary=
+   ChromeDriver=Selenium Manager
+   Profile=C:\Users\Rafa\AppData\Local\Temp\chrome-profile-mdl-23344-1781643948026-1
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 1811, in <module>
+    time.sleep(8)
+    ~~~~~~~~~~^^^
+KeyboardInterrupt
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-17T11:37:37.736587-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+🧭 Iniciando Chrome tentativa 1/3
+   IS_RAILWAY=False DISPLAY=None
+   Chrome binary=
+   ChromeDriver=Selenium Manager
+   Profile=C:\Users\Rafa\AppData\Local\Temp\chrome-profile-mdl-2232-1781707058638-1
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 1811, in <module>
+    time.sleep(8)
+    ~~~~~~~~~~^^^
+KeyboardInterrupt
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-17T11:38:16.459432-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+🧭 Iniciando Chrome tentativa 1/3
+   IS_RAILWAY=False DISPLAY=None
+   Chrome binary=
+   ChromeDriver=Selenium Manager
+   Profile=C:\Users\Rafa\AppData\Local\Temp\chrome-profile-mdl-24568-1781707097129-1
+TITLE: Sólidus
+URL ATUAL: https://smart.sgisistemas.com.br/login
+✅ Campo usuário encontrado em: name = usuario
+✅ Filial OK
+Traceback (most recent call last):
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 1450, in getresponse
+    response.begin()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 336, in begin
+    version, status, reason = self._read_status()
+                              ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 297, in _read_status
+    line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
+               ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\socket.py", line 725, in readinto
+    return self._sock.recv_into(b)
+           ~~~~~~~~~~~~~~~~~~~~^^^
+ConnectionResetError: [WinError 10054] Foi forçado o cancelamento de uma conexão existente pelo host remoto
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 1870, in <module>
+    driver.get(URL + "/relatorio_contas_receber")
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\webdriver.py", line 363, in get
+    self.execute(Command.GET, {"url": url})
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\webdriver.py", line 352, in execute
+    response = self.command_executor.execute(driver_command, params)
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\remote_connection.py", line 306, in execute
+    return self._request(command_info[0], url, body=data)
+           ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\remote_connection.py", line 326, in _request
+    response = self._conn.request(method, url, body=body, headers=headers)
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\_request_methods.py", line 143, in request
+    return self.request_encode_body(
+           ~~~~~~~~~~~~~~~~~~~~~~~~^
+        method, url, fields=fields, headers=headers, **urlopen_kw
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\_request_methods.py", line 278, in request_encode_body
+    return self.urlopen(method, url, **extra_kw)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\poolmanager.py", line 457, in urlopen
+    response = conn.urlopen(method, u.request_uri, **kw)
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+        conn,
+    ...<10 lines>...
+        **response_kw,
+    )
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connectionpool.py", line 534, in _make_request
+    response = conn.getresponse()
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connection.py", line 571, in getresponse
+    httplib_response = super().getresponse()
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 1452, in getresponse
+    self.close()
+    ~~~~~~~~~~^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connection.py", line 375, in close
+    def close(self) -> None:
+    
+KeyboardInterrupt
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-17T11:48:57.654606-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+🧭 Iniciando Chrome tentativa 1/3
+   IS_RAILWAY=False DISPLAY=None
+   Chrome binary=
+   ChromeDriver=Selenium Manager
+   Profile=C:\Users\Rafa\AppData\Local\Temp\chrome-profile-mdl-25108-1781707738409-1
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 1811, in <module>
+    time.sleep(8)
+    ~~~~~~~~~~^^^
+KeyboardInterrupt
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-17T11:54:54.925383-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+🧭 Iniciando Chrome tentativa 1/3
+   IS_RAILWAY=False DISPLAY=None
+   Chrome binary=
+   ChromeDriver=Selenium Manager
+   Profile=C:\Users\Rafa\AppData\Local\Temp\chrome-profile-mdl-14860-1781708095739-1
+Traceback (most recent call last):
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 1450, in getresponse
+    response.begin()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 336, in begin
+    version, status, reason = self._read_status()
+                              ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 297, in _read_status
+    line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
+               ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\socket.py", line 725, in readinto
+    return self._sock.recv_into(b)
+           ~~~~~~~~~~~~~~~~~~~~^^^
+ConnectionResetError: [WinError 10054] Foi forçado o cancelamento de uma conexão existente pelo host remoto
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 1810, in <module>
+    driver.get(URL)
+    ~~~~~~~~~~^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\webdriver.py", line 363, in get
+    self.execute(Command.GET, {"url": url})
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\webdriver.py", line 352, in execute
+    response = self.command_executor.execute(driver_command, params)
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\remote_connection.py", line 306, in execute
+    return self._request(command_info[0], url, body=data)
+           ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\remote_connection.py", line 326, in _request
+    response = self._conn.request(method, url, body=body, headers=headers)
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\_request_methods.py", line 143, in request
+    return self.request_encode_body(
+           ~~~~~~~~~~~~~~~~~~~~~~~~^
+        method, url, fields=fields, headers=headers, **urlopen_kw
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\_request_methods.py", line 278, in request_encode_body
+    return self.urlopen(method, url, **extra_kw)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\poolmanager.py", line 457, in urlopen
+    response = conn.urlopen(method, u.request_uri, **kw)
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+        conn,
+    ...<10 lines>...
+        **response_kw,
+    )
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connectionpool.py", line 534, in _make_request
+    response = conn.getresponse()
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connection.py", line 571, in getresponse
+    httplib_response = super().getresponse()
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 1452, in getresponse
+    self.close()
+    ~~~~~~~~~~^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connection.py", line 375, in close
+    def close(self) -> None:
+    
+KeyboardInterrupt
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-17T12:01:24.072089-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+🧭 Iniciando Chrome tentativa 1/3
+   IS_RAILWAY=False DISPLAY=None
+   Chrome binary=
+   ChromeDriver=Selenium Manager
+   Profile=C:\Users\Rafa\AppData\Local\Temp\chrome-profile-mdl-22400-1781708485849-1
+TITLE: Sólidus
+URL ATUAL: https://smart.sgisistemas.com.br/login
+✅ Campo usuário encontrado em: name = usuario
+✅ Filial OK
+✅ Filiais OK
+✅ Mais filtros
+✅ Formas OK
+✅ Formato XLS
+📥 Gerando XLS... aguardando download...
+⏳ Ainda baixando...
+✅ Download OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\eb441c19-c930-49d1-bb45-a1348e990a82_relatorio_contas_pagar_receber_20260617120203_administrativo01_moveisdolar.xls
+📋 9228 linhas lidas
+
+📊 Iniciando coleta de metas/vendas do mês atual...
+📋 Metas listadas na tela: 4
+➡️ Abrindo resultados: Venda / Filial / Meta Filial -> https://smart.sgisistemas.com.br/metas/consulta/214
+   ↳ Colunas lidas: ['Filial', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 10
+✅ Venda / Filial / Meta Filial: 10 linha(s)
+➡️ Abrindo resultados: Venda / Filial-Vendedor / Meta Vendedor -> https://smart.sgisistemas.com.br/metas/consulta/215
+   ↳ Colunas lidas: ['Vendedor', 'Vendedor_2', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 21
+✅ Venda / Filial-Vendedor / Meta Vendedor: 21 linha(s)
+⚠️ Meta não encontrada: Venda / Filial-Subgrupo / Caminhão 20K
+➡️ Abrindo resultados: Serviço / Filial / Ouro-FOB -> https://smart.sgisistemas.com.br/metas/consulta/216
+   ↳ Colunas lidas: ['Filial', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 9
+✅ Serviço / Filial / Ouro-FOB: 9 linha(s)
+➡️ Abrindo resultados: Serviço / Filial-Vendedor / Ouro-FOB -> https://smart.sgisistemas.com.br/metas/consulta/218
+   ↳ Colunas lidas: ['Vendedor', 'Vendedor_2', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 14
+✅ Serviço / Filial-Vendedor / Ouro-FOB: 14 linha(s)
+⚠️ Meta não encontrada: Venda / Vendedor-Subgrupo / Caminhão 20K
+✅ Total xlsx [venda_filial_meta]: meta=860000.00  real=347260.11  ating=40.38%  proj=601917.52
+✅ Total xlsx [servico_filial_ouro_fob]: meta=56200.00  real=21023.48  ating=37.41%  proj=36440.70
+⚠️ Sheet não encontrada no xlsx: venda_filial_subgrupo_20k
+💾 Metas JSON: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_mes_atual.json
+💾 Metas XLSX: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_mes_atual.xlsx
+
+🎯 Iniciando coleta de META DIÁRIA pelo Sólidus (17/06/2026)...
+➡️ Meta diária: abrindo Meta diária / Venda / Filial -> https://smart.sgisistemas.com.br/metas/consulta/214 (tentativa 1/3)
+✅ Meta diária / Venda / Filial: 10 linha(s), 1 acima de 100% no período do dia
+➡️ Meta diária: abrindo Meta diária / Venda / Filial-Vendedor -> https://smart.sgisistemas.com.br/metas/consulta/215 (tentativa 1/3)
+⚠️ Erro meta diária Meta diária / Venda / Filial-Vendedor tentativa 1/3: Message: stale element reference: stale element not found in the current frame
+  (Session info: chrome=149.0.7827.103); For documentation on this error, please visit: https://www.selenium.dev/documentation/webdriver/troubleshooting/errors#stale-element-reference-exception
+Stacktrace:
+	chromedriver!GetHandleVerifier [0x7ff66ccc3fa5+14925]
+	chromedriver!GetHandleVerifier [0x7ff66ccc4000+14980]
+	chromedriver!(No symbol) [0x7ff66c80793d]
+	chromedriver!(No symbol) [0x7ff66c80f8b1]
+	chromedriver!(No symbol) [0x7ff66c812875]
+	chromedriver!(No symbol) [0x7ff66c81293f]
+	chromedriver!(No symbol) [0x7ff66c86122a]
+	chromedriver!(No symbol) [0x7ff66c861dac]
+	chromedriver!(No symbol) [0x7ff66c855e2c]
+	chromedriver!(No symbol) [0x7ff66c8557c6]
+	chromedriver!(No symbol) [0x7ff66c8af39b]
+	chromedriver!(No symbol) [0x7ff66c85401c]
+	chromedriver!(No symbol) [0x7ff66c854f43]
+	chromedriver!GetHandleVerifier [0x7ff66d2a7591+5f7f11]
+	chromedriver!GetHandleVerifier [0x7ff66d2a1902+5f2282]
+	chromedriver!GetHandleVerifier [0x7ff66d2c7115+617a95]
+	chromedriver!GetHandleVerifier [0x7ff66cce1dce+3274e]
+	chromedriver!GetHandleVerifier [0x7ff66ccea82c+3b1ac]
+	chromedriver!GetHandleVerifier [0x7ff66cccd744+1e0c4]
+	chromedriver!GetHandleVerifier [0x7ff66cccd8d4+1e254]
+	chromedriver!GetHandleVerifier [0x7ff66ccb1447+1dc7]
+	KERNEL32!BaseThreadInitThunk [0x7ff95cabe957+17]
+	ntdll!RtlUserThreadStart [0x7ff95e207c1c+2c]
+
+➡️ Meta diária: abrindo Meta diária / Venda / Filial-Vendedor -> https://smart.sgisistemas.com.br/metas/consulta/215 (tentativa 2/3)
+✅ Meta diária / Venda / Filial-Vendedor: 21 linha(s), 2 acima de 100% no período do dia
+➡️ Meta diária: abrindo Meta diária / Serviço / Filial -> https://smart.sgisistemas.com.br/metas/consulta/216 (tentativa 1/3)
+✅ Meta diária / Serviço / Filial: 9 linha(s), 0 acima de 100% no período do dia
+➡️ Meta diária: abrindo Meta diária / Serviço / Filial-Vendedor -> https://smart.sgisistemas.com.br/metas/consulta/218 (tentativa 1/3)
+✅ Meta diária / Serviço / Filial-Vendedor: 14 linha(s), 0 acima de 100% no período do dia
+💾 Meta diária Sólidus JSON: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_dia_atual.json
+💾 Meta diária Sólidus XLSX: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_dia_atual.xlsx
+
+📈 Iniciando coleta de Margem Bruta/Rentabilidade do mês atual...
+✅ Operações de Devolução: 4 opções marcadas
+✅ Formato XLS para Margem Bruta
+📈 Gerando Margem Bruta por FILIAL...
+✅ Download margem OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\f59dd1af-84cc-4537-813d-42414e4036db_relatorio_margem_bruta_20260617120422_administrativo01_moveisdolar.xls
+✅ Margem por FILIAL: 9 registro(s)
+✅ Operações de Devolução: 4 opções marcadas
+✅ Formato XLS para Margem Bruta
+📈 Gerando Margem Bruta por VENDEDOR...
+✅ Download margem OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\578b4e11-b793-4395-add8-8324872cbbe2_relatorio_margem_bruta_20260617120443_administrativo01_moveisdolar.xls
+✅ Margem por VENDEDOR: 20 registro(s)
+💾 Margens JSON: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\margens_brutas_mes_atual.json
+💾 Margens XLSX: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\margens_brutas_mes_atual.xlsx
+🧭 Colunas detectadas: Observações=18 Avalistas=19
+
+📊 TOTAL BRUTO (deve bater com Total Geral do XLS):
+   Pendente : R$   690,011.76
+   Pago     : R$ 1,008,683.81
+
+🔎 Iniciando relatório complementar de QUITADOS 180 dias...
+✅ Situação Quitados OK via situacao=quitados
+✅ Filiais OK quitados
+✅ Mais filtros quitados
+✅ Data último pagamento: 19/12/2025 até 17/06/2026
+✅ Formas OK quitados
+✅ Formato XLS quitados
+📥 Gerando XLS quitados... aguardando download...
+⏳ Quitados tentativa 0/75 | baixando=False
+⏳ Quitados tentativa 5/75 | baixando=False
+⏳ Quitados tentativa 10/75 | baixando=False
+⏳ Quitados tentativa 15/75 | baixando=False
+⏳ Quitados tentativa 20/75 | baixando=True
+✅ Download quitados OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\ae4f00d4-0a78-45ed-8247-5c49a259f85f_relatorio_contas_pagar_receber_20260617120506_administrativo01_moveisdolar.xls
+✅ Quitados 180d lidos: 2599 título(s)
+💾 Quitados JSON: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\quitados_180d_contas_receber.json
+💾 Quitados XLSX: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\quitados_180d_contas_receber.xlsx
+📅 Referência do mês (base): 01/06/2026 → acumulando desde início do mês
+👥 Clientes a cobrar: 3195 (1255g/1284a/656t)
+💰 Vendedores com recebimento no período: 14
+👥 Clientes a cobrar: 3195 títulos (1255 grave / 1284 alerta / 656 atenção)
+🤝 Cobrança10 separado com 639 títulos (20% do total único)
+🧩 Gerentes sintéticos criados para manter rateio 60/40: F5
+
+👥 Ativos (vendedor+gerente): 18
+👥 Inativos:                  27
+  ↳ Inativos→F1: pendente rateado=14,481.76; pago histórico NÃO rateado=7,904.08
+  ↳ Inativos→F2: pendente rateado=49,667.08; pago histórico NÃO rateado=69,036.43
+  ↳ Inativos→F3: pendente rateado=349.99; pago histórico NÃO rateado=766.47
+  ↳ Inativos→F4: pendente rateado=0.00; pago histórico NÃO rateado=1,869.98
+  ↳ Inativos→F5: pendente rateado=37,603.19; pago histórico NÃO rateado=60,105.06
+  ↳ Inativos→F6: pendente rateado=75,542.78; pago histórico NÃO rateado=66,794.63
+  ↳ Inativos→F8: pendente rateado=0.00; pago histórico NÃO rateado=83.21
+  ↳ Inativos→F9: pendente rateado=31,644.36; pago histórico NÃO rateado=35,295.72
+
+💰 FDEP a ratear: pend=95,954.80  pago=0.00 (ativos=0.00 + inativos pend=95,954.80; pago inativo histórico=108,263.06)
+  ↳ FDEP→F1: pend=4,763.76 pago=0.00
+  ↳ FDEP→F2: pend=18,615.41 pago=0.00
+  ↳ FDEP→F3: pend=23,908.02 pago=0.00
+  ↳ FDEP→F4: pend=7,641.60 pago=0.00
+  ↳ FDEP→F5: pend=3,164.79 pago=0.00
+  ↳ FDEP→F6: pend=9,514.02 pago=0.00
+  ↳ FDEP→F8: pend=6,124.11 pago=0.00
+  ↳ FDEP→F9: pend=22,223.09 pago=0.00
+✅ Rateio FDEP concluído
+
+=======================================================
+📊 TOTAIS POR FILIAL (após rateio):
+  F1: pend=   45,209.75  pago=   21,741.50  (1 vendedores)
+  F2: pend=  146,940.06  pago=  114,686.35  (3 vendedores)
+  F3: pend=  140,524.36  pago=  195,486.02  (3 vendedores)
+  F4: pend=   20,724.03  pago=   86,673.22  (2 vendedores)
+  F5: pend=   40,858.74  pago=    3,620.20  (2 vendedores)
+  F6: pend=   98,880.56  pago=   34,832.23  (2 vendedores)
+  F8: pend=   29,003.55  pago=   57,066.50  (2 vendedores)
+  F9: pend=  167,870.71  pago=  144,459.15  (3 vendedores)
+
+  TOTAL ativos   : pend=  690,011.76  pago=  658,565.17
+  TOTAL consolid.: pend=        0.00  pago=  350,118.64
+  TOTAL GERAL    : pend=  690,011.76  pago=1,008,683.81
+  BRUTO original : pend=  690,011.76  pago=1,008,683.81
+  DIFERENÇA      : pend=       +0.00  pago=       +0.00  ✅ OK
+=======================================================
+✅ V23_USUARIOS_VENDAS_AUTO: criados usuários vindos das metas de vendas/serviços: DIENIFER SILVA DA LUZ (F5)
+✅ V27D rateio novos vendedores: F5 dividido entre 2 vendedores do bloco de 40%
+
+💾 CSV salvo: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_vendedores.csv
+🔐 Credenciais: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\credenciais_vendedores.txt (26 vendedores)
+Traceback (most recent call last):
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\socket.py", line 855, in create_connection
+    sock.connect(sa)
+    ~~~~~~~~~~~~^^^^
+TimeoutError: timed out
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 3409, in <module>
+    with urllib.request.urlopen(REMOTE_CONFIG_URL, timeout=10) as _resp_cfg:
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 187, in urlopen
+    return opener.open(url, data, timeout)
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 487, in open
+    response = self._open(req, data)
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 504, in _open
+    result = self._call_chain(self.handle_open, protocol, protocol +
+                              '_open', req)
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 464, in _call_chain
+    result = func(*args)
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 1369, in https_open
+    return self.do_open(http.client.HTTPSConnection, req,
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                        context=self._context)
+                        ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\urllib\request.py", line 1321, in do_open
+    h.request(req.get_method(), req.selector, req.data, headers,
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+              encode_chunked=req.has_header('Transfer-encoding'))
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 1358, in request
+    self._send_request(method, url, body, headers, encode_chunked)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 1404, in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 1353, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 1113, in _send_output
+    self.send(msg)
+    ~~~~~~~~~^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 1057, in send
+    self.connect()
+    ~~~~~~~~~~~~^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 1492, in connect
+    super().connect()
+    ~~~~~~~~~~~~~~~^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 1023, in connect
+    self.sock = self._create_connection(
+                ~~~~~~~~~~~~~~~~~~~~~~~^
+        (self.host,self.port), self.timeout, self.source_address)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\socket.py", line 862, in create_connection
+    exceptions.clear()  # raise only the last error
+    ~~~~~~~~~~~~~~~~^^
+KeyboardInterrupt
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-18T09:18:46.258002-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+🧭 Iniciando Chrome tentativa 1/3
+   IS_RAILWAY=False DISPLAY=None
+   Chrome binary=
+   ChromeDriver=Selenium Manager
+   Profile=C:\Users\Rafa\AppData\Local\Temp\chrome-profile-mdl-21708-1781785128789-1
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 1811, in <module>
+    time.sleep(8)
+    ~~~~~~~~~~^^^
+KeyboardInterrupt
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-18T09:25:35.091062-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+🧭 Iniciando Chrome tentativa 1/3
+   IS_RAILWAY=False DISPLAY=None
+   Chrome binary=
+   ChromeDriver=Selenium Manager
+   Profile=C:\Users\Rafa\AppData\Local\Temp\chrome-profile-mdl-15292-1781785535872-1
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 178, in <module>
+    driver = iniciar_driver_chrome()
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 162, in iniciar_driver_chrome
+    drv = webdriver.Chrome(options=opts)
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\chrome\webdriver.py", line 45, in __init__
+    super().__init__(
+    ~~~~~~~~~~~~~~~~^
+        browser_name=DesiredCapabilities.CHROME["browserName"],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+        keep_alive=keep_alive,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\chromium\webdriver.py", line 50, in __init__
+    if finder.get_browser_path():
+       ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\common\driver_finder.py", line 47, in get_browser_path
+    return self._binary_paths()["browser_path"]
+           ~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\common\driver_finder.py", line 67, in _binary_paths
+    output = SeleniumManager().binary_paths(self._to_args())
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\common\selenium_manager.py", line 55, in binary_paths
+    return self._run(args)
+           ~~~~~~~~~^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\common\selenium_manager.py", line 117, in _run
+    completed_proc = subprocess.run(args, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\subprocess.py", line 556, in run
+    stdout, stderr = process.communicate(input, timeout=timeout)
+                     ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\subprocess.py", line 1220, in communicate
+    stdout, stderr = self._communicate(input, endtime, timeout)
+                     ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\subprocess.py", line 1661, in _communicate
+    self.stdout_thread.join(self._remaining_time(endtime))
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\threading.py", line 1133, in join
+    self._os_thread_handle.join(timeout)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+KeyboardInterrupt
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-18T09:26:01.639058-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+🧭 Iniciando Chrome tentativa 1/3
+   IS_RAILWAY=False DISPLAY=None
+   Chrome binary=
+   ChromeDriver=Selenium Manager
+   Profile=C:\Users\Rafa\AppData\Local\Temp\chrome-profile-mdl-1692-1781785562221-1
+Traceback (most recent call last):
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 1450, in getresponse
+    response.begin()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 336, in begin
+    version, status, reason = self._read_status()
+                              ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 297, in _read_status
+    line = str(self.fp.readline(_MAXLINE + 1), "iso-8859-1")
+               ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\socket.py", line 725, in readinto
+    return self._sock.recv_into(b)
+           ~~~~~~~~~~~~~~~~~~~~^^^
+ConnectionResetError: [WinError 10054] Foi forçado o cancelamento de uma conexão existente pelo host remoto
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 1810, in <module>
+    driver.get(URL)
+    ~~~~~~~~~~^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\webdriver.py", line 363, in get
+    self.execute(Command.GET, {"url": url})
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\webdriver.py", line 352, in execute
+    response = self.command_executor.execute(driver_command, params)
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\remote_connection.py", line 306, in execute
+    return self._request(command_info[0], url, body=data)
+           ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\remote\remote_connection.py", line 326, in _request
+    response = self._conn.request(method, url, body=body, headers=headers)
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\_request_methods.py", line 143, in request
+    return self.request_encode_body(
+           ~~~~~~~~~~~~~~~~~~~~~~~~^
+        method, url, fields=fields, headers=headers, **urlopen_kw
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\_request_methods.py", line 278, in request_encode_body
+    return self.urlopen(method, url, **extra_kw)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\poolmanager.py", line 457, in urlopen
+    response = conn.urlopen(method, u.request_uri, **kw)
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+        conn,
+    ...<10 lines>...
+        **response_kw,
+    )
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connectionpool.py", line 534, in _make_request
+    response = conn.getresponse()
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connection.py", line 571, in getresponse
+    httplib_response = super().getresponse()
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\http\client.py", line 1452, in getresponse
+    self.close()
+    ~~~~~~~~~~^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\urllib3\connection.py", line 375, in close
+    def close(self) -> None:
+    
+KeyboardInterrupt
+
+==========================================================================================
+INÍCIO dashboard_completo_cobranca_boot_publica_html em 2026-06-18T13:50:24.593983-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py
+Env extra: {"BAIXAR_CLIENTES_SEM_MOVIMENTO": "0", "BAIXAR_ANIVERSARIANTES": "0"}
+==========================================================================================
+🧭 Iniciando Chrome tentativa 1/3
+   IS_RAILWAY=False DISPLAY=None
+   Chrome binary=
+   ChromeDriver=Selenium Manager
+   Profile=C:\Users\Rafa\AppData\Local\Temp\chrome-profile-mdl-18396-1781801427812-1
+TITLE: Sólidus
+URL ATUAL: https://smart.sgisistemas.com.br/login
+✅ Campo usuário encontrado em: name = usuario
+✅ Filial OK
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_railway_main_headless.py", line 1871, in <module>
+    wait.until(EC.presence_of_element_located((By.ID, "data_vencimento_inicial")))
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\selenium\webdriver\support\wait.py", line 105, in until
+    raise TimeoutException(message, screen, stacktrace)
+selenium.common.exceptions.TimeoutException: Message: 
+Stacktrace:
+	chromedriver!GetHandleVerifier [0x7ff7e8143fa5+14925]
+	chromedriver!GetHandleVerifier [0x7ff7e8144000+14980]
+	chromedriver!(No symbol) [0x7ff7e7c8793d]
+	chromedriver!(No symbol) [0x7ff7e7ce1aad]
+	chromedriver!(No symbol) [0x7ff7e7ce1dac]
+	chromedriver!(No symbol) [0x7ff7e7d327d7]
+	chromedriver!(No symbol) [0x7ff7e7d2f39b]
+	chromedriver!(No symbol) [0x7ff7e7cd401c]
+	chromedriver!(No symbol) [0x7ff7e7cd4f43]
+	chromedriver!GetHandleVerifier [0x7ff7e8727591+5f7f11]
+	chromedriver!GetHandleVerifier [0x7ff7e8721902+5f2282]
+	chromedriver!GetHandleVerifier [0x7ff7e8747115+617a95]
+	chromedriver!GetHandleVerifier [0x7ff7e8161dce+3274e]
+	chromedriver!GetHandleVerifier [0x7ff7e816a82c+3b1ac]
+	chromedriver!GetHandleVerifier [0x7ff7e814d744+1e0c4]
+	chromedriver!GetHandleVerifier [0x7ff7e814d8d4+1e254]
+	chromedriver!GetHandleVerifier [0x7ff7e8131447+1dc7]
+	KERNEL32!BaseThreadInitThunk [0x7ffbf3dce957+17]
+	ntdll!RtlUserThreadStart [0x7ffbf4d67c1c+2c]
+

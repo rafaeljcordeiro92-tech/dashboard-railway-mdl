@@ -1,0 +1,22 @@
+{
+  "months": {
+    "2026-06": {
+      "mes": "2026-06",
+      "usuario": "cobranca10",
+      "nome": "Cobrança10",
+      "pagamento_previsto_em": "10/07/2026",
+      "recebido": {
+        "atencao": 0.0,
+        "alerta": 0.0,
+        "grave": 0.0
+      },
+      "comissao": {
+        "atencao": 0.0,
+        "alerta": 0.0,
+        "grave": 0.0
+      },
+      "total_comissao": 0.0,
+      "updated_at": "2026-06-18T14:07:17.373844-03:00"
+    }
+  }
+}

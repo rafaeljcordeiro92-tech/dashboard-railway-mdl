@@ -1,0 +1,8 @@
+{
+  "gerado_em": "2026-06-18T14:07:29.134765-03:00",
+  "versao": "V8.1",
+  "regra": "Vendedor x crediarista preservado e ignorado no alerta; conflitos reais continuam sendo exibidos",
+  "total_conflitos": 0,
+  "ignorados_vendedor_crediarista": 762,
+  "conflitos": []
+}

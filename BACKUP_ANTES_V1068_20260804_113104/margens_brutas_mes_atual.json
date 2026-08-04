@@ -1,0 +1,352 @@
+{
+  "coletado_em": "2026-06-18 14:04:14",
+  "periodo": {
+    "data_inicial": "01/06/2026",
+    "data_final": "30/06/2026"
+  },
+  "filiais": {
+    "F9": {
+      "filial": "F9",
+      "label": "FILIAL 09 (PIRAI DO SUL)",
+      "margem_bruta_pct": 54.99,
+      "valor_total_liquido": 78382.97,
+      "valor_total": 92227.64,
+      "custo_total": 41515.24,
+      "margem_bruta_valor": 50712.4,
+      "markup_realizado": 2.2215
+    },
+    "F2": {
+      "filial": "F2",
+      "label": "FILIAL 02 (CASTRO-CENTRO)",
+      "margem_bruta_pct": 47.62,
+      "valor_total_liquido": 62978.87,
+      "valor_total": 70340.19,
+      "custo_total": 36840.87,
+      "margem_bruta_valor": 33499.32,
+      "markup_realizado": 1.9093
+    },
+    "F4": {
+      "filial": "F4",
+      "label": "FILIAL 04 (SOCAVAO)",
+      "margem_bruta_pct": 47.97,
+      "valor_total_liquido": 47822.62,
+      "valor_total": 52958.17,
+      "custo_total": 27554.63,
+      "margem_bruta_valor": 25403.54,
+      "markup_realizado": 1.9219
+    },
+    "F3": {
+      "filial": "F3",
+      "label": "FILIAL 03 (CASTRO-BAIRRO)",
+      "margem_bruta_pct": 52.2,
+      "valor_total_liquido": 40025.25,
+      "valor_total": 46119.08,
+      "custo_total": 22047.21,
+      "margem_bruta_valor": 24071.87,
+      "markup_realizado": 2.0918
+    },
+    "F6": {
+      "filial": "F6",
+      "label": "FILIAL 06 (CARAMBEI)",
+      "margem_bruta_pct": 48.07,
+      "valor_total_liquido": 29169.14,
+      "valor_total": 29708.73,
+      "custo_total": 15428.26,
+      "margem_bruta_valor": 14280.47,
+      "markup_realizado": 1.9256
+    },
+    "F1": {
+      "filial": "F1",
+      "label": "FILIAL 01 (MATCON)",
+      "margem_bruta_pct": 46.97,
+      "valor_total_liquido": 23551.89,
+      "valor_total": 28764.37,
+      "custo_total": 15254.43,
+      "margem_bruta_valor": 13509.94,
+      "markup_realizado": 1.8856
+    },
+    "F8": {
+      "filial": "F8",
+      "label": "FILIAL 08 (ABAPAN)",
+      "margem_bruta_pct": 42.14,
+      "valor_total_liquido": 23277.15,
+      "valor_total": 26740.0,
+      "custo_total": 15473.08,
+      "margem_bruta_valor": 11266.92,
+      "markup_realizado": 1.7282
+    },
+    "F5": {
+      "filial": "F5",
+      "label": "FILIAL 05 (TIBAGI)",
+      "margem_bruta_pct": 46.25,
+      "valor_total_liquido": 13983.98,
+      "valor_total": 16496.7,
+      "custo_total": 8866.36,
+      "margem_bruta_valor": 7630.34,
+      "markup_realizado": 1.8606
+    },
+    "FDEP": {
+      "filial": "FDEP",
+      "label": "FILIAL 90/99 (DEPOSITO MOVEIS/ELETRO/ATACADO)",
+      "margem_bruta_pct": 32.18,
+      "valor_total_liquido": 2561.15,
+      "valor_total": 2598.87,
+      "custo_total": 1762.53,
+      "margem_bruta_valor": 836.34,
+      "markup_realizado": 1.4745
+    }
+  },
+  "vendedores": {
+    "ADRIANA APARECIDA SIMER_F9": {
+      "nome": "ADRIANA APARECIDA SIMER",
+      "filial": "F9",
+      "key": "ADRIANA APARECIDA SIMER_F9",
+      "label_filial": "FILIAL 09 (PIRAI DO SUL)",
+      "margem_bruta_pct": 55.62,
+      "valor_total_liquido": 43977.24,
+      "valor_total": 51410.16,
+      "custo_total": 22814.76,
+      "margem_bruta_valor": 28595.4,
+      "markup_realizado": 2.2534
+    },
+    "MILENA DO PRADO SILVA ROSA_F9": {
+      "nome": "MILENA DO PRADO SILVA ROSA",
+      "filial": "F9",
+      "key": "MILENA DO PRADO SILVA ROSA_F9",
+      "label_filial": "FILIAL 09 (PIRAI DO SUL)",
+      "margem_bruta_pct": 54.19,
+      "valor_total_liquido": 34405.73,
+      "valor_total": 40817.48,
+      "custo_total": 18700.48,
+      "margem_bruta_valor": 22117.0,
+      "markup_realizado": 2.1827
+    },
+    "BEATRIZ FATIMA CORDEIRO D SILVA_F2": {
+      "nome": "BEATRIZ FATIMA CORDEIRO D SILVA",
+      "filial": "F2",
+      "key": "BEATRIZ FATIMA CORDEIRO D SILVA_F2",
+      "label_filial": "FILIAL 02 (CASTRO-CENTRO)",
+      "margem_bruta_pct": 42.12,
+      "valor_total_liquido": 33597.7,
+      "valor_total": 36289.03,
+      "custo_total": 21003.54,
+      "margem_bruta_valor": 15285.49,
+      "markup_realizado": 1.7278
+    },
+    "JENNIFER SANTOS SOUZA_F2": {
+      "nome": "JENNIFER SANTOS SOUZA",
+      "filial": "F2",
+      "key": "JENNIFER SANTOS SOUZA_F2",
+      "label_filial": "FILIAL 02 (CASTRO-CENTRO)",
+      "margem_bruta_pct": 53.49,
+      "valor_total_liquido": 29381.17,
+      "valor_total": 34051.16,
+      "custo_total": 15837.33,
+      "margem_bruta_valor": 18213.83,
+      "markup_realizado": 2.1501
+    },
+    "YASMIM OLIVEIRA SANTOS_F4": {
+      "nome": "YASMIM OLIVEIRA SANTOS",
+      "filial": "F4",
+      "key": "YASMIM OLIVEIRA SANTOS_F4",
+      "label_filial": "FILIAL 04 (SOCAVAO)",
+      "margem_bruta_pct": 47.98,
+      "valor_total_liquido": 46917.92,
+      "valor_total": 51803.97,
+      "custo_total": 26950.02,
+      "margem_bruta_valor": 24853.95,
+      "markup_realizado": 1.9222
+    },
+    "CLEOVANE APARECIDA LOPES_F4": {
+      "nome": "CLEOVANE APARECIDA LOPES",
+      "filial": "F4",
+      "key": "CLEOVANE APARECIDA LOPES_F4",
+      "label_filial": "FILIAL 04 (SOCAVAO)",
+      "margem_bruta_pct": 47.62,
+      "valor_total_liquido": 904.7,
+      "valor_total": 1154.2,
+      "custo_total": 604.61,
+      "margem_bruta_valor": 549.59,
+      "markup_realizado": 1.909
+    },
+    "DANIELE APARECIDA LOURENCO DA SILVA_F3": {
+      "nome": "DANIELE APARECIDA LOURENÇO DA SILVA",
+      "filial": "F3",
+      "key": "DANIELE APARECIDA LOURENCO DA SILVA_F3",
+      "label_filial": "FILIAL 03 (CASTRO-BAIRRO)",
+      "margem_bruta_pct": 54.93,
+      "valor_total_liquido": 23046.01,
+      "valor_total": 27221.73,
+      "custo_total": 12269.19,
+      "margem_bruta_valor": 14952.54,
+      "markup_realizado": 2.2187
+    },
+    "KAUANY OLIVEIRA DA CONCEICAO_F3": {
+      "nome": "KAUANY OLIVEIRA DA CONCEIÇÃO",
+      "filial": "F3",
+      "key": "KAUANY OLIVEIRA DA CONCEICAO_F3",
+      "label_filial": "FILIAL 03 (CASTRO-BAIRRO)",
+      "margem_bruta_pct": 48.26,
+      "valor_total_liquido": 16979.24,
+      "valor_total": 18897.35,
+      "custo_total": 9778.02,
+      "margem_bruta_valor": 9119.33,
+      "markup_realizado": 1.9326
+    },
+    "CAMILA DOS ANJOS DA SILVA_F6": {
+      "nome": "CAMILA DOS ANJOS DA SILVA",
+      "filial": "F6",
+      "key": "CAMILA DOS ANJOS DA SILVA_F6",
+      "label_filial": "FILIAL 06 (CARAMBEI)",
+      "margem_bruta_pct": 45.65,
+      "valor_total_liquido": 22228.32,
+      "valor_total": 22414.53,
+      "custo_total": 12181.95,
+      "margem_bruta_valor": 10232.58,
+      "markup_realizado": 1.84
+    },
+    "LUCIANA MAINARDI DE SOUZA BUENO_F6": {
+      "nome": "LUCIANA MAINARDI DE SOUZA BUENO",
+      "filial": "F6",
+      "key": "LUCIANA MAINARDI DE SOUZA BUENO_F6",
+      "label_filial": "FILIAL 06 (CARAMBEI)",
+      "margem_bruta_pct": 51.79,
+      "valor_total_liquido": 5943.82,
+      "valor_total": 6408.34,
+      "custo_total": 3089.61,
+      "margem_bruta_valor": 3318.73,
+      "markup_realizado": 2.0742
+    },
+    "VALDECI DA COSTA_F6": {
+      "nome": "VALDECI DA COSTA",
+      "filial": "F6",
+      "key": "VALDECI DA COSTA_F6",
+      "label_filial": "FILIAL 06 (CARAMBEI)",
+      "margem_bruta_pct": 42.1,
+      "valor_total_liquido": 2296.0,
+      "valor_total": 2401.0,
+      "custo_total": 1390.21,
+      "margem_bruta_valor": 1010.79,
+      "markup_realizado": 1.7271
+    },
+    "JULIANO DOS SANTOS MENDES_F6": {
+      "nome": "JULIANO DOS SANTOS MENDES",
+      "filial": "F6",
+      "key": "JULIANO DOS SANTOS MENDES_F6",
+      "label_filial": "FILIAL 06 (CARAMBEI)",
+      "margem_bruta_pct": 18.59,
+      "valor_total_liquido": -1299.0,
+      "valor_total": -1515.14,
+      "custo_total": -1233.51,
+      "margem_bruta_valor": -281.63,
+      "markup_realizado": 1.2283
+    },
+    "SANDY OLIVEIRA DA SILVA_F1": {
+      "nome": "SANDY OLIVEIRA DA SILVA",
+      "filial": "F1",
+      "key": "SANDY OLIVEIRA DA SILVA_F1",
+      "label_filial": "FILIAL 01 (MATCON)",
+      "margem_bruta_pct": 46.97,
+      "valor_total_liquido": 23551.89,
+      "valor_total": 28764.37,
+      "custo_total": 15254.43,
+      "margem_bruta_valor": 13509.94,
+      "markup_realizado": 1.8856
+    },
+    "STEFANI MEIRA_F8": {
+      "nome": "STEFANI MEIRA",
+      "filial": "F8",
+      "key": "STEFANI MEIRA_F8",
+      "label_filial": "FILIAL 08 (ABAPAN)",
+      "margem_bruta_pct": 38.07,
+      "valor_total_liquido": 14640.05,
+      "valor_total": 15841.66,
+      "custo_total": 9810.29,
+      "margem_bruta_valor": 6031.37,
+      "markup_realizado": 1.6148
+    },
+    "JEANE PEREIRA MACHADO_F8": {
+      "nome": "JEANE PEREIRA MACHADO",
+      "filial": "F8",
+      "key": "JEANE PEREIRA MACHADO_F8",
+      "label_filial": "FILIAL 08 (ABAPAN)",
+      "margem_bruta_pct": 48.04,
+      "valor_total_liquido": 8637.1,
+      "valor_total": 10898.34,
+      "custo_total": 5662.79,
+      "margem_bruta_valor": 5235.55,
+      "markup_realizado": 1.9246
+    },
+    "DIENIFER SILVA DA LUZ_F5": {
+      "nome": "DIENIFER SILVA DA LUZ",
+      "filial": "F5",
+      "key": "DIENIFER SILVA DA LUZ_F5",
+      "label_filial": "FILIAL 05 (TIBAGI)",
+      "margem_bruta_pct": 47.42,
+      "valor_total_liquido": 7685.72,
+      "valor_total": 9445.79,
+      "custo_total": 4966.73,
+      "margem_bruta_valor": 4479.06,
+      "markup_realizado": 1.9018
+    },
+    "FRANCIELI DE SOUZA BUENO_F5": {
+      "nome": "FRANCIELI DE SOUZA BUENO",
+      "filial": "F5",
+      "key": "FRANCIELI DE SOUZA BUENO_F5",
+      "label_filial": "FILIAL 05 (TIBAGI)",
+      "margem_bruta_pct": 47.58,
+      "valor_total_liquido": 5599.26,
+      "valor_total": 6351.91,
+      "custo_total": 3329.73,
+      "margem_bruta_valor": 3022.18,
+      "markup_realizado": 1.9076
+    },
+    "GRACIELLE DE FATIMA MARCONDES_F5": {
+      "nome": "GRACIELLE DE FATIMA MARCONDES",
+      "filial": "F5",
+      "key": "GRACIELLE DE FATIMA MARCONDES_F5",
+      "label_filial": "FILIAL 05 (TIBAGI)",
+      "margem_bruta_pct": 18.47,
+      "valor_total_liquido": 699.0,
+      "valor_total": 699.0,
+      "custo_total": 569.9,
+      "margem_bruta_valor": 129.1,
+      "markup_realizado": 1.2265
+    },
+    "KEYLLA RAYANA DE SOUZA_FDEP": {
+      "nome": "KEYLLA RAYANA DE SOUZA",
+      "filial": "FDEP",
+      "key": "KEYLLA RAYANA DE SOUZA_FDEP",
+      "label_filial": "FILIAL 90/99 (DEPOSITO MOVEIS/ELETRO/ATACADO)",
+      "margem_bruta_pct": 32.46,
+      "valor_total_liquido": 2372.15,
+      "valor_total": 2409.87,
+      "custo_total": 1627.52,
+      "margem_bruta_valor": 782.35,
+      "markup_realizado": 1.4807
+    },
+    "MOVEIS DO LAR_FDEP": {
+      "nome": "Moveis do lar",
+      "filial": "FDEP",
+      "key": "MOVEIS DO LAR_FDEP",
+      "label_filial": "FILIAL 90/99 (DEPOSITO MOVEIS/ELETRO/ATACADO)",
+      "margem_bruta_pct": 28.57,
+      "valor_total_liquido": 189.0,
+      "valor_total": 189.0,
+      "custo_total": 135.01,
+      "margem_bruta_valor": 53.99,
+      "markup_realizado": 1.3999
+    }
+  },
+  "empresa": {
+    "label": "TOTAL",
+    "margem_bruta_pct": 49.52,
+    "valor_total_liquido": 321753.02,
+    "valor_total": 365953.75,
+    "custo_total": 184742.61,
+    "margem_bruta_valor": 181211.14,
+    "markup_realizado": 0.0,
+    "pmr_vendas_prazo": 0.0
+  },
+  "ok": true
+}

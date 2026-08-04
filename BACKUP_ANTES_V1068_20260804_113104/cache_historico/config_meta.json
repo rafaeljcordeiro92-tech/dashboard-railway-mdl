@@ -1,0 +1,403 @@
+{
+    "global": {
+        "grave_pct": 10,
+        "alerta_pct": 30,
+        "atencao_pct": 80,
+        "peso_grave": 60,
+        "peso_alerta": 35,
+        "peso_atencao": 5,
+        "bonus_50": "Parabéns, voce desbloqueou Bonus de Rentabilidade",
+        "bonus_75": "Olha só, Parabéns, ganhou R$100,00 pila!",
+        "bonus_85": "Excelente, acabou de embolsar R$200,00 conto!",
+        "bonus_100": "Nossa! GABARITOU, leva R$300,00 pra casa",
+        "cob_cred_rateio_filial_pct": 50,
+        "cob_cred_rateio_cred_pct": 50,
+        "cobranca_global_rateio_pct": 20,
+        "cobranca_msg_template_terceira": "Olá, {primeiro_nome}. Tudo bem?\nAqui é da Lojas MDL - Móveis do Lar.\n\nJá tentamos contato sobre a parcela vencida em {vencimento}, no valor de {valor}, referente ao título {titulo}\/{parcela}.\n\nPara evitar novos encargos e restrições, pedimos que regularize o pagamento o quanto antes.\nCaso já tenha pago, por gentileza desconsidere esta mensagem.",
+        "cobranca_msg_template": "Olá, {primeiro_nome} tudo bem?\nAqui é da Lojas MDL - Móveis do Lar.\nPassando para lembrar que tem uma parcelinha vencida na data de {vencimento}, no valor de {valor}.\nCaso o pagamento já tenha sido realizado, por gentileza, desconsidere esta mensagem.\nSe precisar do boleto, chave PIX ou tiver qualquer dúvida, fico à disposição para ajudar.",
+        "vendas_min_pct": 80,
+        "servicos_min_pct": 80,
+        "gerente_vendas_min_pct": 80,
+        "gerente_servicos_min_pct": 80,
+        "vendedor_policy": [
+            {
+                "faixa1": "0",
+                "faixa2": "50999.99",
+                "comissao": "0.70",
+                "bonus90": "100",
+                "bonus100": "250",
+                "bonus120": "320",
+                "rent48": "200",
+                "rent52": "300",
+                "rent55": "400",
+                "servico_pct": "12",
+                "caminhao_pct": "20"
+            },
+            {
+                "faixa1": "51000",
+                "faixa2": "70999.99",
+                "comissao": "0.74",
+                "bonus90": "130",
+                "bonus100": "270",
+                "bonus120": "350",
+                "rent48": "200",
+                "rent52": "300",
+                "rent55": "400",
+                "servico_pct": "12",
+                "caminhao_pct": "20"
+            },
+            {
+                "faixa1": "71000",
+                "faixa2": "90999.99",
+                "comissao": "0.76",
+                "bonus90": "160",
+                "bonus100": "290",
+                "bonus120": "380",
+                "rent48": "200",
+                "rent52": "300",
+                "rent55": "400",
+                "servico_pct": "12",
+                "caminhao_pct": "20"
+            },
+            {
+                "faixa1": "91000",
+                "faixa2": "100999.99",
+                "comissao": "0.78",
+                "bonus90": "190",
+                "bonus100": "330",
+                "bonus120": "390",
+                "rent48": "200",
+                "rent52": "300",
+                "rent55": "400",
+                "servico_pct": "12",
+                "caminhao_pct": "20"
+            },
+            {
+                "faixa1": "101000",
+                "faixa2": "120999.99",
+                "comissao": "0.80",
+                "bonus90": "220",
+                "bonus100": "360",
+                "bonus120": "420",
+                "rent48": "200",
+                "rent52": "300",
+                "rent55": "400",
+                "servico_pct": "12",
+                "caminhao_pct": "20"
+            },
+            {
+                "faixa1": "121000",
+                "faixa2": "140999.99",
+                "comissao": "0.82",
+                "bonus90": "250",
+                "bonus100": "380",
+                "bonus120": "430",
+                "rent48": "200",
+                "rent52": "300",
+                "rent55": "400",
+                "servico_pct": "12",
+                "caminhao_pct": "20"
+            },
+            {
+                "faixa1": "141000",
+                "faixa2": "160999.99",
+                "comissao": "0.84",
+                "bonus90": "270",
+                "bonus100": "400",
+                "bonus120": "450",
+                "rent48": "200",
+                "rent52": "300",
+                "rent55": "400",
+                "servico_pct": "12",
+                "caminhao_pct": "20"
+            },
+            {
+                "faixa1": "161000",
+                "faixa2": "180999.99",
+                "comissao": "0.86",
+                "bonus90": "290",
+                "bonus100": "410",
+                "bonus120": "470",
+                "rent48": "200",
+                "rent52": "300",
+                "rent55": "400",
+                "servico_pct": "12",
+                "caminhao_pct": "20"
+            },
+            {
+                "faixa1": "181000",
+                "faixa2": "200999.99",
+                "comissao": "0.88",
+                "bonus90": "300",
+                "bonus100": "420",
+                "bonus120": "500",
+                "rent48": "200",
+                "rent52": "300",
+                "rent55": "400",
+                "servico_pct": "12",
+                "caminhao_pct": "20"
+            },
+            {
+                "faixa1": "201000",
+                "faixa2": "ACIMA",
+                "comissao": "0.90",
+                "bonus90": "320",
+                "bonus100": "430",
+                "bonus120": "550",
+                "rent48": "200",
+                "rent52": "300",
+                "rent55": "400",
+                "servico_pct": "12",
+                "caminhao_pct": "20"
+            }
+        ],
+        "gerente_policy": [
+            {
+                "faixa1": "0",
+                "faixa2": "80999.99",
+                "bonusLoja": "300",
+                "comissao": "0.50",
+                "rent48": "100",
+                "rent52": "150",
+                "rent55": "300",
+                "servico_pct": "6",
+                "caminhao_pct": "10"
+            },
+            {
+                "faixa1": "81000",
+                "faixa2": "110999.99",
+                "bonusLoja": "400",
+                "comissao": "0.50",
+                "rent48": "100",
+                "rent52": "150",
+                "rent55": "300",
+                "servico_pct": "6",
+                "caminhao_pct": "10"
+            },
+            {
+                "faixa1": "111000",
+                "faixa2": "140999.99",
+                "bonusLoja": "500",
+                "comissao": "0.45",
+                "rent48": "100",
+                "rent52": "150",
+                "rent55": "300",
+                "servico_pct": "6",
+                "caminhao_pct": "10"
+            },
+            {
+                "faixa1": "141000",
+                "faixa2": "170999.99",
+                "bonusLoja": "600",
+                "comissao": "0.45",
+                "rent48": "100",
+                "rent52": "150",
+                "rent55": "300",
+                "servico_pct": "6",
+                "caminhao_pct": "10"
+            },
+            {
+                "faixa1": "171000",
+                "faixa2": "200999.99",
+                "bonusLoja": "700",
+                "comissao": "0.45",
+                "rent48": "100",
+                "rent52": "150",
+                "rent55": "300",
+                "servico_pct": "6",
+                "caminhao_pct": "10"
+            },
+            {
+                "faixa1": "201000",
+                "faixa2": "230999.99",
+                "bonusLoja": "750",
+                "comissao": "0.45",
+                "rent48": "100",
+                "rent52": "150",
+                "rent55": "300",
+                "servico_pct": "6",
+                "caminhao_pct": "10"
+            },
+            {
+                "faixa1": "231000",
+                "faixa2": "260999.99",
+                "bonusLoja": "800",
+                "comissao": "0.45",
+                "rent48": "100",
+                "rent52": "150",
+                "rent55": "300",
+                "servico_pct": "6",
+                "caminhao_pct": "10"
+            },
+            {
+                "faixa1": "261000",
+                "faixa2": "290999.99",
+                "bonusLoja": "900",
+                "comissao": "0.45",
+                "rent48": "100",
+                "rent52": "150",
+                "rent55": "300",
+                "servico_pct": "6",
+                "caminhao_pct": "10"
+            },
+            {
+                "faixa1": "291000",
+                "faixa2": "320999.99",
+                "bonusLoja": "950",
+                "comissao": "0.45",
+                "rent48": "100",
+                "rent52": "150",
+                "rent55": "300",
+                "servico_pct": "6",
+                "caminhao_pct": "10"
+            },
+            {
+                "faixa1": "321000",
+                "faixa2": "ACIMA",
+                "bonusLoja": "1000",
+                "comissao": "0.45",
+                "rent48": "100",
+                "rent52": "150",
+                "rent55": "300",
+                "servico_pct": "6",
+                "caminhao_pct": "10"
+            }
+        ],
+        "vendedor_policy_headers": [
+            "De",
+            "Até",
+            "% Comissão",
+            "Bônus 90%",
+            "Bônus 100%",
+            "Bônus 120%",
+            "Rentab 48%",
+            "Rentab 52,15%",
+            "Rentab 55,50%",
+            "% Serviços",
+            "% Caminhão"
+        ],
+        "gerente_policy_headers": [
+            "De",
+            "Até",
+            "Classificação Loja",
+            "% Comissão",
+            "Rentab 48%",
+            "Rentab 52,15%",
+            "Rentab 55,50%",
+            "% Serviços",
+            "% Caminhão"
+        ],
+        "camp_cobranca_terceiro": [
+            {
+                "faixa": "atencao",
+                "pct": "1.00"
+            },
+            {
+                "faixa": "alerta",
+                "pct": "3.00"
+            },
+            {
+                "faixa": "grave",
+                "pct": "5.00"
+            }
+        ],
+        "camp_cob_crediarista": [
+            {
+                "faixa": "atencao",
+                "pct": "0,50"
+            },
+            {
+                "faixa": "alerta",
+                "pct": "1,00"
+            },
+            {
+                "faixa": "grave",
+                "pct": "2,50"
+            }
+        ],
+        "crediaristas_config": [
+            {
+                "login": "crediaristaf02_01",
+                "nome": "Crediarista F2 01",
+                "filial": "F2",
+                "pct": 50
+            },
+            {
+                "login": "crediaristaf03_01",
+                "nome": "Crediarista F3 01",
+                "filial": "F3",
+                "pct": 50
+            },
+            {
+                "login": "crediaristaf04_01",
+                "nome": "Crediarista F4 01",
+                "filial": "F4",
+                "pct": 50
+            },
+            {
+                "login": "crediaristaf06_01",
+                "nome": "Crediarista F6 01",
+                "filial": "F6",
+                "pct": 50
+            },
+            {
+                "login": "crediaristaf09_01",
+                "nome": "Crediarista F9 01",
+                "filial": "F9",
+                "pct": 50
+            }
+        ],
+        "cobranca_audio_url": "https:\/\/moveisdolar.com.br\/colaborador\/uploads_cobranca\/audio_cobranca_padrao_1779115164.ogg",
+        "cobranca_img_url": "",
+        "camp_meta_diaria_vend": [
+            {
+                "dias_uteis": "25",
+                "bonus_final": "0"
+            }
+        ],
+        "camp_meta_diaria_ger": [
+            {
+                "dias_uteis": "25",
+                "bonus_final": "0"
+            }
+        ],
+        "camp_dindin_vend": [
+            {
+                "atingido": "105",
+                "extra_pct": "0.50"
+            },
+            {
+                "atingido": "110",
+                "extra_pct": "1.00"
+            }
+        ],
+        "camp_dindin_ger": [
+            {
+                "atingido": "105",
+                "extra_pct": "0.50"
+            },
+            {
+                "atingido": "110",
+                "extra_pct": "1.00"
+            }
+        ],
+        "camp_admin": [
+            {
+                "atingido": "100",
+                "extra_pct": "0.15",
+                "colaboradores": "5"
+            },
+            {
+                "atingido": "105",
+                "extra_pct": "0.20",
+                "colaboradores": "5"
+            },
+            {
+                "atingido": "110",
+                "extra_pct": "0.22",
+                "colaboradores": "5"
+            }
+        ]
+    },
+    "individual": []
+}

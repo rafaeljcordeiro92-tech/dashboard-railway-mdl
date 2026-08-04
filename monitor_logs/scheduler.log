@@ -1,0 +1,489 @@
+[2026-06-16T16:37:29.647212-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-16T16:37:29.648430-03:00] VERSAO V19: MAIN sem listas pesadas fora das 07h; SALES 20min; Telegram avisos gerais, meta diária e meta mercantil 100%
+[2026-06-16T16:37:29.650065-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-16T16:37:29.701949-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-16T16:37:29.846310-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T16:37:29.847258-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T16:37:29.848120-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T16:37:29.849318-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T16:37:29.850177-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T16:37:29.851426-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T16:37:29.852002-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T16:37:29.852763-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T16:37:29.853330-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T16:37:29.854110-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T16:37:29.872417-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T16:37:29.873372-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T16:37:29.875015-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-16T16:37:29.881165-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:38:25.157121-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-16T16:38:25.158773-03:00] VERSAO V19: MAIN sem listas pesadas fora das 07h; SALES 20min; Telegram avisos gerais, meta diária e meta mercantil 100%
+[2026-06-16T16:38:25.160284-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-16T16:38:25.216700-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-16T16:38:26.535032-03:00] 📲 Telegram enviado
+[2026-06-16T16:38:27.288086-03:00] 📲 Telegram enviado
+[2026-06-16T16:38:28.056570-03:00] 📲 Telegram enviado
+[2026-06-16T16:38:28.807020-03:00] 📲 Telegram enviado
+[2026-06-16T16:38:29.555687-03:00] 📲 Telegram enviado
+[2026-06-16T16:38:30.744886-03:00] 📲 Telegram enviado
+[2026-06-16T16:38:31.495752-03:00] 📲 Telegram enviado
+[2026-06-16T16:38:32.254778-03:00] 📲 Telegram enviado
+[2026-06-16T16:38:33.025169-03:00] 📲 Telegram enviado
+[2026-06-16T16:38:33.775809-03:00] 📲 Telegram enviado
+[2026-06-16T16:38:34.534616-03:00] 📲 Telegram enviado
+[2026-06-16T16:38:35.305287-03:00] 📲 Telegram enviado
+[2026-06-16T16:38:35.311277-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-16T16:38:35.317920-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:38:55.319206-03:00] ■ Fim job: dashboard_completo_cobranca | exit=1
+[2026-06-16T16:38:56.125370-03:00] 📲 Telegram enviado
+[2026-06-16T16:38:56.224469-03:00] ▶ Iniciando job: vendas_unificadas_pos_main
+[2026-06-16T16:38:56.233463-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-16 16:20 | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:39:16.234720-03:00] ■ Fim job: vendas_unificadas | exit=1
+[2026-06-16T16:39:16.995993-03:00] 📲 Telegram enviado
+[2026-06-16T16:39:17.089651-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-16 16:20 | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:39:37.156865-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-16 16:20 | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:39:57.246070-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-16 16:20 | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:40:17.342945-03:00] ▶ Iniciando job: vendas_unificadas
+[2026-06-16T16:40:17.347776-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-16 16:40 | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:40:37.349275-03:00] ■ Fim job: vendas_unificadas | exit=1
+[2026-06-16T16:40:38.115659-03:00] 📲 Telegram enviado
+[2026-06-16T16:40:38.192183-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-16 16:40 | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:40:58.300681-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-16 16:40 | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:41:18.377562-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-16 16:40 | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:41:38.475464-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-16 16:40 | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:49:48.662742-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-16T16:49:48.664556-03:00] VERSAO V20: Telegram meta diária somente VENDA mercantil; meta 100 mensal 1x por mês; listas pesadas 07h
+[2026-06-16T16:49:48.665568-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-16T16:49:48.717844-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-16T16:49:56.101056-03:00] 📲 Telegram enviado
+[2026-06-16T16:49:56.861320-03:00] 📲 Telegram enviado
+[2026-06-16T16:49:57.601245-03:00] 📲 Telegram enviado
+[2026-06-16T16:49:58.341449-03:00] 📲 Telegram enviado
+[2026-06-16T16:49:59.083072-03:00] 📲 Telegram enviado
+[2026-06-16T16:49:59.846226-03:00] 📲 Telegram enviado
+[2026-06-16T16:50:00.621319-03:00] 📲 Telegram enviado
+[2026-06-16T16:50:01.371416-03:00] 📲 Telegram enviado
+[2026-06-16T16:50:01.377562-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-16T16:50:01.386107-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:50:21.387989-03:00] ■ Fim job: dashboard_completo_cobranca | exit=1
+[2026-06-16T16:50:22.151717-03:00] 📲 Telegram enviado
+[2026-06-16T16:50:22.218199-03:00] ▶ Iniciando job: vendas_unificadas_pos_main
+[2026-06-16T16:50:22.227476-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-16 16:40 | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:50:42.229088-03:00] ■ Fim job: vendas_unificadas | exit=1
+[2026-06-16T16:50:42.981342-03:00] 📲 Telegram enviado
+[2026-06-16T16:50:43.104022-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-16 16:40 | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:51:03.182433-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-16 16:40 | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:51:23.259631-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-16 16:40 | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:53:32.060679-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-16T16:53:32.062077-03:00] VERSAO V20: Telegram meta diária somente VENDA mercantil; meta 100 mensal 1x por mês; listas pesadas 07h
+[2026-06-16T16:53:32.063512-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-16T16:53:32.101469-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-16T16:53:32.259204-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-16T16:53:32.266776-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:53:52.331372-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:54:12.661327-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:54:32.772648-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:54:52.880845-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:55:12.980082-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:55:33.069785-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:55:53.161256-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:56:14.146214-03:00] 📲 Telegram enviado
+[2026-06-16T16:56:14.914744-03:00] 📲 Telegram enviado
+[2026-06-16T16:56:15.695244-03:00] 📲 Telegram enviado
+[2026-06-16T16:56:16.446563-03:00] 📲 Telegram enviado
+[2026-06-16T16:56:17.224952-03:00] 📲 Telegram enviado
+[2026-06-16T16:56:17.986924-03:00] 📲 Telegram enviado
+[2026-06-16T16:56:18.746003-03:00] 📲 Telegram enviado
+[2026-06-16T16:56:18.750122-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:56:39.842256-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:56:59.922306-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:57:20.022361-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:57:40.104281-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:58:00.106295-03:00] ■ Fim job: dashboard_completo_cobranca | exit=0
+[2026-06-16T16:58:00.182648-03:00] ▶ Iniciando job: vendas_unificadas_pos_main
+[2026-06-16T16:58:00.189709-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-16 16:40 | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:58:20.276549-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-16 16:40 | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:58:40.373823-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-16 16:40 | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:59:00.476161-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-16 16:40 | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:59:20.553789-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-16 16:40 | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T16:59:40.555478-03:00] ■ Fim job: vendas_unificadas | exit=0
+[2026-06-16T16:59:40.644628-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-16 16:40 | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T17:00:00.750217-03:00] ▶ Iniciando job: vendas_unificadas
+[2026-06-16T17:00:00.757880-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-16 17:00 | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T17:00:20.849538-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-16 17:00 | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T17:00:40.928145-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-16 17:00 | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T17:01:01.043271-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-16 17:00 | cobranca_slot=2026-06-16 16 | force_sales_after_main=False
+[2026-06-16T17:21:54.718440-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-16T17:21:54.720531-03:00] VERSAO V22: Telegram meta diária somente VENDA mercantil; meta 100 mensal 1x por mês; listas pesadas 07h
+[2026-06-16T17:21:54.722176-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-16T17:21:54.782975-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-16T17:21:55.730415-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T17:21:56.500100-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T17:21:56.514181-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-16T17:21:56.522899-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:22:17.619741-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:22:37.689477-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:22:57.815766-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:23:17.900772-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:23:37.997176-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:23:58.101376-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:24:18.215775-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:24:38.307835-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:30:38.790090-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-16T17:30:38.791385-03:00] VERSAO V20: Telegram meta diária somente VENDA mercantil; meta 100 mensal 1x por mês; listas pesadas 07h
+[2026-06-16T17:30:38.792948-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-16T17:30:38.849172-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-16T17:30:40.011380-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-16T17:30:40.018688-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:31:00.115111-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:31:20.263638-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:31:40.359530-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:32:00.454333-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:32:20.533220-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:32:40.646759-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:33:00.743910-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:33:21.608147-03:00] 📲 Telegram enviado
+[2026-06-16T17:33:21.619516-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:33:41.721648-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:34:01.816354-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:34:22.946276-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:34:44.031693-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:35:04.142916-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:35:24.245506-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:35:44.346200-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:36:04.347575-03:00] ■ Fim job: dashboard_completo_cobranca | exit=0
+[2026-06-16T17:36:04.429659-03:00] ▶ Iniciando job: vendas_unificadas_pos_main
+[2026-06-16T17:36:04.438219-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-16 17:20 | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:36:24.546976-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-16 17:20 | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:36:44.653983-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-16 17:20 | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:37:04.737666-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-16 17:20 | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:38:59.019081-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-16T17:38:59.020497-03:00] VERSAO V20: Telegram meta diária somente VENDA mercantil; meta 100 mensal 1x por mês; listas pesadas 07h
+[2026-06-16T17:38:59.022040-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-16T17:38:59.076837-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-16T17:38:59.972310-03:00] 📲 Telegram enviado
+[2026-06-16T17:39:00.741907-03:00] 📲 Telegram enviado
+[2026-06-16T17:39:01.521025-03:00] 📲 Telegram enviado
+[2026-06-16T17:39:02.273700-03:00] 📲 Telegram enviado
+[2026-06-16T17:39:03.032799-03:00] 📲 Telegram enviado
+[2026-06-16T17:39:06.924722-03:00] 📲 Telegram enviado
+[2026-06-16T17:39:07.682216-03:00] 📲 Telegram enviado
+[2026-06-16T17:39:08.431976-03:00] 📲 Telegram enviado
+[2026-06-16T17:39:09.201544-03:00] 📲 Telegram enviado
+[2026-06-16T17:39:09.941918-03:00] 📲 Telegram enviado
+[2026-06-16T17:39:13.834104-03:00] 📲 Telegram enviado
+[2026-06-16T17:39:14.613482-03:00] 📲 Telegram enviado
+[2026-06-16T17:39:15.362215-03:00] 📲 Telegram enviado
+[2026-06-16T17:39:15.366778-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-16T17:39:15.375404-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:43:25.247665-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-16T17:43:25.249024-03:00] VERSAO V20: Telegram meta diária somente VENDA mercantil; meta 100 mensal 1x por mês; listas pesadas 07h
+[2026-06-16T17:43:25.250388-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-16T17:43:25.314288-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-16T17:43:26.244189-03:00] 📲 Telegram enviado
+[2026-06-16T17:43:27.003987-03:00] 📲 Telegram enviado
+[2026-06-16T17:43:27.784168-03:00] 📲 Telegram enviado
+[2026-06-16T17:43:28.524080-03:00] 📲 Telegram enviado
+[2026-06-16T17:43:29.271137-03:00] 📲 Telegram enviado
+[2026-06-16T17:43:33.244531-03:00] 📲 Telegram enviado
+[2026-06-16T17:43:34.024296-03:00] 📲 Telegram enviado
+[2026-06-16T17:43:34.774902-03:00] 📲 Telegram enviado
+[2026-06-16T17:43:35.524846-03:00] 📲 Telegram enviado
+[2026-06-16T17:43:36.274406-03:00] 📲 Telegram enviado
+[2026-06-16T17:43:40.154752-03:00] 📲 Telegram enviado
+[2026-06-16T17:43:40.904622-03:00] 📲 Telegram enviado
+[2026-06-16T17:43:41.668749-03:00] 📲 Telegram enviado
+[2026-06-16T17:43:41.673960-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-16T17:43:41.682110-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:47:38.273785-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-16T17:47:38.275385-03:00] VERSAO V20: Telegram meta diária somente VENDA mercantil; meta 100 mensal 1x por mês; listas pesadas 07h
+[2026-06-16T17:47:38.276785-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-16T17:47:38.343153-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-16T17:47:39.257108-03:00] 📲 Telegram enviado
+[2026-06-16T17:47:39.996933-03:00] 📲 Telegram enviado
+[2026-06-16T17:47:40.758510-03:00] 📲 Telegram enviado
+[2026-06-16T17:47:41.497343-03:00] 📲 Telegram enviado
+[2026-06-16T17:47:42.236850-03:00] 📲 Telegram enviado
+[2026-06-16T17:47:46.117303-03:00] 📲 Telegram enviado
+[2026-06-16T17:47:46.867487-03:00] 📲 Telegram enviado
+[2026-06-16T17:47:47.618469-03:00] 📲 Telegram enviado
+[2026-06-16T17:47:48.377349-03:00] 📲 Telegram enviado
+[2026-06-16T17:47:49.117523-03:00] 📲 Telegram enviado
+[2026-06-16T17:47:52.998713-03:00] 📲 Telegram enviado
+[2026-06-16T17:47:53.768719-03:00] 📲 Telegram enviado
+[2026-06-16T17:47:54.537011-03:00] 📲 Telegram enviado
+[2026-06-16T17:47:54.540658-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-16T17:47:54.548043-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:48:14.622397-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:48:25.001121-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-16T17:48:25.002491-03:00] VERSAO V20: Telegram meta diária somente VENDA mercantil; meta 100 mensal 1x por mês; listas pesadas 07h
+[2026-06-16T17:48:25.004005-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-16T17:48:25.068662-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-16T17:48:25.969138-03:00] 📲 Telegram enviado
+[2026-06-16T17:48:26.717610-03:00] 📲 Telegram enviado
+[2026-06-16T17:48:27.469166-03:00] 📲 Telegram enviado
+[2026-06-16T17:48:28.270045-03:00] 📲 Telegram enviado
+[2026-06-16T17:48:29.017593-03:00] 📲 Telegram enviado
+[2026-06-16T17:48:32.938576-03:00] 📲 Telegram enviado
+[2026-06-16T17:50:31.677591-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-16T17:50:31.679006-03:00] VERSAO V20: Telegram meta diária somente VENDA mercantil; meta 100 mensal 1x por mês; listas pesadas 07h
+[2026-06-16T17:50:31.680359-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-16T17:50:31.735957-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-16T17:50:31.912896-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:50:31.914106-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:50:31.915107-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:50:31.916134-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:50:31.917011-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:50:31.917975-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:50:31.918922-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:50:31.919935-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:50:31.921159-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:50:31.921955-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:50:31.922799-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:50:31.925475-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:50:31.926312-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:50:31.927993-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-16T17:50:31.933914-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:52:01.984953-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-16T17:52:01.986487-03:00] VERSAO V20: Telegram meta diária somente VENDA mercantil; meta 100 mensal 1x por mês; listas pesadas 07h
+[2026-06-16T17:52:01.988464-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-16T17:52:02.043636-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-16T17:52:02.182574-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:52:02.183889-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:52:02.184756-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:52:02.186023-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:52:02.186703-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:52:02.187389-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:52:02.188038-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:52:02.188841-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:52:02.189685-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:52:02.190451-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:52:02.191389-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:52:02.193960-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:52:02.195060-03:00] ⚠️ Falha Telegram: TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID não configurado
+[2026-06-16T17:52:02.197196-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-16T17:52:02.202890-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:52:51.889008-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-16T17:52:51.890733-03:00] VERSAO V25: Telegram metas somente com percentual, ZERO valores em reais; meta diária somente VENDA mercantil; meta 100 mensal 1x por mês
+[2026-06-16T17:52:51.892757-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-16T17:52:51.930762-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-16T17:52:52.075858-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: TELEGRAM_BOT_TOKEN ou chat_id não configurado
+[2026-06-16T17:52:52.078153-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: TELEGRAM_BOT_TOKEN ou chat_id não configurado
+[2026-06-16T17:52:52.079879-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: TELEGRAM_BOT_TOKEN ou chat_id não configurado
+[2026-06-16T17:52:52.081294-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: TELEGRAM_BOT_TOKEN ou chat_id não configurado
+[2026-06-16T17:52:52.082932-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: TELEGRAM_BOT_TOKEN ou chat_id não configurado
+[2026-06-16T17:52:52.084070-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: TELEGRAM_BOT_TOKEN ou chat_id não configurado
+[2026-06-16T17:52:52.085273-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: TELEGRAM_BOT_TOKEN ou chat_id não configurado
+[2026-06-16T17:52:52.086243-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: TELEGRAM_BOT_TOKEN ou chat_id não configurado
+[2026-06-16T17:52:52.087549-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: TELEGRAM_BOT_TOKEN ou chat_id não configurado
+[2026-06-16T17:52:52.089438-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: TELEGRAM_BOT_TOKEN ou chat_id não configurado
+[2026-06-16T17:52:52.091025-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: TELEGRAM_BOT_TOKEN ou chat_id não configurado
+[2026-06-16T17:52:52.094160-03:00] ⚠️ Falha Telegram (meta_mensal): TELEGRAM_CHAT_ID: TELEGRAM_BOT_TOKEN ou chat_id não configurado
+[2026-06-16T17:52:52.095256-03:00] ⚠️ Falha Telegram (meta_mensal): TELEGRAM_CHAT_ID: TELEGRAM_BOT_TOKEN ou chat_id não configurado
+[2026-06-16T17:52:52.097028-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-16T17:52:52.104209-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T17:53:54.078055-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-16T17:53:54.079546-03:00] VERSAO V25: Telegram metas somente com percentual, ZERO valores em reais; meta diária somente VENDA mercantil; meta 100 mensal 1x por mês
+[2026-06-16T17:53:54.080866-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-16T17:53:54.136031-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-16T17:53:55.911254-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T17:53:56.531115-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T17:53:57.141896-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T17:53:57.751410-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T17:53:58.381642-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T17:53:59.001316-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T17:53:59.611497-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T17:54:00.220998-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T17:54:00.831109-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T17:54:01.441804-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T17:54:02.061131-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T17:54:02.670842-03:00] ⚠️ Falha Telegram (meta_mensal): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T17:55:22.743403-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-16T17:55:22.744980-03:00] VERSAO V25: Telegram metas somente com percentual, ZERO valores em reais; meta diária somente VENDA mercantil; meta 100 mensal 1x por mês
+[2026-06-16T17:55:22.746368-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-16T17:55:22.814280-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-16T17:55:23.904065-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T17:55:24.751622-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T17:55:25.553834-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T17:55:26.304635-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T17:55:27.067445-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T17:55:31.142612-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T17:55:31.893307-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T17:55:32.636239-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T17:55:33.382502-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T17:55:34.272471-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T17:55:38.164910-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T17:55:38.921950-03:00] 📲 Telegram enviado (meta_mensal)
+[2026-06-16T17:55:39.663850-03:00] 📲 Telegram enviado (meta_mensal)
+[2026-06-16T17:55:39.667281-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-16T17:55:39.676586-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 17 | force_sales_after_main=False
+[2026-06-16T18:03:53.299795-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-16T18:03:53.301201-03:00] VERSAO V26: Telegram metas bonitas com emojis, percentual e ZERO valores em reais; meta diária somente VENDA mercantil; meta 100 mensal 1x por mês
+[2026-06-16T18:03:53.302712-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-16T18:03:53.355739-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-16T18:03:54.171197-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T18:03:54.777859-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T18:03:55.377530-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T18:03:55.997544-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T18:03:56.607044-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T18:03:57.207357-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T18:03:57.808814-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T18:03:58.537969-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T18:03:59.187255-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T18:03:59.787398-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T18:04:00.407388-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T18:04:01.018373-03:00] ⚠️ Falha Telegram (meta_mensal): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T18:04:01.627370-03:00] ⚠️ Falha Telegram (meta_mensal): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-16T18:04:01.629807-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-16T18:04:01.638520-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 18 | force_sales_after_main=False
+[2026-06-16T18:04:24.177862-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-16T18:04:24.179155-03:00] VERSAO V26: Telegram metas bonitas com emojis, percentual e ZERO valores em reais; meta diária somente VENDA mercantil; meta 100 mensal 1x por mês
+[2026-06-16T18:04:24.180554-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-16T18:04:24.238287-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-16T18:04:24.988349-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 401: Unauthorized
+[2026-06-16T18:04:25.598526-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 401: Unauthorized
+[2026-06-16T18:04:26.207741-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 401: Unauthorized
+[2026-06-16T18:04:26.838606-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 401: Unauthorized
+[2026-06-16T18:04:27.467638-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 401: Unauthorized
+[2026-06-16T18:04:28.078598-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 401: Unauthorized
+[2026-06-16T18:04:28.758616-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 401: Unauthorized
+[2026-06-16T18:04:29.368449-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 401: Unauthorized
+[2026-06-16T18:05:30.975221-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-16T18:05:30.976912-03:00] VERSAO V26: Telegram metas bonitas com emojis, percentual e ZERO valores em reais; meta diária somente VENDA mercantil; meta 100 mensal 1x por mês
+[2026-06-16T18:05:30.978516-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-16T18:05:31.032661-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-16T18:05:31.949030-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T18:05:32.709093-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T18:05:33.459080-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T18:05:34.208853-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T18:05:34.963239-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T18:05:38.838698-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T18:05:39.578222-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T18:05:40.318931-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T18:05:41.068962-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T18:05:41.823066-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T18:05:45.718921-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-16T18:05:46.469242-03:00] 📲 Telegram enviado (meta_mensal)
+[2026-06-16T18:05:47.248108-03:00] 📲 Telegram enviado (meta_mensal)
+[2026-06-16T18:05:47.254247-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-16T18:05:47.263443-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-16 18 | force_sales_after_main=False
+[2026-06-17T11:37:36.855216-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-17T11:37:36.857442-03:00] VERSAO V28: Telegram ignora GER/GERF nas metas individuais de vendedor; mantém filial, emojis, percentual e ZERO valores em reais
+[2026-06-17T11:37:36.858862-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-17T11:37:36.926764-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-17T11:37:37.721059-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-17T11:37:37.734929-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-17T11:37:37.743698-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-17 11 | force_sales_after_main=False
+[2026-06-17T11:38:14.495507-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-17T11:38:14.497252-03:00] VERSAO V28: Telegram ignora GER/GERF nas metas individuais de vendedor; mantém filial, emojis, percentual e ZERO valores em reais
+[2026-06-17T11:38:14.498334-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-17T11:38:14.554653-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-17T11:38:16.451677-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-17T11:38:16.457925-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-17T11:38:16.464663-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-17 11 | force_sales_after_main=False
+[2026-06-17T11:48:55.865228-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-17T11:48:55.866545-03:00] VERSAO V28: Telegram ignora GER/GERF nas metas individuais de vendedor; mantém filial, emojis, percentual e ZERO valores em reais
+[2026-06-17T11:48:55.868518-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-17T11:48:55.921838-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-17T11:48:56.887606-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-17T11:48:57.637409-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-17T11:48:57.652575-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-17T11:48:57.662037-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-17 11 | force_sales_after_main=False
+[2026-06-17T11:54:53.163871-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-17T11:54:53.165120-03:00] VERSAO V29: Telegram templates bonitos com título/rodapé, ignora GERF, percentual e ZERO valores em reais
+[2026-06-17T11:54:53.166434-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-17T11:54:53.229759-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-17T11:54:54.161044-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-17T11:54:54.919407-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-17T11:54:54.923694-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-17T11:54:54.932055-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-17 11 | force_sales_after_main=False
+[2026-06-17T12:01:22.333695-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-17T12:01:22.335154-03:00] VERSAO V30: Telegram template completo igual dashboard; ignora GERF, percentual e ZERO valores em reais
+[2026-06-17T12:01:22.336415-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-17T12:01:22.401197-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-17T12:01:23.323172-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-17T12:01:24.063128-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-17T12:01:24.070100-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-17T12:01:24.078044-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-17 12 | force_sales_after_main=False
+[2026-06-17T12:01:44.158950-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-17 12 | force_sales_after_main=False
+[2026-06-17T12:02:04.251606-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-17 12 | force_sales_after_main=False
+[2026-06-17T12:02:24.349854-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-17 12 | force_sales_after_main=False
+[2026-06-17T12:02:44.432783-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-17 12 | force_sales_after_main=False
+[2026-06-17T12:03:04.533260-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-17 12 | force_sales_after_main=False
+[2026-06-17T12:03:24.618076-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-17 12 | force_sales_after_main=False
+[2026-06-17T12:03:44.722472-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-17 12 | force_sales_after_main=False
+[2026-06-17T12:04:04.807570-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-17 12 | force_sales_after_main=False
+[2026-06-17T12:04:24.893153-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-17 12 | force_sales_after_main=False
+[2026-06-17T12:04:44.972896-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-17 12 | force_sales_after_main=False
+[2026-06-17T12:05:05.042142-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-17 12 | force_sales_after_main=False
+[2026-06-17T12:05:25.141423-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-17 12 | force_sales_after_main=False
+[2026-06-17T12:05:57.155383-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-17 12 | force_sales_after_main=False
+[2026-06-17T12:06:29.179598-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-17 12 | force_sales_after_main=False
+[2026-06-18T09:18:46.247665-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-18T09:18:46.249845-03:00] VERSAO V32: resumo diario completo corrigido + listas pesadas no boot opcional
+[2026-06-18T09:18:46.251376-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-18T09:18:46.252399-03:00] ⚠️ Falha watcher Telegram avisos gerais: name 'load_active_general_messages' is not defined
+[2026-06-18T09:18:46.253395-03:00] ⚠️ Falha watcher Telegram meta diária: name 'load_meta_diaria_batidas' is not defined
+[2026-06-18T09:18:46.255950-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-18T09:18:46.262199-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-18T09:18:46.265631-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-18 09 | force_sales_after_main=False
+[2026-06-18T09:25:32.872157-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-18T09:25:32.873515-03:00] VERSAO V33: resumo diario completo + watchers Telegram corrigidos + listas pesadas no boot opcional
+[2026-06-18T09:25:32.874610-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-18T09:25:32.928616-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-18T09:25:33.821818-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-18T09:25:34.452349-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-18T09:25:35.071894-03:00] ⚠️ Falha Telegram (meta_diaria): TELEGRAM_CHAT_ID: HTTP Error 404: Not Found
+[2026-06-18T09:25:35.089551-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-18T09:25:35.095866-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-18 09 | force_sales_after_main=False
+[2026-06-18T09:25:58.987809-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-18T09:25:58.989343-03:00] VERSAO V33: resumo diario completo + watchers Telegram corrigidos + listas pesadas no boot opcional
+[2026-06-18T09:25:58.990533-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-18T09:25:59.047628-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-18T09:26:00.042575-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-18T09:26:00.901517-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-18T09:26:01.631929-03:00] 📲 Telegram enviado (meta_diaria)
+[2026-06-18T09:26:01.637780-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-18T09:26:01.643395-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-18 09 | force_sales_after_main=False
+[2026-06-18T13:50:24.587384-03:00] Scheduler Railway ativo | TZ=America/Sao_Paulo
+[2026-06-18T13:50:24.588726-03:00] VERSAO V33: resumo diario completo + watchers Telegram corrigidos + listas pesadas no boot opcional
+[2026-06-18T13:50:24.590024-03:00] Cobrança: janelas [7, 9, 11, 13, 15, 17, 19, 21] com intervalo mínimo 90 min | Listas pesadas: 07:00 1x/dia
+[2026-06-18T13:50:24.592324-03:00] ▶ Iniciando job: dashboard_completo_cobranca_boot_publica_html
+[2026-06-18T13:50:24.598633-03:00] 🌐 Painel monitor iniciado na porta 3000
+[2026-06-18T13:50:24.600739-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:50:44.603633-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:51:04.607017-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:51:24.610470-03:00] tick | sales=False | cobranca=True | sales_slot=None | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:51:44.613069-03:00] ■ Fim job: dashboard_completo_cobranca | exit=1
+[2026-06-18T13:51:44.621287-03:00] ▶ Iniciando job: vendas_unificadas_pos_main
+[2026-06-18T13:51:44.645672-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:52:04.651598-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:52:24.657026-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:52:44.664697-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:53:04.671421-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:53:24.673663-03:00] ■ Fim job: vendas_unificadas | exit=0
+[2026-06-18T13:53:24.677158-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:53:44.679722-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:54:04.685696-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:54:24.691092-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:54:44.696217-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:55:04.701207-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:55:24.704949-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:55:44.710943-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:56:04.717508-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:56:24.723650-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:56:44.730260-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:57:04.736556-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:57:24.742706-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:57:44.748741-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:58:04.755686-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:58:24.761217-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:58:44.765832-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:59:04.770160-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:59:24.776458-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T13:59:44.782169-03:00] tick | sales=False | cobranca=False | sales_slot=2026-06-18 13:40 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T14:00:04.788651-03:00] ▶ Iniciando job: vendas_unificadas
+[2026-06-18T14:00:04.801932-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-18 14:00 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T14:00:24.809373-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-18 14:00 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T14:00:44.817852-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-18 14:00 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False
+[2026-06-18T14:01:04.824186-03:00] tick | sales=True | cobranca=False | sales_slot=2026-06-18 14:00 | cobranca_slot=2026-06-18 13 | force_sales_after_main=False

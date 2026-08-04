@@ -1,0 +1,301 @@
+{
+  "gerado_em": "2026-06-18T14:07:29.114748-03:00",
+  "total": 21,
+  "dados": [
+    {
+      "filial": "F6",
+      "cliente": "ALAN CORDEIRO DA SILVA",
+      "primeiro_nome": "Alan",
+      "nascimento": "16/06/2000",
+      "ultima_venda": "06/09/2023 21:25:56",
+      "cidade": "Carambeí",
+      "uf": "PR",
+      "telefones": [
+        "5542991175254"
+      ],
+      "contatos_raw": "(42) 99117-5254",
+      "origem": "aniversariantes_20260616.xls"
+    },
+    {
+      "filial": "F9",
+      "cliente": "AMARILDO DA ROCHA DE OLIVEIRA",
+      "primeiro_nome": "Amarildo",
+      "nascimento": "16/06/1998",
+      "ultima_venda": "10/02/2024 12:34:32",
+      "cidade": "Piraí do Sul",
+      "uf": "PR",
+      "telefones": [
+        "5542998089246"
+      ],
+      "contatos_raw": "(42) 99808-9246 | sac@moveisdolar.com.br",
+      "origem": "aniversariantes_20260616.xls"
+    },
+    {
+      "filial": "F3",
+      "cliente": "ANGELA BUTKOSKI (C.78911)",
+      "primeiro_nome": "Angela",
+      "nascimento": "16/06/1999",
+      "ultima_venda": "09/11/2023 18:58:51",
+      "cidade": "Castro",
+      "uf": "PR",
+      "telefones": [
+        "5542998609482"
+      ],
+      "contatos_raw": "(42) 99860-9482",
+      "origem": "aniversariantes_20260616.xls"
+    },
+    {
+      "filial": "F3",
+      "cliente": "CRISLAINE APARECIDA NUNES",
+      "primeiro_nome": "Crislaine",
+      "nascimento": "16/06/1992",
+      "ultima_venda": "28/05/2026 14:57:19",
+      "cidade": "Castro",
+      "uf": "PR",
+      "telefones": [
+        "5542998028783"
+      ],
+      "contatos_raw": "(42) 99802-8783 | sac@moveisdolar.com.br",
+      "origem": "aniversariantes_20260616.xls"
+    },
+    {
+      "filial": "F6",
+      "cliente": "DINOSVALDO DA SILVA (34114)",
+      "primeiro_nome": "Dinosvaldo",
+      "nascimento": "16/06/1976",
+      "ultima_venda": "19/06/2023 18:03:00",
+      "cidade": "Carambeí",
+      "uf": "PR",
+      "telefones": [
+        "5542998074651"
+      ],
+      "contatos_raw": "sac@moveisdolar.com.br | (42) 99807-4651",
+      "origem": "aniversariantes_20260616.xls"
+    },
+    {
+      "filial": "F2",
+      "cliente": "DONY WUESLEY SILVEIRA MACHADO  (33759)",
+      "primeiro_nome": "Dony",
+      "nascimento": "16/06/1993",
+      "ultima_venda": "14/03/2025 17:35:31",
+      "cidade": "Castro",
+      "uf": "PR",
+      "telefones": [
+        "5542999279165"
+      ],
+      "contatos_raw": "(42) 9904-7992 | (42) 99927-9165 | sac@moveisdolar.com.br",
+      "origem": "aniversariantes_20260616.xls"
+    },
+    {
+      "filial": "F9",
+      "cliente": "GISELE SOUZA MACHADO",
+      "primeiro_nome": "Gisele",
+      "nascimento": "16/06/2002",
+      "ultima_venda": "21/05/2026 16:49:10",
+      "cidade": "Castro",
+      "uf": "PR",
+      "telefones": [
+        "5542998125089"
+      ],
+      "contatos_raw": "(42) 9946-9340 | (42) 99812-5089 | Sac@moveisdolar.com.br",
+      "origem": "aniversariantes_20260616.xls"
+    },
+    {
+      "filial": "F9",
+      "cliente": "HELDEVETIA MARIA LOPES STADELMANN (210206)",
+      "primeiro_nome": "Heldevetia",
+      "nascimento": "16/06/1964",
+      "ultima_venda": "08/09/2023 19:57:59",
+      "cidade": "Piraí do Sul",
+      "uf": "PR",
+      "telefones": [
+        "5542988671547"
+      ],
+      "contatos_raw": "(42) 98867-1547",
+      "origem": "aniversariantes_20260616.xls"
+    },
+    {
+      "filial": "F2",
+      "cliente": "IZILDA MILEK (33053)",
+      "primeiro_nome": "Izilda",
+      "nascimento": "16/06/1955",
+      "ultima_venda": "01/06/2026 20:02:22",
+      "cidade": "Castro",
+      "uf": "PR",
+      "telefones": [
+        "5542999407424"
+      ],
+      "contatos_raw": "(42) 99940-7424 | (42) 9972-5735 | SAC@MOVEISDOLAR.COM",
+      "origem": "aniversariantes_20260616.xls"
+    },
+    {
+      "filial": "F9",
+      "cliente": "JAIRO DOS SANTOS NETO",
+      "primeiro_nome": "Jairo",
+      "nascimento": "16/06/1976",
+      "ultima_venda": "26/04/2025 18:46:57",
+      "cidade": "Castro",
+      "uf": "PR",
+      "telefones": [
+        "5542935051964"
+      ],
+      "contatos_raw": "(42) 93505-1964 | sac@moveisdolar.com.br",
+      "origem": "aniversariantes_20260616.xls"
+    },
+    {
+      "filial": "F3",
+      "cliente": "JOAO VALDIR DO NASCIMENTO CASTRO",
+      "primeiro_nome": "Joao",
+      "nascimento": "16/06/1981",
+      "ultima_venda": "09/05/2026 14:02:17",
+      "cidade": "Castro",
+      "uf": "PR",
+      "telefones": [
+        "5542999226267"
+      ],
+      "contatos_raw": "(42) 99922-6267 | Jv290968@gmail.com",
+      "origem": "aniversariantes_20260616.xls"
+    },
+    {
+      "filial": "F9",
+      "cliente": "JOHN BUENO DOS SANTOS",
+      "primeiro_nome": "John",
+      "nascimento": "16/06/1995",
+      "ultima_venda": "28/03/2026 12:44:19",
+      "cidade": "Piraí do Sul",
+      "uf": "PR",
+      "telefones": [
+        "5542998203789"
+      ],
+      "contatos_raw": "(42) 99820-3789 | (42) 9914-6073 | Sac@moveisdolar.com.br",
+      "origem": "aniversariantes_20260616.xls"
+    },
+    {
+      "filial": "F3",
+      "cliente": "JOSE RIBAS LEAL (920493)",
+      "primeiro_nome": "Jose",
+      "nascimento": "16/06/1978",
+      "ultima_venda": "02/07/2025 19:24:21",
+      "cidade": "Castro",
+      "uf": "PR",
+      "telefones": [
+        "5542991594630"
+      ],
+      "contatos_raw": "(42) 99159-4630 | sac@moveisdolar.com.br",
+      "origem": "aniversariantes_20260616.xls"
+    },
+    {
+      "filial": "F6",
+      "cliente": "JULIA DA SILVA MACHADO (35593)",
+      "primeiro_nome": "Julia",
+      "nascimento": "16/06/1953",
+      "ultima_venda": "30/12/2025 13:18:49",
+      "cidade": "Carambeí",
+      "uf": "PR",
+      "telefones": [
+        "5542991256370"
+      ],
+      "contatos_raw": "(42) 99125-6370 | sac@mercadomoveis.com.br | (42) 9121-7273",
+      "origem": "aniversariantes_20260616.xls"
+    },
+    {
+      "filial": "F2",
+      "cliente": "MARGARETE APARECIDA PEREIRA NASCIMENTO  (C.83623)",
+      "primeiro_nome": "Margarete",
+      "nascimento": "16/06/1988",
+      "ultima_venda": "05/06/2026 17:48:56",
+      "cidade": "Castro",
+      "uf": "PR",
+      "telefones": [
+        "5542999927539"
+      ],
+      "contatos_raw": "sac@moveisdolar.com.br | (42) 99992-7539",
+      "origem": "aniversariantes_20260616.xls"
+    },
+    {
+      "filial": "F9",
+      "cliente": "MARLI DO ROCIO BRAGA VARGAS (921508)",
+      "primeiro_nome": "Marli",
+      "nascimento": "16/06/1959",
+      "ultima_venda": "11/10/2023 19:00:12",
+      "cidade": "Piraí do Sul",
+      "uf": "PR",
+      "telefones": [
+        "5542998227430"
+      ],
+      "contatos_raw": "SAC@MOVEISDOLAR.COM.BR | (42) 99822-7430",
+      "origem": "aniversariantes_20260616.xls"
+    },
+    {
+      "filial": "F2",
+      "cliente": "MIRAITA MAIA DE OLIVEIRA",
+      "primeiro_nome": "Miraita",
+      "nascimento": "16/06/1953",
+      "ultima_venda": "23/08/2023 18:19:28",
+      "cidade": "Castro",
+      "uf": "PR",
+      "telefones": [
+        "5542991091618"
+      ],
+      "contatos_raw": "(42) 99109-1618 | sac@moveisdolar.com.br",
+      "origem": "aniversariantes_20260616.xls"
+    },
+    {
+      "filial": "F9",
+      "cliente": "NENZINHO CLARO DO NASCIMENTO (921760)",
+      "primeiro_nome": "Nenzinho",
+      "nascimento": "16/06/1976",
+      "ultima_venda": "14/07/2023 21:06:56",
+      "cidade": "Piraí do Sul",
+      "uf": "PR",
+      "telefones": [
+        "5542998410322"
+      ],
+      "contatos_raw": "(42) 99841-0322",
+      "origem": "aniversariantes_20260616.xls"
+    },
+    {
+      "filial": "F9",
+      "cliente": "PATRICIA DE FATIMA DE PAULA (C.70958)",
+      "primeiro_nome": "Patricia",
+      "nascimento": "16/06/1984",
+      "ultima_venda": "11/03/2026 16:40:46",
+      "cidade": "Piraí do Sul",
+      "uf": "PR",
+      "telefones": [
+        "5542999486717"
+      ],
+      "contatos_raw": "(42) 99948-6717 | (42) 00000-0000 | SAC@MOVEISDOLAR.COM",
+      "origem": "aniversariantes_20260616.xls"
+    },
+    {
+      "filial": "F5",
+      "cliente": "ROSELI MARIANO FERREIRA (33630)",
+      "primeiro_nome": "Roseli",
+      "nascimento": "16/06/1973",
+      "ultima_venda": "20/02/2026 20:11:17",
+      "cidade": "Tibagi",
+      "uf": "PR",
+      "telefones": [
+        "5542988198856",
+        "5542988198857"
+      ],
+      "contatos_raw": "(42) 98819-8856 | sac@moveisdolar.com | (42) 98819-8857",
+      "origem": "aniversariantes_20260616.xls"
+    },
+    {
+      "filial": "F2",
+      "cliente": "SUZANA GONSALVES CARNEIRO (C.81915)",
+      "primeiro_nome": "Suzana",
+      "nascimento": "16/06/2002",
+      "ultima_venda": "04/08/2025 20:33:59",
+      "cidade": "Castro",
+      "uf": "PR",
+      "telefones": [
+        "5542998489149"
+      ],
+      "contatos_raw": "sac@moveisdolar.com.br | (42) 99848-9149",
+      "origem": "aniversariantes_20260616.xls"
+    }
+  ]
+}

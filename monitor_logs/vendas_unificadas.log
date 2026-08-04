@@ -1,0 +1,383 @@
+
+==========================================================================================
+INÍCIO vendas_unificadas_pos_main em 2026-06-16T16:38:56.226155-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py
+==========================================================================================
+TITLE: S�lidus
+URL ATUAL: https://smart.sgisistemas.com.br/login
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py", line 1913, in fazer_login_sgi
+    print("\u2705 Filial OK")
+    ~~~~~^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2705' in position 0: character maps to <undefined>
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py", line 1919, in <module>
+    fazer_login_sgi()
+    ~~~~~~~~~~~~~~~^^
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py", line 1915, in fazer_login_sgi
+    print("\u26a0\ufe0f Tela de filial n�o apareceu")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode characters in position 0-1: character maps to <undefined>
+
+==========================================================================================
+INÍCIO vendas_unificadas em 2026-06-16T16:40:17.344845-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py
+==========================================================================================
+TITLE: S�lidus
+URL ATUAL: https://smart.sgisistemas.com.br/login
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py", line 1913, in fazer_login_sgi
+    print("\u2705 Filial OK")
+    ~~~~~^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2705' in position 0: character maps to <undefined>
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py", line 1919, in <module>
+    fazer_login_sgi()
+    ~~~~~~~~~~~~~~~^^
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py", line 1915, in fazer_login_sgi
+    print("\u26a0\ufe0f Tela de filial n�o apareceu")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode characters in position 0-1: character maps to <undefined>
+
+==========================================================================================
+INÍCIO vendas_unificadas_pos_main em 2026-06-16T16:50:22.220073-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py
+==========================================================================================
+TITLE: S�lidus
+URL ATUAL: https://smart.sgisistemas.com.br/login
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py", line 1913, in fazer_login_sgi
+    print("\u2705 Filial OK")
+    ~~~~~^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2705' in position 0: character maps to <undefined>
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py", line 1919, in <module>
+    fazer_login_sgi()
+    ~~~~~~~~~~~~~~~^^
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py", line 1915, in fazer_login_sgi
+    print("\u26a0\ufe0f Tela de filial n�o apareceu")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode characters in position 0-1: character maps to <undefined>
+
+==========================================================================================
+INÍCIO vendas_unificadas_pos_main em 2026-06-16T16:58:00.184516-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py
+==========================================================================================
+TITLE: Sólidus
+URL ATUAL: https://smart.sgisistemas.com.br/login
+✅ Campo usuário encontrado em: name = usuario
+✅ Filial OK
+✅ COBRANCA10_WORKER_V17_META_REAL_TOTAL_DIARIA_MARGEM_FLUXO
+
+📊 Iniciando coleta de metas/vendas do mês atual...
+📋 Metas listadas na tela: 4
+➡️ Abrindo resultados: Venda / Filial / Meta Filial -> https://smart.sgisistemas.com.br/metas/consulta/214
+   ↳ Colunas lidas: ['Filial', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 10
+✅ Venda / Filial / Meta Filial: 10 linha(s)
+➡️ Abrindo resultados: Venda / Filial-Vendedor / Meta Vendedor -> https://smart.sgisistemas.com.br/metas/consulta/215
+   ↳ Colunas lidas: ['Vendedor', 'Vendedor_2', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 21
+✅ Venda / Filial-Vendedor / Meta Vendedor: 21 linha(s)
+⚠️ Meta não encontrada: Venda / Filial-Subgrupo / Caminhão 20K
+➡️ Abrindo resultados: Serviço / Filial / Ouro-FOB -> https://smart.sgisistemas.com.br/metas/consulta/216
+   ↳ Colunas lidas: ['Filial', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 9
+✅ Serviço / Filial / Ouro-FOB: 9 linha(s)
+➡️ Abrindo resultados: Serviço / Filial-Vendedor / Ouro-FOB -> https://smart.sgisistemas.com.br/metas/consulta/218
+   ↳ Colunas lidas: ['Vendedor', 'Vendedor_2', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 14
+✅ Serviço / Filial-Vendedor / Ouro-FOB: 14 linha(s)
+⚠️ Meta não encontrada: Venda / Vendedor-Subgrupo / Caminhão 20K
+✅ V17 Total xlsx [venda_filial_meta]: meta=860000.00  real_total_col_C=331003.91  real_periodo_col_F=331003.91  ating=38.49%  proj=614721.55
+✅ V17 Total xlsx [servico_filial_ouro_fob]: meta=56200.00  real_total_col_C=20497.09  real_periodo_col_F=20497.09  ating=36.47%  proj=38066.02
+⚠️ Sheet não encontrada no xlsx: venda_filial_subgrupo_20k
+💾 Metas JSON: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_mes_atual.json
+💾 Metas XLSX: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_mes_atual.xlsx
+
+📈 Iniciando coleta de Margem Bruta/Rentabilidade do mês atual...
+✅ Operações de Devolução: 4 opções marcadas
+✅ Formato XLS para Margem Bruta
+📈 Gerando Margem Bruta por FILIAL...
+✅ Download margem OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\ac3b2d86-3538-45e4-88ae-f999476b44d7_relatorio_margem_bruta_20260616165857_administrativo01_moveisdolar.xls
+✅ Margem por FILIAL: 9 registro(s)
+✅ Operações de Devolução: 4 opções marcadas
+✅ Formato XLS para Margem Bruta
+📈 Gerando Margem Bruta por VENDEDOR...
+✅ Download margem OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\4b443d6b-f390-4243-aabb-f9b682acaeab_relatorio_margem_bruta_20260616165908_administrativo01_moveisdolar.xls
+✅ Margem por VENDEDOR: 19 registro(s)
+💾 Margens JSON: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\margens_brutas_mes_atual.json
+💾 Margens XLSX: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\margens_brutas_mes_atual.xlsx
+✅ V17_SERVICOS_SOMENTE_CONTROLE_META: relatório individual de serviços desativado; valores de serviço vêm da coluna Realizado Total da meta SGI
+\n🕒 Iniciando coleta de venda diária oficial...
+✅ V17 Venda diária: campos de data preenchidos: 4 campo(s) = 16/06/2026
+✅ Formato XLS para venda diária
+📥 Gerando XLS venda diária... aguardando download...
+✅ Download venda diária OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\d8bbb258-e2db-4469-a4ea-4dd33aee6a6a_relatorio_analise_total_venda_20260616165920_administrativo01_moveisdolar.xls
+✅ Venda diária oficial: total_vendido=26433.39 servico=671.11 acrescimo=179.08 total=27283.58
+✅ Venda diária oficial anexada ao metas_vendas_mes_atual.json
+✅ Upload vendas/margens/serviços concluído
+🔥 WORKER DE VENDAS FINALIZADO
+
+==========================================================================================
+INÍCIO vendas_unificadas em 2026-06-16T17:00:00.754325-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py
+==========================================================================================
+TITLE: Sólidus
+URL ATUAL: https://smart.sgisistemas.com.br/login
+✅ Campo usuário encontrado em: name = usuario
+✅ Filial OK
+✅ COBRANCA10_WORKER_V17_META_REAL_TOTAL_DIARIA_MARGEM_FLUXO
+
+📊 Iniciando coleta de metas/vendas do mês atual...
+📋 Metas listadas na tela: 4
+➡️ Abrindo resultados: Venda / Filial / Meta Filial -> https://smart.sgisistemas.com.br/metas/consulta/214
+   ↳ Colunas lidas: ['Filial', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 10
+✅ Venda / Filial / Meta Filial: 10 linha(s)
+➡️ Abrindo resultados: Venda / Filial-Vendedor / Meta Vendedor -> https://smart.sgisistemas.com.br/metas/consulta/215
+   ↳ Colunas lidas: ['Vendedor', 'Vendedor_2', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 21
+✅ Venda / Filial-Vendedor / Meta Vendedor: 21 linha(s)
+⚠️ Meta não encontrada: Venda / Filial-Subgrupo / Caminhão 20K
+➡️ Abrindo resultados: Serviço / Filial / Ouro-FOB -> https://smart.sgisistemas.com.br/metas/consulta/216
+   ↳ Colunas lidas: ['Filial', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 9
+✅ Serviço / Filial / Ouro-FOB: 9 linha(s)
+➡️ Abrindo resultados: Serviço / Filial-Vendedor / Ouro-FOB -> https://smart.sgisistemas.com.br/metas/consulta/218
+   ↳ Colunas lidas: ['Vendedor', 'Vendedor_2', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 14
+✅ Serviço / Filial-Vendedor / Ouro-FOB: 14 linha(s)
+⚠️ Meta não encontrada: Venda / Vendedor-Subgrupo / Caminhão 20K
+✅ V17 Total xlsx [venda_filial_meta]: meta=860000.00  real_total_col_C=331003.91  real_periodo_col_F=331003.91  ating=38.49%  proj=614721.55
+✅ V17 Total xlsx [servico_filial_ouro_fob]: meta=56200.00  real_total_col_C=20497.09  real_periodo_col_F=20497.09  ating=36.47%  proj=38066.02
+⚠️ Sheet não encontrada no xlsx: venda_filial_subgrupo_20k
+💾 Metas JSON: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_mes_atual.json
+💾 Metas XLSX: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_mes_atual.xlsx
+
+📈 Iniciando coleta de Margem Bruta/Rentabilidade do mês atual...
+✅ Operações de Devolução: 4 opções marcadas
+✅ Formato XLS para Margem Bruta
+📈 Gerando Margem Bruta por FILIAL...
+✅ Download margem OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\1dd343af-3ed9-4530-b197-e82c671292a8_relatorio_margem_bruta_20260616170058_administrativo01_moveisdolar.xls
+✅ Margem por FILIAL: 9 registro(s)
+✅ Operações de Devolução: 4 opções marcadas
+✅ Formato XLS para Margem Bruta
+📈 Gerando Margem Bruta por VENDEDOR...
+✅ Download margem OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\afdbe541-a5d6-4b6c-a182-109c2c286e5d_relatorio_margem_bruta_20260616170110_administrativo01_moveisdolar.xls
+✅ Margem por VENDEDOR: 19 registro(s)
+💾 Margens JSON: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\margens_brutas_mes_atual.json
+💾 Margens XLSX: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\margens_brutas_mes_atual.xlsx
+✅ V17_SERVICOS_SOMENTE_CONTROLE_META: relatório individual de serviços desativado; valores de serviço vêm da coluna Realizado Total da meta SGI
+\n🕒 Iniciando coleta de venda diária oficial...
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py", line 1941, in <module>
+    venda_diaria_info = coletar_venda_diaria_oficial()
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py", line 1772, in coletar_venda_diaria_oficial
+    time.sleep(1.5)
+    ~~~~~~~~~~^^^^^
+KeyboardInterrupt
+
+==========================================================================================
+INÍCIO vendas_unificadas_pos_main em 2026-06-16T17:36:04.431648-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py
+==========================================================================================
+TITLE: Sólidus
+URL ATUAL: https://smart.sgisistemas.com.br/login
+✅ Campo usuário encontrado em: name = usuario
+✅ Filial OK
+✅ COBRANCA10_WORKER_V17_META_REAL_TOTAL_DIARIA_MARGEM_FLUXO
+
+📊 Iniciando coleta de metas/vendas do mês atual...
+📋 Metas listadas na tela: 4
+➡️ Abrindo resultados: Venda / Filial / Meta Filial -> https://smart.sgisistemas.com.br/metas/consulta/214
+   ↳ Colunas lidas: ['Filial', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 10
+✅ Venda / Filial / Meta Filial: 10 linha(s)
+➡️ Abrindo resultados: Venda / Filial-Vendedor / Meta Vendedor -> https://smart.sgisistemas.com.br/metas/consulta/215
+   ↳ Colunas lidas: ['Vendedor', 'Vendedor_2', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 21
+✅ Venda / Filial-Vendedor / Meta Vendedor: 21 linha(s)
+⚠️ Meta não encontrada: Venda / Filial-Subgrupo / Caminhão 20K
+➡️ Abrindo resultados: Serviço / Filial / Ouro-FOB -> https://smart.sgisistemas.com.br/metas/consulta/216
+   ↳ Colunas lidas: ['Filial', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 9
+✅ Serviço / Filial / Ouro-FOB: 9 linha(s)
+➡️ Abrindo resultados: Serviço / Filial-Vendedor / Ouro-FOB -> https://smart.sgisistemas.com.br/metas/consulta/218
+   ↳ Colunas lidas: ['Vendedor', 'Vendedor_2', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 14
+✅ Serviço / Filial-Vendedor / Ouro-FOB: 14 linha(s)
+⚠️ Meta não encontrada: Venda / Vendedor-Subgrupo / Caminhão 20K
+✅ V17 Total xlsx [venda_filial_meta]: meta=860000.00  real_total_col_C=339094.21  real_periodo_col_F=339094.21  ating=39.43%  proj=629746.39
+✅ V17 Total xlsx [servico_filial_ouro_fob]: meta=56200.00  real_total_col_C=20978.51  real_periodo_col_F=20978.51  ating=37.33%  proj=38960.09
+⚠️ Sheet não encontrada no xlsx: venda_filial_subgrupo_20k
+💾 Metas JSON: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_mes_atual.json
+💾 Metas XLSX: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_mes_atual.xlsx
+
+📈 Iniciando coleta de Margem Bruta/Rentabilidade do mês atual...
+✅ Operações de Devolução: 4 opções marcadas
+✅ Formato XLS para Margem Bruta
+📈 Gerando Margem Bruta por FILIAL...
+✅ Download margem OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\4beb0530-f0da-4ff3-8bf0-ae7476aa4a03_relatorio_margem_bruta_20260616173658_administrativo01_moveisdolar.xls
+✅ Margem por FILIAL: 9 registro(s)
+✅ Operações de Devolução: 4 opções marcadas
+✅ Formato XLS para Margem Bruta
+📈 Gerando Margem Bruta por VENDEDOR...
+✅ Download margem OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\3a7304da-b68f-4dfa-a312-fad1070c64e0_relatorio_margem_bruta_20260616173709_administrativo01_moveisdolar.xls
+✅ Margem por VENDEDOR: 20 registro(s)
+💾 Margens JSON: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\margens_brutas_mes_atual.json
+💾 Margens XLSX: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\margens_brutas_mes_atual.xlsx
+✅ V17_SERVICOS_SOMENTE_CONTROLE_META: relatório individual de serviços desativado; valores de serviço vêm da coluna Realizado Total da meta SGI
+\n🕒 Iniciando coleta de venda diária oficial...
+✅ V17 Venda diária: campos de data preenchidos: 4 campo(s) = 16/06/2026
+✅ Formato XLS para venda diária
+📥 Gerando XLS venda diária... aguardando download...
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py", line 1941, in <module>
+    venda_diaria_info = coletar_venda_diaria_oficial()
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py", line 1794, in coletar_venda_diaria_oficial
+    time.sleep(2)
+    ~~~~~~~~~~^^^
+KeyboardInterrupt
+
+==========================================================================================
+INÍCIO vendas_unificadas_pos_main em 2026-06-18T13:51:44.629098-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py
+==========================================================================================
+TITLE: Sólidus
+URL ATUAL: https://smart.sgisistemas.com.br/login
+✅ Campo usuário encontrado em: name = usuario
+✅ Filial OK
+✅ COBRANCA10_WORKER_V17_META_REAL_TOTAL_DIARIA_MARGEM_FLUXO
+
+📊 Iniciando coleta de metas/vendas do mês atual...
+📋 Metas listadas na tela: 4
+➡️ Abrindo resultados: Venda / Filial / Meta Filial -> https://smart.sgisistemas.com.br/metas/consulta/214
+   ↳ Colunas lidas: ['Filial', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 10
+✅ Venda / Filial / Meta Filial: 10 linha(s)
+➡️ Abrindo resultados: Venda / Filial-Vendedor / Meta Vendedor -> https://smart.sgisistemas.com.br/metas/consulta/215
+   ↳ Colunas lidas: ['Vendedor', 'Vendedor_2', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 21
+✅ Venda / Filial-Vendedor / Meta Vendedor: 21 linha(s)
+⚠️ Meta não encontrada: Venda / Filial-Subgrupo / Caminhão 20K
+➡️ Abrindo resultados: Serviço / Filial / Ouro-FOB -> https://smart.sgisistemas.com.br/metas/consulta/216
+   ↳ Colunas lidas: ['Filial', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 9
+✅ Serviço / Filial / Ouro-FOB: 9 linha(s)
+➡️ Abrindo resultados: Serviço / Filial-Vendedor / Ouro-FOB -> https://smart.sgisistemas.com.br/metas/consulta/218
+   ↳ Colunas lidas: ['Vendedor', 'Vendedor_2', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 14
+✅ Serviço / Filial-Vendedor / Ouro-FOB: 14 linha(s)
+⚠️ Meta não encontrada: Venda / Vendedor-Subgrupo / Caminhão 20K
+✅ V17 Total xlsx [venda_filial_meta]: meta=860000.00  real_total_col_C=364838.35  real_periodo_col_F=364838.35  ating=42.42%  proj=592862.32
+✅ V17 Total xlsx [servico_filial_ouro_fob]: meta=56200.00  real_total_col_C=21215.25  real_periodo_col_F=21215.25  ating=37.75%  proj=34474.78
+⚠️ Sheet não encontrada no xlsx: venda_filial_subgrupo_20k
+💾 Metas JSON: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_mes_atual.json
+💾 Metas XLSX: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_mes_atual.xlsx
+
+📈 Iniciando coleta de Margem Bruta/Rentabilidade do mês atual...
+✅ Operações de Devolução: 4 opções marcadas
+✅ Formato XLS para Margem Bruta
+📈 Gerando Margem Bruta por FILIAL...
+✅ Download margem OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\df83cead-6d74-4060-ae61-4eead207a003_relatorio_margem_bruta_20260618135242_administrativo01_moveisdolar.xls
+✅ Margem por FILIAL: 9 registro(s)
+✅ Operações de Devolução: 4 opções marcadas
+✅ Formato XLS para Margem Bruta
+📈 Gerando Margem Bruta por VENDEDOR...
+✅ Download margem OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\b02ea63a-c1e6-4c43-b942-299d1e19f4c8_relatorio_margem_bruta_20260618135253_administrativo01_moveisdolar.xls
+✅ Margem por VENDEDOR: 20 registro(s)
+💾 Margens JSON: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\margens_brutas_mes_atual.json
+💾 Margens XLSX: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\margens_brutas_mes_atual.xlsx
+✅ V17_SERVICOS_SOMENTE_CONTROLE_META: relatório individual de serviços desativado; valores de serviço vêm da coluna Realizado Total da meta SGI
+\n🕒 Iniciando coleta de venda diária oficial...
+✅ V17 Venda diária: campos de data preenchidos: 4 campo(s) = 18/06/2026
+✅ Formato XLS para venda diária
+📥 Gerando XLS venda diária... aguardando download...
+✅ Download venda diária OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\8235aadc-dcc4-4b72-bc62-6f927e2d5af5_relatorio_analise_total_venda_20260618135304_administrativo01_moveisdolar.xls
+✅ Venda diária oficial: total_vendido=4114.70 servico=0.00 acrescimo=0.00 total=4114.70
+✅ Venda diária oficial anexada ao metas_vendas_mes_atual.json
+✅ Upload vendas/margens/serviços concluído
+🔥 WORKER DE VENDAS FINALIZADO
+
+==========================================================================================
+INÍCIO vendas_unificadas em 2026-06-18T14:00:04.794169-03:00
+Comando: C:\Users\Rafa\AppData\Local\Python\pythoncore-3.14-64\python.exe C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py
+==========================================================================================
+TITLE: Sólidus
+URL ATUAL: https://smart.sgisistemas.com.br/login
+✅ Campo usuário encontrado em: name = usuario
+✅ Filial OK
+✅ COBRANCA10_WORKER_V17_META_REAL_TOTAL_DIARIA_MARGEM_FLUXO
+
+📊 Iniciando coleta de metas/vendas do mês atual...
+📋 Metas listadas na tela: 4
+➡️ Abrindo resultados: Venda / Filial / Meta Filial -> https://smart.sgisistemas.com.br/metas/consulta/214
+   ↳ Colunas lidas: ['Filial', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 10
+✅ Venda / Filial / Meta Filial: 10 linha(s)
+➡️ Abrindo resultados: Venda / Filial-Vendedor / Meta Vendedor -> https://smart.sgisistemas.com.br/metas/consulta/215
+   ↳ Colunas lidas: ['Vendedor', 'Vendedor_2', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 21
+✅ Venda / Filial-Vendedor / Meta Vendedor: 21 linha(s)
+⚠️ Meta não encontrada: Venda / Filial-Subgrupo / Caminhão 20K
+➡️ Abrindo resultados: Serviço / Filial / Ouro-FOB -> https://smart.sgisistemas.com.br/metas/consulta/216
+   ↳ Colunas lidas: ['Filial', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 9
+✅ Serviço / Filial / Ouro-FOB: 9 linha(s)
+➡️ Abrindo resultados: Serviço / Filial-Vendedor / Ouro-FOB -> https://smart.sgisistemas.com.br/metas/consulta/218
+   ↳ Colunas lidas: ['Vendedor', 'Vendedor_2', 'Meta (R$) Total', 'Realizado (R$) Total', 'Atingido Total', 'Meta (R$) Período', 'Realizado (R$) Período', 'Atingido Período', 'Projetado (R$)']
+   ↳ Primeiras linhas: 14
+✅ Serviço / Filial-Vendedor / Ouro-FOB: 14 linha(s)
+⚠️ Meta não encontrada: Venda / Vendedor-Subgrupo / Caminhão 20K
+✅ V17 Total xlsx [venda_filial_meta]: meta=860000.00  real_total_col_C=364898.25  real_periodo_col_F=364898.25  ating=42.43%  proj=592959.66
+✅ V17 Total xlsx [servico_filial_ouro_fob]: meta=56200.00  real_total_col_C=21215.25  real_periodo_col_F=21215.25  ating=37.75%  proj=34474.78
+⚠️ Sheet não encontrada no xlsx: venda_filial_subgrupo_20k
+💾 Metas JSON: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_mes_atual.json
+💾 Metas XLSX: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\metas_vendas_mes_atual.xlsx
+
+📈 Iniciando coleta de Margem Bruta/Rentabilidade do mês atual...
+✅ Operações de Devolução: 4 opções marcadas
+✅ Formato XLS para Margem Bruta
+📈 Gerando Margem Bruta por FILIAL...
+✅ Download margem OK: C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\f4ecc59d-d577-45c3-b7c5-d649f651ff92_relatorio_margem_bruta_20260618140101_administrativo01_moveisdolar.xls
+✅ Margem por FILIAL: 9 registro(s)
+✅ Operações de Devolução: 4 opções marcadas
+✅ Formato XLS para Margem Bruta
+📈 Gerando Margem Bruta por VENDEDOR...
+Traceback (most recent call last):
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py", line 1930, in <module>
+    margens_brutas_info = coletar_margens_brutas_mes_atual()
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py", line 1140, in coletar_margens_brutas_mes_atual
+    res_vend = _gerar_relatorio_margem("vendedor")
+  File "C:\Users\Rafa\OneDrive\MDL\DOCUMENTOS 2024-2025-2026\SITE 2026\SOLIDUS + API + COB-VENDAS\Dashboard railway\dashboard_sales_worker_headless.py", line 1093, in _gerar_relatorio_margem
+    time.sleep(2)
+    ~~~~~~~~~~^^^
+KeyboardInterrupt
