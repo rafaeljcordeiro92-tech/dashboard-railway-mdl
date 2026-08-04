@@ -36,7 +36,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.67"
+DASHBOARD_BUILD_VERSION = "V10.68"
 DASHBOARD_BUILD_TAG = "comissao_crediarista_fonte_unica_oficial"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -19910,7 +19910,7 @@ Preparamos condições especiais para você comemorar com a gente.
 
 </script>
 <script>
-try{window.DASHBOARD_BUILD_VERSION='V10.67';console.log('[V10.67] auditoria multiarquivo + processamento IA robusto');}catch(e){}
+try{window.DASHBOARD_BUILD_VERSION='V10.68';console.log('[V10.68] auditoria multiarquivo + fallback SSL controlado');}catch(e){}
 </script>
 
 </body>
@@ -19919,7 +19919,7 @@ try{window.DASHBOARD_BUILD_VERSION='V10.67';console.log('[V10.67] auditoria mult
 
 
 # =========================================
-# 🤖 V10.67 — AUDITORIA ANTIFRAUDE MULTIARQUIVO (PRINTS + ÁUDIOS)
+# 🤖 V10.68 — AUDITORIA ANTIFRAUDE MULTIARQUIVO + FALLBACK SSL CONTROLADO
 # =========================================
 COBRANCA_AUDITORIA_API_URL = os.getenv(
     "COBRANCA_AUDITORIA_API_URL",
@@ -19933,10 +19933,29 @@ COBRANCA_AUDITORIA_AUDIO_MODEL = os.getenv("COBRANCA_AUDITORIA_AUDIO_MODEL", "gp
 COBRANCA_AUDITORIA_DHASH_DISTANCE = max(0, int(os.getenv("COBRANCA_AUDITORIA_DHASH_DISTANCE", "6")))
 
 
+def _urlopen_ssl_v1068(req, *, timeout=90, allow_unverified_for_mdl=True):
+    """Abre HTTPS com validação normal e usa fallback apenas no domínio MDL.
+
+    O Railway apresentou CERTIFICATE_VERIFY_FAILED para moveisdolar.com.br,
+    embora outras rotinas do mesmo projeto já usem fallback equivalente.
+    A API da OpenAI continua obrigatoriamente com SSL validado.
+    """
+    try:
+        return urllib.request.urlopen(req, timeout=timeout, context=ssl.create_default_context())
+    except urllib.error.URLError as exc:
+        host = (urllib.parse.urlparse(getattr(req, "full_url", str(req))).hostname or "").lower()
+        ssl_error = "CERTIFICATE_VERIFY_FAILED" in str(exc).upper() or isinstance(getattr(exc, "reason", None), ssl.SSLCertVerificationError)
+        mdl_host = host == "moveisdolar.com.br" or host.endswith(".moveisdolar.com.br")
+        if not (allow_unverified_for_mdl and ssl_error and mdl_host):
+            raise
+        print(f"⚠️ V10.68 SSL normal falhou em {host}; repetindo com contexto sem verificação somente para o servidor MDL.")
+        return urllib.request.urlopen(req, timeout=timeout, context=ssl._create_unverified_context())
+
+
 def _http_json_v1067(url, *, data=None, headers=None, timeout=90):
     try:
         req = urllib.request.Request(url, data=data, headers=headers or {})
-        with urllib.request.urlopen(req, timeout=timeout, context=ssl.create_default_context()) as resp:
+        with _urlopen_ssl_v1068(req, timeout=timeout, allow_unverified_for_mdl=True) as resp:
             raw = resp.read()
         return json.loads(raw.decode("utf-8", errors="replace"))
     except urllib.error.HTTPError as exc:
@@ -19966,8 +19985,8 @@ def _parse_json_text_v1067(text):
 
 
 def _download_media_v1067(url, timeout=120):
-    req=urllib.request.Request(url,headers={"User-Agent":"MDL-Auditoria/10.67"})
-    with urllib.request.urlopen(req,timeout=timeout,context=ssl.create_default_context()) as resp:
+    req=urllib.request.Request(url,headers={"User-Agent":"MDL-Auditoria/10.68"})
+    with _urlopen_ssl_v1068(req,timeout=timeout,allow_unverified_for_mdl=True) as resp:
         return resp.read(),str(resp.headers.get("Content-Type") or "").split(";")[0].lower()
 
 
@@ -20501,13 +20520,13 @@ if(!file_exists($dir))@mkdir($dir,0777,true);if(!file_exists($file))@file_put_co
 function ar(){global $file;$j=json_decode(@file_get_contents($file),true);return is_array($j)?$j:[];}
 function sw($d){global $file;return @file_put_contents($file,json_encode($d,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),LOCK_EX)!==false;}
 $data=ar();
-if($_SERVER['REQUEST_METHOD']==='GET'){echo json_encode(['ok'=>true,'data'=>$data,'count'=>count($data),'version'=>'V10.67'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}
+if($_SERVER['REQUEST_METHOD']==='GET'){echo json_encode(['ok'=>true,'data'=>$data,'count'=>count($data),'version'=>'V10.68'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}
 if($_SERVER['REQUEST_METHOD']==='POST'){
  $action=$_POST['action']??'upload_bundle';
  if($action==='set_status'){
   $id=(string)($_POST['id']??'');$status=(string)($_POST['status']??'aguardando_ia');$motivo=(string)($_POST['motivo']??'');
   foreach($data as &$x){if((string)($x['id']??'')===$id){$x['status']=$status;$x['motivo']=$motivo;$x['updated_at']=date('c');$x['ia_analisado_em']=date('c');$x['ia_confidence']=(string)($_POST['ia_confidence']??'');$x['ia_model']=(string)($_POST['ia_model']??'');$x['fraude_suspeita']=((string)($_POST['fraude_suspeita']??'0')==='1');if(!empty($_POST['ia_json'])){$d=json_decode($_POST['ia_json'],true);$x['ia_resultado']=is_array($d)?$d:$_POST['ia_json'];}if(!empty($_POST['attachments_json'])){$a=json_decode($_POST['attachments_json'],true);if(is_array($a))$x['attachments']=$a;}}}
-  $ok=sw($data);echo json_encode(['ok'=>$ok,'version'=>'V10.67'],JSON_UNESCAPED_UNICODE);exit;
+  $ok=sw($data);echo json_encode(['ok'=>$ok,'version'=>'V10.68'],JSON_UNESCAPED_UNICODE);exit;
  }
  $files=[];
  if(isset($_FILES['media']) && is_array($_FILES['media']['name'])){
@@ -20529,7 +20548,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
  }
  if($hasAudio&&!$hasImage){echo json_encode(['ok'=>false,'error'=>'audio_exige_print']);exit;}
  $item=['id'=>uniqid('aud_',true),'audit_key'=>(string)($_POST['audit_key']??''),'cliente'=>(string)($_POST['cliente']??''),'cpf_cnpj'=>(string)($_POST['cpf_cnpj']??''),'titulo'=>(string)($_POST['titulo']??''),'parcela'=>(string)($_POST['parcela']??''),'vencimento'=>(string)($_POST['vencimento']??''),'telefone'=>(string)($_POST['telefone']??''),'faixa'=>(string)($_POST['faixa']??''),'usuario_login'=>(string)($_POST['usuario_login']??''),'usuario_nome'=>(string)($_POST['usuario_nome']??''),'filial'=>(string)($_POST['filial']??''),'attachments'=>$attachments,'evidence_count'=>count($attachments),'has_image'=>$hasImage,'has_audio'=>$hasAudio,'status'=>'aguardando_ia','motivo'=>'Conjunto de evidências recebido. Aguardando auditoria antifraude da IA.','server_time'=>date('c')];
- $data[]=$item;$ok=sw($data);echo json_encode(['ok'=>$ok,'data'=>$item,'version'=>'V10.67'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;
+ $data[]=$item;$ok=sw($data);echo json_encode(['ok'=>$ok,'data'=>$item,'version'=>'V10.68'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;
 }
 echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado']);
 ?>"""
