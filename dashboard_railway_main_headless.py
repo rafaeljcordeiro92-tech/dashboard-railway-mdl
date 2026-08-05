@@ -36,7 +36,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.73"
+DASHBOARD_BUILD_VERSION = "V10.74"
 DASHBOARD_BUILD_TAG = "comissao_crediarista_fonte_unica_oficial"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -6445,7 +6445,7 @@ for _f_v1073, _fd_v1073 in (snapshot_hoje.get("filiais") or {}).items():
 with open(meta_file, "w", encoding="utf-8") as _f_v1073:
     json.dump(meta_mes, _f_v1073, ensure_ascii=False, indent=2)
 
-print("✅ V10.73 meta reconciliada com o recebido oficial antes da geração do HTML")
+print("✅ V10.74 meta reconciliada com o recebido oficial antes da geração do HTML")
 
 # Vendedores por filial (somente NÃO gerentes para o painel individual)
 todos_js = {}
@@ -8966,7 +8966,12 @@ try:
 except Exception:
     pass
 
-js_hist_dash = json.dumps(hist_dash, ensure_ascii=False)
+if DASHBOARD_MODO_LEVE:
+    # V10.74: o histórico completo permanece no FTP e só é carregado ao abrir a aba Histórico.
+    js_hist_dash = '{"dates":{},"months_closed":{}}'
+    print("🪶 V10.74 HTML inicial sem histórico completo; carregamento sob demanda via historico_api.php.")
+else:
+    js_hist_dash = json.dumps(hist_dash, ensure_ascii=False)
 # V10.49: mantém apenas os campos necessários à conciliação de recebimentos/comissões.
 # O V10.48 zerava QUITADOS_180 no modo leve e, por isso, crediaristas/usuários perdiam
 # recebimentos e comissão. A versão compacta preserva o cálculo sem reengordar o HTML.
@@ -9003,8 +9008,10 @@ try:
             {k: item.get(k) for k in _cobrancas_keys_v1050 if item.get(k) not in (None, '')}
             for item in (_cobrancas_full_v1050 or []) if isinstance(item, dict)
         ]
-        js_cobrancas_logs_boot = json.dumps(_cobrancas_lite_v1050, ensure_ascii=False, separators=(',', ':'))
-        print(f"🧾 V10.50 fonte oficial leve: {len(_cobrancas_lite_v1050)} cobranças compactas embutidas para comissão idêntica Master/usuário.")
+        # V10.74: os registros continuam preservados no FTP/WAL, mas não entram no HTML inicial.
+        # O navegador busca somente o escopo necessário ao abrir um painel ou a aba de cobranças.
+        js_cobrancas_logs_boot = '[]'
+        print(f"🪶 V10.74 fonte oficial: {len(_cobrancas_lite_v1050)} cobranças preservadas no FTP/API; HTML inicial sem logs embutidos.")
     else:
         js_cobrancas_logs_boot = json.dumps(_cobrancas_full_v1050, ensure_ascii=False)
 except Exception as _e_cob_boot_v1050:
@@ -10408,24 +10415,24 @@ async function fetchComTimeout(url, opts={}, ms=3500){
 }
 async function tentarAtualizarOnlineDepoisLogin(){
   try{
+    // V10.74: abertura rápida. Carrega somente os arquivos leves.
     await Promise.allSettled([
       carregarCredenciaisOnline(),
       carregarConfigOnline(),
-      carregarHistoricoOnline(),
-      carregarHistoricoComissaoOnline(),
-      carregarCobrancasOnline(),
-      carregarMsgsOnline()
+      carregarMsgsOnline(),
+      carregarCobrancasOnline({today:true})
     ]);
     try{renderKPIs()}catch(e){}
-    try{refreshBell()}catch(e){}; try{renderLaranjitoNotify(); showLaranjitoOncePerAccess()}catch(e){}
+    try{refreshBell()}catch(e){}
+    try{renderLaranjitoNotify(); showLaranjitoOncePerAccess()}catch(e){}
     try{
-      if(usuarioAtual?.tipo==='master'){
+      if(usuarioAtual?.tipo==='master' || usuarioAtual?.tipo==='diretor'){
         if(!detailScreen.classList.contains('hidden') && currentDetailRef) openEntity(currentDetailRef);
         else renderList();
-        if(isUltimoDiaMes23()) setTimeout(()=>salvarSnapshotComissionamentoMensal(true),900);
+        if(isUltimoDiaMes23()) setTimeout(()=>salvarSnapshotComissionamentoMensal(true),1500);
       }else if(!detailScreen.classList.contains('hidden') && currentDetailRef){
-        // V10.50: após carregar a fonte oficial, aguarda o mesmo recálculo usado pelo Master.
-        await openEntity(currentDetailRef);
+        // Dados pesados do painel individual entram depois do primeiro desenho.
+        setTimeout(()=>{try{window.ensureOperationalDataV1074?.(currentDetailRef)}catch(e){}},180);
       }
     }catch(e){}
   }catch(e){console.log('Falha atualização online pós-login',e);}
@@ -10436,7 +10443,7 @@ let mainTab='vendedores';
 let filtroFilial='TODAS';
 // V10.50: fonte oficial é o snapshot FTP/WAL embutido ou o retorno confirmado da API.
 // Cache/localStorage continua servindo à interface, mas nunca define comissão.
-let COB_LOGS_OFICIAIS=Array.isArray(__JS_COB_LOGS_BOOT__)?[...__JS_COB_LOGS_BOOT__]:[];
+const COB_LOGS_BOOT=__JS_COB_LOGS_BOOT__; let COB_LOGS_OFICIAIS=Array.isArray(COB_LOGS_BOOT)?[...COB_LOGS_BOOT]:[];
 let COB_LOGS=[...COB_LOGS_OFICIAIS];
 try{window.COB_LOGS_OFICIAIS=COB_LOGS_OFICIAIS;window.COB_LOGS=COB_LOGS}catch(e){}
 let phoneContext=null;
@@ -10454,7 +10461,7 @@ function acessoGeralBloqueado(){return !!(AUTH_STATE && AUTH_STATE.access_blocke
 function textoBloqueioAcesso(){return String(AUTH_STATE?.access_blocked_reason || 'Sistema em atualização. Aguarde liberação pelo Master.');}
 
 // ===== V10.52: bloqueio real de sessões =====
-const ACCESS_GUARD_INTERVAL_MS=3000;
+const ACCESS_GUARD_INTERVAL_MS=10000;
 const ACCESS_KICK_KEY='mdl_dashboard_access_kick_v1051';
 let _accessGuardBusy=false;
 let _accessKickInProgress=false;
@@ -10739,12 +10746,34 @@ function metaAliasesFromEntity(ent){
 }
 function mergedMetaConfig(aliases){let cfg={...CONFIG_META}; (aliases||[]).forEach(k=>{ if(CONFIG_META_IND[k]) cfg={...cfg,...CONFIG_META_IND[k]}; }); return cfg}
 function entityConfig(ent){return mergedMetaConfig(metaAliasesFromEntity(ent))}
-function calcMeta(ent){const cfg=entityConfig(ent);const gPend=Number(ent.grave_pend||0), aPend=Number(ent.alerta_pend||0), tPend=Number(ent.atencao_pend||0);const gRec=Number(ent.grave_rec||0), aRec=Number(ent.alerta_rec||0), tRec=Number(ent.atencao_rec||0);
-  const gAlvo=gPend*Number(cfg.grave_pct||0)/100, aAlvo=aPend*Number(cfg.alerta_pct||0)/100, tAlvo=tPend*Number(cfg.atencao_pct||0)/100;
+function calcMeta(ent){
+  ent=ent||{};
+  const cfg=entityConfig(ent);
+  const n=v=>{const x=Number(v||0);return Number.isFinite(x)?x:0};
+  const gPend=n(ent.grave_pend), aPend=n(ent.alerta_pend), tPend=n(ent.atencao_pend);
+  const gRec=n(ent.grave_rec), aRec=n(ent.alerta_rec), tRec=n(ent.atencao_rec);
+  const gAlvo=n(ent.grave_alvo)>0?n(ent.grave_alvo):gPend*n(cfg.grave_pct)/100;
+  const aAlvo=n(ent.alerta_alvo)>0?n(ent.alerta_alvo):aPend*n(cfg.alerta_pct)/100;
+  const tAlvo=n(ent.atencao_alvo)>0?n(ent.atencao_alvo):tPend*n(cfg.atencao_pct)/100;
+
+  // V10.74: os percentuais reconciliados pelo Python são a fonte oficial.
+  // Isso impede qualquer script legado de reconstruir a meta com recebimentos antigos.
+  const hasOfficial=['grave_perc','alerta_perc','atencao_perc','perc_meta']
+    .every(k=>ent[k]!==undefined && ent[k]!==null && Number.isFinite(Number(ent[k])));
+  if(hasOfficial){
+    return {
+      cfg,
+      grave:{pend:gPend,rec:gRec,alvo:gAlvo,perc:n(ent.grave_perc)},
+      alerta:{pend:aPend,rec:aRec,alvo:aAlvo,perc:n(ent.alerta_perc)},
+      atencao:{pend:tPend,rec:tRec,alvo:tAlvo,perc:n(ent.atencao_perc)},
+      geral:n(ent.perc_meta)
+    };
+  }
+
   const gPerc=gAlvo>0?(gRec/gAlvo*100):0, aPerc=aAlvo>0?(aRec/aAlvo*100):0, tPerc=tAlvo>0?(tRec/tAlvo*100):0;
-  const sumW=Number(cfg.peso_grave||0)+Number(cfg.peso_alerta||0)+Number(cfg.peso_atencao||0)||1;
-  const geral=((Math.min(gPerc,100)*Number(cfg.peso_grave||0))+(Math.min(aPerc,100)*Number(cfg.peso_alerta||0))+(Math.min(tPerc,100)*Number(cfg.peso_atencao||0)))/sumW;
-  return {cfg,grave:{pend:gPend,rec:gRec,alvo:gAlvo,perc:gPerc},alerta:{pend:aPend,rec:aRec,alvo:aAlvo,perc:aPerc},atencao:{pend:tPend,rec:tRec,alvo:tAlvo,perc:tPerc},geral:geral};
+  const sumW=n(cfg.peso_grave)+n(cfg.peso_alerta)+n(cfg.peso_atencao)||1;
+  const geral=((Math.min(gPerc,100)*n(cfg.peso_grave))+(Math.min(aPerc,100)*n(cfg.peso_alerta))+(Math.min(tPerc,100)*n(cfg.peso_atencao)))/sumW;
+  return {cfg,grave:{pend:gPend,rec:gRec,alvo:gAlvo,perc:gPerc},alerta:{pend:aPend,rec:aRec,alvo:aAlvo,perc:aPerc},atencao:{pend:tPend,rec:tRec,alvo:tAlvo,perc:tPerc},geral};
 }
 function getBonus(cfg,perc){const p=Number(perc||0);if(p>=100 && cfg.bonus_100) return {thr:100,text:cfg.bonus_100};if(p>=85 && cfg.bonus_85) return {thr:85,text:cfg.bonus_85};if(p>=75 && cfg.bonus_75) return {thr:75,text:cfg.bonus_75};if(p>=50 && cfg.bonus_50) return {thr:50,text:cfg.bonus_50};return null}
 function renderDeltaPill(delta,perc){const up=Number(delta||0)>=0;return `<span class="delta-pill ${up?'up':'down'}"><span class="arrow">${up?'⬆️':'⬇️'}</span><span>${pct(Math.abs(Number(perc||0)))}</span></span>`}
@@ -10839,7 +10868,7 @@ function updateNextUpdateClocks(){
     document.querySelectorAll('.next-update-clock').forEach(el=>{el.textContent=`⏳ Próxima atualização: ${label} em ${_fmtClockDelta(target)}`;});
   }catch(e){}
 }
-setInterval(updateNextUpdateClocks,1000);
+setInterval(updateNextUpdateClocks,10000);
 
 function renderKPIs(){
   const grave=flattenFiliais().reduce((a,b)=>a+Number(b.grave_pend||0),0);
@@ -12959,49 +12988,73 @@ function mergeLocalCobLogs(){
     local.forEach(x=>{const k=keyOf(x); if(k && !seen.has(k)){COB_LOGS.push(x); seen.add(k);}});
   }catch(e){console.warn('mergeLocalCobLogs',e)}
 }
-async function carregarCobrancasOnline(){
-  let apiConfirmada=false;
-  try{
-    const r=await fetchComTimeout(API_COB+'?_='+Date.now(),{},5000);
-    const txt=await r.text(); let j={ok:false};
-    try{j=JSON.parse(txt);}catch(e){}
-    if(j.ok && Array.isArray(j.data)){
-      apiConfirmada=true;
-      COB_LOGS_OFICIAIS=j.data.filter(x=>x && !x._local);
-      COB_LOGS=[...COB_LOGS_OFICIAIS];
-      try{window.COB_LOGS_OFICIAIS=COB_LOGS_OFICIAIS;window.COB_LOGS=COB_LOGS}catch(e){}
-      // Registros locais podem aparecer na interface, mas não entram na comissão até confirmação da API.
-      mergeLocalCobLogs();
-      try{window.COB_LOGS=COB_LOGS}catch(e){}
-      try{localStorage.setItem('mdl_cobrancas_log_cache', JSON.stringify(COB_LOGS));}catch(e){}
-      if(Number(j.recovered||0)>0 || Number(j.append_count||0)>0){
-        console.log('[V10.50 histórico oficial cobranças]',{
-          total_oficial:COB_LOGS_OFICIAIS.length,
-          total_interface:COB_LOGS.length,
-          principal:Number(j.main_count||0),
-          append:Number(j.append_count||0),
-          recuperados:Number(j.recovered||0)
-        });
+let COB_LOGS_FULL_LOADED=false;
+const COB_LOG_SCOPES_LOADED=new Set();
+let COB_LOG_LOADING_PROMISE=null;
+
+function cobScopeV1074(ref){
+  ref=ref||{};
+  const type=String(ref.type||'').toLowerCase();
+  const filial=String(ref.filial||'').toUpperCase();
+  const login=String(ref.login||'').toLowerCase();
+  const nome=String(ref.nome||'');
+  if(type==='filial' || ref.is_gerente) return {key:`FILIAL:${filial}`,filial};
+  if(type==='vendedor' || login || nome) return {key:`USER:${filial}:${login||nome}`,filial,login,nome};
+  return null;
+}
+function mergeCobrancasV1074(rows,replace=false){
+  const base=replace?[]:[...(COB_LOGS_OFICIAIS||[])];
+  const seen=new Set();
+  const out=[];
+  const key=x=>String(x?.id||x?.cobranca_key||[x?.cliente,x?.titulo,x?.parcela,x?.server_time].join('|'));
+  [...base,...(rows||[])].forEach(x=>{if(!x)return;const k=key(x);if(k&&seen.has(k))return;if(k)seen.add(k);out.push(x)});
+  COB_LOGS_OFICIAIS=out.filter(x=>x&&!x._local);
+  COB_LOGS=[...COB_LOGS_OFICIAIS];
+  mergeLocalCobLogs();
+  try{window.COB_LOGS_OFICIAIS=COB_LOGS_OFICIAIS;window.COB_LOGS=COB_LOGS}catch(e){}
+}
+async function carregarCobrancasOnline(opts={}){
+  if(typeof opts!=='object' || opts===null) opts={full:!!opts};
+  const full=!!opts.full;
+  const today=!!opts.today;
+  const ref=opts.ref||currentDetailRef||((usuarioAtual&&usuarioAtual.tipo!=='master'&&usuarioAtual.tipo!=='diretor')?usuarioAtual:null);
+  const scope=full?{key:'FULL'}:(today?{key:'TODAY'}:cobScopeV1074(ref));
+  if(!scope) return false;
+  if(!opts.force && (full?COB_LOGS_FULL_LOADED:COB_LOG_SCOPES_LOADED.has(scope.key))) return true;
+  if(COB_LOG_LOADING_PROMISE && !opts.force) return COB_LOG_LOADING_PROMISE;
+
+  COB_LOG_LOADING_PROMISE=(async()=>{
+    try{
+      const p=new URLSearchParams();
+      p.set('_',String(Date.now()));
+      p.set('sort','desc');
+      if(full){
+        p.set('limit','0');
+      }else if(today){
+        const d=new Date().toISOString().slice(0,10);
+        p.set('date_from',d);p.set('date_to',d);p.set('limit','1200');
+      }else{
+        if(scope.filial)p.set('filial',scope.filial);
+        if(scope.login)p.set('login',scope.login);
+        if(scope.nome)p.set('nome',scope.nome);
+        p.set('month',new Date().toISOString().slice(0,7));
+        p.set('limit','1500');
       }
-    }else{
-      // Falha da API: mantém o mesmo snapshot oficial embutido para todos os usuários.
-      COB_LOGS=[...(COB_LOGS_OFICIAIS||[])];
-      mergeLocalCobLogs();
-      try{window.COB_LOGS_OFICIAIS=COB_LOGS_OFICIAIS;window.COB_LOGS=COB_LOGS}catch(e){}
-      if(txt) console.log('cobrancas_api retorno:', txt);
-    }
-  }catch(e){
-    console.log(e);
-    COB_LOGS=[...(COB_LOGS_OFICIAIS||[])];
-    mergeLocalCobLogs();
-    try{window.COB_LOGS_OFICIAIS=COB_LOGS_OFICIAIS;window.COB_LOGS=COB_LOGS}catch(_e){}
-  }
-  RECEBIMENTOS_CONCILIADOS=getQuitadosConciliados();
-  console.log('🔗 V10.50 quitados conciliados pela fonte oficial:', {apiConfirmada,totalLogsOficiais:(COB_LOGS_OFICIAIS||[]).length,recebimentos:RECEBIMENTOS_CONCILIADOS});
-  return {ok:true,apiConfirmada,totalOficial:(COB_LOGS_OFICIAIS||[]).length};
+      const r=await fetchComTimeout(API_COB+'?'+p.toString(),{cache:'no-store'},full?12000:6000);
+      const txt=await r.text();let j={ok:false};
+      try{j=JSON.parse(txt)}catch(e){}
+      if(j.ok && Array.isArray(j.data)){
+        mergeCobrancasV1074(j.data,full);
+        if(full) COB_LOGS_FULL_LOADED=true;
+        else COB_LOG_SCOPES_LOADED.add(scope.key);
+        return true;
+      }
+    }catch(e){console.log('Falha ao carregar cobranças por escopo',e)}
+    return false;
+  })();
+  try{return await COB_LOG_LOADING_PROMISE}finally{COB_LOG_LOADING_PROMISE=null}
 }
 
-async function removerCobranca(id,cliente='',titulo='',parcela=''){if(!confirm('Remover esta cobrança do histórico?')) return; try{const r=await fetch(API_COB,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete',id,cliente,titulo,parcela})}); const txt=await r.text(); let j={ok:false}; try{j=JSON.parse(txt);}catch(e){} if(j.ok){toast('Cobrança removida.','success'); await carregarCobrancasOnline(); await carregarAuditoriasCobranca(); renderLogsTab(); renderList(); if(currentDetailRef) openEntity(currentDetailRef);}else{console.log('Falha remover cobrança:', txt); toast('Não consegui remover.')}}catch(e){console.log(e); toast('Falha ao remover cobrança.')}}
 function toggleAcc(el){el.parentElement.classList.toggle('open')}
 function normalizarConfigMetaPayloadOnline(j){
   try{
@@ -14627,8 +14680,8 @@ window.addEventListener('load',async ()=>{
     const b=sessaoBloqueadaNoEstadoV1051();
     if(b.blocked) desconectarPorBloqueioV1051(b.reason); else abrirApp();
   }
-  setInterval(pollSalesLive,60000);
-  setInterval(pollDashboardLiveReload,60000);
+  setInterval(pollSalesLive,120000);
+  setInterval(pollDashboardLiveReload,120000);
   setInterval(consultarAccessGuardV1051,ACCESS_GUARD_INTERVAL_MS);
   setTimeout(pollSalesLive,3000);
   setTimeout(pollDashboardLiveReload,5000);
@@ -16108,7 +16161,7 @@ function toggleTickerSpeed(arg1,arg2){
   document.addEventListener('mouseup',function(){if(!active)return; const tr=active.querySelector('.aviso-ticker-track'); if(tr && !active.matches(':hover'))tr.style.animationPlayState='running'; active.classList.remove('dragging'); active=null;},true);
   document.addEventListener('mouseleave',function(){if(!active)return; active.classList.remove('dragging'); active=null;},true);
 })();
-try{setInterval(()=>{document.querySelectorAll('.aviso-ticker-track').forEach(t=>{t.style.animationName='mdlTicker'; if(!t.style.animationDuration)t.style.animationDuration='900s'; if(!t.closest('.aviso-ticker')?.classList.contains('dragging')) t.style.animationPlayState='running';});},5000)}catch(e){}
+try{setInterval(()=>{document.querySelectorAll('.aviso-ticker-track').forEach(t=>{t.style.animationName='mdlTicker'; if(!t.style.animationDuration)t.style.animationDuration='900s'; if(!t.closest('.aviso-ticker')?.classList.contains('dragging')) t.style.animationPlayState='running';});},30000)}catch(e){}
 
 
 
@@ -18479,88 +18532,148 @@ Preparamos condições especiais para você comemorar com a gente.
 })();
 
 
-// ===== V10.73: front-end consolidado, sem recálculos legados =====
+// ===== V10.74: fonte oficial + carregamento sob demanda + MASTER leve =====
 (function(){
-  const TAG='[V10.73 fonte oficial e master leve]';
+  const TAG='[V10.74 meta oficial e master sob demanda]';
   try{
-    function num(v){const n=Number(v||0);return Number.isFinite(n)?n:0}
-    function managerFilial(ref){
+    function n74(v){const n=Number(v||0);return Number.isFinite(n)?n:0}
+    function managerFilial74(ref){
       const login=String(ref?.login||'').toLowerCase();
       const m=login.match(/^gerentef0*(\d+)$/);
       if(m) return 'F'+Number(m[1]);
-      if(ref?.is_gerente || ref?.is_fixed_gerente || ref?.type==='gerente') return String(ref?.filial||'').toUpperCase();
+      if(ref?.is_gerente || ref?.is_fixed_gerente || ref?.is_gerente_filial_fixo || ref?.type==='gerente') return String(ref?.filial||'').toUpperCase();
       return '';
     }
-    function filialEntity(f){
+    function filialEntity74(f){
       const ff=String(f||'').toUpperCase();
       const base=(FILIAIS&&FILIAIS[ff])||{};
       return {type:'filial',filial:ff,nome:(typeof filialLabel==='function'?filialLabel(ff):ff),...base};
     }
 
-    // Gerente sempre abre a entidade consolidada da filial que já veio pronta do backend.
     const oldFind=typeof findEntity==='function'?findEntity:null;
     if(oldFind){
       findEntity=window.findEntity=function(ref){
-        const f=managerFilial(ref||{});
-        if(f && FILIAIS?.[f]) return filialEntity(f);
+        const f=managerFilial74(ref||{});
+        if(f && FILIAIS?.[f]) return filialEntity74(f);
         return oldFind.apply(this,arguments);
       };
     }
 
-    // Cálculo único: confia nos campos já reconciliados pelo Python.
+    // Última definição e fonte única. Usa exatamente o que o Python gravou na entidade.
     calcMeta=window.calcMeta=function(ent){
       ent=ent||{};
       const cfg=(typeof entityConfig==='function'?entityConfig(ent):CONFIG_META)||{};
-      const gPend=num(ent.grave_pend), aPend=num(ent.alerta_pend), tPend=num(ent.atencao_pend);
-      let gRec=num(ent.grave_rec), aRec=num(ent.alerta_rec), tRec=num(ent.atencao_rec);
-      const oficial=Math.max(0,num(ent.pago));
-      const soma=Math.max(0,gRec+aRec+tRec);
-
-      if(oficial<=0){gRec=0;aRec=0;tRec=0}
-      else if(soma>0 && Math.abs(soma-oficial)>0.01){
-        gRec=Math.round(oficial*(gRec/soma)*100)/100;
-        aRec=Math.round(oficial*(aRec/soma)*100)/100;
-        tRec=Math.round((oficial-gRec-aRec)*100)/100;
+      const gPend=n74(ent.grave_pend),aPend=n74(ent.alerta_pend),tPend=n74(ent.atencao_pend);
+      const gRec=n74(ent.grave_rec),aRec=n74(ent.alerta_rec),tRec=n74(ent.atencao_rec);
+      const gAlvo=n74(ent.grave_alvo)>0?n74(ent.grave_alvo):gPend*n74(cfg.grave_pct)/100;
+      const aAlvo=n74(ent.alerta_alvo)>0?n74(ent.alerta_alvo):aPend*n74(cfg.alerta_pct)/100;
+      const tAlvo=n74(ent.atencao_alvo)>0?n74(ent.atencao_alvo):tPend*n74(cfg.atencao_pct)/100;
+      const official=['grave_perc','alerta_perc','atencao_perc','perc_meta']
+        .every(k=>ent[k]!==undefined&&ent[k]!==null&&Number.isFinite(Number(ent[k])));
+      if(official){
+        return {cfg,
+          grave:{pend:gPend,rec:gRec,alvo:gAlvo,perc:n74(ent.grave_perc)},
+          alerta:{pend:aPend,rec:aRec,alvo:aAlvo,perc:n74(ent.alerta_perc)},
+          atencao:{pend:tPend,rec:tRec,alvo:tAlvo,perc:n74(ent.atencao_perc)},
+          geral:n74(ent.perc_meta)};
       }
-
-      const gAlvo=num(ent.grave_alvo)>0?num(ent.grave_alvo):gPend*num(cfg.grave_pct)/100;
-      const aAlvo=num(ent.alerta_alvo)>0?num(ent.alerta_alvo):aPend*num(cfg.alerta_pct)/100;
-      const tAlvo=num(ent.atencao_alvo)>0?num(ent.atencao_alvo):tPend*num(cfg.atencao_pct)/100;
-      const gPerc=gAlvo>0?gRec/gAlvo*100:0;
-      const aPerc=aAlvo>0?aRec/aAlvo*100:0;
-      const tPerc=tAlvo>0?tRec/tAlvo*100:0;
-      const wg=num(cfg.peso_grave),wa=num(cfg.peso_alerta),wt=num(cfg.peso_atencao);
-      const sw=wg+wa+wt||1;
-      const geral=(Math.min(gPerc,100)*wg+Math.min(aPerc,100)*wa+Math.min(tPerc,100)*wt)/sw;
-      return {cfg,grave:{pend:gPend,rec:gRec,alvo:gAlvo,perc:gPerc},alerta:{pend:aPend,rec:aRec,alvo:aAlvo,perc:aPerc},atencao:{pend:tPend,rec:tRec,alvo:tAlvo,perc:tPerc},geral};
+      const gp=gAlvo>0?gRec/gAlvo*100:0,ap=aAlvo>0?aRec/aAlvo*100:0,tp=tAlvo>0?tRec/tAlvo*100:0;
+      const wg=n74(cfg.peso_grave),wa=n74(cfg.peso_alerta),wt=n74(cfg.peso_atencao),sw=wg+wa+wt||1;
+      return {cfg,grave:{pend:gPend,rec:gRec,alvo:gAlvo,perc:gp},alerta:{pend:aPend,rec:aRec,alvo:aAlvo,perc:ap},atencao:{pend:tPend,rec:tRec,alvo:tAlvo,perc:tp},geral:(Math.min(gp,100)*wg+Math.min(ap,100)*wa+Math.min(tp,100)*wt)/sw};
     };
 
-    // O MASTER não precisa reconstruir todos os dados continuamente.
-    let lastV=0,cacheV=null,lastF=0,cacheF=null;
-    const fv=window.flattenVendedores, ff=window.flattenFiliais;
-    if(typeof fv==='function') window.flattenVendedores=function(){const n=Date.now();if(cacheV&&n-lastV<30000)return cacheV;cacheV=fv.apply(this,arguments);lastV=n;return cacheV};
-    if(typeof ff==='function') window.flattenFiliais=function(){const n=Date.now();if(cacheF&&n-lastF<30000)return cacheF;cacheF=ff.apply(this,arguments);lastF=n;return cacheF};
+    // Lista MASTER usa campos já prontos, sem reconstruir a meta em cada linha.
+    renderEntityRow=window.renderEntityRow=function(ent){
+      const isThird=!!(ent?.is_terceiro||ent?.type==='terceiro');
+      const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista');
+      const ref=isThird?{type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}:isCred?{type:'crediarista',login:String(ent.login||crediaristaLoginByFilial(ent.filial)||'').toLowerCase(),filial:ent.filial,nome:ent.nome}:{type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''};
+      const payload=encodeURIComponent(JSON.stringify(ref));
+      const sales=summarizeSalesCard(ent)||{};
+      const role=isThird?'Cobrança terceiro':isCred?'Crediarista':(ent.type==='filial'?'Filial':'Colaborador');
+      const m=calcMeta(ent);
+      return `<div class="entity-row" onclick="openEntityFromRowPayload('${payload}')"><div class="entity-cell"><div class="v">${esc(ent.nome||filialLabel(ent.filial)||'')}</div><div class="small muted">${esc(role)} ${ent.filial?`· ${esc(ent.filial)}`:''}</div></div><div class="entity-cell"><div class="k">Pendente</div><div class="v red">${R(ent.pendente||0)}</div></div><div class="entity-cell"><div class="k">Recebido</div><div class="v green">${R(ent.pago||0)}</div></div><div class="entity-cell"><div class="k">Grave</div><div class="v red">${pct(m.grave.perc||0)}</div></div><div class="entity-cell"><div class="k">Alerta</div><div class="v orange">${pct(m.alerta.perc||0)}</div></div><div class="entity-cell"><div class="k">Atenção</div><div class="v">${pct(m.atencao.perc||0)}</div></div><div class="entity-cell"><div class="k">Meta geral</div><div class="v blue">${pct(m.geral||0)}</div></div><div class="entity-cell"><div class="k">Vendas/serviços</div><div class="v">${sales.n!=null?pct(sales.n):'—'}</div></div></div>`;
+    };
 
-    // Renderização progressiva: itens fora da tela não pesam no primeiro desenho.
+    let _histLoaded74=false,_histComisLoaded74=false,_auditLoaded74=false;
+    const _opsLoaded74=new Set();
+    function refKey74(ref){return [String(ref?.type||''),String(ref?.filial||''),String(ref?.login||''),String(ref?.nome||'')].join('|')}
+    window.ensureOperationalDataV1074=async function(ref){
+      const key=refKey74(ref); if(_opsLoaded74.has(key)) return true; _opsLoaded74.add(key);
+      try{
+        await Promise.allSettled([
+          carregarCobrancasOnline({ref}),
+          (!_auditLoaded74&&typeof carregarAuditoriasCobranca==='function')?carregarAuditoriasCobranca():Promise.resolve(),
+          (!_histComisLoaded74&&typeof carregarHistoricoComissaoOnline==='function')?carregarHistoricoComissaoOnline():Promise.resolve()
+        ]);
+        _auditLoaded74=true;_histComisLoaded74=true;
+        if(currentDetailRef && refKey74(currentDetailRef)===key && typeof openEntityCore==='function') openEntityCore(currentDetailRef);
+        return true;
+      }catch(e){console.warn(TAG,'dados operacionais',e);return false}
+    };
+
+    // Painel individual desenha imediatamente; dados operacionais entram depois.
+    const baseOpen74=typeof openEntity==='function'?openEntity:null;
+    if(baseOpen74){
+      openEntity=window.openEntity=async function(ref){
+        const r=await baseOpen74.apply(this,arguments);
+        setTimeout(()=>window.ensureOperationalDataV1074(ref),120);
+        return r;
+      };
+    }
+
+    // Histórico e cobranças são carregados somente quando o usuário abre as respectivas abas.
+    const baseSetTab74=typeof setMainTab==='function'?setMainTab:null;
+    if(baseSetTab74){
+      setMainTab=window.setMainTab=async function(tab){
+        const r=baseSetTab74.apply(this,arguments);
+        if(tab==='cobrancas' && !COB_LOGS_FULL_LOADED){
+          if(logSection) logSection.innerHTML='<div class="lazy-loading"><div class="spin">⏳</div><div>Carregando histórico de cobranças sob demanda...</div></div>';
+          await Promise.allSettled([carregarCobrancasOnline({full:true}),typeof carregarAuditoriasCobranca==='function'?carregarAuditoriasCobranca():Promise.resolve()]);
+          _auditLoaded74=true;
+          if(mainTab==='cobrancas') renderLogsTab();
+        }
+        if(tab==='historico' && !_histLoaded74){
+          if(histSection) histSection.innerHTML='<div class="lazy-loading"><div class="spin">⏳</div><div>Carregando histórico somente agora...</div></div>';
+          await Promise.allSettled([carregarHistoricoOnline(),carregarHistoricoComissaoOnline()]);
+          _histLoaded74=true;_histComisLoaded74=true;
+          if(mainTab==='historico') renderHistoricoTab();
+        }
+        return r;
+      };
+    }
+
+    // Cache de listas e pintura mais barata para MASTER/Diretor.
+    let cv74=null,cf74=null,tv74=0,tf74=0;
+    const fv74=window.flattenVendedores,ff74=window.flattenFiliais;
+    if(typeof fv74==='function') window.flattenVendedores=function(){const n=Date.now();if(cv74&&n-tv74<60000)return cv74;cv74=fv74.apply(this,arguments);tv74=n;return cv74};
+    if(typeof ff74==='function') window.flattenFiliais=function(){const n=Date.now();if(cf74&&n-tf74<60000)return cf74;cf74=ff74.apply(this,arguments);tf74=n;return cf74};
+
     const css=document.createElement('style');
+    css.id='mdl-v1074-performance-css';
     css.textContent=`
-      .entity-row,.glass.panel,.accordion,.wa-master-scroll,.log-row{
-        content-visibility:auto;
-        contain-intrinsic-size:1px 92px;
+      body.master-view *,body.diretor-view *{animation-duration:0s!important;transition-duration:0s!important}
+      body.master-view .glass,body.master-view .panel,body.master-view .card,
+      body.diretor-view .glass,body.diretor-view .panel,body.diretor-view .card{
+        backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+        box-shadow:none!important;
       }
-      #mainScreen{contain:layout style;}
-      body.master-view .entity-row{contain:layout paint style;}
+      body.master-view .aviso-ticker-track,body.diretor-view .aviso-ticker-track{animation:none!important;transform:none!important}
+      body.master-view .entity-row,body.diretor-view .entity-row,
+      .glass.panel,.accordion,.wa-master-scroll,.log-row{
+        content-visibility:auto;contain-intrinsic-size:1px 92px;
+      }
+      body.master-view #mainScreen,body.diretor-view #mainScreen{contain:layout style paint}
+      body.master-view .entity-row:hover,body.diretor-view .entity-row:hover{transform:none!important}
     `;
     document.head.appendChild(css);
 
-    window.DASHBOARD_BUILD_VERSION='V10.73';
+    window.DASHBOARD_BUILD_VERSION='V10.74';
     console.log(TAG,'ativo');
   }catch(e){console.warn(TAG,e)}
 })();
 
 
-<script>
-try{window.DASHBOARD_BUILD_VERSION='V10.69';console.log('[V10.69] auditoria imediata + aprovação automática + controle de custo');}catch(e){}
+try{console.log('[V10.69] auditoria imediata + aprovação automática + controle de custo preservada');}catch(e){}
 </script>
 
 
@@ -19071,14 +19184,81 @@ if (count($data) !== count($main) || (!file_exists($file) && count($data) >= 0))
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+  // V10.74: resposta por escopo para o navegador não baixar milhares de registros no login.
+  $filial = strtoupper(trim((string)($_GET['filial'] ?? '')));
+  $login = strtolower(trim((string)($_GET['login'] ?? '')));
+  $nome = norm_key($_GET['nome'] ?? '');
+  $month = trim((string)($_GET['month'] ?? ''));
+  $q = norm_key($_GET['q'] ?? '');
+  $dateFrom = trim((string)($_GET['date_from'] ?? ''));
+  $dateTo = trim((string)($_GET['date_to'] ?? ''));
+  $sort = strtolower(trim((string)($_GET['sort'] ?? 'asc')));
+  $limit = max(0, min(5000, intval($_GET['limit'] ?? 0)));
+  $offset = max(0, intval($_GET['offset'] ?? 0));
+
+  $filtered = array_values(array_filter($data, function($row) use ($filial,$login,$nome,$month,$q,$dateFrom,$dateTo){
+    if (!is_array($row)) return false;
+    if ($filial !== '' && strtoupper(trim((string)($row['filial'] ?? ''))) !== $filial) return false;
+
+    $rawDate = (string)($row['server_date'] ?? ($row['server_time'] ?? ($row['criado_em'] ?? ($row['data'] ?? ''))));
+    $day = substr($rawDate, 0, 10);
+    if ($month !== '' && substr($day, 0, 7) !== $month) return false;
+    if ($dateFrom !== '' && $day !== '' && $day < $dateFrom) return false;
+    if ($dateTo !== '' && $day !== '' && $day > $dateTo) return false;
+
+    if ($login !== '' || $nome !== '') {
+      $loginFields = strtolower(implode(' ', [
+        (string)($row['login'] ?? ''),
+        (string)($row['destino_login'] ?? ''),
+        (string)($row['usuario_key'] ?? '')
+      ]));
+      $nameFields = norm_key(implode(' ', [
+        (string)($row['usuario'] ?? ''),
+        (string)($row['destino_nome'] ?? ''),
+        (string)($row['responsavel'] ?? ''),
+        (string)($row['owner_key'] ?? '')
+      ]));
+      $matchLogin = ($login !== '' && strpos($loginFields, $login) !== false);
+      $matchNome = ($nome !== '' && strpos($nameFields, $nome) !== false);
+      if (!$matchLogin && !$matchNome) return false;
+    }
+
+    if ($q !== '') {
+      $hay = norm_key(implode(' ', [
+        (string)($row['cliente'] ?? ''),
+        (string)($row['titulo'] ?? ''),
+        (string)($row['parcela'] ?? ''),
+        (string)($row['cpf_cnpj'] ?? ''),
+        (string)($row['telefone'] ?? ''),
+        (string)($row['usuario'] ?? '')
+      ]));
+      if (strpos($hay, $q) === false) return false;
+    }
+    return true;
+  }));
+
+  if ($sort === 'desc') {
+    usort($filtered, function($a,$b){
+      $da = (string)($a['server_time'] ?? ($a['criado_em'] ?? ($a['data'] ?? ($a['server_date'] ?? ''))));
+      $db = (string)($b['server_time'] ?? ($b['criado_em'] ?? ($b['data'] ?? ($b['server_date'] ?? ''))));
+      return strcmp($db, $da);
+    });
+  }
+
+  $filteredCount = count($filtered);
+  $page = $limit > 0 ? array_slice($filtered, $offset, $limit) : $filtered;
+
   echo json_encode([
     'ok'=>true,
-    'data'=>$data,
+    'data'=>$page,
     'count'=>count($data),
+    'filtered_count'=>$filteredCount,
+    'offset'=>$offset,
+    'limit'=>$limit,
     'main_count'=>count($main),
     'append_count'=>count($appendRows),
     'recovered'=>max(0, count($data)-count($main)),
-    'version'=>'V10.44'
+    'version'=>'V10.74'
   ], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
   exit;
 }
