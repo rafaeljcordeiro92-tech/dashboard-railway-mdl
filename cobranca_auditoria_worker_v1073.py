@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Worker leve V10.70 para auditoria imediata de evidências de cobrança.
+"""Worker leve V10.73 para auditoria imediata de evidências de cobrança.
 
 Executar em um serviço Railway separado:
     python cobranca_auditoria_worker_v1069.py
@@ -36,7 +36,7 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-VERSION = "V10.70"
+VERSION = "V10.73"
 API_URL = os.getenv("COBRANCA_AUDITORIA_API_URL", "https://moveisdolar.com.br/colaborador/cobranca_auditoria_api.php").strip()
 OPENAI_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 SECRET = os.getenv("COBRANCA_AUDITORIA_WEBHOOK_SECRET", "").strip()
