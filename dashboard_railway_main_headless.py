@@ -36,7 +36,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.74"
+DASHBOARD_BUILD_VERSION = "V10.75"
 DASHBOARD_BUILD_TAG = "comissao_crediarista_fonte_unica_oficial"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -6445,7 +6445,7 @@ for _f_v1073, _fd_v1073 in (snapshot_hoje.get("filiais") or {}).items():
 with open(meta_file, "w", encoding="utf-8") as _f_v1073:
     json.dump(meta_mes, _f_v1073, ensure_ascii=False, indent=2)
 
-print("✅ V10.74 meta reconciliada com o recebido oficial antes da geração do HTML")
+print("✅ V10.75 meta oficial preservada; MASTER/Diretor em modo ultraleve")
 
 # Vendedores por filial (somente NÃO gerentes para o painel individual)
 todos_js = {}
@@ -9045,7 +9045,7 @@ template = r"""
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Dashboard - Lojas MDL</title>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
+/* V10.75: fontes do sistema para abertura mais rápida */
 :root{
   --bg-base:#0d0f14;--bg-surface:#13161e;--bg-elevated:#1a1e2a;--bg-hover:#222636;
   --glass:rgba(255,255,255,.04);--glass-border:rgba(255,255,255,.09);--glass-hover:rgba(255,255,255,.07);
@@ -9063,14 +9063,14 @@ template = r"""
   --green:#31c48d;--green2:#6ee7b7;--red:#f05252;--red2:#fca5a5;
   --orange:#fb923c;--orange2:#fdba74;--yellow:#fbbf24;--yellow2:#fde68a;
   --shadow:0 8px 28px rgba(0,0,0,.45);--radius:20px;
-  font-family:'DM Sans',system-ui,sans-serif;font-size:14px;line-height:1.5;
+  font-family:system-ui,-apple-system,'Segoe UI',Arial,sans-serif;font-size:14px;line-height:1.5;
   color:var(--text-primary);background:var(--bg-base);
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgba(245,140,16,.08) 0%,transparent 60%),radial-gradient(ellipse 60% 40% at 90% 110%,rgba(96,165,250,.06) 0%,transparent 60%),var(--bg-base)}
 ::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:99px}
 .app-shell{max-width:1560px;margin:0 auto;padding:20px 24px 100px}
-.glass{background:var(--glass);backdrop-filter:blur(20px) saturate(1.4);-webkit-backdrop-filter:blur(20px) saturate(1.4);border:1px solid var(--glass-border);box-shadow:var(--shadow-md)}
+.glass{background:var(--glass);backdrop-filter:none;-webkit-backdrop-filter:none;border:1px solid var(--glass-border);box-shadow:var(--shadow-md)}
 .glass:hover{border-color:rgba(255,255,255,.14)}
 .header{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-radius:var(--radius-xl);margin-bottom:24px;gap:16px;flex-wrap:wrap;background:linear-gradient(135deg,rgba(245,140,16,.12) 0%,rgba(249,168,50,.06) 40%,transparent 70%),var(--glass);border:1px solid rgba(245,140,16,.2);box-shadow:var(--shadow-amber),var(--shadow-md);position:relative;overflow:hidden}
 .header::before{content:'';position:absolute;left:-60px;top:-60px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(245,140,16,.14) 0%,transparent 70%);pointer-events:none}
@@ -9117,7 +9117,7 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 .senhas-table td{padding:10px 12px;border-bottom:1px solid rgba(148,163,184,.12);vertical-align:middle}
 .senhas-table tr:hover td{background:rgba(255,255,255,.035)}
 .senha-view-row{display:flex;align-items:center;gap:6px;min-width:260px}
-.senha-view-row input{min-width:160px;max-width:220px;background:#060a12;border:1px solid rgba(148,163,184,.22);border-radius:10px;color:#e5e7eb;padding:9px 10px;font-family:DM Mono,monospace}
+.senha-view-row input{min-width:160px;max-width:220px;background:#060a12;border:1px solid rgba(148,163,184,.22);border-radius:10px;color:#e5e7eb;padding:9px 10px;font-family:ui-monospace,'Cascadia Mono','Segoe UI Mono',monospace}
 .senha-nova-row{display:flex;align-items:center;gap:8px;min-width:290px}
 .senha-nova-row input{width:180px;background:#060a12;border:1px solid rgba(148,163,184,.22);border-radius:10px;color:#e5e7eb;padding:9px 10px}
 .btn-xs{padding:8px 10px!important;border-radius:10px!important;font-size:12px!important}
@@ -9287,7 +9287,7 @@ body{min-height:100vh;background:radial-gradient(ellipse 80% 50% at 10% -10%,rgb
 .login-form input:focus{border-color:rgba(249,168,50,.4);box-shadow:0 0 0 3px rgba(249,168,50,.08)}
 .login-form input::placeholder{color:var(--text-muted)}
 #loginMsg{text-align:center;color:var(--orange-400);font-size:13px;font-weight:600}
-.modal{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:none;place-items:center;z-index:50;padding:20px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:none;-webkit-backdrop-filter:none;display:none;place-items:center;z-index:50;padding:20px}
 .modal.show{display:grid}
 .modal-card{width:min(420px,100%);padding:24px;border-radius:var(--radius-xl)}
 .modal-card h3{font-size:18px;font-weight:800;margin-bottom:6px;color:var(--text-primary)}
@@ -10206,7 +10206,7 @@ const DASHBOARD_LAZY_MODE=String(DETALHES_MANIFEST?.mode||'')==='lazy_per_entity
 const RECEBIMENTOS=__JS_RECEBIMENTOS__;
 const RECEBIMENTOS_TERCEIRO=__JS_RECEBIMENTOS_TERCEIRO__;
 const RECEBIMENTOS_CREDIARISTA=__JS_RECEBIMENTOS_CREDIARISTA__||{};
-const QUITADOS_180=__JS_QUITADOS_180__||[];
+let QUITADOS_180=[]; let QUITADOS_180_LOADED=false;
 const HIST_RECEBIMENTOS_MENSAIS=__JS_HIST_RECEBIMENTOS_MENSAIS__||{months:{}};
 const DASHBOARD_BUILD_VERSION=__JS_DASHBOARD_BUILD_VERSION__;
 const DASHBOARD_BUILD_TAG=__JS_DASHBOARD_BUILD_TAG__;
@@ -10868,7 +10868,7 @@ function updateNextUpdateClocks(){
     document.querySelectorAll('.next-update-clock').forEach(el=>{el.textContent=`⏳ Próxima atualização: ${label} em ${_fmtClockDelta(target)}`;});
   }catch(e){}
 }
-setInterval(updateNextUpdateClocks,10000);
+setInterval(updateNextUpdateClocks,60000);
 
 function renderKPIs(){
   const grave=flattenFiliais().reduce((a,b)=>a+Number(b.grave_pend||0),0);
@@ -13563,7 +13563,7 @@ function renderSenhaCard(u, isDirector=false){
   const senhaAtual=senhaAtualUsuario(u,isDirector);
   const pend=(AUTH_STATE?.password_reset_requests||[]).filter(r=>String(r.login||'').toLowerCase()===String(key).toLowerCase() && String(r.status||'pendente')==='pendente').length;
   const keyJs=JSON.stringify(String(key));
-  return `<div class="glass card" style="cursor:default;max-width:520px"><div class="title" style="min-height:auto">${esc(isDirector?'Diretor Comercial':u.nome)} ${!isDirector?`(${u.filial||''})`:''}</div><div class="legend-inline"><span><i class="dot" style="background:${u.must_change_password?'#f59e0b':'#22c55e'}"></i>${u.must_change_password?'Precisa trocar senha':'Senha ativa'}</span>${pend?`<span><i class="dot" style="background:#ef4444"></i>${pend} solicitação(ões)</span>`:''}</div><div class="input-card" style="margin-top:12px"><label>Login</label><strong style="font-family:DM Mono,monospace">${esc(key)}</strong><label style="margin-top:10px">Senha ativa atual</label><div class="senha-view-row"><input id="senha_atual_${dom}" type="password" readonly value="${esc(senhaAtual)}"><button class="btn soft btn-xs" type="button" onclick="toggleSenhaAtual('senha_atual_${dom}')">👁️</button><button class="btn soft btn-xs" type="button" onclick="copiarSenhaAtual('senha_atual_${dom}')">📋</button></div></div><div class="form-grid bonus" style="grid-template-columns:1.1fr .9fr;margin-top:12px"><div class="input-card"><label>Nova senha</label><input id="pwd_${key}" placeholder="Digite a nova senha"></div><div class="input-card"><label>Ações</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick='adminSalvarSenha(${keyJs})'>💾 Salvar</button><button class="btn soft" type="button" onclick='adminMarcarTroca(${keyJs})'>🔁 Exigir troca</button></div></div></div>${pend?`<div class="note" style="margin-top:10px">Solicitação pendente de recuperação. <button class="btn soft" style="margin-left:8px" onclick='adminResolverReset(${keyJs})'>Resolver solicitação</button></div>`:''}<div id="pwd_msg_${key}" class="note" style="margin-top:8px"></div></div>`;
+  return `<div class="glass card" style="cursor:default;max-width:520px"><div class="title" style="min-height:auto">${esc(isDirector?'Diretor Comercial':u.nome)} ${!isDirector?`(${u.filial||''})`:''}</div><div class="legend-inline"><span><i class="dot" style="background:${u.must_change_password?'#f59e0b':'#22c55e'}"></i>${u.must_change_password?'Precisa trocar senha':'Senha ativa'}</span>${pend?`<span><i class="dot" style="background:#ef4444"></i>${pend} solicitação(ões)</span>`:''}</div><div class="input-card" style="margin-top:12px"><label>Login</label><strong style="font-family:ui-monospace,'Cascadia Mono','Segoe UI Mono',monospace">${esc(key)}</strong><label style="margin-top:10px">Senha ativa atual</label><div class="senha-view-row"><input id="senha_atual_${dom}" type="password" readonly value="${esc(senhaAtual)}"><button class="btn soft btn-xs" type="button" onclick="toggleSenhaAtual('senha_atual_${dom}')">👁️</button><button class="btn soft btn-xs" type="button" onclick="copiarSenhaAtual('senha_atual_${dom}')">📋</button></div></div><div class="form-grid bonus" style="grid-template-columns:1.1fr .9fr;margin-top:12px"><div class="input-card"><label>Nova senha</label><input id="pwd_${key}" placeholder="Digite a nova senha"></div><div class="input-card"><label>Ações</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="button" onclick='adminSalvarSenha(${keyJs})'>💾 Salvar</button><button class="btn soft" type="button" onclick='adminMarcarTroca(${keyJs})'>🔁 Exigir troca</button></div></div></div>${pend?`<div class="note" style="margin-top:10px">Solicitação pendente de recuperação. <button class="btn soft" style="margin-left:8px" onclick='adminResolverReset(${keyJs})'>Resolver solicitação</button></div>`:''}<div id="pwd_msg_${key}" class="note" style="margin-top:8px"></div></div>`;
 }
 function renderSenhaRow(u, isDirector=false){
   const key=isDirector?'diretorcomercial':String(u.login||'');
@@ -13576,7 +13576,7 @@ function renderSenhaRow(u, isDirector=false){
   return `<tr>
     <td><strong>${esc(nome)}</strong>${pend?`<div class="small" style="color:#ef4444">${pend} solicitação(ões)</div>`:''}</td>
     <td><div class="senha-nova-row"><input id="wa_nome_${dom}" value="${esc(u.whatsapp_nome_global||nome)}" placeholder="Ex: DANIELE"><button class="btn primary btn-xs" type="button" onclick='adminSalvarNomeWhats(${keyJs})'>💾</button></div><div id="wa_nome_msg_${dom}" class="note" style="margin-top:4px"></div></td>
-    <td><strong style="font-family:DM Mono,monospace">${esc(key)}</strong></td>
+    <td><strong style="font-family:ui-monospace,'Cascadia Mono','Segoe UI Mono',monospace">${esc(key)}</strong></td>
     <td><div class="senha-nova-row"><input id="login_new_${dom}" placeholder="Novo login" value="${esc(key)}"><button class="btn soft btn-xs" type="button" onclick='adminAlterarLogin(${keyJs})'>✏️ Alterar</button></div></td>
     <td>${esc(u.filial||'')}</td>
     <td>${esc(tipo)}</td>
@@ -14680,8 +14680,8 @@ window.addEventListener('load',async ()=>{
     const b=sessaoBloqueadaNoEstadoV1051();
     if(b.blocked) desconectarPorBloqueioV1051(b.reason); else abrirApp();
   }
-  setInterval(pollSalesLive,120000);
-  setInterval(pollDashboardLiveReload,120000);
+  setInterval(pollSalesLive,300000);
+  setInterval(pollDashboardLiveReload,300000);
   setInterval(consultarAccessGuardV1051,ACCESS_GUARD_INTERVAL_MS);
   setTimeout(pollSalesLive,3000);
   setTimeout(pollDashboardLiveReload,5000);
@@ -14777,7 +14777,7 @@ try{
   document.head.appendChild(st);
 }catch(e){}
 function _setIndividualViewFlag(){try{document.body.classList.toggle('individual-view', !!usuarioAtual && !isAdminLike() && !usuarioAtual.is_viewer)}catch(e){}}
-try{setInterval(_setIndividualViewFlag,15000)}catch(e){}
+try{setInterval(_setIndividualViewFlag,60000)}catch(e){}
 
 function aniversarioTemplateAtual(filial){
   filial=String(filial||'').toUpperCase();
@@ -14926,7 +14926,7 @@ try{
   document.head.appendChild(st);
 }catch(e){}
 try{
-  setInterval(()=>{try{updateGoalNotifications()}catch(e){}}, 120000);
+  setInterval(()=>{try{if(!document.hidden && !['master','diretor'].includes(String(usuarioAtual?.tipo||'').toLowerCase())) updateGoalNotifications()}catch(e){}}, 300000);
   setTimeout(()=>{try{updateGoalNotifications()}catch(e){}}, 1200);
 }catch(e){}
 
@@ -15538,7 +15538,7 @@ if(_v49RenderAniversariantesBase){
   }
 }
 try{setTimeout(_v49ApplyDiretorAnivReadonly,1200)}catch(e){}
-try{setInterval(()=>{try{document.querySelectorAll('.aviso-ticker-track').forEach(t=>{t.style.animationName='mdlTicker'; if(!t.style.animationDuration)t.style.animationDuration='900s';});}catch(e){}},5000)}catch(e){}
+try{setInterval(()=>{try{document.querySelectorAll('.aviso-ticker-track').forEach(t=>{t.style.animationName='mdlTicker'; if(!t.style.animationDuration)t.style.animationDuration='900s';});}catch(e){}},300000)}catch(e){}
 
 
 // ===== V5.1: MURAIS ORGANIZADOS + CARD RESUMO NO TOPO =====
@@ -15640,7 +15640,7 @@ function renderInicioTab(){
   const aniv=(()=>{try{return renderMuralAniversariantesDia()||'<div class="mdl-empty-mural">Sem aniversariantes pendentes.</div>'}catch(e){return '<div class="mdl-empty-mural">Não foi possível montar aniversariantes.</div>'}})();
   inicioSection.innerHTML=`<div class="inicio-compact"><div class="glass panel" style="padding:12px 16px;margin-bottom:10px"><div class="section-head" style="margin:0"><div><h2 style="font-size:17px;margin:0">🏠 Início</h2><div class="hint">Resumo visual da operação. O card acima dos botões alterna os alertas principais automaticamente.</div></div></div></div><div class="mdl-mural-zone">${mdlV51Group('cobranca','📌','Mural de cobrança','Destaques, duplicidade e usuários sem cobrança.',cobra)}${mdlV51Group('reativacao','🧡','Mural de reativação','Clientes sem movimento e responsáveis sem ação.',reat)}${mdlV51Group('vendas','💲','Mural de vendas','Meta diária e melhores resultados do mês.',venda)}${mdlV51Group('aniversarios','🎂','Mural de aniversariantes','Clientes aniversariantes e responsáveis pelo envio.',aniv)}</div></div>`;
 }
-try{setInterval(()=>{document.querySelectorAll('.aviso-ticker-track').forEach(t=>{t.style.animationName='mdlTicker'; if(!t.style.animationDuration)t.style.animationDuration='900s';});},4000)}catch(e){}
+try{setInterval(()=>{document.querySelectorAll('.aviso-ticker-track').forEach(t=>{t.style.animationName='mdlTicker'; if(!t.style.animationDuration)t.style.animationDuration='900s';});},300000)}catch(e){}
 
 
 
@@ -16161,7 +16161,7 @@ function toggleTickerSpeed(arg1,arg2){
   document.addEventListener('mouseup',function(){if(!active)return; const tr=active.querySelector('.aviso-ticker-track'); if(tr && !active.matches(':hover'))tr.style.animationPlayState='running'; active.classList.remove('dragging'); active=null;},true);
   document.addEventListener('mouseleave',function(){if(!active)return; active.classList.remove('dragging'); active=null;},true);
 })();
-try{setInterval(()=>{document.querySelectorAll('.aviso-ticker-track').forEach(t=>{t.style.animationName='mdlTicker'; if(!t.style.animationDuration)t.style.animationDuration='900s'; if(!t.closest('.aviso-ticker')?.classList.contains('dragging')) t.style.animationPlayState='running';});},30000)}catch(e){}
+try{setInterval(()=>{document.querySelectorAll('.aviso-ticker-track').forEach(t=>{t.style.animationName='mdlTicker'; if(!t.style.animationDuration)t.style.animationDuration='900s'; if(!t.closest('.aviso-ticker')?.classList.contains('dragging')) t.style.animationPlayState='running';});},300000)}catch(e){}
 
 
 
@@ -16268,7 +16268,7 @@ function _goalNotifsFor(ent){
     }catch(e){}
   }
   window.hideEmptyNotifyPanelMDL=_hideEmptyNotifyPanel;
-  setInterval(_hideEmptyNotifyPanel,20000);
+  setInterval(_hideEmptyNotifyPanel,60000);
   setTimeout(_hideEmptyNotifyPanel,200);
   try{
     const _oldUpdateGoal=typeof updateGoalNotifications==='function'?updateGoalNotifications:null;
@@ -17505,7 +17505,7 @@ Preparamos condições especiais para você comemorar com a gente.
   if(typeof oldRenderReat1011==='function' && !oldRenderReat1011.__mdl_v1011){
     const fn=function(){const r=oldRenderReat1011.apply(this,arguments); setTimeout(patchEnviadosClick1011,80); return r;}; fn.__mdl_v1011=true; window.renderReativacaoTab=fn;
   }
-  setInterval(patchEnviadosClick1011,60000); setTimeout(patchEnviadosClick1011,800);
+  setInterval(patchEnviadosClick1011,300000); setTimeout(patchEnviadosClick1011,800);
 
   // PDF de fechamento: captura somente os cards principais da tela individual, removendo listas/relatórios pesados.
   function cleanCardsOnly1011(raw){
@@ -17585,7 +17585,7 @@ Preparamos condições especiais para você comemorar com a gente.
       if(txt.length<220 && txt.includes('enviados') && txt.includes('hoje')){try{ev.preventDefault();ev.stopPropagation()}catch(e){} window.mdlV1012OpenEnviadosReativacao(); return false;}
     }
   },true);
-  setTimeout(patchEnviadosCards,700); setInterval(patchEnviadosCards,60000);
+  setTimeout(patchEnviadosCards,700); setInterval(patchEnviadosCards,300000);
 
   function allEnts(){
     try{if(typeof window.mdlV109AllComissaoEntities==='function') return window.mdlV109AllComissaoEntities()}catch(e){}
@@ -17695,7 +17695,7 @@ Preparamos condições especiais para você comemorar com a gente.
   };
   function patchEnviadosCards(){try{document.querySelectorAll('.kpi,.metric,.stat-card,.mini-card,.glass,.panel,.reat-tab,.acc-hint').forEach(el=>{const t=(el.textContent||'').replace(/\s+/g,' ').trim().toLowerCase(); if(t.length>320) return; if(t.includes('enviados') && t.includes('hoje')){el.style.cursor='pointer'; el.title='Clique para ver clientes sem movimento enviados hoje'; el.onclick=function(ev){try{ev.preventDefault();ev.stopPropagation()}catch(e){} window.mdlV1013OpenEnviadosReativacao(); return false;}; if(!el.querySelector?.('.mdl-v1013-click') && el.classList && !el.classList.contains('reat-tab')) el.insertAdjacentHTML('beforeend','<div class="small muted mdl-v1013-click" style="color:#34d399;font-weight:900">🔎 Clique para abrir</div>');}})}catch(e){console.warn(TAG,'patch card',e)}}
   document.addEventListener('click',function(ev){if(ev.target && ev.target.closest && ev.target.closest('#mdlV1013ReatModal')) return; const path=(ev.composedPath?ev.composedPath():[]); for(const node of path){if(!node||node===document||node===window||!node.textContent) continue; const txt=String(node.textContent||'').replace(/\s+/g,' ').trim().toLowerCase(); if(txt.length<280 && txt.includes('enviados') && txt.includes('hoje')){try{ev.preventDefault();ev.stopPropagation()}catch(e){} window.mdlV1013OpenEnviadosReativacao(); return false;}}},true);
-  setTimeout(patchEnviadosCards,700); setInterval(patchEnviadosCards,60000);
+  setTimeout(patchEnviadosCards,700); setInterval(patchEnviadosCards,300000);
 
   // Impressão: uma entidade por página. Força paisagem e escala para caber em 1 folha.
   function allEnts(){try{if(typeof window.mdlV109AllComissaoEntities==='function') return window.mdlV109AllComissaoEntities()}catch(e){} let ents=[]; try{ents=ents.concat(flattenVendedores()||[])}catch(e){} try{ents=ents.concat(flattenFiliais()||[])}catch(e){} try{ents=ents.concat(crediaristaEntities()||[])}catch(e){} try{const t=thirdChargeEntity(); if(t) ents.push(t)}catch(e){} const seen=new Set(); return ents.filter(Boolean).filter(e=>{const k=`${e.type||''}|${e.filial||''}|${e.login||e.nome||''}`; if(seen.has(k)) return false; seen.add(k); return true;});}
@@ -17712,7 +17712,7 @@ Preparamos condições especiais para você comemorar com a gente.
   // Página leve recomendada para CSM: separa a lista pesada da tela principal.
   window.abrirClientesSemMovimentoPaginaLeve=function(){const rows=currentRowsScope(); const w=window.open('about:blank','_blank'); if(!w){toast('Pop-up bloqueado.','warn');return;} const data=rows.map(r=>({idx:r._idx,cliente:r.cliente,filial:r.filial,cidade:r.cidade,dias:r.dias_sem_movimento,ultimo:r.ultimo_movimento,owner:(r._owner||ownerInfo(r)||{}).label||'',telefones:r.telefones||[],sent:isSentRow(r)})); const js=JSON.stringify(data).replace(/<\//g,'<\\/'); w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Clientes sem movimento</title><style>body{margin:0;background:#080a0f;color:#f4f6fb;font-family:Inter,Arial,sans-serif;padding:18px}.top{position:sticky;top:0;background:#111827;border:1px solid #334155;border-radius:16px;padding:14px;margin-bottom:14px}input{width:100%;padding:12px;border-radius:12px;border:1px solid #334155;background:#06080c;color:#fff}.row{display:grid;grid-template-columns:1.4fr .8fr .5fr auto;gap:12px;align-items:center;background:#111827;border:1px solid #293241;border-radius:14px;padding:12px;margin:8px 0}.muted{color:#94a3b8;font-size:12px}.wa{background:#15803d;color:white;border:0;border-radius:999px;padding:10px 14px;font-weight:900}.sent{opacity:.55}</style></head><body><div class="top"><h2>🧡 Clientes sem movimento · página leve</h2><div class="muted">Esta página abre separada para não pesar o dashboard principal. Total: <span id="total"></span></div><input id="q" placeholder="Buscar cliente, cidade, responsável" oninput="render()"></div><div id="list"></div><script>const rows=${js};function esc(s){return String(s??'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]))}function render(){const q=(document.getElementById('q').value||'').toLowerCase();const arr=rows.filter(r=>!q||JSON.stringify(r).toLowerCase().includes(q));document.getElementById('total').textContent=arr.length+' / '+rows.length;document.getElementById('list').innerHTML=arr.slice(0,300).map(r=>'<div class="row '+(r.sent?'sent':'')+'"><div><b>'+esc(r.cliente)+'</b><div class="muted">'+esc(r.filial)+' · '+esc(r.cidade)+' · '+esc(r.dias)+' dias · último '+esc(r.ultimo)+'</div></div><div><b>'+esc(r.owner)+'</b><div class="muted">Responsável</div></div><div>'+(r.sent?'✅ Enviado':'Pendente')+'</div><div>'+(r.telefones||[]).map(t=>'<button class="wa" onclick="window.opener&&window.opener.abrirWhatsReativacao('+r.idx+',\''+String(t).replace(/\D/g,'')+'\')">Whats '+esc(t)+'</button>').join(' ')+'</div></div>').join('')+(arr.length>300?'<div class="muted">Mostrando 300 primeiros. Use busca para filtrar.</div>':'')}</scr`+`ipt></body></html>`); w.document.close();};
   function patchCSMPageButton(){try{const box=document.getElementById('reativacaoSection')||document.querySelector('[data-tab="reativacao"]')||document.body; if(!box||document.getElementById('btnCSMLeve1013')) return; const h=[...document.querySelectorAll('h2,h3,.section-head')].find(x=>String(x.textContent||'').toLowerCase().includes('clientes sem movimento')); if(h){h.insertAdjacentHTML('afterend','<button id="btnCSMLeve1013" class="btn soft" style="margin:8px 0" onclick="abrirClientesSemMovimentoPaginaLeve()">🧡 Abrir clientes sem movimento em página leve</button>')}}catch(e){}}
-  setTimeout(patchCSMPageButton,1200); setInterval(patchCSMPageButton,60000);
+  setTimeout(patchCSMPageButton,1200); setInterval(patchCSMPageButton,300000);
 
   // ===== V10.21: gráfico/meta usa os mesmos recebimentos visíveis por faixa =====
   // Corrige casos como F4/CIBELE: a lista "Recebimentos por faixa" mostrava pagamentos
@@ -18673,10 +18673,240 @@ Preparamos condições especiais para você comemorar com a gente.
 })();
 
 
+
 try{console.log('[V10.69] auditoria imediata + aprovação automática + controle de custo preservada');}catch(e){}
 </script>
 
+<script>
+// ===== V10.75: MASTER/DIRETOR ULTRALEVE + DADOS GRANDES SOB DEMANDA =====
+(function(){
+  const TAG='[V10.75 master ultraleve]';
+  try{
+    const baseAbrir75=window.abrirApp;
+    const baseSetTab75=window.setMainTab;
+    const baseRenderList75=window.renderList;
+    const baseTentativa75=window.tentarAtualizarOnlineDepoisLogin;
+    const basePollSales75=window.pollSalesLive;
+    const basePollDash75=window.pollDashboardLiveReload;
+    let quitadosPromise75=null;
+    let historicoLoaded75=false;
+    let comissaoHistLoaded75=false;
+    let avisosLoaded75=false;
+    let auditLoaded75=false;
+    let adminOpened75=false;
+    let cobPage75=0;
+    let cobTotal75=0;
+    const COB_PAGE_SIZE75=50;
+    const renderedTabs75=new Set();
 
+    function isAdmin75(){
+      const tipo=String(window.usuarioAtual?.tipo||'').toLowerCase();
+      const role=String(window.usuarioAtual?.roleLabel||'').toLowerCase();
+      return tipo==='master'||tipo==='diretor'||role.includes('diretor');
+    }
+    function isDirector75(){return String(window.usuarioAtual?.roleLabel||'').toLowerCase().includes('diretor')}
+    function idle75(fn,timeout=1000){
+      try{if('requestIdleCallback' in window) return requestIdleCallback(fn,{timeout});}catch(e){}
+      return setTimeout(fn,Math.min(timeout,250));
+    }
+    function stopAdminMotion75(){
+      if(!isAdmin75()) return;
+      try{document.body.classList.add('mdl-admin-ultra');document.body.classList.add('master-view');}catch(e){}
+      try{if(window._mdlHeroTimer){clearInterval(window._mdlHeroTimer);window._mdlHeroTimer=null}}catch(e){}
+      try{document.querySelectorAll('.aviso-ticker-track').forEach(x=>{x.style.animation='none';x.style.transform='none'})}catch(e){}
+    }
+
+    window.ensureQuitadosV1075=async function(force=false){
+      if(QUITADOS_180_LOADED&&!force) return true;
+      if(quitadosPromise75&&!force) return quitadosPromise75;
+      quitadosPromise75=(async()=>{
+        try{
+          const r=await fetch('quitados_180d_contas_receber.json?_='+Date.now(),{cache:'no-store'});
+          if(!r.ok) throw new Error('HTTP '+r.status);
+          const j=await r.json();
+          const rows=Array.isArray(j)?j:(Array.isArray(j?.quitados)?j.quitados:(Array.isArray(j?.data)?j.data:[]));
+          QUITADOS_180=rows;QUITADOS_180_LOADED=true;
+          console.log(TAG,'quitados carregados sob demanda:',rows.length);
+          return true;
+        }catch(e){console.warn(TAG,'quitados',e);return false}
+        finally{quitadosPromise75=null}
+      })();
+      return quitadosPromise75;
+    };
+
+    function allSections75(){
+      return [inicioSection,listSection,metaSection,servicesSection,logSection,reativacaoSection,aniversariantesSection,avisosSection,telegramSection,senhasSection,whatsappMasterSection,histSection].filter(Boolean);
+    }
+    function hideAll75(){allSections75().forEach(x=>x.classList.add('hidden'))}
+    function activateTabButton75(tab){
+      try{document.querySelectorAll('#masterTabs .tab').forEach(b=>b.classList.toggle('active',String(b.dataset.tab||'')===tab))}catch(e){}
+    }
+    function showSection75(el){if(el)el.classList.remove('hidden')}
+
+    function adminStats75(){
+      let vendors=0,branches=0;
+      try{vendors=flattenVendedores().length}catch(e){}
+      try{branches=flattenFiliais().length}catch(e){}
+      const pend=Number(typeof TOTAL_P!=='undefined'?TOTAL_P:0)||0;
+      const paid=Number(typeof TOTAL_PG!=='undefined'?TOTAL_PG:0)||0;
+      return {vendors,branches,pend,paid};
+    }
+    window.renderInicioUltraV1075=function(){
+      const s=adminStats75();
+      if(!inicioSection)return;
+      inicioSection.innerHTML=`
+        <div class="glass panel v1075-lite-home">
+          <div class="section-head"><div><h2>⚡ Painel rápido</h2><div class="hint">Modo ultraleve ativo. Os módulos e relatórios são carregados somente quando abertos.</div></div><div class="badge">V10.75</div></div>
+          <div class="v1075-quick-grid">
+            <button class="v1075-quick" onclick="setMainTab('vendedores')"><strong>👥 Colaboradores</strong><span>${s.vendors} ativos</span></button>
+            <button class="v1075-quick" onclick="setMainTab('filiais')"><strong>🏬 Filiais</strong><span>${s.branches} unidades</span></button>
+            <button class="v1075-quick" onclick="setMainTab('metas')"><strong>🎯 Metas</strong><span>Configuração e faixas</span></button>
+            <button class="v1075-quick" onclick="setMainTab('servicos')"><strong>🧰 Serviços</strong><span>Vendas e serviços</span></button>
+            ${isDirector75()?'':`<button class="v1075-quick" onclick="setMainTab('cobrancas')"><strong>🧾 Cobranças</strong><span>Histórico paginado</span></button>`}
+            <button class="v1075-quick" onclick="setMainTab('historico')"><strong>🗂️ Histórico</strong><span>Carregado sob demanda</span></button>
+          </div>
+          <div class="v1075-lite-note">Atualização publicada: ${esc(window.__dashboardUpdatedAtLabel||'agora')} · nenhum histórico completo é baixado nesta tela.</div>
+        </div>`;
+    };
+
+    window.renderAdminListV1075=function(){
+      if(!listSection)return;
+      const entities=typeof currentEntities==='function'?currentEntities():[];
+      const title=mainTab==='filiais'?'🏬 Filiais':'👥 Colaboradores';
+      listSection.innerHTML=`<div class="section-head"><div><h2>${title}</h2><div class="hint">Lista resumida. Os detalhes são carregados somente ao abrir uma linha.</div></div><div class="badge">${entities.length}</div></div><div class="entity-list">${typeof renderEntityList==='function'?renderEntityList(entities):entities.map(renderEntityRow).join('')}</div>`;
+    };
+
+    // Histórico de cobranças do MASTER: paginação real no PHP, nunca baixa os 3 mil registros.
+    function cobFilters75(){
+      return {
+        q:String(document.getElementById('v1075CobQ')?.value||''),
+        de:String(document.getElementById('v1075CobDe')?.value||''),
+        ate:String(document.getElementById('v1075CobAte')?.value||''),
+        filial:String(document.getElementById('v1075CobFil')?.value||''),
+        usuario:String(document.getElementById('v1075CobUser')?.value||'')
+      };
+    }
+    function cobRow75(x){
+      const dt=String(x?.server_time||x?.criado_em||x?.data||x?.server_date||'').replace('T',' ').slice(0,19);
+      const status=String(x?.status||x?.auditoria_status||x?.resultado||'registrada');
+      return `<div class="v1075-cob-row"><div><strong>${esc(x?.cliente||'Cliente')}</strong><div class="small muted">${esc(x?.cpf_cnpj||'')} · ${esc(x?.telefone||'')}</div></div><div><b>${esc(x?.filial||'-')}</b><div class="small muted">${esc(x?.usuario||x?.responsavel||'')}</div></div><div><b>Título ${esc(x?.titulo||'-')}</b><div class="small muted">Parcela ${esc(x?.parcela||'-')} · ${typeof R==='function'?R(x?.valor||x?.pendente||0):''}</div></div><div><b>${esc(status)}</b><div class="small muted">${esc(dt)}</div></div></div>`;
+    }
+    window.v1075LoadCobPage=async function(page=0){
+      if(!isAdmin75())return;
+      cobPage75=Math.max(0,Number(page)||0);
+      const host=document.getElementById('v1075CobRows');
+      const pager=document.getElementById('v1075CobPager');
+      if(host)host.innerHTML='<div class="lazy-loading">⏳ Carregando 50 registros...</div>';
+      try{
+        const f=cobFilters75();const p=new URLSearchParams();
+        p.set('_',Date.now());p.set('sort','desc');p.set('limit',COB_PAGE_SIZE75);p.set('offset',cobPage75*COB_PAGE_SIZE75);
+        if(f.q)p.set('q',f.q);if(f.de)p.set('date_from',f.de);if(f.ate)p.set('date_to',f.ate);if(f.filial)p.set('filial',f.filial);if(f.usuario){p.set('nome',f.usuario);p.set('login',f.usuario)}
+        const r=await fetchComTimeout(API_COB+'?'+p.toString(),{cache:'no-store'},8000);const j=await r.json();
+        const rows=Array.isArray(j?.data)?j.data:[];cobTotal75=Number(j?.filtered_count||0);
+        if(host)host.innerHTML=rows.length?rows.map(cobRow75).join(''):'<div class="empty">Nenhum registro encontrado.</div>';
+        const pages=Math.max(1,Math.ceil(cobTotal75/COB_PAGE_SIZE75));
+        if(pager)pager.innerHTML=`<span>${cobTotal75} registro(s) · página ${cobPage75+1}/${pages}</span><span><button class="btn soft" ${cobPage75<=0?'disabled':''} onclick="v1075LoadCobPage(${cobPage75-1})">⬅️</button> <button class="btn soft" ${(cobPage75+1)>=pages?'disabled':''} onclick="v1075LoadCobPage(${cobPage75+1})">➡️</button></span>`;
+      }catch(e){if(host)host.innerHTML='<div class="empty">Falha ao carregar o histórico. Tente novamente.</div>';console.warn(TAG,'cobranças',e)}
+    };
+    window.v1075LoadAudit=async function(){
+      const host=document.getElementById('v1075AuditHost');if(!host)return;
+      host.innerHTML='<div class="lazy-loading">⏳ Carregando auditorias...</div>';
+      try{if(!auditLoaded75&&typeof carregarAuditoriasCobranca==='function')await carregarAuditoriasCobranca();auditLoaded75=true;host.innerHTML=typeof renderMasterAuditoriaPanel==='function'?renderMasterAuditoriaPanel():'';if(typeof renderMasterAuditRows==='function')renderMasterAuditRows()}catch(e){host.innerHTML='<div class="empty">Não foi possível carregar a auditoria.</div>'}
+    };
+    window.v1075LoadCobConfig=function(){const h=document.getElementById('v1075CobConfigHost');if(h)h.innerHTML=typeof renderCobrancaConfigPanel==='function'?renderCobrancaConfigPanel():''};
+    window.renderCobrancasLiteV1075=function(){
+      if(!logSection)return;
+      const filOpts=['<option value="">Todas</option>',...(typeof ORDEM!=='undefined'?ORDEM:[]).map(f=>`<option value="${esc(f)}">${esc(f)}</option>`)].join('');
+      let users=[];try{users=flattenVendedores().map(v=>v.nome).filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt-BR'))}catch(e){}
+      logSection.innerHTML=`
+        <div class="section-head"><div><h2>🧾 Cobranças</h2><div class="hint">Consulta paginada no servidor. O navegador recebe apenas 50 registros por vez.</div></div></div>
+        <div class="glass panel v1075-toolbar"><div class="search-row"><div class="input-card"><label>Cliente, título ou CPF</label><input id="v1075CobQ"></div><div class="input-card"><label>De</label><input id="v1075CobDe" type="date"></div><div class="input-card"><label>Até</label><input id="v1075CobAte" type="date"></div><div class="input-card"><label>Filial</label><select id="v1075CobFil">${filOpts}</select></div></div><div class="search-row" style="margin-top:8px"><div class="input-card"><label>Usuário</label><select id="v1075CobUser"><option value="">Todos</option>${users.map(u=>`<option value="${esc(u)}">${esc(u)}</option>`).join('')}</select></div><div style="display:flex;align-items:end;gap:8px"><button class="btn primary" onclick="v1075LoadCobPage(0)">Filtrar</button><button class="btn soft" onclick="['v1075CobQ','v1075CobDe','v1075CobAte','v1075CobFil','v1075CobUser'].forEach(id=>{const e=document.getElementById(id);if(e)e.value=''});v1075LoadCobPage(0)">Limpar</button></div></div></div>
+        <div id="v1075CobPager" class="log-pager"></div><div id="v1075CobRows" class="v1075-cob-list"></div>
+        <div class="v1075-lazy-actions"><button class="btn soft" onclick="v1075LoadAudit()">🛡️ Abrir Auditoria IA / MASTER</button><button class="btn soft" onclick="v1075LoadCobConfig()">⚙️ Abrir configurações de cobrança</button></div>
+        <div id="v1075AuditHost"></div><div id="v1075CobConfigHost"></div>`;
+      v1075LoadCobPage(0);
+    };
+
+    async function adminSetTab75(tab){
+      if(!isAdmin75())return baseSetTab75?baseSetTab75.apply(this,arguments):undefined;
+      if(isDirector75()&&['cobrancas','senhas','whatsapp_master'].includes(tab))tab='inicio';
+      mainTab=tab;window.mainTab=tab;stopAdminMotion75();activateTabButton75(tab);
+      try{detailScreen?.classList.add('hidden');document.getElementById('mainScreen')?.classList.remove('hidden')}catch(e){}
+      hideAll75();if(mainFilters)mainFilters.classList.add('hidden');
+      if(tab==='inicio'){showSection75(inicioSection);renderInicioUltraV1075();return}
+      if(tab==='vendedores'||tab==='filiais'){showSection75(listSection);if(mainFilters){mainFilters.classList.remove('hidden');if(!renderedTabs75.has('filters')){renderFilters();renderedTabs75.add('filters')}}renderAdminListV1075();return}
+      if(tab==='metas'){showSection75(metaSection);renderMetasTab();return}
+      if(tab==='servicos'){showSection75(servicesSection);renderServicosTab(false);return}
+      if(tab==='cobrancas'){showSection75(logSection);renderCobrancasLiteV1075();return}
+      if(tab==='reativacao'){showSection75(reativacaoSection);renderReativacaoTab();return}
+      if(tab==='aniversariantes'){showSection75(aniversariantesSection);renderAniversariantesTab();return}
+      if(tab==='avisos'){showSection75(avisosSection);if(!avisosLoaded75){avisosSection.innerHTML='<div class="lazy-loading">⏳ Carregando avisos...</div>';await carregarMsgsOnline();avisosLoaded75=true}if(mainTab==='avisos')renderAvisosTab();return}
+      if(tab==='telegram'){showSection75(telegramSection);renderTelegramTab();return}
+      if(tab==='senhas'){showSection75(senhasSection);renderSenhasTab();return}
+      if(tab==='whatsapp_master'){showSection75(whatsappMasterSection);renderWhatsAppMasterTab();return}
+      if(tab==='historico'){showSection75(histSection);if(!historicoLoaded75){histSection.innerHTML='<div class="lazy-loading">⏳ Carregando histórico sob demanda...</div>';await Promise.allSettled([carregarHistoricoOnline(),carregarHistoricoComissaoOnline()]);historicoLoaded75=true;comissaoHistLoaded75=true}if(mainTab==='historico')renderHistoricoTab();return}
+    }
+    setMainTab=window.setMainTab=adminSetTab75;
+
+    renderList=window.renderList=function(){if(isAdmin75())return renderAdminListV1075();return baseRenderList75?baseRenderList75.apply(this,arguments):undefined};
+
+    async function adminOpen75(){
+      adminOpened75=true;stopAdminMotion75();
+      try{loginScreen?.classList.add('hidden');app?.classList.remove('hidden');document.getElementById('kpis')?.classList.remove('hidden');masterTabs?.classList.remove('hidden');mainFilters?.classList.add('hidden');topMural?.classList.add('hidden')}catch(e){}
+      const director=isDirector75();
+      try{userBadge.textContent=director?'👑 Diretor Comercial':'👑 Master';document.querySelectorAll('#masterTabs .tab').forEach(b=>b.classList.toggle('hidden',director&&['cobrancas','senhas','whatsapp_master'].includes(String(b.dataset.tab||''))))}catch(e){}
+      try{renderKPIs()}catch(e){console.warn(TAG,'KPIs',e)}
+      await adminSetTab75('inicio');
+      idle75(async()=>{try{await Promise.allSettled([carregarCredenciaisOnline(),carregarConfigOnline()]);if(isAdmin75())renderKPIs()}catch(e){}},1500);
+      return true;
+    }
+    abrirApp=window.abrirApp=async function(){if(isAdmin75())return adminOpen75();return baseAbrir75?baseAbrir75.apply(this,arguments):undefined};
+
+    // Não renderiza listas escondidas nem baixa mensagens/logs no login administrativo.
+    tentarAtualizarOnlineDepoisLogin=window.tentarAtualizarOnlineDepoisLogin=async function(){
+      if(!isAdmin75())return baseTentativa75?baseTentativa75.apply(this,arguments):undefined;
+      try{await Promise.allSettled([carregarCredenciaisOnline(),carregarConfigOnline()]);renderKPIs()}catch(e){}
+      return true;
+    };
+
+    // Ao abrir qualquer painel individual, quitados, cobranças do escopo e auditoria entram só então.
+    const baseEnsure74=window.ensureOperationalDataV1074;
+    window.ensureOperationalDataV1074=async function(ref){
+      await Promise.allSettled([ensureQuitadosV1075(),baseEnsure74?baseEnsure74(ref):Promise.resolve()]);
+      try{if(currentDetailRef&&typeof openEntityCore==='function')openEntityCore(currentDetailRef)}catch(e){}
+      return true;
+    };
+
+    // Polling só trabalha quando a página está visível e em tela que usa vendas.
+    if(typeof basePollSales75==='function')pollSalesLive=window.pollSalesLive=async function(){if(document.hidden)return;if(isAdmin75()&&!['inicio','vendedores','filiais','servicos'].includes(String(mainTab||'')))return;return basePollSales75.apply(this,arguments)};
+    if(typeof basePollDash75==='function')pollDashboardLiveReload=window.pollDashboardLiveReload=async function(){if(document.hidden)return;return basePollDash75.apply(this,arguments)};
+
+    const css=document.createElement('style');css.id='mdl-v1075-ultra-css';css.textContent=`
+      body.mdl-admin-ultra{background:#0d1016!important}
+      body.mdl-admin-ultra *,body.mdl-admin-ultra *::before,body.mdl-admin-ultra *::after{animation:none!important;transition:none!important;filter:none!important;text-shadow:none!important}
+      body.mdl-admin-ultra .glass,body.mdl-admin-ultra .panel,body.mdl-admin-ultra .card,body.mdl-admin-ultra .header{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none!important;background-color:#151922!important}
+      body.mdl-admin-ultra .header::before,body.mdl-admin-ultra .card::before,body.mdl-admin-ultra .piggy-glow,body.mdl-admin-ultra .piggy-falling,body.mdl-admin-ultra .mdl-coin{display:none!important}
+      body.mdl-admin-ultra .card:hover,body.mdl-admin-ultra .kpi:hover,body.mdl-admin-ultra .entity-row:hover{transform:none!important;box-shadow:none!important}
+      body.mdl-admin-ultra .aviso-ticker-track{animation:none!important;transform:none!important;will-change:auto!important}
+      body.mdl-admin-ultra .glass,body.mdl-admin-ultra .panel,body.mdl-admin-ultra .accordion,body.mdl-admin-ultra .entity-row,body.mdl-admin-ultra .log-row{content-visibility:auto;contain-intrinsic-size:1px 96px}
+      body.mdl-admin-ultra #topMural{display:none!important}
+      .v1075-lite-home{max-width:1050px;margin:0 auto;padding:20px!important}
+      .v1075-quick-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+      .v1075-quick{appearance:none;border:1px solid rgba(255,255,255,.09);background:#10141d;color:#eef2ff;padding:16px;border-radius:14px;text-align:left;cursor:pointer}
+      .v1075-quick strong{display:block;font-size:15px}.v1075-quick span{display:block;color:#9aa4b8;font-size:12px;margin-top:5px}
+      .v1075-lite-note{margin-top:12px;color:#8b93a9;font-size:12px}
+      .v1075-cob-list{display:grid;gap:6px}.v1075-cob-row{display:grid;grid-template-columns:1.5fr .75fr 1fr .85fr;gap:10px;padding:11px 13px;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:#121620;content-visibility:auto;contain-intrinsic-size:1px 68px}
+      .v1075-lazy-actions{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.v1075-toolbar{padding:14px!important}
+      @media(max-width:900px){.v1075-quick-grid{grid-template-columns:1fr 1fr}.v1075-cob-row{grid-template-columns:1fr 1fr}}
+      @media(max-width:560px){.v1075-quick-grid,.v1075-cob-row{grid-template-columns:1fr}}
+    `;document.head.appendChild(css);
+
+    document.addEventListener('visibilitychange',()=>{if(document.hidden){try{if(window._mdlHeroTimer){clearInterval(window._mdlHeroTimer);window._mdlHeroTimer=null}}catch(e){}}});
+    window.DASHBOARD_BUILD_VERSION='V10.75';
+    console.log(TAG,'ativo: home mínima, quitados sob demanda e cobranças paginadas');
+  }catch(e){console.warn(TAG,e)}
+})();
+</script>
 
 </body>
 </html>
@@ -18979,7 +19209,7 @@ repls = {
     '__CONFIG_META_IND__': json.dumps(CONFIG_META_IND, ensure_ascii=False),
     '__JS_DESTAQUE__': js_destaque,
     '__JS_HIST_DASH__': js_hist_dash,
-    '__JS_QUITADOS_180__': js_quitados_180,
+    '__JS_QUITADOS_180__': '[]',
     '__JS_COB_LOGS_BOOT__': js_cobrancas_logs_boot,
     '__JS_HIST_RECEBIMENTOS_MENSAIS__': js_hist_recebimentos_mensais,
     '__JS_CLIENTES_SEM_MOVIMENTO__': '[]',  # V9.6: lazy-load do JSON no navegador para não pesar o HTML
@@ -19258,7 +19488,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     'main_count'=>count($main),
     'append_count'=>count($appendRows),
     'recovered'=>max(0, count($data)-count($main)),
-    'version'=>'V10.74'
+    'version'=>'V10.75'
   ], JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
   exit;
 }
