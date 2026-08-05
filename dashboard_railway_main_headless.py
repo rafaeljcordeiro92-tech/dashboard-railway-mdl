@@ -36,7 +36,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.71"
+DASHBOARD_BUILD_VERSION = "V10.72"
 DASHBOARD_BUILD_TAG = "comissao_crediarista_fonte_unica_oficial"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -14650,7 +14650,7 @@ try{
   document.head.appendChild(st);
 }catch(e){}
 function _setIndividualViewFlag(){try{document.body.classList.toggle('individual-view', !!usuarioAtual && !isAdminLike() && !usuarioAtual.is_viewer)}catch(e){}}
-try{setInterval(_setIndividualViewFlag,1000)}catch(e){}
+try{setInterval(_setIndividualViewFlag,5000)}catch(e){}
 
 function aniversarioTemplateAtual(filial){
   filial=String(filial||'').toUpperCase();
@@ -14799,7 +14799,7 @@ try{
   document.head.appendChild(st);
 }catch(e){}
 try{
-  setInterval(()=>{try{updateGoalNotifications()}catch(e){}}, 7000);
+  setInterval(()=>{try{updateGoalNotifications()}catch(e){}}, 30000);
   setTimeout(()=>{try{updateGoalNotifications()}catch(e){}}, 1200);
 }catch(e){}
 
@@ -16141,7 +16141,7 @@ function _goalNotifsFor(ent){
     }catch(e){}
   }
   window.hideEmptyNotifyPanelMDL=_hideEmptyNotifyPanel;
-  setInterval(_hideEmptyNotifyPanel,900);
+  setInterval(_hideEmptyNotifyPanel,5000);
   setTimeout(_hideEmptyNotifyPanel,200);
   try{
     const _oldUpdateGoal=typeof updateGoalNotifications==='function'?updateGoalNotifications:null;
@@ -17378,7 +17378,7 @@ Preparamos condições especiais para você comemorar com a gente.
   if(typeof oldRenderReat1011==='function' && !oldRenderReat1011.__mdl_v1011){
     const fn=function(){const r=oldRenderReat1011.apply(this,arguments); setTimeout(patchEnviadosClick1011,80); return r;}; fn.__mdl_v1011=true; window.renderReativacaoTab=fn;
   }
-  setInterval(patchEnviadosClick1011,4000); setTimeout(patchEnviadosClick1011,800);
+  setInterval(patchEnviadosClick1011,15000); setTimeout(patchEnviadosClick1011,800);
 
   // PDF de fechamento: captura somente os cards principais da tela individual, removendo listas/relatórios pesados.
   function cleanCardsOnly1011(raw){
@@ -17458,7 +17458,7 @@ Preparamos condições especiais para você comemorar com a gente.
       if(txt.length<220 && txt.includes('enviados') && txt.includes('hoje')){try{ev.preventDefault();ev.stopPropagation()}catch(e){} window.mdlV1012OpenEnviadosReativacao(); return false;}
     }
   },true);
-  setTimeout(patchEnviadosCards,700); setInterval(patchEnviadosCards,3500);
+  setTimeout(patchEnviadosCards,700); setInterval(patchEnviadosCards,15000);
 
   function allEnts(){
     try{if(typeof window.mdlV109AllComissaoEntities==='function') return window.mdlV109AllComissaoEntities()}catch(e){}
@@ -17568,7 +17568,7 @@ Preparamos condições especiais para você comemorar com a gente.
   };
   function patchEnviadosCards(){try{document.querySelectorAll('.kpi,.metric,.stat-card,.mini-card,.glass,.panel,.reat-tab,.acc-hint').forEach(el=>{const t=(el.textContent||'').replace(/\s+/g,' ').trim().toLowerCase(); if(t.length>320) return; if(t.includes('enviados') && t.includes('hoje')){el.style.cursor='pointer'; el.title='Clique para ver clientes sem movimento enviados hoje'; el.onclick=function(ev){try{ev.preventDefault();ev.stopPropagation()}catch(e){} window.mdlV1013OpenEnviadosReativacao(); return false;}; if(!el.querySelector?.('.mdl-v1013-click') && el.classList && !el.classList.contains('reat-tab')) el.insertAdjacentHTML('beforeend','<div class="small muted mdl-v1013-click" style="color:#34d399;font-weight:900">🔎 Clique para abrir</div>');}})}catch(e){console.warn(TAG,'patch card',e)}}
   document.addEventListener('click',function(ev){if(ev.target && ev.target.closest && ev.target.closest('#mdlV1013ReatModal')) return; const path=(ev.composedPath?ev.composedPath():[]); for(const node of path){if(!node||node===document||node===window||!node.textContent) continue; const txt=String(node.textContent||'').replace(/\s+/g,' ').trim().toLowerCase(); if(txt.length<280 && txt.includes('enviados') && txt.includes('hoje')){try{ev.preventDefault();ev.stopPropagation()}catch(e){} window.mdlV1013OpenEnviadosReativacao(); return false;}}},true);
-  setTimeout(patchEnviadosCards,700); setInterval(patchEnviadosCards,3000);
+  setTimeout(patchEnviadosCards,700); setInterval(patchEnviadosCards,15000);
 
   // Impressão: uma entidade por página. Força paisagem e escala para caber em 1 folha.
   function allEnts(){try{if(typeof window.mdlV109AllComissaoEntities==='function') return window.mdlV109AllComissaoEntities()}catch(e){} let ents=[]; try{ents=ents.concat(flattenVendedores()||[])}catch(e){} try{ents=ents.concat(flattenFiliais()||[])}catch(e){} try{ents=ents.concat(crediaristaEntities()||[])}catch(e){} try{const t=thirdChargeEntity(); if(t) ents.push(t)}catch(e){} const seen=new Set(); return ents.filter(Boolean).filter(e=>{const k=`${e.type||''}|${e.filial||''}|${e.login||e.nome||''}`; if(seen.has(k)) return false; seen.add(k); return true;});}
@@ -17585,7 +17585,7 @@ Preparamos condições especiais para você comemorar com a gente.
   // Página leve recomendada para CSM: separa a lista pesada da tela principal.
   window.abrirClientesSemMovimentoPaginaLeve=function(){const rows=currentRowsScope(); const w=window.open('about:blank','_blank'); if(!w){toast('Pop-up bloqueado.','warn');return;} const data=rows.map(r=>({idx:r._idx,cliente:r.cliente,filial:r.filial,cidade:r.cidade,dias:r.dias_sem_movimento,ultimo:r.ultimo_movimento,owner:(r._owner||ownerInfo(r)||{}).label||'',telefones:r.telefones||[],sent:isSentRow(r)})); const js=JSON.stringify(data).replace(/<\//g,'<\\/'); w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Clientes sem movimento</title><style>body{margin:0;background:#080a0f;color:#f4f6fb;font-family:Inter,Arial,sans-serif;padding:18px}.top{position:sticky;top:0;background:#111827;border:1px solid #334155;border-radius:16px;padding:14px;margin-bottom:14px}input{width:100%;padding:12px;border-radius:12px;border:1px solid #334155;background:#06080c;color:#fff}.row{display:grid;grid-template-columns:1.4fr .8fr .5fr auto;gap:12px;align-items:center;background:#111827;border:1px solid #293241;border-radius:14px;padding:12px;margin:8px 0}.muted{color:#94a3b8;font-size:12px}.wa{background:#15803d;color:white;border:0;border-radius:999px;padding:10px 14px;font-weight:900}.sent{opacity:.55}</style></head><body><div class="top"><h2>🧡 Clientes sem movimento · página leve</h2><div class="muted">Esta página abre separada para não pesar o dashboard principal. Total: <span id="total"></span></div><input id="q" placeholder="Buscar cliente, cidade, responsável" oninput="render()"></div><div id="list"></div><script>const rows=${js};function esc(s){return String(s??'').replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]))}function render(){const q=(document.getElementById('q').value||'').toLowerCase();const arr=rows.filter(r=>!q||JSON.stringify(r).toLowerCase().includes(q));document.getElementById('total').textContent=arr.length+' / '+rows.length;document.getElementById('list').innerHTML=arr.slice(0,300).map(r=>'<div class="row '+(r.sent?'sent':'')+'"><div><b>'+esc(r.cliente)+'</b><div class="muted">'+esc(r.filial)+' · '+esc(r.cidade)+' · '+esc(r.dias)+' dias · último '+esc(r.ultimo)+'</div></div><div><b>'+esc(r.owner)+'</b><div class="muted">Responsável</div></div><div>'+(r.sent?'✅ Enviado':'Pendente')+'</div><div>'+(r.telefones||[]).map(t=>'<button class="wa" onclick="window.opener&&window.opener.abrirWhatsReativacao('+r.idx+',\''+String(t).replace(/\D/g,'')+'\')">Whats '+esc(t)+'</button>').join(' ')+'</div></div>').join('')+(arr.length>300?'<div class="muted">Mostrando 300 primeiros. Use busca para filtrar.</div>':'')}</scr`+`ipt></body></html>`); w.document.close();};
   function patchCSMPageButton(){try{const box=document.getElementById('reativacaoSection')||document.querySelector('[data-tab="reativacao"]')||document.body; if(!box||document.getElementById('btnCSMLeve1013')) return; const h=[...document.querySelectorAll('h2,h3,.section-head')].find(x=>String(x.textContent||'').toLowerCase().includes('clientes sem movimento')); if(h){h.insertAdjacentHTML('afterend','<button id="btnCSMLeve1013" class="btn soft" style="margin:8px 0" onclick="abrirClientesSemMovimentoPaginaLeve()">🧡 Abrir clientes sem movimento em página leve</button>')}}catch(e){}}
-  setTimeout(patchCSMPageButton,1200); setInterval(patchCSMPageButton,4000);
+  setTimeout(patchCSMPageButton,1200); setInterval(patchCSMPageButton,15000);
 
   // ===== V10.21: gráfico/meta usa os mesmos recebimentos visíveis por faixa =====
   // Corrige casos como F4/CIBELE: a lista "Recebimentos por faixa" mostrava pagamentos
@@ -20011,6 +20011,114 @@ Preparamos condições especiais para você comemorar com a gente.
 </script>
 <script>
 try{window.DASHBOARD_BUILD_VERSION='V10.69';console.log('[V10.69] auditoria imediata + aprovação automática + controle de custo');}catch(e){}
+</script>
+
+<script>
+/* ===== V10.72: fonte única da meta individual + performance MASTER =====
+   Regra definitiva:
+   - o total recebido exibido no card é a fonte oficial;
+   - Grave/Alerta/Atenção nunca podem somar valor diferente do card;
+   - se o card for R$ 0,00, todos os percentuais ficam em 0%;
+   - quando houver recebido, as faixas preservam a proporção encontrada e são
+     reescaladas para fechar exatamente com o total oficial.
+*/
+(function(){
+  const TAG='[V10.72 meta oficial + performance]';
+  try{
+    function n72(v){const x=Number(v||0); return Number.isFinite(x)?x:0}
+    function isVendor72(ent){
+      if(!ent) return false;
+      const t=String(ent.type||ent.tipo||'').toLowerCase();
+      return t==='vendedor' || (!!ent.nome && !ent.is_gerente && !ent.is_fixed_gerente && !ent.is_gerente_filial_fixo && t!=='filial');
+    }
+    function officialPaid72(ent){
+      return Math.max(0,n72(ent?.pago ?? ent?.recebido ?? 0));
+    }
+    function normalizeRec72(ent){
+      const total=officialPaid72(ent);
+      let g=Math.max(0,n72(ent?.grave_rec)), a=Math.max(0,n72(ent?.alerta_rec)), t=Math.max(0,n72(ent?.atencao_rec));
+      const raw=g+a+t;
+      if(total<=0 || raw<=0) return {grave_rec:0,alerta_rec:0,atencao_rec:0};
+      g=Math.round((total*g/raw)*100)/100;
+      a=Math.round((total*a/raw)*100)/100;
+      t=Math.round((total-g-a)*100)/100;
+      if(t<0){t=0; a=Math.round((total-g)*100)/100}
+      return {grave_rec:g,alerta_rec:a,atencao_rec:t};
+    }
+    function officialEntity72(ent){
+      if(!isVendor72(ent)) return ent;
+      const rec=normalizeRec72(ent);
+      return {...ent,...rec};
+    }
+
+    const baseCalc72=(typeof calcMeta==='function')?calcMeta:null;
+    if(baseCalc72){
+      const cache=new Map();
+      calcMeta=window.calcMeta=function(ent){
+        try{
+          const e=officialEntity72(ent||{});
+          const cfg=(typeof entityConfig==='function'?entityConfig(e):CONFIG_META)||{};
+          const key=[
+            String(e.login||e.nome||''),n72(e.pendente),officialPaid72(e),
+            n72(e.grave_pend),n72(e.alerta_pend),n72(e.atencao_pend),
+            n72(e.grave_rec),n72(e.alerta_rec),n72(e.atencao_rec),
+            n72(cfg.grave_pct),n72(cfg.alerta_pct),n72(cfg.atencao_pct),
+            n72(cfg.peso_grave),n72(cfg.peso_alerta),n72(cfg.peso_atencao)
+          ].join('|');
+          if(cache.has(key)) return cache.get(key);
+          const r=baseCalc72.call(this,e);
+          cache.set(key,r);
+          if(cache.size>500) cache.clear();
+          return r;
+        }catch(err){console.warn(TAG,'calcMeta',err); return baseCalc72.apply(this,arguments)}
+      };
+    }
+
+    const baseOpen72=(typeof openEntity==='function')?openEntity:null;
+    if(baseOpen72){
+      openEntity=window.openEntity=function(ent){
+        try{return baseOpen72.call(this,officialEntity72(ent||{}))}
+        catch(err){console.warn(TAG,'openEntity',err); return baseOpen72.apply(this,arguments)}
+      };
+    }
+
+    // Memoize the expensive flatten operations used repeatedly on the MASTER home.
+    function memoize72(name,ttl){
+      const fn=window[name];
+      if(typeof fn!=='function') return;
+      let ts=0,val=null;
+      window[name]=function(){
+        const now=Date.now();
+        if(val && now-ts<ttl) return val;
+        val=fn.apply(this,arguments); ts=now; return val;
+      };
+    }
+    memoize72('flattenVendedores',15000);
+    memoize72('flattenFiliais',15000);
+
+    // Render off-screen sections only when they approach the viewport.
+    const st=document.createElement('style');
+    st.textContent=`
+      .glass,.panel,.faixa-block,.tableish,.kpi{
+        content-visibility:auto;
+        contain-intrinsic-size:1px 280px;
+      }
+      body.master-view .row-item{contain:layout style paint;}
+    `;
+    document.head.appendChild(st);
+
+    // Reopen the current vendor panel once so stale embedded faixa values disappear.
+    setTimeout(()=>{
+      try{
+        const ref=window.currentDetailRef;
+        if(ref && isVendor72(ref) && typeof openEntity==='function') openEntity(officialEntity72(ref));
+      }catch(e){}
+    },250);
+
+    window.DASHBOARD_BUILD_VERSION='V10.72';
+    console.log(TAG,'ativo');
+  }catch(e){console.warn('[V10.72] hotfix falhou',e)}
+})();
 </script>
 
 </body>
