@@ -36,7 +36,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.75"
+DASHBOARD_BUILD_VERSION = "V10.76"
 DASHBOARD_BUILD_TAG = "comissao_crediarista_fonte_unica_oficial"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -4946,6 +4946,9 @@ _config_meta_default_global = {
     "cobranca_global_rateio_pct": 20.0,
     "comissao_pagamento_texto": "A comissão reinicia a cada mês e o pagamento é previsto para o dia 25 do mês seguinte.",
     "telegram_contacts": [],
+    "whatsapp_master_contacts": [],
+    "whatsapp_master_templates": {},
+    "whatsapp_master_notificacoes_enabled": True,
     "aniversario_msg_template": "Olá, {primeiro_nome}! Feliz aniversário! 🎂🎉\n\nAqui é da Lojas MDL - Móveis do Lar. Desejamos muita saúde, paz e felicidades neste dia especial. 😍😍\n\nPreparamos condições especiais para você comemorar com a gente.\n🕺🎉🤩",
     "reativacao_msg_template": "Olá, {primeiro_nome}! Tudo bem? 😊\n\nAqui é da Lojas MDL - Móveis do Lar. Estamos com saudades de você! Faz um tempinho que você não aparece na loja.  🥹\n\nVenha conhecer nossas novidades e aproveitar condições especiais que preparamos para nossos clientes. 👈👈😍😍",
     "crediaristas_config": [
@@ -10151,7 +10154,7 @@ body.inicio-view .kpi .value{font-size:21px!important}
       <button class="tab" data-tab="reativacao" onclick="setMainTab('reativacao')">🧡 Clientes sem movimento</button>
       <button class="tab" data-tab="aniversariantes" onclick="setMainTab('aniversariantes')">🎂 Aniversariantes</button>
       <button class="tab" data-tab="avisos" onclick="setMainTab('avisos')">📣 Avisos</button>
-      <button class="tab" data-tab="telegram" onclick="setMainTab('telegram')">📲 Telegram</button>
+      <button class="tab" data-tab="telegram" onclick="setMainTab('telegram')">📲 WhatsApp Resumos</button>
       <button class="tab" data-tab="senhas" onclick="setMainTab('senhas')">🔐 Senhas</button>
       <button class="tab" data-tab="whatsapp_master" onclick="setMainTab('whatsapp_master')">💬 WhatsApp Master</button>
       <button class="tab" data-tab="historico" onclick="setMainTab('historico')">🗂️ Histórico</button>
@@ -13210,132 +13213,141 @@ function mdlReatExportRow(r,status){return {Cliente:r.cliente||'',Filial:r.filia
 function mdlAnivExportRow(r,status){return {Cliente:r.cliente||'',Filial:r.filial||'',Cidade:r.cidade||'',Responsavel:r._owner?.label||'',Telefone:(r.telefones||[]).map(fmtTelBR).join(', '),Nascimento:r.nascimento||'',Status:status||''}}
 function mdlCobExportRow(r,status){return {Cliente:r.cliente||r.nome||'',Titulo:r.titulo||'',Parcela:r.parcela||'',Filial:r.filial||'',Vendedor:r.vendedor||'',Faixa:r.faixa_label||r.faixa||'',Vencimento:r.vencimento||'',Dias:r.dias||'',Pendente:R(r.pendente||0),Telefone:Array.isArray(r.telefones)?r.telefones.join(', '):(r.contato||''),Avalista:r.avalista||'',Restricao:r.restricao||'',Status:status||''}}
 
-// ===== V6.8 TELEGRAM CONFIGURÁVEL PELO MASTER =====
-function tgBool(v){return v===true || v==='1' || v===1 || String(v||'').toLowerCase()==='true'}
-function telegramContacts(){return Array.isArray(CONFIG_META?.telegram_contacts)?CONFIG_META.telegram_contacts:[]}
-function tgNovoContato(){
-  CONFIG_META.telegram_contacts = telegramContacts();
-  CONFIG_META.telegram_contacts.push({id:'tg_'+Date.now(),nome:'',chat_id:'',ativo:true,erros:true,meta_diaria:true,meta_mensal:true,avisos:true,resumo:true});
+// ===== V10.76 WHATSAPP MASTER CONFIGURÁVEL PELO MASTER =====
+function waCfgBool(v){return v===true || v==='1' || v===1 || String(v||'').toLowerCase()==='true'}
+function waNotifyContacts(){return Array.isArray(CONFIG_META?.whatsapp_master_contacts)?CONFIG_META.whatsapp_master_contacts:[]}
+function waNotifyNewContact(){
+  CONFIG_META.whatsapp_master_contacts=waNotifyContacts();
+  CONFIG_META.whatsapp_master_contacts.push({id:'wa_'+Date.now(),nome:'',telefone:'',ativo:true,erros:true,meta_diaria:true,meta_mensal:true,avisos:true,resumo:true,auditoria:true});
   renderTelegramTab();
 }
-function tgRemoverContato(id){
-  CONFIG_META.telegram_contacts = telegramContacts().filter(x=>String(x.id)!==String(id));
+function waNotifyRemoveContact(id){
+  CONFIG_META.whatsapp_master_contacts=waNotifyContacts().filter(x=>String(x.id)!==String(id));
   renderTelegramTab();
 }
-function tgReadRows(){
-  const rows=[...document.querySelectorAll('.tg-row')];
-  return rows.map((row,idx)=>({
-    id: row.dataset.id || ('tg_'+Date.now()+'_'+idx),
-    nome: row.querySelector('[data-k="nome"]')?.value?.trim() || '',
-    chat_id: row.querySelector('[data-k="chat_id"]')?.value?.trim() || '',
-    ativo: !!row.querySelector('[data-k="ativo"]')?.checked,
-    erros: !!row.querySelector('[data-k="erros"]')?.checked,
-    meta_diaria: !!row.querySelector('[data-k="meta_diaria"]')?.checked,
-    meta_mensal: !!row.querySelector('[data-k="meta_mensal"]')?.checked,
-    avisos: !!row.querySelector('[data-k="avisos"]')?.checked,
-    resumo: !!row.querySelector('[data-k="resumo"]')?.checked
-  })).filter(x=>x.nome || x.chat_id);
+function waNotifyReadRows(){
+  return [...document.querySelectorAll('.wa-notify-row')].map((row,idx)=>({
+    id:row.dataset.id||('wa_'+Date.now()+'_'+idx),
+    nome:row.querySelector('[data-k="nome"]')?.value?.trim()||'',
+    telefone:String(row.querySelector('[data-k="telefone"]')?.value||'').replace(/\D/g,''),
+    ativo:!!row.querySelector('[data-k="ativo"]')?.checked,
+    erros:!!row.querySelector('[data-k="erros"]')?.checked,
+    meta_diaria:!!row.querySelector('[data-k="meta_diaria"]')?.checked,
+    meta_mensal:!!row.querySelector('[data-k="meta_mensal"]')?.checked,
+    avisos:!!row.querySelector('[data-k="avisos"]')?.checked,
+    resumo:!!row.querySelector('[data-k="resumo"]')?.checked,
+    auditoria:!!row.querySelector('[data-k="auditoria"]')?.checked
+  })).filter(x=>x.nome||x.telefone);
 }
-function tgRowHtml(c){
-  const id=esc(c.id||('tg_'+Math.random().toString(16).slice(2)));
-  const ck=(k)=>tgBool(c[k])?'checked':'';
-  return `<div class="row-item tg-row" data-id="${id}">
-    <div class="row-top" style="grid-template-columns:1.2fr 1.1fr 72px 92px 118px 118px 92px 92px 76px;gap:8px;align-items:center">
-      <div class="input-card" style="padding:8px"><label>Nome/grupo</label><input data-k="nome" value="${esc(c.nome||'')}" placeholder="Ex: Grupo Diretoria"></div>
-      <div class="input-card" style="padding:8px"><label>Chat ID</label><input data-k="chat_id" value="${esc(c.chat_id||'')}" placeholder="Ex: -100123..."></div>
-      <label class="pill" style="justify-content:center"><input data-k="ativo" type="checkbox" ${ck('ativo')}> Ativo</label>
-      <label class="pill"><input data-k="erros" type="checkbox" ${ck('erros')}> Erros</label>
-      <label class="pill"><input data-k="meta_diaria" type="checkbox" ${ck('meta_diaria')}> Meta diária</label>
-      <label class="pill"><input data-k="meta_mensal" type="checkbox" ${ck('meta_mensal')}> Meta mensal</label>
-      <label class="pill"><input data-k="avisos" type="checkbox" ${ck('avisos')}> Avisos</label>
-      <label class="pill"><input data-k="resumo" type="checkbox" ${ck('resumo')}> Resumo</label>
-      <button class="btn soft btn-xs" onclick="tgRemoverContato('${id}')">Remover</button>
-    </div>
-  </div>`;
+function waNotifyRowHtml(c){
+  const id=esc(c.id||('wa_'+Math.random().toString(16).slice(2)));
+  const ck=k=>waCfgBool(c[k])?'checked':'';
+  return `<div class="row-item wa-notify-row" data-id="${id}"><div class="row-top" style="grid-template-columns:1.1fr 1.05fr repeat(7,minmax(84px,.55fr)) 76px;gap:7px;align-items:center">
+    <div class="input-card" style="padding:8px"><label>Nome</label><input data-k="nome" value="${esc(c.nome||'')}" placeholder="Ex: Rafael / Diretoria"></div>
+    <div class="input-card" style="padding:8px"><label>WhatsApp com DDD</label><input data-k="telefone" value="${esc(c.telefone||'')}" placeholder="5542999999999"></div>
+    <label class="pill"><input data-k="ativo" type="checkbox" ${ck('ativo')}> Ativo</label>
+    <label class="pill"><input data-k="auditoria" type="checkbox" ${ck('auditoria')}> Auditoria</label>
+    <label class="pill"><input data-k="resumo" type="checkbox" ${ck('resumo')}> Resumo</label>
+    <label class="pill"><input data-k="meta_diaria" type="checkbox" ${ck('meta_diaria')}> Meta diária</label>
+    <label class="pill"><input data-k="meta_mensal" type="checkbox" ${ck('meta_mensal')}> Meta mensal</label>
+    <label class="pill"><input data-k="avisos" type="checkbox" ${ck('avisos')}> Avisos</label>
+    <label class="pill"><input data-k="erros" type="checkbox" ${ck('erros')}> Erros</label>
+    <button class="btn soft btn-xs" onclick="waNotifyRemoveContact('${id}')">Remover</button>
+  </div></div>`;
 }
-async function salvarTelegramConfig(){
-  CONFIG_META.telegram_contacts=tgReadRows();
-  CONFIG_META.telegram_templates={
-    meta_diaria: document.getElementById('tgTplMetaDiaria')?.value || '',
-    meta_mensal: document.getElementById('tgTplMetaMensal')?.value || ''
+async function saveWhatsAppNotifyConfig(){
+  CONFIG_META.whatsapp_master_contacts=waNotifyReadRows();
+  CONFIG_META.whatsapp_master_notificacoes_enabled=true;
+  CONFIG_META.whatsapp_master_templates={
+    meta_diaria:document.getElementById('waTplMetaDiaria')?.value||'',
+    meta_mensal:document.getElementById('waTplMetaMensal')?.value||'',
+    auditoria_master:document.getElementById('waTplAuditoria')?.value||''
   };
-  const msg=document.getElementById('tgSaveMsg');
+  const msg=document.getElementById('waNotifySaveMsg');
   try{
     const resp=await fetch(API_CFG,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({global:CONFIG_META,individual:CONFIG_META_IND})});
     const j=await resp.json();
-    if(msg) msg.textContent=j.ok?'Configuração Telegram salva.':'Não consegui salvar configuração Telegram.';
-    toast(j.ok?'Contatos Telegram salvos.':'Falha ao salvar Telegram.',j.ok?'success':'warn');
-  }catch(e){
-    if(msg) msg.textContent='Salvo localmente para teste, mas não confirmou no servidor.';
-    toast('Falha ao salvar no servidor.','warn');
-  }
+    if(msg)msg.textContent=j.ok?'Configuração do WhatsApp Master salva.':'Não consegui salvar a configuração.';
+    toast(j.ok?'WhatsApp Master configurado.':'Falha ao salvar configuração.',j.ok?'success':'warn');
+  }catch(e){if(msg)msg.textContent='Não confirmou no servidor.';toast('Falha ao salvar no servidor.','warn')}
 }
+async function testWhatsAppNotify(){
+  const status=document.getElementById('waNotifyTestStatus');if(status)status.textContent='Enviando teste...';
+  try{const r=await fetch(WA_MASTER_MONITOR_URL+'/whatsapp/test',{method:'POST'});const j=await r.json();if(status)status.textContent=j.message||'';toast(j.message||'Teste solicitado.',j.ok?'success':'warn')}catch(e){if(status)status.textContent='Falha ao chamar o monitor.';toast('Não consegui enviar o teste.','warn')}
+}
+async function sendWhatsAppSummaryNow(){
+  const status=document.getElementById('waNotifyTestStatus');if(status)status.textContent='Montando resumo...';
+  try{const r=await fetch(WA_MASTER_MONITOR_URL+'/whatsapp/summary',{method:'POST'});const j=await r.json();if(status)status.textContent=j.message||'';toast(j.message||'Resumo solicitado.',j.ok?'success':'warn')}catch(e){if(status)status.textContent='Falha ao chamar o monitor.';toast('Não consegui solicitar o resumo.','warn')}
+}
+// O nome legado é preservado para não quebrar os atalhos antigos do dashboard.
 function renderTelegramTab(){
-  if(!telegramSection) return;
-  const rows=telegramContacts();
-  const tpl=CONFIG_META.telegram_templates||{};
-  const defDiaria='🎯🚀 PARABÉNS! META DIÁRIA BATIDA\n\n👏 Destaque: {nome}\n📈 Meta atingida: {atingido}\n🛒 Tipo: Venda mercantil\n📅 Data: {data}\n\n🔥 Excelente resultado no Controle de Meta do Sólidus!\n💪 MISSÃO DADA! MISSÃO CUMPRIDA!';
-  const defMensal='🏆🚀 PARABÉNS! META MENSAL BATIDA\n\n👏 Destaque: {nome}\n📈 Meta atingida: {atingido}\n🛒 Tipo: Venda mercantil / {tipo}\n🗓️ Competência: {competencia}\n\n🔥 Excelente resultado no Controle de Meta do Sólidus!\n💪 Resultado de time forte!';
-  telegramSection.innerHTML=`<div class="section-head"><div><h2>📲 Telegram / Notificações</h2><div class="hint">Configure grupos/contatos e também personalize as mensagens automáticas. O token do bot continua seguro no Railway; aqui entra somente o Chat ID.</div></div></div>
-  <div class="glass panel">
-    <div class="section-head" style="margin:0 0 12px"><div><h2 style="font-size:18px">Contatos ativos para envio</h2><div class="hint">Para grupo, adicione o bot no grupo e use o Chat ID negativo. Para pessoa individual, ela precisa iniciar conversa com o bot primeiro.</div></div><button class="btn primary" onclick="tgNovoContato()">+ Adicionar contato/grupo</button></div>
-    <div class="tableish">${rows.length?rows.map(tgRowHtml).join(''):'<div class="empty">Nenhum contato configurado ainda. Use o botão Adicionar contato/grupo.</div>'}</div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="salvarTelegramConfig()">💾 Salvar Telegram</button><button class="btn soft" onclick="toast('Para testar, abra o monitor Railway/local e clique em Teste Telegram.','info')">Como testar?</button></div>
-    <div id="tgSaveMsg" class="note" style="margin-top:10px"></div>
-  </div>
-  <div class="glass panel" style="margin-top:14px"><div class="section-head" style="margin:0 0 12px"><div><h2 style="font-size:18px">✏️ Mensagens automáticas do Telegram</h2><div class="hint">Você pode editar o texto. Variáveis disponíveis: {nome}, {atingido}, {tipo}, {escopo}, {data}, {competencia}. Por segurança, o robô remove valores em R$ das mensagens de meta.</div></div></div><div class="search-row" style="grid-template-columns:1fr 1fr;align-items:stretch"><div class="input-card"><label>Mensagem de META DIÁRIA BATIDA</label><textarea id="tgTplMetaDiaria" rows="9" style="min-height:210px;width:100%;resize:vertical">${esc(tpl.meta_diaria||defDiaria)}</textarea></div><div class="input-card"><label>Mensagem de META MENSAL BATIDA</label><textarea id="tgTplMetaMensal" rows="9" style="min-height:210px;width:100%;resize:vertical">${esc(tpl.meta_mensal||defMensal)}</textarea></div></div><div class="hint" style="margin-top:8px">Não use valores em reais aqui. O sistema mantém apenas percentual de meta atingida.</div></div>
-  <div class="glass panel" style="margin-top:14px"><h3>Como pegar o Chat ID</h3><div class="hint">1) Crie/adicone o bot em um grupo. 2) Mande uma mensagem no grupo. 3) No navegador, abra: https://api.telegram.org/botSEU_TOKEN/getUpdates. 4) Procure o campo <b>chat</b> e copie o <b>id</b>. Grupo normalmente começa com -100.</div></div>`;
+  if(!telegramSection)return;
+  const rows=waNotifyContacts();
+  const tpl=CONFIG_META.whatsapp_master_templates||{};
+  const defDiaria='🎯🚀 PARABÉNS! META DIÁRIA BATIDA\n\n👏 Destaque: {nome}\n📈 Meta atingida: {atingido}\n🛒 Tipo: Venda mercantil\n📅 Data: {data}\n\n🔥 Excelente resultado no Controle de Meta do Sólidus!';
+  const defMensal='🏆🚀 PARABÉNS! META MENSAL BATIDA\n\n👏 Destaque: {nome}\n📈 Meta atingida: {atingido}\n🛒 Tipo: Venda mercantil / {tipo}\n🗓️ Competência: {competencia}\n\n💪 Resultado de time forte!';
+  const defAudit='🧑‍⚖️ *NOVA EVIDÊNCIA PARA DECISÃO DO MASTER*\n\nCliente: {cliente}\nCPF/CNPJ: {cpf}\nTítulo: {titulo} · Parcela: {parcela}\nColaborador: {usuario} · {filial}\nFaixa: {faixa}\nParecer da IA: {motivo}\n\nAbra o Dashboard → Cobranças → Auditoria IA / MASTER.';
+  telegramSection.innerHTML=`<div class="section-head"><div><h2>💬 WhatsApp Master · Resumos e notificações</h2><div class="hint">O mesmo número da preventiva envia alertas internos, metas e resumo diário para os telefones autorizados abaixo. O token e a sessão permanecem seguros no Railway.</div></div></div>
+  <div class="glass panel"><div class="section-head" style="margin:0 0 12px"><div><h2 style="font-size:18px">Destinatários internos</h2><div class="hint">Informe números com DDD. Exemplo: 5542999999999. Cada destinatário escolhe quais avisos recebe.</div></div><button class="btn primary" onclick="waNotifyNewContact()">+ Adicionar destinatário</button></div>
+  <div class="tableish">${rows.length?rows.map(waNotifyRowHtml).join(''):'<div class="empty">Nenhum destinatário configurado. Adicione ao menos um número da diretoria.</div>'}</div>
+  <div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="saveWhatsAppNotifyConfig()">💾 Salvar WhatsApp</button><button class="btn soft" onclick="testWhatsAppNotify()">🧪 Enviar teste</button><button class="btn soft" onclick="sendWhatsAppSummaryNow()">📊 Enviar resumo agora</button></div><div id="waNotifyTestStatus" class="note" style="margin-top:10px"></div><div id="waNotifySaveMsg" class="note"></div></div>
+  <div class="glass panel" style="margin-top:14px"><div class="section-head" style="margin:0 0 12px"><div><h2 style="font-size:18px">✏️ Mensagens automáticas</h2><div class="hint">Meta diária e mensal mantêm as variáveis atuais. O alerta de auditoria é enviado somente quando a IA solicitar decisão humana.</div></div></div>
+  <div class="search-row" style="grid-template-columns:1fr 1fr;align-items:stretch"><div class="input-card"><label>META DIÁRIA BATIDA</label><textarea id="waTplMetaDiaria" rows="8" style="min-height:190px;width:100%;resize:vertical">${esc(tpl.meta_diaria||defDiaria)}</textarea></div><div class="input-card"><label>META MENSAL BATIDA</label><textarea id="waTplMetaMensal" rows="8" style="min-height:190px;width:100%;resize:vertical">${esc(tpl.meta_mensal||defMensal)}</textarea></div></div>
+  <div class="input-card" style="margin-top:12px"><label>ALERTA DE AUDITORIA PARA O MASTER</label><textarea id="waTplAuditoria" rows="8" style="min-height:180px;width:100%;resize:vertical">${esc(tpl.auditoria_master||defAudit)}</textarea><div class="hint">Variáveis: {cliente}, {cpf}, {titulo}, {parcela}, {usuario}, {filial}, {faixa}, {motivo}, {id}.</div></div></div>
+  <div class="glass panel" style="margin-top:14px"><h3>Resumo diário automático</h3><div class="hint">Inclui cobranças realmente registradas, respostas com evidência, aprovações da IA e do MASTER, recebimentos por faixa, vendas, serviços, projeções, metas batidas, aniversariantes e clientes sem movimento enviados. Horário padrão: 19h, configurável por variável no Railway.</div></div>`;
 }
 
 
 function auditStatusLabel(st){
   st=String(st||'aguardando_ia').toLowerCase();
-  if(['aprovado','aprovado_ia'].includes(st)) return '✅ Aprovado automaticamente';
-  if(st==='aprovado_manual') return '✅ Aprovado pelo MASTER';
-  if(['recusado','recusado_ia'].includes(st)) return '❌ Recusado pela IA';
-  if(st==='recusado_manual') return '❌ Recusado pelo MASTER';
-  if(st==='revisao_master') return '🧑‍⚖️ Revisão MASTER';
-  if(st==='processando_ia') return '⚙️ IA processando';
+  if(['aprovado','aprovado_ia'].includes(st))return '✅ Aprovado automaticamente pela IA';
+  if(st==='aprovado_manual')return '✅ Aprovado pelo MASTER';
+  if(['recusado','recusado_ia'].includes(st))return '⚠️ IA recomenda recusar · decisão MASTER pendente';
+  if(st==='recusado_manual')return '❌ Recusado pelo MASTER';
+  if(st==='revisao_master')return '🧑‍⚖️ Aguardando decisão do MASTER';
+  if(st==='processando_ia')return '⚙️ IA processando';
   return '🤖 Aguardando IA';
 }
 function auditStatusColor(st){
   st=String(st||'').toLowerCase();
-  return ['aprovado','aprovado_ia','aprovado_manual'].includes(st)?'var(--green)':['recusado','recusado_ia','recusado_manual'].includes(st)?'var(--red)':st==='revisao_master'?'var(--orange)':'var(--blue)';
+  if(['aprovado','aprovado_ia','aprovado_manual'].includes(st))return 'var(--green)';
+  if(st==='recusado_manual')return 'var(--red)';
+  if(['recusado','recusado_ia','revisao_master'].includes(st))return 'var(--orange)';
+  return 'var(--blue)';
 }
-function auditEvidenceButton(a){
-  return auditAttachmentLinks(a);
+function auditEvidenceButton(a){return auditAttachmentLinks(a)}
+function auditNeedsMaster(a){
+  const st=String(a?.status||'').toLowerCase();
+  const fraude=a?.fraude_suspeita===true||String(a?.fraude_suspeita||'')==='1';
+  return st==='revisao_master'||['recusado','recusado_ia'].includes(st)||(fraude&&!['aprovado_manual','recusado_manual'].includes(st));
 }
 function renderMasterAuditoriaPanel(){
-  if(usuarioAtual?.tipo!=='master') return '';
+  if(usuarioAtual?.tipo!=='master')return '';
   const rows=[...(COB_AUDITORIAS||[])].sort((a,b)=>String(b?.server_time||'').localeCompare(String(a?.server_time||'')));
   const norm=s=>String(s||'aguardando_ia').toLowerCase();
-  const isAp=s=>['aprovado','aprovado_ia','aprovado_manual'].includes(norm(s));
-  const isRej=s=>['recusado','recusado_ia','recusado_manual'].includes(norm(s));
-  const counts={aguardando:0,revisao:0,aprovado:0,recusado:0};
-  let custoMes=0,custoHoje=0,analisadasMes=0; const hoje=new Date().toISOString().slice(0,10),mes=hoje.slice(0,7);
-  rows.forEach(a=>{const st=norm(a.status);if(isAp(st))counts.aprovado++;else if(isRej(st))counts.recusado++;else if(st==='revisao_master')counts.revisao++;else counts.aguardando++;const c=Number(a.custo_total_usd||a?.ia_resultado?.cost_total_usd||0);const dt=String(a.ia_analisado_em||a.updated_at||a.server_time||'');if(dt.slice(0,7)===mes){custoMes+=c;analisadasMes++;}if(dt.slice(0,10)===hoje)custoHoje+=c;});
-  const cards=`<div class="wa-master-grid" style="grid-template-columns:repeat(5,minmax(0,1fr))"><div class="wa-master-card"><div class="k">Pendentes MASTER</div><div class="v" style="color:var(--orange)">${counts.revisao}</div></div><div class="wa-master-card"><div class="k">Aprovadas</div><div class="v" style="color:var(--green)">${counts.aprovado}</div></div><div class="wa-master-card"><div class="k">Recusadas</div><div class="v" style="color:var(--red)">${counts.recusado}</div></div><div class="wa-master-card"><div class="k">Custo hoje</div><div class="v">US$ ${custoHoje.toFixed(4)}</div></div><div class="wa-master-card"><div class="k">Custo no mês</div><div class="v">US$ ${custoMes.toFixed(2)}</div><div class="small muted">${analisadasMes} auditoria(s)</div></div></div>`;
-  const opts=[['pendentes_master','Pendentes de decisão MASTER'],['aguardando','IA processando'],['aprovados','Aprovados automaticamente'],['recusados','Recusados / suspeitas'],['todos','Todos']].map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
-  return `<div class="glass panel" style="margin-bottom:18px;border-color:rgba(245,158,11,.30)"><div class="section-head"><div><h2>🧑‍⚖️ Auditoria IA / MASTER</h2><div class="hint">Casos confiáveis são aprovados automaticamente. O MASTER recebe somente revisões, suspeitas e exceções. A comissão ainda exige a baixa conciliada do mesmo CPF, título e parcela.</div></div><button class="btn soft" onclick="carregarAuditoriasCobranca(true).then(()=>renderLogsTab())">🔄 Atualizar fila</button></div>${cards}<div class="input-card" style="max-width:340px;margin-bottom:12px"><label>Filtrar auditoria</label><select id="masterAuditFilter" onchange="renderMasterAuditRows()">${opts}</select></div><div id="masterAuditRows"></div></div>`;
+  const counts={master:0,auto:0,aprovadoMaster:0,recusadoMaster:0,processando:0};let custoMes=0,custoHoje=0,analisadasMes=0;
+  const hoje=new Date().toISOString().slice(0,10),mes=hoje.slice(0,7);
+  rows.forEach(a=>{const st=norm(a.status);if(auditNeedsMaster(a))counts.master++;else if(st==='aprovado_ia'||st==='aprovado')counts.auto++;else if(st==='aprovado_manual')counts.aprovadoMaster++;else if(st==='recusado_manual')counts.recusadoMaster++;else counts.processando++;const c=Number(a.custo_total_usd||a?.ia_resultado?.cost_total_usd||0);const dt=String(a.ia_analisado_em||a.updated_at||a.server_time||'');if(dt.slice(0,7)===mes){custoMes+=c;analisadasMes++}if(dt.slice(0,10)===hoje)custoHoje+=c});
+  const cards=`<div class="wa-master-grid" style="grid-template-columns:repeat(6,minmax(0,1fr))"><div class="wa-master-card"><div class="k">Decisão MASTER</div><div class="v" style="color:var(--orange)">${counts.master}</div></div><div class="wa-master-card"><div class="k">Aprovadas IA</div><div class="v" style="color:var(--green)">${counts.auto}</div></div><div class="wa-master-card"><div class="k">Aprovadas MASTER</div><div class="v" style="color:var(--green)">${counts.aprovadoMaster}</div></div><div class="wa-master-card"><div class="k">Recusadas MASTER</div><div class="v" style="color:var(--red)">${counts.recusadoMaster}</div></div><div class="wa-master-card"><div class="k">Custo hoje</div><div class="v">US$ ${custoHoje.toFixed(4)}</div></div><div class="wa-master-card"><div class="k">Custo mês</div><div class="v">US$ ${custoMes.toFixed(2)}</div><div class="small muted">${analisadasMes} análise(s)</div></div></div>`;
+  const opts=[['pendentes_master','Aguardando decisão MASTER'],['processando','IA processando'],['aprovados','Aprovados'],['recusados','Recusados pelo MASTER'],['todos','Todos']].map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+  return `<div class="glass panel" style="margin-bottom:18px;border-color:rgba(245,158,11,.30)"><div class="section-head"><div><h2>🧑‍⚖️ Auditoria IA / MASTER</h2><div class="hint">A IA pode aprovar casos claros. Qualquer recusa, divergência de nome/telefone, duplicidade ou suspeita fica pendente para o veredito final do MASTER. A comissão continua exigindo pagamento conciliado do mesmo CPF, título e parcela.</div></div><button class="btn soft" onclick="carregarAuditoriasCobranca(true).then(()=>renderLogsTab())">🔄 Atualizar fila</button></div>${cards}<div class="input-card" style="max-width:360px;margin-bottom:12px"><label>Filtrar auditoria</label><select id="masterAuditFilter" onchange="renderMasterAuditRows()">${opts}</select></div><div id="masterAuditRows"></div></div>`;
 }
 function renderMasterAuditRows(){
-  const box=document.getElementById('masterAuditRows'); if(!box) return;
+  const box=document.getElementById('masterAuditRows');if(!box)return;
   const filtro=String(document.getElementById('masterAuditFilter')?.value||'pendentes_master');
   const norm=s=>String(s||'aguardando_ia').toLowerCase();
-  const isAp=s=>['aprovado','aprovado_ia','aprovado_manual'].includes(norm(s));
-  const isRej=s=>['recusado','recusado_ia','recusado_manual'].includes(norm(s));
   let rows=[...(COB_AUDITORIAS||[])].sort((a,b)=>String(b?.server_time||'').localeCompare(String(a?.server_time||'')));
-  rows=rows.filter(a=>{const st=norm(a.status),fraude=a?.fraude_suspeita===true||String(a?.fraude_suspeita||'')==='1';if(filtro==='pendentes_master')return st==='revisao_master'||(fraude&&!isRej(st));if(filtro==='aguardando')return ['aguardando_ia','processando_ia'].includes(st);if(filtro==='aprovados')return isAp(st);if(filtro==='recusados')return isRej(st);return true;});
-  if(!rows.length){box.innerHTML='<div class="empty">Nenhuma evidência nesta situação.</div>';return;}
-  box.innerHTML=rows.slice(0,200).map(a=>{const st=norm(a.status),fraude=a?.fraude_suspeita===true||String(a?.fraude_suspeita||'')==='1',conf=Number(a?.ia_confidence||a?.ia_resultado?.confidence||0),confTxt=conf?`${Math.round(conf*100)}%`:'',custo=Number(a?.custo_total_usd||a?.ia_resultado?.cost_total_usd||0);const trans=auditAttachments(a).filter(x=>String(x.mime||'').startsWith('audio/')).map(x=>x.transcript).filter(Boolean).map(t=>`<div class="small" style="margin-top:7px"><strong>Transcrição:</strong> ${esc(t)}</div>`).join('');const action=st==='revisao_master'?`<div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:9px"><button class="btn primary btn-xs" onclick="masterSetAuditStatus('${esc(a.id)}','aprovado_manual')">✅ Aprovar</button><button class="btn danger btn-xs" onclick="masterSetAuditStatus('${esc(a.id)}','recusado_manual')">❌ Negar</button><button class="btn soft btn-xs" onclick="masterSetAuditStatus('${esc(a.id)}','revisao_master')">🧑‍⚖️ Manter revisão</button></div>`:`<div class="small muted" style="margin-top:8px">Decisão concluída automaticamente. Este registro permanece somente para consulta.</div>`;return `<div class="row-item" style="margin-bottom:10px;border-color:${fraude?'rgba(240,82,82,.55)':'rgba(255,255,255,.09)'}"><div class="row-top" style="grid-template-columns:1.25fr .8fr .8fr 1.4fr"><div><div class="name">${esc(a.cliente||'Cliente não informado')}</div><div class="small muted">CPF ${esc(a.cpf_cnpj||'-')} · título ${esc(a.titulo||'-')} · parcela ${esc(a.parcela||'-')}</div><div class="small muted">${esc(a.usuario_nome||a.usuario_login||'-')} · ${esc(a.filial||'-')} · ${esc(a.faixa||'-')}</div></div><div><strong style="color:${auditStatusColor(st)}">${auditStatusLabel(st)}</strong>${confTxt?`<div class="small muted">Confiança IA: ${confTxt}</div>`:''}${fraude?'<div class="unread-chip" style="margin-top:6px">⚠️ Suspeita de fraude</div>':''}<div class="small muted">Custo: US$ ${custo.toFixed(4)}</div></div><div>${auditEvidenceButton(a)}</div><div><div class="small">${esc(a.motivo||'Sem parecer.')}</div>${trans}${action}</div></div></div>`;}).join('');
+  rows=rows.filter(a=>{const st=norm(a.status);if(filtro==='pendentes_master')return auditNeedsMaster(a);if(filtro==='processando')return ['aguardando_ia','processando_ia'].includes(st);if(filtro==='aprovados')return ['aprovado','aprovado_ia','aprovado_manual'].includes(st);if(filtro==='recusados')return st==='recusado_manual';return true});
+  if(!rows.length){box.innerHTML='<div class="empty">Nenhuma evidência nesta situação.</div>';return}
+  box.innerHTML=rows.slice(0,200).map(a=>{const st=norm(a.status),fraude=a?.fraude_suspeita===true||String(a?.fraude_suspeita||'')==='1',conf=Number(a?.ia_confidence||a?.ia_resultado?.confidence||0),confTxt=conf?`${Math.round(conf*100)}%`:'',custo=Number(a?.custo_total_usd||a?.ia_resultado?.cost_total_usd||0);const trans=auditAttachments(a).filter(x=>String(x.mime||'').startsWith('audio/')).map(x=>x.transcript).filter(Boolean).map(t=>`<div class="small" style="margin-top:7px"><strong>Transcrição:</strong> ${esc(t)}</div>`).join('');let action='';if(auditNeedsMaster(a)){action=`<div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px"><button class="btn primary btn-xs" onclick="masterSetAuditStatus('${esc(a.id)}','aprovado_manual')">✅ Aprovar cobrança</button><button class="btn danger btn-xs" onclick="masterSetAuditStatus('${esc(a.id)}','recusado_manual')">❌ Recusar cobrança</button></div><div class="small muted" style="margin-top:6px">O parecer da IA é apenas recomendação. O MASTER dá o veredito final.</div>`}else if(['aprovado_manual','recusado_manual'].includes(st)){action=`<div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px"><button class="btn soft btn-xs" onclick="masterSetAuditStatus('${esc(a.id)}','${st==='aprovado_manual'?'recusado_manual':'aprovado_manual'}')">🔄 Alterar decisão</button></div>`}else{action='<div class="small muted" style="margin-top:8px">Caso aprovado automaticamente pela IA. O pagamento ainda precisa ser conciliado.</div>'}const iaRec=String(a?.ia_resultado?.ia_recomendacao||a?.ia_recomendacao||'');return `<div class="row-item" style="margin-bottom:10px;border-color:${fraude?'rgba(240,82,82,.55)':'rgba(255,255,255,.09)'}"><div class="row-top" style="grid-template-columns:1.25fr .8fr .8fr 1.4fr"><div><div class="name">${esc(a.cliente||'Cliente não informado')}</div><div class="small muted">CPF ${esc(a.cpf_cnpj||'-')} · título ${esc(a.titulo||'-')} · parcela ${esc(a.parcela||'-')}</div><div class="small muted">${esc(a.usuario_nome||a.usuario_login||'-')} · ${esc(a.filial||'-')} · ${esc(a.faixa||'-')}</div></div><div><strong style="color:${auditStatusColor(st)}">${auditStatusLabel(st)}</strong>${confTxt?`<div class="small muted">Confiança IA: ${confTxt}</div>`:''}${iaRec?`<div class="small muted">Recomendação IA: ${esc(iaRec)}</div>`:''}${fraude?'<div class="unread-chip" style="margin-top:6px">⚠️ Suspeita para revisão</div>':''}<div class="small muted">Custo: US$ ${custo.toFixed(4)}</div></div><div>${auditEvidenceButton(a)}</div><div><div class="small">${esc(a.motivo||'Sem parecer.')}</div>${trans}${action}</div></div></div>`}).join('');
 }
 async function masterSetAuditStatus(id,status){
-  if(usuarioAtual?.tipo!=='master') return toast('Somente o MASTER pode decidir auditorias.');
-  const label=status==='aprovado_manual'?'aprovar':status==='recusado_manual'?'negar':'manter em revisão';
-  const motivo=prompt(`Motivo para ${label} esta evidência:`, status==='aprovado_manual'?'Aprovado manualmente pelo MASTER.':status==='recusado_manual'?'Recusado manualmente pelo MASTER.':'Mantido para revisão do MASTER.');
-  if(motivo===null) return;
-  const fd=new FormData();fd.append('action','set_status');fd.append('id',id);fd.append('status',status);fd.append('motivo',motivo);fd.append('ia_model','decisao_manual_master');
-  try{const r=await fetch(API_COB_AUD,{method:'POST',body:fd});const j=await r.json();if(!j.ok) throw new Error(j.error||'falha');await carregarAuditoriasCobranca();renderLogsTab();toast('Auditoria atualizada pelo MASTER.','success');}catch(e){toast('Não consegui atualizar a auditoria.');}
+  if(usuarioAtual?.tipo!=='master')return toast('Somente o MASTER pode decidir auditorias.');
+  const label=status==='aprovado_manual'?'aprovar':'recusar';
+  const motivo=prompt(`Motivo para ${label} esta evidência:`,status==='aprovado_manual'?'Contato e resposta conferidos pelo MASTER. Cobrança aprovada.':'Evidência não confirma a cobrança. Recusado pelo MASTER.');
+  if(motivo===null)return;
+  const fd=new FormData();fd.append('action','master_decision');fd.append('id',id);fd.append('status',status);fd.append('motivo',motivo);fd.append('master_login',usuarioAtual?.login||'master');fd.append('master_nome',usuarioAtual?.nome||usuarioAtual?.roleLabel||'MASTER');
+  try{const r=await fetch(API_COB_AUD,{method:'POST',body:fd});const j=await r.json();if(!j.ok)throw new Error(j.error||'falha');await carregarAuditoriasCobranca(true);renderLogsTab();toast('Veredito do MASTER salvo.','success')}catch(e){toast('Não consegui atualizar a auditoria.','warn')}
 }
 
 function renderLogsTab(){const cfgPanel=renderCobrancaConfigPanel(); const auditPanel=renderMasterAuditoriaPanel(); const LOGS_REAIS=(COB_LOGS||[]).filter(isLogCobrancaReal); const filOpts=['<option value="">Todas as filiais</option>',...ORDEM.map(f=>`<option value="${f}">${f}</option>`)].join(''); const vendOpts=['<option value="">Todos os usuários</option>',...Array.from(new Set(LOGS_REAIS.map(x=>x.usuario).filter(Boolean))).sort().map(v=>`<option value="${esc(v)}">${esc(v)}</option>`)].join(''); logSection.innerHTML=cfgPanel+auditPanel+`<div class="section-head"><div><h2>🧾 Histórico de cobranças</h2><div class="hint">Filtre por data, usuário ou filial. Histórico consolidado do JSON principal + backups de segurança (WAL).</div></div></div><div class="glass panel"><div class="search-row"><div class="input-card"><label>Buscar cliente/título</label><input id="logQ" placeholder="Nome, título, parcela"></div><div class="input-card"><label>Data inicial</label><input id="logDe" type="date"></div><div class="input-card"><label>Data final</label><input id="logAte" type="date"></div><div class="input-card"><label>Filial</label><select id="logFil">${filOpts}</select></div></div><div class="search-row" style="margin-top:10px"><div class="input-card"><label>Usuário</label><select id="logVend">${vendOpts}</select></div><div style="display:flex;align-items:end;gap:10px"><button class="btn primary" onclick="applyLogFilter()">Filtrar</button><button class="btn soft" onclick="clearLogFilter()">Limpar</button></div></div><div id="logsList" class="logs-list"></div></div>`; applyLogFilter(); renderMasterAuditRows()}
@@ -16668,7 +16680,7 @@ Preparamos condições especiais para você comemorar com a gente.
     window.saveSession = function(){ try{ const auth=getAuthUser(usuarioAtual?.login||'')||{}; const data={usuarioAtual,exp:Date.now()+45*24*60*60*1000,version:DASHBOARD_BUILD_VERSION,accessRevision:Number(AUTH_STATE?.access_revision||0),userRevision:Number(auth?.session_revision||0)}; localStorage.setItem(SESSION_KEY, JSON.stringify(data)); sessionStorage.setItem(SESSION_KEY, JSON.stringify(data)); }catch(e){} };
     window.restoreSession = function(){ try{ const raw=localStorage.getItem(SESSION_KEY)||sessionStorage.getItem(SESSION_KEY); if(!raw) return false; const data=JSON.parse(raw); if(!data||!data.usuarioAtual||!data.exp||Date.now()>Number(data.exp)){clearSession();return false;} const adm=String(data.usuarioAtual?.tipo||'').toLowerCase()==='master'||String(data.usuarioAtual?.roleLabel||'').toLowerCase().includes('diretor'); if(!adm){const auth=getAuthUser(data.usuarioAtual?.login||''); if(!auth||data.accessRevision===undefined||data.userRevision===undefined||Number(data.accessRevision)!==Number(AUTH_STATE?.access_revision||0)||Number(data.userRevision)!==Number(auth?.session_revision||0)||AUTH_STATE?.access_blocked||auth?.access_disabled||['inativo','bloqueado','desligado'].includes(String(auth?.status_operacional||'ativo').toLowerCase())){clearSession();return false;}} usuarioAtual=data.usuarioAtual; return true; }catch(e){clearSession();return false} };
     const DEFAULT_DIRECTOR_TABS_V97=['inicio','vendedores','filiais','servicos','cobrancas','avisos','historico'];
-    const ALL_TABS_V97=[['inicio','Início'],['vendedores','Por Colaborador'],['filiais','Por Filial'],['metas','Metas'],['servicos','Serviços'],['cobrancas','Cobranças'],['reativacao','Clientes sem movimento'],['aniversariantes','Aniversariantes'],['avisos','Avisos'],['telegram','Telegram'],['senhas','Senhas'],['historico','Histórico']];
+    const ALL_TABS_V97=[['inicio','Início'],['vendedores','Por Colaborador'],['filiais','Por Filial'],['metas','Metas'],['servicos','Serviços'],['cobrancas','Cobranças'],['reativacao','Clientes sem movimento'],['aniversariantes','Aniversariantes'],['avisos','Avisos'],['telegram','WhatsApp Resumos'],['senhas','Senhas'],['historico','Histórico']];
     function isDiretorV97(){ return String(usuarioAtual?.roleLabel||'').toLowerCase().includes('diretor') || String(usuarioAtual?.login||'').toLowerCase()==='diretorcomercial' || String(usuarioAtual?.tipo||'').toLowerCase()==='diretor'; }
     function diretorTabsV97(){ const arr=Array.isArray(CONFIG_META?.director_visible_tabs)?CONFIG_META.director_visible_tabs:[]; return (arr.length?arr:DEFAULT_DIRECTOR_TABS_V97).map(String); }
     function applyDirectorTabsV97(){ try{ if(!isDiretorV97()) return; const allowed=new Set(diretorTabsV97()); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{ const t=String(btn.dataset.tab||''); btn.classList.toggle('hidden', !allowed.has(t)); }); if(!allowed.has(String(window.mainTab||'inicio')) && typeof setMainTab==='function') setMainTab('inicio'); }catch(e){console.warn('[MDL V9.7] apply tabs',e)} }
@@ -18680,7 +18692,7 @@ try{console.log('[V10.69] auditoria imediata + aprovação automática + control
 <script>
 // ===== V10.75: MASTER/DIRETOR ULTRALEVE + DADOS GRANDES SOB DEMANDA =====
 (function(){
-  const TAG='[V10.75 master ultraleve]';
+  const TAG='[V10.76 master leve + WhatsApp notificações]';
   try{
     const baseAbrir75=window.abrirApp;
     const baseSetTab75=window.setMainTab;
@@ -18902,8 +18914,8 @@ try{console.log('[V10.69] auditoria imediata + aprovação automática + control
     `;document.head.appendChild(css);
 
     document.addEventListener('visibilitychange',()=>{if(document.hidden){try{if(window._mdlHeroTimer){clearInterval(window._mdlHeroTimer);window._mdlHeroTimer=null}}catch(e){}}});
-    window.DASHBOARD_BUILD_VERSION='V10.75';
-    console.log(TAG,'ativo: home mínima, quitados sob demanda e cobranças paginadas');
+    window.DASHBOARD_BUILD_VERSION='V10.76';
+    console.log(TAG,'ativo: auditoria com decisão MASTER + WhatsApp resumos');
   }catch(e){console.warn(TAG,e)}
 })();
 </script>
@@ -19105,7 +19117,7 @@ def _analisar_bundle_v1067(item,api_key,all_items):
             if dup:
                 typ,prev,metric=dup
                 auto = typ=="exact_duplicate"
-                return {"status":"recusado_ia" if auto else "revisao_master","confidence":1.0 if auto else 0.70,"fraude_suspeita":True,"duplicate_type":typ,"motivo":f"{'Arquivo idêntico' if auto else 'Imagem visualmente semelhante'} já usado em {prev.get('cliente','')}, título {prev.get('titulo','')}, usuário {prev.get('usuario_login','')}.","attachments":processed+[rec]}
+                return {"status":"revisao_master","confidence":0.98 if auto else 0.70,"fraude_suspeita":True,"requer_decisao_master":True,"ia_recomendacao":"recusar","duplicate_type":typ,"motivo":f"{'Arquivo idêntico' if auto else 'Imagem visualmente semelhante'} já usado em {prev.get('cliente','')}, título {prev.get('titulo','')}, usuário {prev.get('usuario_login','')}.","attachments":processed+[rec]}
             data,mime=_optimizar_imagem_v1069(data,mime)
             rec["optimized_bytes"]=len(data)
             data_url=f"data:{mime or 'image/jpeg'};base64,{base64.b64encode(data).decode('ascii')}"
@@ -19119,7 +19131,7 @@ def _analisar_bundle_v1067(item,api_key,all_items):
             if dup:
                 typ,prev,metric=dup
                 auto = typ=="exact_duplicate"
-                return {"status":"recusado_ia" if auto else "revisao_master","confidence":1.0 if auto else 0.70,"fraude_suspeita":True,"duplicate_type":typ,"motivo":f"{'Arquivo de áudio idêntico' if auto else 'Transcrição de áudio muito semelhante'} já usado em {prev.get('cliente','')}, título {prev.get('titulo','')}, usuário {prev.get('usuario_login','')}.","attachments":processed+[rec]}
+                return {"status":"revisao_master","confidence":0.98 if auto else 0.70,"fraude_suspeita":True,"requer_decisao_master":True,"ia_recomendacao":"recusar","duplicate_type":typ,"motivo":f"{'Arquivo de áudio idêntico' if auto else 'Transcrição de áudio muito semelhante'} já usado em {prev.get('cliente','')}, título {prev.get('titulo','')}, usuário {prev.get('usuario_login','')}.","attachments":processed+[rec]}
             transcripts.append(f"Áudio {idx}: {transcript}")
         processed.append(rec)
     if has_audio and not has_image:
@@ -19129,8 +19141,8 @@ def _analisar_bundle_v1067(item,api_key,all_items):
 Registro esperado: cliente {cliente}; telefone {telefone}; título {titulo}; parcela {parcela}; faixa {faixa}.
 Há {sum(1 for x in processed if x['mime'].startswith('image/'))} print(s) e {sum(1 for x in processed if x['mime'].startswith('audio/'))} áudio(s).
 Transcrições: {transcripts if transcripts else 'nenhuma'}.
-Analise os arquivos em conjunto. Aprove somente quando os prints mostram contato identificável, contexto da cobrança e resposta recebida depois da mensagem. Quando houver áudio, confirme que o print mostra mensagem de áudio recebida e que a transcrição é coerente com a conversa. Procure inconsistências de nomes, telefones, horários, fontes, bolhas, recortes, aplicativos simuladores, manipulação, arquivos de clientes diferentes e sequência temporal impossível.
-A resposta pode validar a cobrança mesmo sem promessa de pagamento, desde que demonstre que o cliente recebeu e compreendeu a cobrança. Classifique também o tipo de resposta.
+Analise os arquivos em conjunto. Aprove somente quando os prints mostram contexto da cobrança e resposta recebida depois da mensagem. Quando houver áudio, confirme que o print mostra mensagem de áudio recebida e que a transcrição é coerente com a conversa. O contato do WhatsApp pode estar salvo com apelido, nome de familiar, empresa ou descrição diferente do cadastro; divergência de nome ou telefone, sozinha, NUNCA deve causar recusa automática. Procure inconsistências de horários, fontes, bolhas, recortes, aplicativos simuladores, manipulação, arquivos de clientes diferentes e sequência temporal impossível.
+A resposta pode validar a cobrança mesmo sem promessa de pagamento, desde que demonstre que o cliente recebeu e compreendeu a cobrança. Qualquer recomendação negativa, duplicidade ou suspeita deve usar revisao_master, pois o veredito final de recusa é exclusivo do MASTER. Classifique também o tipo de resposta.
 Retorne somente JSON: {{"status":"aprovado|revisao_master|recusado","confidence":0.0,"contato_compativel":true,"contexto_cobranca":true,"resposta_cliente":true,"audio_visivel_no_print":true,"ordem_temporal_coerente":true,"sinais_manipulacao":[],"suspeita_app_gerador":false,"resposta_cliente_resumida":"...","tipo_resposta":"promessa_pagamento|pedido_boleto_pix|data_pagamento|negativa|duvida|responsavel_terceiro|ciente_sem_promessa|outro","motivo":"..."}}"""
     content=[{"type":"input_text","text":prompt},*image_contents]
     body={"model":COBRANCA_AUDITORIA_IA_MODEL,"input":[{"role":"user","content":content}],"store":False}
@@ -19139,8 +19151,10 @@ Retorne somente JSON: {{"status":"aprovado|revisao_master|recusado","confidence"
     status=str(result.get("status") or "revisao_master").lower().strip(); confidence=float(result.get("confidence") or 0.0)
     if result.get("suspeita_app_gerador") or result.get("sinais_manipulacao"): status="revisao_master"
     if status=="aprovado": status="aprovado_ia" if confidence>=COBRANCA_AUDITORIA_IA_MIN_CONFIDENCE else "revisao_master"
-    elif status=="recusado": status="recusado_ia" if confidence>=COBRANCA_AUDITORIA_IA_MIN_CONFIDENCE else "revisao_master"
-    if status not in {"aprovado_ia","revisao_master","recusado_ia"}: status="revisao_master"
+    elif status=="recusado":
+        result["ia_recomendacao"]="recusar"; result["requer_decisao_master"]=True; status="revisao_master"
+    if status not in {"aprovado_ia","revisao_master"}: status="revisao_master"
+    if status=="revisao_master": result["requer_decisao_master"]=True
     result.update(_usage_cost_v1069(raw))
     result.update({"status":status,"confidence":confidence,"attachments":processed,"has_audio":has_audio,"has_image":has_image})
     return result
@@ -19623,7 +19637,7 @@ if(!file_exists($dir))@mkdir($dir,0777,true);if(!file_exists($file))@file_put_co
 function ar(){global $file;$j=json_decode(@file_get_contents($file),true);return is_array($j)?$j:[];}
 function sw($d){global $file;return @file_put_contents($file,json_encode($d,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),LOCK_EX)!==false;}
 $data=ar();
-if($_SERVER['REQUEST_METHOD']==='GET'){echo json_encode(['ok'=>true,'data'=>$data,'count'=>count($data),'version'=>'V10.69'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}
+if($_SERVER['REQUEST_METHOD']==='GET'){echo json_encode(['ok'=>true,'data'=>$data,'count'=>count($data),'version'=>'V10.76'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;}
 if($_SERVER['REQUEST_METHOD']==='POST'){
  $action=$_POST['action']??'upload_bundle';
  if($action==='claim'){
@@ -19631,10 +19645,17 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   foreach($data as &$x){if((string)($x['id']??'')===$id && in_array((string)($x['status']??''),['aguardando_ia','processando_ia'],true)){if((string)($x['status']??'')==='aguardando_ia'){$x['status']='processando_ia';$x['process_started_at']=date('c');$claimed=true;}}}
   if($claimed)sw($data);echo json_encode(['ok'=>true,'claimed'=>$claimed],JSON_UNESCAPED_UNICODE);exit;
  }
+ if($action==='master_decision'){
+  $id=(string)($_POST['id']??'');$status=(string)($_POST['status']??'');$motivo=(string)($_POST['motivo']??'');
+  if(!in_array($status,['aprovado_manual','recusado_manual'],true)){echo json_encode(['ok'=>false,'error'=>'status_master_invalido'],JSON_UNESCAPED_UNICODE);exit;}
+  $found=false;
+  foreach($data as &$x){if((string)($x['id']??'')===$id){$found=true;$x['status']=$status;$x['motivo']=$motivo;$x['master_motivo']=$motivo;$x['master_login']=(string)($_POST['master_login']??'master');$x['master_nome']=(string)($_POST['master_nome']??'MASTER');$x['master_decidido_em']=date('c');$x['updated_at']=date('c');$x['decisao_final_origem']='master';}}
+  $ok=$found?sw($data):false;echo json_encode(['ok'=>$ok,'found'=>$found,'status'=>$status,'version'=>'V10.76'],JSON_UNESCAPED_UNICODE);exit;
+ }
  if($action==='set_status'){
   $id=(string)($_POST['id']??'');$status=(string)($_POST['status']??'aguardando_ia');$motivo=(string)($_POST['motivo']??'');
   foreach($data as &$x){if((string)($x['id']??'')===$id){$x['status']=$status;$x['motivo']=$motivo;$x['updated_at']=date('c');$x['ia_analisado_em']=date('c');$x['ia_confidence']=(string)($_POST['ia_confidence']??'');$x['ia_model']=(string)($_POST['ia_model']??'');$x['fraude_suspeita']=((string)($_POST['fraude_suspeita']??'0')==='1');$x['input_tokens']=(int)($_POST['input_tokens']??0);$x['output_tokens']=(int)($_POST['output_tokens']??0);$x['custo_total_usd']=(float)($_POST['custo_total_usd']??0);if(!empty($_POST['ia_json'])){$d=json_decode($_POST['ia_json'],true);$x['ia_resultado']=is_array($d)?$d:$_POST['ia_json'];}if(!empty($_POST['attachments_json'])){$a=json_decode($_POST['attachments_json'],true);if(is_array($a))$x['attachments']=$a;}}}
-  $ok=sw($data);echo json_encode(['ok'=>$ok,'version'=>'V10.69'],JSON_UNESCAPED_UNICODE);exit;
+  $ok=sw($data);echo json_encode(['ok'=>$ok,'version'=>'V10.76'],JSON_UNESCAPED_UNICODE);exit;
  }
  $files=[];
  if(isset($_FILES['media']) && is_array($_FILES['media']['name'])){
@@ -19656,7 +19677,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
  }
  if($hasAudio&&!$hasImage){echo json_encode(['ok'=>false,'error'=>'audio_exige_print']);exit;}
  $item=['id'=>uniqid('aud_',true),'audit_key'=>(string)($_POST['audit_key']??''),'cliente'=>(string)($_POST['cliente']??''),'cpf_cnpj'=>(string)($_POST['cpf_cnpj']??''),'titulo'=>(string)($_POST['titulo']??''),'parcela'=>(string)($_POST['parcela']??''),'vencimento'=>(string)($_POST['vencimento']??''),'telefone'=>(string)($_POST['telefone']??''),'faixa'=>(string)($_POST['faixa']??''),'usuario_login'=>(string)($_POST['usuario_login']??''),'usuario_nome'=>(string)($_POST['usuario_nome']??''),'filial'=>(string)($_POST['filial']??''),'attachments'=>$attachments,'evidence_count'=>count($attachments),'has_image'=>$hasImage,'has_audio'=>$hasAudio,'status'=>'aguardando_ia','motivo'=>'Conjunto de evidências recebido. Aguardando auditoria antifraude da IA.','server_time'=>date('c')];
- $data[]=$item;$ok=sw($data);$triggerUrl='__AUDIT_TRIGGER_URL__';$triggerSecret='__AUDIT_TRIGGER_SECRET__';if($ok&&$triggerUrl!==''){ $payload=json_encode(['id'=>$item['id']],JSON_UNESCAPED_UNICODE);$opts=['http'=>['method'=>'POST','header'=>"Content-Type: application/json\r\nX-Audit-Secret: ".$triggerSecret."\r\n",'content'=>$payload,'timeout'=>2,'ignore_errors'=>true]];@file_get_contents($triggerUrl,false,stream_context_create($opts)); }echo json_encode(['ok'=>$ok,'data'=>$item,'triggered'=>($triggerUrl!==''),'version'=>'V10.69'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;
+ $data[]=$item;$ok=sw($data);$triggerUrl='__AUDIT_TRIGGER_URL__';$triggerSecret='__AUDIT_TRIGGER_SECRET__';if($ok&&$triggerUrl!==''){ $payload=json_encode(['id'=>$item['id']],JSON_UNESCAPED_UNICODE);$opts=['http'=>['method'=>'POST','header'=>"Content-Type: application/json\r\nX-Audit-Secret: ".$triggerSecret."\r\n",'content'=>$payload,'timeout'=>2,'ignore_errors'=>true]];@file_get_contents($triggerUrl,false,stream_context_create($opts)); }echo json_encode(['ok'=>$ok,'data'=>$item,'triggered'=>($triggerUrl!==''),'version'=>'V10.76'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;
 }
 echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado']);
 ?>"""
