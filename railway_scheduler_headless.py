@@ -1,3 +1,4 @@
+# V10_85_COB_DRYRUN_RAPIDO_PROGRESSO
 # V10_84_COB_HEADER_ROBUSTO
 # VERSAO: RAILWAY_SCHEDULER_MDL_V10_82_COBRANCA_TERCEIRA_BACKOFF
 import json
@@ -81,7 +82,7 @@ STATUS_PATH = os.path.join(LOG_DIR, 'monitor_status.json')
 SALES_CMD = [sys.executable, os.path.join(BASE_DIR, 'dashboard_sales_worker_headless.py')]
 COBRANCA_CMD = [sys.executable, os.path.join(BASE_DIR, 'dashboard_railway_main_headless.py')]
 PREVENTIVA_CMD = [sys.executable, os.path.join(BASE_DIR, 'whatsapp_master_preventiva_worker.py')]
-COB_TERCEIRA_CMD = [sys.executable, os.path.join(BASE_DIR, 'cobranca_terceira_worker_v1084.py')]
+COB_TERCEIRA_CMD = [sys.executable, os.path.join(BASE_DIR, 'cobranca_terceira_worker_v1085.py')]
 
 _sales_proc = None
 _cobranca_proc = None
