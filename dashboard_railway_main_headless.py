@@ -13,6 +13,7 @@ import os
 import webbrowser
 import random
 import json
+import hashlib
 import unicodedata
 import urllib.request
 import urllib.error
@@ -36,7 +37,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.81"
+DASHBOARD_BUILD_VERSION = "V10.83"
 DASHBOARD_BUILD_TAG = "cobranca_terceira_91_dias_cpf_inteiro"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -2878,8 +2879,14 @@ def _load_cobranca_terceira_hashes_v1080():
         with _resp:
             _payload = json.loads(_resp.read().decode("utf-8", errors="replace"))
         return {str(x).lower() for x in (_payload.get("active_hashes") or []) if str(x).strip()} if isinstance(_payload, dict) else set()
+    except urllib.error.HTTPError as _exc:
+        if getattr(_exc, "code", None) == 404:
+            print("ℹ️ V10.82 Cobrança Terceira: bloqueios ainda não publicados; usando lista vazia nesta execução.")
+            return set()
+        print(f"⚠️ V10.82 não conseguiu carregar bloqueios hash da Cobrança Terceira: HTTP {_exc.code}")
+        return set()
     except Exception as _exc:
-        print(f"⚠️ V10.80 não conseguiu carregar bloqueios hash da Cobrança Terceira: {_exc}")
+        print(f"⚠️ V10.82 não conseguiu carregar bloqueios hash da Cobrança Terceira: {_exc}")
         return set()
 
 COB_TERCEIRA_HASHES_ATIVOS = _load_cobranca_terceira_hashes_v1080()

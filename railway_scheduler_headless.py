@@ -1,4 +1,5 @@
-# VERSAO: RAILWAY_SCHEDULER_MDL_V10_80_COBRANCA_TERCEIRA
+# V10_83_FIX_HASHLIB_VALIDADO
+# VERSAO: RAILWAY_SCHEDULER_MDL_V10_82_COBRANCA_TERCEIRA_BACKOFF
 import json
 import os
 import sys
@@ -62,6 +63,7 @@ DAILY_LISTS_MINUTE_MAX = int(os.getenv('RELATORIOS_DIARIOS_MINUTE_MAX', '20'))
 COB_TERCEIRA_HOUR = int(os.getenv('COB_TERCEIRA_RUN_HOUR', '6'))
 COB_TERCEIRA_MINUTE = int(os.getenv('COB_TERCEIRA_RUN_MINUTE', '30'))
 COB_TERCEIRA_ENABLED = os.getenv('COB_TERCEIRA_ENABLED', '1') == '1'
+COB_TERCEIRA_RETRY_MINUTES = max(5, int(os.getenv('COB_TERCEIRA_RETRY_MINUTES', '15')))
 WHATSAPP_ALERTAS_ENABLED = os.getenv('WHATSAPP_MASTER_NOTIFICACOES_ALERTAS_ENABLED', '1') != '0'
 WHATSAPP_ENABLED = os.getenv('WHATSAPP_MASTER_NOTIFICACOES_ENABLED', '1') != '0'
 FORCE_DAILY_LISTS_ON_BOOT = os.getenv('FORCE_DAILY_LISTS_ON_BOOT', os.getenv('FORCE_RUN_DAILY_LISTS_ON_BOOT', '0')) == '1'
@@ -93,7 +95,7 @@ _force_main_boot = True
 _force_sales_after_main = False
 
 STATE = {
-    'version': 'V10.80_COBRANCA_TERCEIRA',
+    'version': 'V10.82_COBRANCA_TERCEIRA',
     'started_at': None,
     'updated_at': None,
     'scheduler': 'starting',
@@ -101,6 +103,7 @@ STATE = {
     'last_summary_date': None,
     'last_daily_lists_date': None,
     'last_cob_terceira_date': None,
+    'last_cob_terceira_attempt_at': None,
     'whatsapp_sent_message_ids': [],
     'whatsapp_sent_meta_keys': [],
     'whatsapp_sent_meta100_keys': [],
@@ -123,7 +126,7 @@ try:
     if os.path.exists(STATUS_PATH):
         with open(STATUS_PATH, 'r', encoding='utf-8') as _f:
             _old_state = json.load(_f)
-        for _k in ['last_summary_date','last_daily_lists_date','last_cob_terceira_date','whatsapp_sent_message_ids','whatsapp_sent_meta_keys','whatsapp_sent_meta100_keys','whatsapp_sent_audit_ids','whatsapp_audit_watcher_initialized']:
+        for _k in ['last_summary_date','last_daily_lists_date','last_cob_terceira_date','last_cob_terceira_attempt_at','whatsapp_sent_message_ids','whatsapp_sent_meta_keys','whatsapp_sent_meta100_keys','whatsapp_sent_audit_ids','whatsapp_audit_watcher_initialized']:
             if _k in _old_state:
                 STATE[_k] = _old_state.get(_k)
 except Exception:
@@ -247,12 +250,26 @@ def next_cob_terceira_time(dt):
             return cand
     return dt + timedelta(days=1)
 
+def _parse_iso_state_dt(v):
+    try:
+        x = datetime.fromisoformat(str(v or '').replace('Z', '+00:00'))
+        if x.tzinfo is None:
+            x = x.replace(tzinfo=BR_TZ)
+        return x.astimezone(BR_TZ)
+    except Exception:
+        return None
+
 def cob_terceira_due(dt):
     if not COB_TERCEIRA_ENABLED:
         return False
     day = dt.strftime('%Y-%m-%d')
     scheduled = dt.replace(hour=COB_TERCEIRA_HOUR, minute=COB_TERCEIRA_MINUTE, second=0, microsecond=0)
-    return dt >= scheduled and STATE.get('last_cob_terceira_date') != day
+    if dt < scheduled or STATE.get('last_cob_terceira_date') == day:
+        return False
+    last_attempt = _parse_iso_state_dt(STATE.get('last_cob_terceira_attempt_at'))
+    if last_attempt and (dt - last_attempt).total_seconds() < COB_TERCEIRA_RETRY_MINUTES * 60:
+        return False
+    return True
 
 def next_daily_lists_time(dt):
     for d in range(0, 4):
@@ -431,6 +448,8 @@ def force_run(kind):
     if kind == 'cob_terceira':
         if is_running(_cob_terceira_proc): return False, 'Cobrança Terceira já está rodando.'
         if is_running(_sales_proc) or is_running(_cobranca_proc): return False, 'Existe Selenium do dashboard rodando. Aguarde finalizar.'
+        STATE['last_cob_terceira_attempt_at'] = iso_now()
+        _save_status()
         _cob_terceira_proc = start_job('cobranca_terceira_manual', COB_TERCEIRA_CMD)
         return True, 'Cobrança Terceira iniciada. Confira o log; DRY RUN permanece controlado por variável.'
     if kind == 'preventiva':
@@ -505,7 +524,7 @@ def start_http_panel():
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log('VERSAO V10.80: Cobrança Terceira D+91 + notificações WhatsApp Master')
+log(f'VERSAO V10.82: Cobrança Terceira D+91 + backoff de {COB_TERCEIRA_RETRY_MINUTES} min em falhas + notificações WhatsApp Master')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
@@ -528,6 +547,8 @@ while True:
     cobranca_ok = ((now.hour in COBRANCA_HOURS and 0 <= now.minute <= COBRANCA_MINUTE_MAX) or is_last_day_23_window(now)) and gap_ok
 
     if cob_terceira_due(now) and not sales_running and not cobranca_running and not cob_terceira_running:
+        STATE['last_cob_terceira_attempt_at'] = iso_now()
+        _save_status()
         _cob_terceira_proc = start_job('cobranca_terceira_prioridade_diaria', COB_TERCEIRA_CMD); cob_terceira_running=True
     elif _force_main_boot and not sales_running and not cobranca_running and not cob_terceira_running:
         _force_main_boot=False; _last_cobranca_slot=ckey
