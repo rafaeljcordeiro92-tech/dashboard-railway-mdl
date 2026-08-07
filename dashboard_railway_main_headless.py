@@ -37,7 +37,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.83"
+DASHBOARD_BUILD_VERSION = "V10.86"
 DASHBOARD_BUILD_TAG = "cobranca_terceira_91_dias_cpf_inteiro"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -5921,6 +5921,44 @@ for _kd, _vd_det in recebimentos_det_js.items():
         recebido_faixa[_kd]['is_ativo'] = False
 
 
+
+# V10.86 — recebimento operacional REAL por faixa/filial.
+# A fonte é exatamente o mesmo recebimentos_det_js exibido em "Recebimentos por faixa".
+# Deduplicamos título/parcela/pagamento para não duplicar aliases de gerente.
+recebido_faixa_filial_real_v1086 = {
+    f: {'grave': 0.0, 'alerta': 0.0, 'atencao': 0.0}
+    for f in ORDEM_FILIAIS
+}
+_seen_rec_filial_v1086 = {f: set() for f in ORDEM_FILIAIS}
+
+def _rec_key_v1086(_r):
+    _doc = normalizar_documento_cliente((_r or {}).get('cpf_cnpj_normalizado') or (_r or {}).get('cpf_cnpj') or '')
+    _cli = normalizar_texto_match((_r or {}).get('cliente') or (_r or {}).get('nome') or '')
+    _tit = str((_r or {}).get('titulo') or '').strip()
+    _par = str((_r or {}).get('parcela') or '').strip()
+    _pag = str((_r or {}).get('pagamento') or '').strip()
+    _val = round(float((_r or {}).get('pago', 0) or 0), 2)
+    return '|'.join([_doc or _cli, _tit, _par, _pag, f"{_val:.2f}"])
+
+for _kr86, _br86 in recebimentos_det_js.items():
+    _fil86 = _kr86.rsplit('_', 1)[1] if '_' in _kr86 else ''
+    _fil86 = str(_fil86 or '').upper().strip()
+    if _fil86 not in recebido_faixa_filial_real_v1086:
+        continue
+    for _fx86 in ('grave', 'alerta', 'atencao'):
+        for _rr86 in (_br86.get(_fx86) or []):
+            _rk86 = _rec_key_v1086(_rr86)
+            if _rk86 in _seen_rec_filial_v1086[_fil86]:
+                continue
+            _seen_rec_filial_v1086[_fil86].add(_rk86)
+            recebido_faixa_filial_real_v1086[_fil86][_fx86] += float(_rr86.get('pago', 0) or 0)
+
+for _fil86 in recebido_faixa_filial_real_v1086:
+    for _fx86 in ('grave', 'alerta', 'atencao'):
+        recebido_faixa_filial_real_v1086[_fil86][_fx86] = round(
+            recebido_faixa_filial_real_v1086[_fil86][_fx86], 2
+        )
+
 _pre_inat_rec = {f: {'grave':0.0,'alerta':0.0,'atencao':0.0} for f in ORDEM_FILIAIS}
 _pre_fdep_rec = {f: {'grave':0.0,'alerta':0.0,'atencao':0.0} for f in ORDEM_FILIAIS}
 _pre_ativos_filial = {f: 0 for f in ORDEM_FILIAIS}  # conta vendedores ativos p/ divisão
@@ -6514,7 +6552,79 @@ for _f_v1073, _fd_v1073 in (snapshot_hoje.get("filiais") or {}).items():
 with open(meta_file, "w", encoding="utf-8") as _f_v1073:
     json.dump(meta_mes, _f_v1073, ensure_ascii=False, indent=2)
 
-print("✅ V10.75 meta oficial preservada; MASTER/Diretor em modo ultraleve")
+
+# V10.86 — META/GRÁFICO segue o recebimento REAL do relatório.
+# Comissão continua independente e auditada por evidência/IA/MASTER.
+def _v1086_aplica_receb_real(_meta, _rec, _cfg, _fonte):
+    _m = dict(_meta or {})
+    _r = {
+        'grave': round(max(float((_rec or {}).get('grave', 0) or 0), 0.0), 2),
+        'alerta': round(max(float((_rec or {}).get('alerta', 0) or 0), 0.0), 2),
+        'atencao': round(max(float((_rec or {}).get('atencao', 0) or 0), 0.0), 2),
+    }
+    for _fx in ('grave', 'alerta', 'atencao'):
+        _m[f'{_fx}_rec'] = _r[_fx]
+        _alvo = max(float(_m.get(f'{_fx}_alvo', 0) or 0), 0.0)
+        _m[f'{_fx}_perc'] = round((_r[_fx] / _alvo * 100), 1) if _alvo > 0 else 0.0
+    _m['perc_meta'] = calc_perc_geral(
+        _m.get('grave_perc', 0),
+        _m.get('alerta_perc', 0),
+        _m.get('atencao_perc', 0),
+        _cfg,
+    )
+    _m['recebido_operacional_real'] = round(sum(_r.values()), 2)
+    _m['fonte_meta'] = _fonte
+    return _m
+
+for _k86, _vd86 in (snapshot_hoje.get('vendedores') or {}).items():
+    if _k86 not in (meta_mes.get('vendedores') or {}):
+        continue
+    _rec86 = recebido_faixa.get(_k86)
+    if _rec86 is None:
+        _fil86 = str((_vd86 or {}).get('filial') or '').upper()
+        _nome86 = normalizar_texto_match((_vd86 or {}).get('nome') or _k86.rsplit('_',1)[0])
+        for _rk86, _rv86 in recebido_faixa.items():
+            if str((_rv86 or {}).get('filial') or '').upper() != _fil86:
+                continue
+            _rn86 = normalizar_texto_match(_rk86.rsplit('_',1)[0] if '_' in _rk86 else _rk86)
+            if _rn86 == _nome86:
+                _rec86 = _rv86
+                break
+    _rec86 = _rec86 or {'grave':0.0,'alerta':0.0,'atencao':0.0}
+    meta_mes['vendedores'][_k86] = _v1086_aplica_receb_real(
+        meta_mes['vendedores'][_k86],
+        _rec86,
+        get_config_meta(_k86),
+        'V10.86_RELATORIO_REAL_VENDEDOR',
+    )
+
+for _f86, _fm86 in (meta_mes.get('filiais') or {}).items():
+    _recf86 = recebido_faixa_filial_real_v1086.get(
+        str(_f86).upper(),
+        {'grave':0.0,'alerta':0.0,'atencao':0.0},
+    )
+    meta_mes['filiais'][_f86] = _v1086_aplica_receb_real(
+        _fm86,
+        _recf86,
+        get_config_meta(f'FILIAL::{_f86}'),
+        'V10.86_RELATORIO_REAL_FILIAL',
+    )
+
+with open(meta_file, "w", encoding="utf-8") as _f_v1086:
+    json.dump(meta_mes, _f_v1086, ensure_ascii=False, indent=2)
+
+print("✅ V10.86 metas de cobrança = recebimentos reais do relatório por usuário/faixa; comissão continua separada pela auditoria.")
+for _k86_dbg, _m86_dbg in (meta_mes.get('vendedores') or {}).items():
+    if str((_m86_dbg or {}).get('filial') or '').upper() == 'F9':
+        print(
+            f"   ↳ V10.86 F9 {_m86_dbg.get('nome') or _k86_dbg}: "
+            f"G={float(_m86_dbg.get('grave_rec',0) or 0):,.2f} "
+            f"A={float(_m86_dbg.get('alerta_rec',0) or 0):,.2f} "
+            f"T={float(_m86_dbg.get('atencao_rec',0) or 0):,.2f} "
+            f"Total={float(_m86_dbg.get('recebido_operacional_real',0) or 0):,.2f}"
+        )
+
+print("✅ V10.86 MASTER/Diretor ultraleve + recebimentos reais nas metas")
 
 # Vendedores por filial (somente NÃO gerentes para o painel individual)
 todos_js = {}
@@ -6543,13 +6653,18 @@ for filial in ORDEM_FILIAIS:
         prop_p = round(pf - inat_p - fdp, 2)
         key    = f"{r['nome_exibicao']}_{filial}"
         mv     = get_meta_vend(key)
+        pago_meta_real = round(
+            float(mv.get("grave_rec",0) or 0) +
+            float(mv.get("alerta_rec",0) or 0) +
+            float(mv.get("atencao_rec",0) or 0), 2
+        )
         tv     = media_trimestral_vend.get(key, {})
         vv     = var_vendedores.get(key, {})
 
         todos_js[filial].append({
             "nome": str(r["nome_exibicao"]), "filial": filial,
             "is_gerente": False,
-            "pendente": round(pf,2), "pago": round(pg,2),
+            "pendente": round(pf,2), "pago": round(pg,2), "pago_meta": pago_meta_real,
             "total": round(float(r["total"]),2),
             "perc_filial": round(float(r["perc_filial"]),2),
             "proprio_p": max(prop_p,0), "inat_p": inat_p, "fdep_p": fdp,
@@ -6591,6 +6706,11 @@ for f in ORDEM_FILIAIS:
 
     vf = var_filiais.get(f, {})
     mf = get_meta_fil(f) or {}
+    pago_meta_real_filial = round(
+        float(mf.get("grave_rec",0) or 0) +
+        float(mf.get("alerta_rec",0) or 0) +
+        float(mf.get("atencao_rec",0) or 0), 2
+    )
     tf = media_trimestral_fil.get(f, 0)
 
     # =========================================
@@ -6603,6 +6723,7 @@ for f in ORDEM_FILIAIS:
         filiais_js[f] = {
             "pendente": pt,
             "pago": pg,
+            "pago_meta": pago_meta_real_filial,
             "total": round(sub["total"].sum(), 2),
             "sem_ativo": False,
 
@@ -6647,6 +6768,7 @@ for f in ORDEM_FILIAIS:
         filiais_js[f] = {
             "pendente": pt,
             "pago": pg,
+            "pago_meta": pago_meta_real_filial,
             "total": round(pt + pg, 2),
             "sem_ativo": True,
 
@@ -11540,7 +11662,7 @@ function setFiltroFilial(f){
   renderList();
 }
 function currentEntities(){let arr=mainTab==='filiais'?flattenFiliais():flattenVendedores(); if(mainTab==='vendedores' && usuarioAtual?.tipo==='master'){const t=thirdChargeEntity(); const hasThird=Number(t.pendente||0)>0 || Number(t.pago||0)>0 || Number(t.grave_pend||0)>0 || Number(t.alerta_pend||0)>0 || Number(t.atencao_pend||0)>0; if(hasThird) arr=[t,...arr]; const creds=crediaristaEntities(); if(creds.length) arr=[...creds,...arr]} return arr.filter(x=>filtroFilial==='TODAS'||x.filial===filtroFilial || x.is_terceiro || x.is_crediarista)}
-function renderEntityCard(ent){const m=calcMeta(ent); const isThird=!!(ent?.is_terceiro || ent?.type==='terceiro'); const isCred=!!(ent?.is_crediarista || ent?.type==='crediarista'); if(isThird || isCred){const credLogin=String(ent.login||crediaristaLoginByFilial(ent.filial)||'').toLowerCase(); const credFilial=String(ent.filial||'').toUpperCase(); const credNome=String(ent.nome||`CREDIARISTA${credFilial}`); const label=isThird?'Cobrança terceiro':'Crediarista'; const sub=isThird?'Clique para abrir a carteira terceirizada':'Clique para abrir a carteira do crediarista'; const actionAttr=isThird?`data-action="third-card" role="button" tabindex="0"`:`data-action="cred-card" data-login="${esc(credLogin)}" data-filial="${esc(credFilial)}" data-nome="${esc(credNome)}" role="button" tabindex="0"`; return `<div class="glass card ${m.geral>=50?'card-hit':(m.geral<30?'card-low-red':(m.geral<40?'card-low-orange':''))}" style="box-shadow:0 0 0 2px rgba(239,68,68,.12) inset" ${actionAttr}><div class="title">${esc(credNome)}</div><div class="numbers" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="stat-box" style="min-width:0"><div class="mini">Pendente</div><div class="big" style="color:var(--red);font-size:15px;word-break:break-word">${R(ent.pendente||0)}</div></div><div class="stat-box" style="min-width:0"><div class="mini">Recebido</div><div class="big" style="color:var(--green);font-size:15px;word-break:break-word">${R(ent.pago||0)}</div></div></div><div class="meta-row"><div class="mini-chip">🔴 Grave ${pct(m.grave.perc)}</div><div class="mini-chip">🟠 Alerta ${pct(m.alerta.perc)}</div><div class="mini-chip">🟡 Atenção ${pct(m.atencao.perc)}</div><div class="mini-chip" style="font-size:12px">🔵 Meta geral ${pct(m.geral)}</div></div>${renderMascotStatus(m.geral,label)}<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>${sub}</span></div></div>`} const bonus=getBonus(m.cfg,m.geral);const sales=summarizeSalesCard(ent);const salesPct=sales?.n||0;const salesBorder=salesPct>=100?'box-shadow:0 0 0 2px rgba(242,201,76,.35) inset':salesPct>=80?'box-shadow:0 0 0 2px rgba(34,197,94,.18) inset':salesPct>=50?'box-shadow:0 0 0 2px rgba(249,115,22,.18) inset':'box-shadow:0 0 0 2px rgba(239,68,68,.12) inset';const cls=m.geral>=50?'card-hit':(m.geral<30?'card-low-red':(m.geral<40?'card-low-orange':''));const pulseNote=m.geral>=50?'<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>Meta atingida no mês</span></div>':'';return `<div class="glass card ${cls}" style="${salesBorder}" onclick='openEntity(${JSON.stringify({type:ent.type,filial:ent.filial,nome:ent.nome})})'><div class="title">${esc(ent.nome)} ${ent.type==='vendedor'?`(${ent.filial})`:''}</div><div class="numbers" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="stat-box" style="min-width:0"><div class="mini">Pendente</div><div class="big" style="color:var(--red);font-size:15px;word-break:break-word">${R(ent.pendente||0)}</div></div><div class="stat-box" style="min-width:0"><div class="mini">Recebido</div><div class="big" style="color:var(--green);font-size:15px;word-break:break-word">${R(ent.pago||0)}</div></div></div><div class="meta-row"><div class="mini-chip">🔴 Grave ${pct(m.grave.perc)}</div><div class="mini-chip">🟠 Alerta ${pct(m.alerta.perc)}</div><div class="mini-chip">🟡 Atenção ${pct(m.atencao.perc)}</div><div class="mini-chip" style="font-size:12px">🔵 Meta geral ${pct(m.geral)}</div></div>${renderSalesCardSummary(ent)}${renderDualMascotStatus(ent)}${bonus?`<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>${esc(bonus.text)}</span></div>`:''}${pulseNote}</div>`}
+function renderEntityCard(ent){const m=calcMeta(ent); const isThird=!!(ent?.is_terceiro || ent?.type==='terceiro'); const isCred=!!(ent?.is_crediarista || ent?.type==='crediarista'); if(isThird || isCred){const credLogin=String(ent.login||crediaristaLoginByFilial(ent.filial)||'').toLowerCase(); const credFilial=String(ent.filial||'').toUpperCase(); const credNome=String(ent.nome||`CREDIARISTA${credFilial}`); const label=isThird?'Cobrança terceiro':'Crediarista'; const sub=isThird?'Clique para abrir a carteira terceirizada':'Clique para abrir a carteira do crediarista'; const actionAttr=isThird?`data-action="third-card" role="button" tabindex="0"`:`data-action="cred-card" data-login="${esc(credLogin)}" data-filial="${esc(credFilial)}" data-nome="${esc(credNome)}" role="button" tabindex="0"`; return `<div class="glass card ${m.geral>=50?'card-hit':(m.geral<30?'card-low-red':(m.geral<40?'card-low-orange':''))}" style="box-shadow:0 0 0 2px rgba(239,68,68,.12) inset" ${actionAttr}><div class="title">${esc(credNome)}</div><div class="numbers" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="stat-box" style="min-width:0"><div class="mini">Pendente</div><div class="big" style="color:var(--red);font-size:15px;word-break:break-word">${R(ent.pendente||0)}</div></div><div class="stat-box" style="min-width:0"><div class="mini">Recebido</div><div class="big" style="color:var(--green);font-size:15px;word-break:break-word">${R((ent.pago_meta??ent.pago)||0)}</div></div></div><div class="meta-row"><div class="mini-chip">🔴 Grave ${pct(m.grave.perc)}</div><div class="mini-chip">🟠 Alerta ${pct(m.alerta.perc)}</div><div class="mini-chip">🟡 Atenção ${pct(m.atencao.perc)}</div><div class="mini-chip" style="font-size:12px">🔵 Meta geral ${pct(m.geral)}</div></div>${renderMascotStatus(m.geral,label)}<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>${sub}</span></div></div>`} const bonus=getBonus(m.cfg,m.geral);const sales=summarizeSalesCard(ent);const salesPct=sales?.n||0;const salesBorder=salesPct>=100?'box-shadow:0 0 0 2px rgba(242,201,76,.35) inset':salesPct>=80?'box-shadow:0 0 0 2px rgba(34,197,94,.18) inset':salesPct>=50?'box-shadow:0 0 0 2px rgba(249,115,22,.18) inset':'box-shadow:0 0 0 2px rgba(239,68,68,.12) inset';const cls=m.geral>=50?'card-hit':(m.geral<30?'card-low-red':(m.geral<40?'card-low-orange':''));const pulseNote=m.geral>=50?'<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>Meta atingida no mês</span></div>':'';return `<div class="glass card ${cls}" style="${salesBorder}" onclick='openEntity(${JSON.stringify({type:ent.type,filial:ent.filial,nome:ent.nome})})'><div class="title">${esc(ent.nome)} ${ent.type==='vendedor'?`(${ent.filial})`:''}</div><div class="numbers" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="stat-box" style="min-width:0"><div class="mini">Pendente</div><div class="big" style="color:var(--red);font-size:15px;word-break:break-word">${R(ent.pendente||0)}</div></div><div class="stat-box" style="min-width:0"><div class="mini">Recebido</div><div class="big" style="color:var(--green);font-size:15px;word-break:break-word">${R((ent.pago_meta??ent.pago)||0)}</div></div></div><div class="meta-row"><div class="mini-chip">🔴 Grave ${pct(m.grave.perc)}</div><div class="mini-chip">🟠 Alerta ${pct(m.alerta.perc)}</div><div class="mini-chip">🟡 Atenção ${pct(m.atencao.perc)}</div><div class="mini-chip" style="font-size:12px">🔵 Meta geral ${pct(m.geral)}</div></div>${renderSalesCardSummary(ent)}${renderDualMascotStatus(ent)}${bonus?`<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>${esc(bonus.text)}</span></div>`:''}${pulseNote}</div>`}
 function renderGroupBars(entities){if(!entities.length) return `<div class="empty">Nenhum dado para exibir.</div>`; const max=Math.max(1,...entities.map(e=>Math.max(Number(e.grave_pend||0),Number(e.alerta_pend||0),Number(e.atencao_pend||0),Number(e.pago||0)))); return `<div class="glass big-chart-card"><div class="section-head"><div><h2>📊 Panorama por ${mainTab==='filiais'?'filial':'vendedor'}</h2><div class="hint">Barras por faixa: Grave, Alerta, Atenção e Recebido</div></div><div class="legend-inline"><span><i class="dot" style="background:var(--red)"></i>Grave</span><span><i class="dot" style="background:var(--orange)"></i>Alerta</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção</span><span><i class="dot" style="background:var(--green)"></i>Recebido</span></div></div><div class="groupbars">${entities.map(e=>{const vals=[{c:'var(--red)',v:Number(e.grave_pend||0),t:'Grave'},{c:'var(--orange)',v:Number(e.alerta_pend||0),t:'Alerta'},{c:'var(--yellow)',v:Number(e.atencao_pend||0),t:'Atenção'},{c:'var(--green)',v:Number(e.pago||0),t:'Recebido'}]; return `<div class="group"><div class="bars">${vals.map(v=>`<div title="${v.t}: ${R(v.v)}" class="bar" style="height:${Math.max(12,(v.v/max)*240)}px;background:linear-gradient(180deg,${v.c},${v.c})"></div>`).join('')}<span class="wave one"></span><span class="wave two"></span><span class="bubble b1"></span><span class="bubble b2"></span><span class="bubble b3"></span></div><div class="glabel">${esc(trunc(e.nome,16))}</div></div>`}).join('')}</div><div class="axis"><span>Escala relativa automática</span><span>${entities.length} ${mainTab==='filiais'?'filiais':'colaboradores'}</span></div></div>`}
 
 
@@ -11746,7 +11868,7 @@ return `<div class="section-head" style="margin-bottom:8px"><div><h2>📌 Mural 
 
 function bindSpecialCards(){document.querySelectorAll('[data-action="cred-card"]').forEach(el=>{el.style.cursor='pointer';el.onclick=(ev)=>{ev.preventDefault();ev.stopPropagation();const node=ev.currentTarget.closest('[data-action="cred-card"]')||ev.currentTarget;const ds=node.dataset||{};openCrediaristaPanel(ds.login||'',ds.filial||'',ds.nome||'');return false};el.onkeydown=(ev)=>{if(ev.key==='Enter' || ev.key===' '){ev.preventDefault();const node=ev.currentTarget.closest('[data-action="cred-card"]')||ev.currentTarget;const ds=node.dataset||{};openCrediaristaPanel(ds.login||'',ds.filial||'',ds.nome||'')}}});document.querySelectorAll('[data-action="third-card"]').forEach(el=>{el.style.cursor='pointer';el.onclick=(ev)=>{ev.preventDefault();ev.stopPropagation();openThirdChargePanel();return false};el.onkeydown=(ev)=>{if(ev.key==='Enter' || ev.key===' '){ev.preventDefault();openThirdChargePanel()}}})}
 function openEntityFromRowPayload(payload){try{const ref=JSON.parse(decodeURIComponent(payload)); if(ref?.type==='terceiro') return openThirdChargePanel(); if(ref?.type==='crediarista') return openCrediaristaPanel(ref.login||'',ref.filial||'',ref.nome||''); return openEntity(ref);}catch(e){}}
-function renderEntityRow(ent){const m=calcMeta(ent); const isThird=!!(ent?.is_terceiro||ent?.type==='terceiro'); const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista'); const ref=isThird?{type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}:isCred?{type:'crediarista',login:String(ent.login||crediaristaLoginByFilial(ent.filial)||'').toLowerCase(),filial:ent.filial,nome:ent.nome}:{type:ent.type,filial:ent.filial,nome:ent.nome}; const payload=encodeURIComponent(JSON.stringify(ref)); const sales=summarizeSalesCard(ent)||{}; const role=isThird?'Cobrança terceiro':isCred?'Crediarista':(ent.type==='filial'?'Filial':'Colaborador'); return `<div class="entity-row" onclick="openEntityFromRowPayload('${payload}')"><div class="entity-cell"><div class="v">${esc(ent.nome||filialLabel(ent.filial)||'')}</div><div class="small muted">${esc(role)} ${ent.filial?`· ${esc(ent.filial)}`:''}</div></div><div class="entity-cell"><div class="k">Pendente</div><div class="v red">${R(ent.pendente||0)}</div></div><div class="entity-cell"><div class="k">Recebido</div><div class="v green">${R(ent.pago||0)}</div></div><div class="entity-cell"><div class="k">Grave</div><div class="v red">${pct(m.grave.perc||0)}</div></div><div class="entity-cell"><div class="k">Alerta</div><div class="v orange">${pct(m.alerta.perc||0)}</div></div><div class="entity-cell"><div class="k">Atenção</div><div class="v">${pct(m.atencao.perc||0)}</div></div><div class="entity-cell"><div class="k">Meta geral</div><div class="v blue">${pct(m.geral||0)}</div></div><div class="entity-cell"><div class="k">Vendas/serviços</div><div class="v">${sales.n!=null?pct(sales.n):'—'}</div></div></div>`}
+function renderEntityRow(ent){const m=calcMeta(ent); const isThird=!!(ent?.is_terceiro||ent?.type==='terceiro'); const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista'); const ref=isThird?{type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}:isCred?{type:'crediarista',login:String(ent.login||crediaristaLoginByFilial(ent.filial)||'').toLowerCase(),filial:ent.filial,nome:ent.nome}:{type:ent.type,filial:ent.filial,nome:ent.nome}; const payload=encodeURIComponent(JSON.stringify(ref)); const sales=summarizeSalesCard(ent)||{}; const role=isThird?'Cobrança terceiro':isCred?'Crediarista':(ent.type==='filial'?'Filial':'Colaborador'); return `<div class="entity-row" onclick="openEntityFromRowPayload('${payload}')"><div class="entity-cell"><div class="v">${esc(ent.nome||filialLabel(ent.filial)||'')}</div><div class="small muted">${esc(role)} ${ent.filial?`· ${esc(ent.filial)}`:''}</div></div><div class="entity-cell"><div class="k">Pendente</div><div class="v red">${R(ent.pendente||0)}</div></div><div class="entity-cell"><div class="k">Recebido</div><div class="v green">${R((ent.pago_meta??ent.pago)||0)}</div></div><div class="entity-cell"><div class="k">Grave</div><div class="v red">${pct(m.grave.perc||0)}</div></div><div class="entity-cell"><div class="k">Alerta</div><div class="v orange">${pct(m.alerta.perc||0)}</div></div><div class="entity-cell"><div class="k">Atenção</div><div class="v">${pct(m.atencao.perc||0)}</div></div><div class="entity-cell"><div class="k">Meta geral</div><div class="v blue">${pct(m.geral||0)}</div></div><div class="entity-cell"><div class="k">Vendas/serviços</div><div class="v">${sales.n!=null?pct(sales.n):'—'}</div></div></div>`}
 function renderEntityList(entities){return `<div class="entity-list"><div class="entity-row entity-row-head"><div>Nome / tipo</div><div>Pendente</div><div>Recebido</div><div>Grave</div><div>Alerta</div><div>Atenção</div><div>Meta</div><div>Vendas</div></div>${entities.map(renderEntityRow).join('')}</div>`}
 function renderList(){const entities=currentEntities();const title=mainTab==='filiais'?'🏬 Filiais':'👥 Colaboradores';const hint=`${entities.length} ${mainTab==='filiais'?'filiais':'colaboradores'} exibidos`; const useRows=usuarioAtual?.tipo==='master'; listSection.innerHTML=`${renderCampaignStrip()}<div class="section-head"><div><h2>${title}</h2><div class="hint">Clique em uma linha para abrir a tela individual completa.</div></div><div class="hint">${hint}</div></div>${useRows?renderEntityList(entities):`<div class="grid-cards">${entities.map(renderEntityCard).join('')}</div>`}`; bindSpecialCards()}
 function findEntity(ref){const n=String(ref?.nome||'').toLowerCase(); const f=String(ref?.filial||'').toUpperCase(); const t=String(ref?.type||'').toLowerCase(); if(t==='terceiro' || ref?.is_terceiro || n===String(COBRANCA10_NOME).toLowerCase() || n===String(COBRANCA10_LOGIN).toLowerCase() || f==='FTER'){return thirdChargeEntity()} if(t==='crediarista' || ref?.is_crediarista || n.startsWith('crediarista') || String(ref?.login||'').toLowerCase().startsWith('crediaristaf')){return crediaristaEntityByLogin(ref?.login||ref?.nome||ref?.filial)} if(ref.type==='filial'){return flattenFiliais().find(x=>x.filial===ref.filial)} return flattenVendedores().find(x=>x.filial===ref.filial && x.nome===ref.nome)}
@@ -11822,7 +11944,7 @@ document.addEventListener('click', function(ev){
 window.openCrediaristaPanel=openCrediaristaPanel;
 window.openThirdChargePanel=openThirdChargePanel;
 
-function renderTerceiroDetail(ent){const src=getClientesEnt(ent); const totalTit=(src.grave?.length||0)+(src.alerta?.length||0)+(src.atencao?.length||0); detailScreen.innerHTML=`${renderUpdateStrip()}<div class="back-row">${renderBackButton()}<div><h2>${esc(ent.nome)}</h2><div class="sub">${ent.is_crediarista?`Painel de cobrança da filial ${ent.filial} · base configurada ${Number(ent.pct_base||100)}% · recebido só por cobrança própria paga`:`Painel de cobrança terceirizada · percentual global sem duplicidade`}</div></div><div class="badge">${ent.is_crediarista?'🧾 Crediarista':'🤝 Cobrança terceiro'}</div></div><div class="detail-top"><div class="glass panel"><h3>🧾 Resumo da carteira</h3><div class="metrics-grid"><div class="metric"><div class="k">Títulos</div><div class="v">${totalTit}</div></div><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">Cobrado hoje</div><div class="v">${getCobradosHoje(ent).length}</div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave ${src.grave?.length||0}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta ${src.alerta?.length||0}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção ${src.atencao?.length||0}</span></div></div><div>${renderTerceiroCommission(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span class="acc-hint">clique para abrir</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)"><span>🧾 Relatório de cobranças</span><span class="acc-hint">clique para abrir</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
+function renderTerceiroDetail(ent){const src=getClientesEnt(ent); const totalTit=(src.grave?.length||0)+(src.alerta?.length||0)+(src.atencao?.length||0); detailScreen.innerHTML=`${renderUpdateStrip()}<div class="back-row">${renderBackButton()}<div><h2>${esc(ent.nome)}</h2><div class="sub">${ent.is_crediarista?`Painel de cobrança da filial ${ent.filial} · base configurada ${Number(ent.pct_base||100)}% · recebido só por cobrança própria paga`:`Painel de cobrança terceirizada · percentual global sem duplicidade`}</div></div><div class="badge">${ent.is_crediarista?'🧾 Crediarista':'🤝 Cobrança terceiro'}</div></div><div class="detail-top"><div class="glass panel"><h3>🧾 Resumo da carteira</h3><div class="metrics-grid"><div class="metric"><div class="k">Títulos</div><div class="v">${totalTit}</div></div><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R((ent.pago_meta??ent.pago)||0)}</div></div><div class="metric"><div class="k">Cobrado hoje</div><div class="v">${getCobradosHoje(ent).length}</div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave ${src.grave?.length||0}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta ${src.alerta?.length||0}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção ${src.atencao?.length||0}</span></div></div><div>${renderTerceiroCommission(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span class="acc-hint">clique para abrir</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)"><span>🧾 Relatório de cobranças</span><span class="acc-hint">clique para abrir</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
 
 // ── PAINEL CREDIARISTA ─────────────────────────────────────────────────────
 // Mostra: resumo da carteira espelhada + meta de cobrança + recebimentos + cobranças
@@ -11851,7 +11973,7 @@ function renderCrediaristaDetail(ent){
             <div class="metrics-grid">
               <div class="metric"><div class="k">Títulos na carteira</div><div class="v">${totalTit}</div></div>
               <div class="metric"><div class="k">Pendente total</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div>
-              <div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div>
+              <div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R((ent.pago_meta??ent.pago)||0)}</div></div>
               <div class="metric"><div class="k">Cobrado hoje</div><div class="v">${getCobradosHoje(ent).length}</div></div>
             </div>
             <div class="legend-inline" style="margin-top:12px">
@@ -11882,7 +12004,7 @@ function renderCrediaristaDetail(ent){
   `;
 }
 
-function openEntityCore(ref){if(ref && (ref.type==='crediarista' || ref.is_crediarista)){return openCrediaristaPanel(ref.login||'', ref.filial||'', ref.nome||'')} const ent=findEntity(ref); if(!ent) return; currentDetailRef={type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''}; mascotCongrats(ent); try{renderLaranjitoNotify(); showLaranjitoOncePerAccess()}catch(e){}; document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(ent.is_terceiro || ent.type==='terceiro'){return renderTerceiroDetail(ent)} if(ent.is_crediarista || ent.type==='crediarista'){return openCrediaristaPanel(ent.login||'', ent.filial||'', ent.nome||'')} const meta=calcMeta(ent); const bonus=getBonus(meta.cfg,meta.geral); const deltaVal=Number(ent.var_pago_delta||0); const prevBase=Math.max(Math.abs(Number(ent.pago||0)-deltaVal),1); const pctFallback=(Math.abs(deltaVal)/prevBase)*100; const compPerc=(ent.var_pago_perc==null || Math.abs(Number(ent.var_pago_perc||0))<0.01)?pctFallback:Math.abs(Number(ent.var_pago_perc||0)); detailScreen.innerHTML=`${usuarioAtual && usuarioAtual.tipo!=='master' ? renderInboxBanner() : ''}${renderUpdateStrip()}<div class="back-row">${renderBackButton()}<div><h2>${ent.type==='filial'?filialLabel(ent.filial):esc(ent.nome)}</h2><div class="sub">${ent.type==='filial'?'Painel individual da filial':'Painel individual do vendedor'} · ${ent.filial}</div></div><div class="badge">${ent.type==='filial'?'🏬 Filial':'👤 Vendedor'}</div></div><div class="detail-top"><div class="glass panel"><h3>🎯 Meta do mês <span class="note">· Não acumulativo</span></h3><div class="mega-progress"><div class="ring-wrap">${renderPiggyBank(meta.geral)}</div><div><div class="metrics-grid"><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">% da filial</div><div class="v">${pct(ent.perc_filial||100)}</div></div><div class="metric"><div class="k">Configuração usada</div><div class="v">${Number(meta.cfg.grave_pct||0)}/${Number(meta.cfg.alerta_pct||0)}/${Number(meta.cfg.atencao_pct||0)}</div></div><div class="metric"><div class="k">Comparado a ontem</div><div class="v" style="font-size:16px">${renderDeltaPill(ent.var_pago_delta,compPerc)} <span>${R(Math.abs(Number(ent.var_pago_delta||0)))}</span></div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave alvo ${R(meta.grave.alvo)} · recebido ${R(meta.grave.rec)}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta alvo ${R(meta.alerta.alvo)} · recebido ${R(meta.alerta.rec)}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção alvo ${R(meta.atencao.alvo)} · recebido ${R(meta.atencao.rec)}</span></div></div></div><div class="meta-grid">${renderMetaBox('Grave','var(--red)',meta.grave)}${renderMetaBox('Alerta','var(--orange)',meta.alerta)}${renderMetaBox('Atenção','var(--yellow)',meta.atencao)}${renderMetaBox('Meta geral','var(--blue)',{perc:meta.geral,alvo:meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,rec:meta.grave.rec+meta.alerta.rec+meta.atencao.rec})}</div><div style="height:18px"></div><h3>🌊 Gráfico Geral Contas a Receber</h3>${renderSingleBars(ent,meta,true)}<div style="height:16px"></div><div class="glass panel"><h3>🏆 Bônus e premiações <span class="note">· Não acumulativo</span></h3>${renderBonusBox(meta.cfg,meta.geral)}</div></div><div>${renderSalesPanel(ent)}<div style="height:16px"></div>${renderCommissionSummary(ent)}<div style="height:16px"></div>${renderCobrancaUsuarioCommission(ent)}<div style="height:16px"></div>${renderCampaignSummary(ent)}</div></div>${renderReativacaoEnt(ent)}${typeof renderAniversariantesEnt==='function'?renderAniversariantesEnt(ent):''}<div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span class="acc-hint">clique para ${'abrir'}</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span class="acc-hint">clique para ${'abrir'}</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
+function openEntityCore(ref){if(ref && (ref.type==='crediarista' || ref.is_crediarista)){return openCrediaristaPanel(ref.login||'', ref.filial||'', ref.nome||'')} const ent=findEntity(ref); if(!ent) return; currentDetailRef={type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''}; mascotCongrats(ent); try{renderLaranjitoNotify(); showLaranjitoOncePerAccess()}catch(e){}; document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(ent.is_terceiro || ent.type==='terceiro'){return renderTerceiroDetail(ent)} if(ent.is_crediarista || ent.type==='crediarista'){return openCrediaristaPanel(ent.login||'', ent.filial||'', ent.nome||'')} const meta=calcMeta(ent); const bonus=getBonus(meta.cfg,meta.geral); const deltaVal=Number(ent.var_pago_delta||0); const prevBase=Math.max(Math.abs(Number(ent.pago||0)-deltaVal),1); const pctFallback=(Math.abs(deltaVal)/prevBase)*100; const compPerc=(ent.var_pago_perc==null || Math.abs(Number(ent.var_pago_perc||0))<0.01)?pctFallback:Math.abs(Number(ent.var_pago_perc||0)); detailScreen.innerHTML=`${usuarioAtual && usuarioAtual.tipo!=='master' ? renderInboxBanner() : ''}${renderUpdateStrip()}<div class="back-row">${renderBackButton()}<div><h2>${ent.type==='filial'?filialLabel(ent.filial):esc(ent.nome)}</h2><div class="sub">${ent.type==='filial'?'Painel individual da filial':'Painel individual do vendedor'} · ${ent.filial}</div></div><div class="badge">${ent.type==='filial'?'🏬 Filial':'👤 Vendedor'}</div></div><div class="detail-top"><div class="glass panel"><h3>🎯 Meta do mês <span class="note">· Não acumulativo</span></h3><div class="mega-progress"><div class="ring-wrap">${renderPiggyBank(meta.geral)}</div><div><div class="metrics-grid"><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R((ent.pago_meta??ent.pago)||0)}</div></div><div class="metric"><div class="k">% da filial</div><div class="v">${pct(ent.perc_filial||100)}</div></div><div class="metric"><div class="k">Configuração usada</div><div class="v">${Number(meta.cfg.grave_pct||0)}/${Number(meta.cfg.alerta_pct||0)}/${Number(meta.cfg.atencao_pct||0)}</div></div><div class="metric"><div class="k">Comparado a ontem</div><div class="v" style="font-size:16px">${renderDeltaPill(ent.var_pago_delta,compPerc)} <span>${R(Math.abs(Number(ent.var_pago_delta||0)))}</span></div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave alvo ${R(meta.grave.alvo)} · recebido ${R(meta.grave.rec)}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta alvo ${R(meta.alerta.alvo)} · recebido ${R(meta.alerta.rec)}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção alvo ${R(meta.atencao.alvo)} · recebido ${R(meta.atencao.rec)}</span></div></div></div><div class="meta-grid">${renderMetaBox('Grave','var(--red)',meta.grave)}${renderMetaBox('Alerta','var(--orange)',meta.alerta)}${renderMetaBox('Atenção','var(--yellow)',meta.atencao)}${renderMetaBox('Meta geral','var(--blue)',{perc:meta.geral,alvo:meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,rec:meta.grave.rec+meta.alerta.rec+meta.atencao.rec})}</div><div style="height:18px"></div><h3>🌊 Gráfico Geral Contas a Receber</h3>${renderSingleBars(ent,meta,true)}<div style="height:16px"></div><div class="glass panel"><h3>🏆 Bônus e premiações <span class="note">· Não acumulativo</span></h3>${renderBonusBox(meta.cfg,meta.geral)}</div></div><div>${renderSalesPanel(ent)}<div style="height:16px"></div>${renderCommissionSummary(ent)}<div style="height:16px"></div>${renderCobrancaUsuarioCommission(ent)}<div style="height:16px"></div>${renderCampaignSummary(ent)}</div></div>${renderReativacaoEnt(ent)}${typeof renderAniversariantesEnt==='function'?renderAniversariantesEnt(ent):''}<div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span class="acc-hint">clique para ${'abrir'}</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span class="acc-hint">clique para ${'abrir'}</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
 function canVerComissionamento(){return usuarioAtual?.tipo==='master'}
 function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';
   const c=calcCommissionSummary(ent);
@@ -12454,7 +12576,7 @@ function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';con
 function backToMain(){currentDetailRef=null; try{renderLaranjitoNotify()}catch(e){}; detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden')}
 function renderMetaBox(title,color,obj){return `<div class="meta-card"><div class="meta-title">${title}</div><div class="meta-main" style="color:${color}">${pct(obj.perc||0)}</div><div class="meta-sub">Alvo: ${R(obj.alvo||0)}</div><div class="meta-sub">Recebido: ${R(obj.rec||0)}</div></div>`}
 function renderBonusBox(cfg,geral){const achieved=(geral>=100&&cfg.bonus_100)?100:(geral>=85&&cfg.bonus_85)?85:(geral>=75&&cfg.bonus_75)?75:(geral>=50&&cfg.bonus_50)?50:0; const items=[[50,cfg.bonus_50||'-'],[75,cfg.bonus_75||'-'],[85,cfg.bonus_85||'-'],[100,cfg.bonus_100||'-']];return `<div class="bonus-box"><h4>Faixas configuradas</h4><div class="bonus-list">${items.map(([p,t])=>`<div class="bonus-item ${achieved===p?'active':''}" style="${achieved===p?'box-shadow:0 0 0 2px rgba(59,130,246,.18),0 0 26px rgba(59,130,246,.2);animation:liquid 1.6s ease-in-out infinite alternate':''}"><div class="left"><span>🎯</span><span>${p}%</span></div><div style="display:flex;align-items:center;gap:10px">${achieved===p?`<img src="${LARANJITO}" alt="laranjito" style="width:34px;height:34px;border-radius:10px;object-fit:cover">`:''}<span>${esc(t)}</span></div></div>`).join('')}</div></div>`}
-function renderSingleBars(ent,meta,big=false){const vals=[['Grave',meta.grave.pend,'var(--red)'],['Alerta',meta.alerta.pend,'var(--orange)'],['Atenção',meta.atencao.pend,'var(--yellow)'],['Recebido',Number(ent.pago||0),'var(--green)']]; const max=Math.max(1,...vals.map(v=>v[1])); return `<div class="glass big-chart-card" style="margin-top:0"><div class="legend-inline"><span><i class="dot" style="background:var(--red)"></i>Grave</span><span><i class="dot" style="background:var(--orange)"></i>Alerta</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção</span><span><i class="dot" style="background:var(--green)"></i>Recebido</span></div><div class="groupbars" style="justify-content:center"><div class="group" style="min-width:100%"><div class="bars" style="height:${big?320:260}px;justify-content:space-around;border-left:none">${vals.map(v=>`<div style="text-align:center"><div class="bar" style="width:${big?72:54}px;height:${Math.max(18,(v[1]/max)*(big?250:200))}px;background:linear-gradient(180deg,rgba(255,255,255,.18),transparent),linear-gradient(180deg,${v[2]},${v[2]})"><span class="wave one"></span><span class="wave two"></span><span class="bubble b1"></span><span class="bubble b2"></span><span class="bubble b3"></span></div><div class="glabel" style="margin-top:10px">${v[0]}<br><strong>${R(v[1])}</strong></div></div>`).join('')}</div></div></div></div>`}
+function renderSingleBars(ent,meta,big=false){const vals=[['Grave',meta.grave.pend,'var(--red)'],['Alerta',meta.alerta.pend,'var(--orange)'],['Atenção',meta.atencao.pend,'var(--yellow)'],['Recebido',Number((ent.pago_meta??ent.pago)||0),'var(--green)']]; const max=Math.max(1,...vals.map(v=>v[1])); return `<div class="glass big-chart-card" style="margin-top:0"><div class="legend-inline"><span><i class="dot" style="background:var(--red)"></i>Grave</span><span><i class="dot" style="background:var(--orange)"></i>Alerta</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção</span><span><i class="dot" style="background:var(--green)"></i>Recebido</span></div><div class="groupbars" style="justify-content:center"><div class="group" style="min-width:100%"><div class="bars" style="height:${big?320:260}px;justify-content:space-around;border-left:none">${vals.map(v=>`<div style="text-align:center"><div class="bar" style="width:${big?72:54}px;height:${Math.max(18,(v[1]/max)*(big?250:200))}px;background:linear-gradient(180deg,rgba(255,255,255,.18),transparent),linear-gradient(180deg,${v[2]},${v[2]})"><span class="wave one"></span><span class="wave two"></span><span class="bubble b1"></span><span class="bubble b2"></span><span class="bubble b3"></span></div><div class="glabel" style="margin-top:10px">${v[0]}<br><strong>${R(v[1])}</strong></div></div>`).join('')}</div></div></div></div>`}
 function recebKeyVend(ent){return `${ent.nome}_${ent.filial}`}
 
 function normConc(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim()}
@@ -13952,7 +14074,7 @@ function snapshotEntityHTML(ent){
             ${snapMiniBox('Atenção',meta.atencao.perc,meta.atencao.alvo,meta.atencao.rec,'#facc15')}
             ${snapMiniBox('Meta geral',meta.geral,meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,meta.grave.rec+meta.alerta.rec+meta.atencao.rec,'#60a5fa')}
           </div></div>
-          <div class="snap-box"><h3>🌊 Gráfico Geral Contas a Receber</h3>${(()=>{const vals=[['Grave',meta.grave.pend,'#ff5a6a'],['Alerta',meta.alerta.pend,'#fb923c'],['Atenção',meta.atencao.pend,'#facc15'],['Recebido',Number(ent.pago||0),'#34d399']]; const max=Math.max(1,...vals.map(v=>v[1])); return `<div class="snap-chart-bars">${vals.map(v=>`<div class="snap-barwrap"><div class="snap-bar" style="--c:${v[2]};height:${Math.max(24,(v[1]/max)*190)}px"></div><div class="snap-barlabel">${v[0]}<br><strong>${R(v[1])}</strong></div></div>`).join('')}</div>`})()}</div>
+          <div class="snap-box"><h3>🌊 Gráfico Geral Contas a Receber</h3>${(()=>{const vals=[['Grave',meta.grave.pend,'#ff5a6a'],['Alerta',meta.alerta.pend,'#fb923c'],['Atenção',meta.atencao.pend,'#facc15'],['Recebido',Number((ent.pago_meta??ent.pago)||0),'#34d399']]; const max=Math.max(1,...vals.map(v=>v[1])); return `<div class="snap-chart-bars">${vals.map(v=>`<div class="snap-barwrap"><div class="snap-bar" style="--c:${v[2]};height:${Math.max(24,(v[1]/max)*190)}px"></div><div class="snap-barlabel">${v[0]}<br><strong>${R(v[1])}</strong></div></div>`).join('')}</div>`})()}</div>
           <div class="snap-box"><h3>🏆 Bônus e premiações · Não acumulativo</h3><div class="snap-bonus">${bonusItems.map(([p,t])=>`<div class="snap-bonus-item ${bonus?.perc===p?'active':''}"><strong>🎯 ${p}%</strong><span>${esc(t)}</span></div>`).join('')}</div></div>
         </div>
         <div>
@@ -18831,7 +18953,7 @@ Preparamos condições especiais para você comemorar com a gente.
       const sales=summarizeSalesCard(ent)||{};
       const role=isThird?'Cobrança terceiro':isCred?'Crediarista':(ent.type==='filial'?'Filial':'Colaborador');
       const m=calcMeta(ent);
-      return `<div class="entity-row" onclick="openEntityFromRowPayload('${payload}')"><div class="entity-cell"><div class="v">${esc(ent.nome||filialLabel(ent.filial)||'')}</div><div class="small muted">${esc(role)} ${ent.filial?`· ${esc(ent.filial)}`:''}</div></div><div class="entity-cell"><div class="k">Pendente</div><div class="v red">${R(ent.pendente||0)}</div></div><div class="entity-cell"><div class="k">Recebido</div><div class="v green">${R(ent.pago||0)}</div></div><div class="entity-cell"><div class="k">Grave</div><div class="v red">${pct(m.grave.perc||0)}</div></div><div class="entity-cell"><div class="k">Alerta</div><div class="v orange">${pct(m.alerta.perc||0)}</div></div><div class="entity-cell"><div class="k">Atenção</div><div class="v">${pct(m.atencao.perc||0)}</div></div><div class="entity-cell"><div class="k">Meta geral</div><div class="v blue">${pct(m.geral||0)}</div></div><div class="entity-cell"><div class="k">Vendas/serviços</div><div class="v">${sales.n!=null?pct(sales.n):'—'}</div></div></div>`;
+      return `<div class="entity-row" onclick="openEntityFromRowPayload('${payload}')"><div class="entity-cell"><div class="v">${esc(ent.nome||filialLabel(ent.filial)||'')}</div><div class="small muted">${esc(role)} ${ent.filial?`· ${esc(ent.filial)}`:''}</div></div><div class="entity-cell"><div class="k">Pendente</div><div class="v red">${R(ent.pendente||0)}</div></div><div class="entity-cell"><div class="k">Recebido</div><div class="v green">${R((ent.pago_meta??ent.pago)||0)}</div></div><div class="entity-cell"><div class="k">Grave</div><div class="v red">${pct(m.grave.perc||0)}</div></div><div class="entity-cell"><div class="k">Alerta</div><div class="v orange">${pct(m.alerta.perc||0)}</div></div><div class="entity-cell"><div class="k">Atenção</div><div class="v">${pct(m.atencao.perc||0)}</div></div><div class="entity-cell"><div class="k">Meta geral</div><div class="v blue">${pct(m.geral||0)}</div></div><div class="entity-cell"><div class="k">Vendas/serviços</div><div class="v">${sales.n!=null?pct(sales.n):'—'}</div></div></div>`;
     };
 
     let _histLoaded74=false,_histComisLoaded74=false,_auditLoaded74=false;
@@ -19342,7 +19464,7 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.80] Cobrança Terc
     `;
     document.head.appendChild(css);
 
-    window.DASHBOARD_BUILD_VERSION='V10.81';
+    window.DASHBOARD_BUILD_VERSION='V10.86';
     console.log(TAG,'ativo: redraw automático adiado durante uso + scroll preservado');
   }catch(e){console.warn('[V10.81] falhou',e)}
 })();
@@ -21052,3 +21174,5 @@ driver.quit()
 # MDL_V10_36_COBLOGS_BOOT_FILIAL_FIX: embute cobrancas_log.json no HTML e força gerente/filial recalcular recebimentos conciliados antes de renderizar.
 
 # MDL_V10_37_FILIAL_OWNER_FIRST_RECEBIMENTOS_FIX: responsável/origem/crediarista manda sobre F90/F99/FDEP na soma da filial/gerente.
+
+# V10.86_RECEBIMENTO_REAL_FAIXA_VENDEDOR
