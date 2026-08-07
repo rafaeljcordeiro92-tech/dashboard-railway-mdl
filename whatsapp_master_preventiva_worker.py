@@ -1,4 +1,4 @@
-# VERSAO: WHATSAPP_MASTER_PREVENTIVA_V3_V10_55
+# VERSAO: WHATSAPP_MASTER_PREVENTIVA_V3_V10_80_COB_TERCEIRA
 # MDL COB+VENDAS -> WhatsApp Master
 # Régua: D-5, D-1, D0, D+1, D+3, D+7, D+10, D+14.
 # Segurança: qualquer título D+15 ou mais no mesmo CPF/CNPJ bloqueia o automático.
@@ -104,6 +104,28 @@ def pick_col(columns: list[Any], names: list[str]) -> Any | None:
 def norm_doc(value: Any) -> str:
     digits = re.sub(r"\D+", "", str(value or ""))
     return digits if len(digits) in (11, 14) else ""
+
+
+COB_TERCEIRA_PUBLIC_BASE = os.getenv("COB_TERCEIRA_PUBLIC_BASE", "https://moveisdolar.com.br/colaborador").rstrip("/")
+
+def _cob_doc_hash(doc: str) -> str:
+    d = norm_doc(doc)
+    return hashlib.sha256(d.encode("utf-8")).hexdigest() if d else ""
+
+def load_cobranca_terceira_hashes() -> set[str]:
+    """Carrega somente hashes SHA-256; a fila completa com PII não fica pública."""
+    url = COB_TERCEIRA_PUBLIC_BASE + "/cobranca_terceira_bloqueios.json?_=" + str(int(time.time()))
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "MDL-Preventiva-V10.80"})
+        try:
+            resp = urllib.request.urlopen(req, timeout=20, context=ssl.create_default_context())
+        except Exception:
+            resp = urllib.request.urlopen(req, timeout=20, context=ssl._create_unverified_context())
+        with resp:
+            payload = json.loads(resp.read().decode("utf-8", errors="replace"))
+        return {str(x).lower() for x in (payload.get("active_hashes") or []) if str(x).strip()} if isinstance(payload, dict) else set()
+    except Exception:
+        return set()
 
 
 def extract_phones(value: Any) -> list[str]:
@@ -473,7 +495,7 @@ def publish_status_files() -> None:
 
 
 def append_history(run: dict[str, Any]) -> None:
-    history = load_json(HISTORY_PATH, {"version": "V10.53", "runs": []})
+    history = load_json(HISTORY_PATH, {"version": "V10.80", "runs": []})
     runs = history.setdefault("runs", [])
     compact = {
         key: run.get(key)
@@ -524,7 +546,7 @@ def error_status(message: str) -> dict[str, Any]:
 
 def main() -> int:
     run_id = now_br().strftime("%Y%m%d-%H%M%S")
-    log("🚀 Iniciando WhatsApp Master Preventiva/Cobrança V10.55")
+    log("🚀 Iniciando WhatsApp Master Preventiva/Cobrança V10.80 + bloqueio Cobrança Terceira")
     log(f"Config: ENABLED={ENABLED} DRY_RUN={DRY_RUN} TEST_REDIRECT={TEST_REDIRECT} TEST_PHONE={bool(TEST_PHONE)} MAX_SEND={MAX_SEND_PER_RUN} GENERAL={ALLOW_GENERAL_SEND} MARCOS={list(MARCOS.values())}")
 
     preventive_path = find_preventive_input()
@@ -564,6 +586,12 @@ def main() -> int:
         for document, rows in by_doc.items()
         if any(int(row.get("dias") or 0) >= 15 for row in rows)
     )
+    external_hashes = load_cobranca_terceira_hashes()
+    known_docs = set(by_doc.keys()) | {row.get("cpf_cnpj") for row in human_rows if row.get("cpf_cnpj")}
+    external_docs = {d for d in known_docs if _cob_doc_hash(d) in external_hashes}
+    blocked_docs.update(external_docs)
+    if external_docs:
+        log(f"🤝 V10.80: {len(external_docs)} CPF(s) bloqueados no WhatsApp Master por Cobrança Terceira (hash público, sem PII).")
 
     state = load_json(STATE_PATH, {"sent": {}})
     sent_state = state.setdefault("sent", {})
@@ -584,7 +612,8 @@ def main() -> int:
         interaction_id = interaction_id_producao
         base = {**row, "marco": mark, "dedupe_key": key, "interaction_id": interaction_id}
         if row["cpf_cnpj"] in blocked_docs:
-            item = {**base, "status": "ignorado", "motivo": "bloqueado_d15_ou_mais_no_cpf"}
+            motivo_bloqueio = "cpf_em_cobranca_terceira" if row["cpf_cnpj"] in external_docs else "bloqueado_d15_ou_mais_no_cpf"
+            item = {**base, "status": "ignorado", "motivo": motivo_bloqueio}
             skipped.append(item)
             audit.append(item)
             continue
@@ -697,6 +726,7 @@ def main() -> int:
         "total_linhas_base_humana": len(human_rows),
         "total_cpfs": len(by_doc),
         "cpfs_bloqueados_d15_mais": len(blocked_docs),
+        "cpfs_cobranca_terceira": len(external_docs),
         "candidatos": len(candidates),
         "simulados": len(candidates) if DRY_RUN or not ENABLED else 0,
         "enviados_agora": len(sent_now),

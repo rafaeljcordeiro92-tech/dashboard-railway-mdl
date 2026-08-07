@@ -36,8 +36,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.79"
-DASHBOARD_BUILD_TAG = "comissao_crediarista_fonte_unica_oficial"
+DASHBOARD_BUILD_VERSION = "V10.81"
+DASHBOARD_BUILD_TAG = "cobranca_terceira_91_dias_cpf_inteiro"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
 # V10.52: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
@@ -2857,6 +2857,34 @@ def _parse_data(v):
     except:
         return None
 
+# ===== V10.80 COBRANÇA TERCEIRA: CPF inteiro sai da régua interna após D+91 =====
+# A lista pública contém somente SHA-256 dos documentos; a fila completa com PII fica protegida no PHP.
+COB_TERCEIRA_PUBLIC_BASE = os.getenv("COB_TERCEIRA_PUBLIC_BASE", "https://moveisdolar.com.br/colaborador").rstrip("/")
+
+def _hash_doc_cobranca_terceira_v1080(doc):
+    _d = normalizar_documento_cliente(doc)
+    return hashlib.sha256(_d.encode("utf-8")).hexdigest() if _d else ""
+
+def _load_cobranca_terceira_hashes_v1080():
+    _url = COB_TERCEIRA_PUBLIC_BASE + "/cobranca_terceira_bloqueios.json?_=" + str(int(time.time()))
+    try:
+        _req = urllib.request.Request(_url, headers={"User-Agent":"MDL-Dashboard-V10.80"})
+        try:
+            _resp = urllib.request.urlopen(_req, timeout=20, context=ssl.create_default_context())
+        except Exception as _exc_ssl:
+            if "CERTIFICATE_VERIFY_FAILED" not in str(_exc_ssl).upper():
+                raise
+            _resp = urllib.request.urlopen(_req, timeout=20, context=ssl._create_unverified_context())
+        with _resp:
+            _payload = json.loads(_resp.read().decode("utf-8", errors="replace"))
+        return {str(x).lower() for x in (_payload.get("active_hashes") or []) if str(x).strip()} if isinstance(_payload, dict) else set()
+    except Exception as _exc:
+        print(f"⚠️ V10.80 não conseguiu carregar bloqueios hash da Cobrança Terceira: {_exc}")
+        return set()
+
+COB_TERCEIRA_HASHES_ATIVOS = _load_cobranca_terceira_hashes_v1080()
+print(f"🤝 V10.80 Cobrança Terceira: {len(COB_TERCEIRA_HASHES_ATIVOS)} CPF(s) hash fora da cobrança interna.")
+
 # ===== RELATÓRIO COMPLEMENTAR: QUITADOS 180 DIAS
 # IMPORTANTE: roda aqui porque neste ponto os helpers limpar_nome_erp, limpar_nome_display,
 # tratar_valor e _parse_data já foram definidos.
@@ -2961,6 +2989,11 @@ for _i in range(len(df_raw)):
 
     # 🔥 IGNORA CONTA CAIXA 100
     if str(_row[COL["conta_caixa"]]).strip() == "Caixa Filial 100":
+        continue
+
+    # V10.80: um título D+91 move o CPF inteiro para a COB.
+    # O documento deixa de gerar cobrança/recebimento/comissão interna para evitar duplicidade.
+    if _cpf_cnpj_normalizado and _hash_doc_cobranca_terceira_v1080(_cpf_cnpj_normalizado) in COB_TERCEIRA_HASHES_ATIVOS:
         continue
 
     _dias_venc = (_hoje - _venc).days
@@ -3122,6 +3155,11 @@ COBRANCA10_LOGIN = "cobranca10"
 COBRANCA10_NOME = "Cobrança10"
 COBRANCA10_FILIAL = "FTER"
 COBRANCA10_RATEIO_DEFAULT = 20.0
+
+# V10.80: parceiro externo real, separado do usuário interno Cobrança10.
+COB_EXTERNA_LOGIN = "cob"
+COB_EXTERNA_NOME = "COB - Cobrança Terceira"
+COB_EXTERNA_FILIAL = "FCOB"
 
 def _load_cobranca_global_rateio_pct():
     """
@@ -4341,6 +4379,25 @@ auth_users[_chave_cob10] = {
 }
 linhas_txt.append(f"{_chave_cob10} | {COBRANCA10_NOME} | {_senha_cob10} | {COBRANCA10_FILIAL} | COBRANÇA TERCEIRO")
 
+# V10.80: login dedicado à COB externa. Senha pode ser alterada na aba Senhas.
+_estado_cob_ext = cred_state.get("users", {}).get(COB_EXTERNA_LOGIN, {})
+_senha_cob_ext_ini = _estado_cob_ext.get("initial_password") or ("COB" + str(random.randint(1000,9999)))
+_senha_cob_ext = _estado_cob_ext.get("password") or _senha_cob_ext_ini
+_troca_cob_ext = bool(_estado_cob_ext.get("must_change_password", not bool(_estado_cob_ext.get("password"))))
+credenciais[COB_EXTERNA_LOGIN] = {
+    "senha": _senha_cob_ext, "senha_inicial": _senha_cob_ext_ini,
+    "nome": COB_EXTERNA_NOME, "filial": COB_EXTERNA_FILIAL,
+    "is_gerente": False, "is_cob_externa": True, "only_cobranca_terceira": True,
+    "only_cobranca": True, "pendente": 0.0, "pago": 0.0, "total": 0.0, "perc_filial": 100.0,
+}
+auth_users[COB_EXTERNA_LOGIN] = {
+    "login": COB_EXTERNA_LOGIN, "password": _senha_cob_ext, "initial_password": _senha_cob_ext_ini,
+    "must_change_password": _troca_cob_ext, "nome": COB_EXTERNA_NOME, "filial": COB_EXTERNA_FILIAL,
+    "is_gerente": False, "is_terceiro": False, "is_crediarista": False, "is_cob_externa": True,
+    "only_cobranca_terceira": True, "only_cobranca": True, "email_recuperacao": EMAIL_RECUPERACAO,
+}
+linhas_txt.append(f"{COB_EXTERNA_LOGIN} | {COB_EXTERNA_NOME} | {_senha_cob_ext} | {COB_EXTERNA_FILIAL} | COBRANÇA TERCEIRA EXTERNA")
+
 
 # Inicialização antecipada para evitar NameError antes da montagem final
 clientes_crediarista_js = {}
@@ -4439,7 +4496,9 @@ for _login_st, _u_st in list(auth_users.items()):
     _base_st["login"] = _login_st
     _base_st["nome"] = _nome_st
     _base_st["filial"] = str(_fil_st or '').strip().upper()
-    if _u_st.get("is_terceiro"):
+    if _u_st.get("is_cob_externa"):
+        _base_st["tipo"] = "Cobrança Terceira externa"
+    elif _u_st.get("is_terceiro"):
         _base_st["tipo"] = "Cobrança terceiro"
     elif _u_st.get("is_crediarista"):
         _base_st["tipo"] = "Crediarista"
@@ -10191,6 +10250,7 @@ body.inicio-view .kpi .value{font-size:21px!important}
       <button class="tab" data-tab="metas" onclick="setMainTab('metas')">🎯 Metas</button>
       <button class="tab" data-tab="servicos" onclick="setMainTab('servicos')">🛠️ Serviços</button>
       <button class="tab" data-tab="cobrancas" onclick="setMainTab('cobrancas')">🧾 Cobranças</button>
+      <button class="tab" data-tab="cob_terceira" onclick="setMainTab('cob_terceira')">🤝 Cobrança Terceira</button>
       <button class="tab" data-tab="reativacao" onclick="setMainTab('reativacao')">🧡 Clientes sem movimento</button>
       <button class="tab" data-tab="aniversariantes" onclick="setMainTab('aniversariantes')">🎂 Aniversariantes</button>
       <button class="tab" data-tab="avisos" onclick="setMainTab('avisos')">📣 Avisos</button>
@@ -10208,6 +10268,7 @@ body.inicio-view .kpi .value{font-size:21px!important}
       <div id="metaSection" class="hidden"></div>
       <div id="servicesSection" class="hidden"></div>
       <div id="logSection" class="hidden"></div>
+      <div id="cobTerceiraSection" class="hidden"></div>
       <div id="reativacaoSection" class="hidden"></div>
       <div id="aniversariantesSection" class="hidden"></div>
       <div id="avisosSection" class="hidden"></div>
@@ -11328,12 +11389,13 @@ function setMainTab(tab){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
   detailScreen.classList.add('hidden');
   document.getElementById('mainScreen').classList.remove('hidden');
-  const hiddenMain=['inicio','metas','servicos','cobrancas','reativacao','aniversariantes','avisos','telegram','senhas','whatsapp_master','historico'].includes(tab);
+  const hiddenMain=['inicio','metas','servicos','cobrancas','cob_terceira','reativacao','aniversariantes','avisos','telegram','senhas','whatsapp_master','historico'].includes(tab);
   if(inicioSection) inicioSection.classList.toggle('hidden',tab!=='inicio');
   listSection.classList.toggle('hidden',hiddenMain);
   metaSection.classList.toggle('hidden',tab!=='metas');
   servicesSection.classList.toggle('hidden',tab!=='servicos');
   logSection.classList.toggle('hidden',tab!=='cobrancas');
+  document.getElementById('cobTerceiraSection')?.classList.toggle('hidden',tab!=='cob_terceira');
   if(reativacaoSection) reativacaoSection.classList.toggle('hidden',tab!=='reativacao');
   if(aniversariantesSection) aniversariantesSection.classList.toggle('hidden',tab!=='aniversariantes');
   avisosSection.classList.toggle('hidden',tab!=='avisos');
@@ -11353,6 +11415,7 @@ function setMainTab(tab){
   }
   if(tab==='servicos') renderServicosTab(false);
   if(tab==='cobrancas') renderLogsTab();
+  if(tab==='cob_terceira') renderCobTerceiraTab();
   if(tab==='reativacao') renderReativacaoTab();
   if(tab==='aniversariantes') renderAniversariantesTab();
   if(tab==='avisos') renderAvisosTab();
@@ -11360,6 +11423,52 @@ function setMainTab(tab){
   if(tab==='senhas') renderSenhasTab();
   if(tab==='whatsapp_master') renderWhatsAppMasterTab();
   if(tab==='historico') renderHistoricoTab();
+}
+
+// ===== V10.80 COBRANÇA TERCEIRA / COB =====
+const COB_TERCEIRA_API='cobranca_terceira_api.php';
+let COB_TERCEIRA_STATE={items:[],batches:[],preview:[]}; let COB_TERCEIRA_PAGE=1; const COB_TERCEIRA_PAGE_SIZE=25;
+function cobTStatusLabel(st){const m={pronto:'Pronto para COB',enviado:'Enviado/baixado',erro_sgi:'Erro atualização SGI',hold_acordo:'Acordo/promessa ativa',bloqueado_marcador:'Bloqueado por marcador',ja_marcado_cob:'Já marcado COB',simulado:'Simulado'};return m[String(st||'').toLowerCase()]||String(st||'—')}
+function cobTMoney(v){return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+function cobTTotal(item){return (item?.titulos||[]).reduce((a,x)=>a+Number(x?.pendente||0),0)}
+function cobTDate(v){try{return v?new Date(v).toLocaleString('pt-BR'):'—'}catch(e){return String(v||'—')}}
+function cobTAuth(){
+  const login=String(usuarioAtual?.login||(String(usuarioAtual?.roleLabel||'').toLowerCase().includes('diretor')?'diretorcomercial':'master')).toLowerCase();
+  let password='';
+  try{password=String(getAuthUser(login)?.password||usuarioAtual?.senha||'')}catch(e){}
+  if(!password && login===String(LOGIN_MASTER||'master').toLowerCase()) password=String(SENHA_MASTER||'');
+  if(!password && login===String(LOGIN_DIRETOR||'diretorcomercial').toLowerCase()) password=String(SENHA_DIRETOR||'');
+  return {login,password,headers:{'X-MDL-Login':login,'X-MDL-Password':password,'Cache-Control':'no-cache'}};
+}
+async function loadCobTerceiraState(){try{const a=cobTAuth();const r=await fetch(COB_TERCEIRA_API+'?_='+Date.now(),{cache:'no-store',headers:a.headers});if(!r.ok)throw new Error('HTTP '+r.status);const j=await r.json();COB_TERCEIRA_STATE=(j?.data&&typeof j.data==='object')?{...j.data,preview:j.preview||[]}:{...j,preview:j.preview||[]};return COB_TERCEIRA_STATE}catch(e){console.warn('[V10.80 COB]',e);toast('Não foi possível carregar a fila COB. Confira o acesso.');return COB_TERCEIRA_STATE}}
+async function cobTDownload(period){
+  try{
+    const a=cobTAuth();const fd=new FormData();fd.append('action','download');fd.append('period',period);
+    const r=await fetch(COB_TERCEIRA_API,{method:'POST',body:fd,headers:{'X-MDL-Login':a.login,'X-MDL-Password':a.password}});
+    if(!r.ok){let j={};try{j=await r.json()}catch(e){};throw new Error(j.error||('HTTP '+r.status));}
+    const blob=await r.blob();const cd=r.headers.get('Content-Disposition')||'';const m=cd.match(/filename="?([^";]+)"?/i);const nome=m?m[1]:('cobranca_COB_'+period+'.csv');
+    const u=URL.createObjectURL(blob);const link=document.createElement('a');link.href=u;link.download=nome;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(u),30000);
+    toast('Base COB baixada e lote marcado como enviado.','success');await loadCobTerceiraState();await renderCobTerceiraTab(false);
+  }catch(e){console.warn('[V10.80 COB download]',e);toast(String(e?.message||e)==='sem_clientes_prontos'?'Não há clientes prontos nesse período.':'Não foi possível baixar a base COB.');}
+}
+function cobTBadge(st){const s=String(st||'').toLowerCase();const cls=s==='enviado'?'ok':(s==='pronto'?'warn':(s.includes('erro')||s.includes('bloqueado')?'bad':''));return `<span class="badge ${cls}">${esc(cobTStatusLabel(st))}</span>`}
+async function renderCobTerceiraTab(reload=true){
+  const host=document.getElementById('cobTerceiraSection'); if(!host)return;
+  host.classList.remove('hidden');
+  if(reload) host.innerHTML=`<div class="glass panel"><div class="section-head"><div><h2>🤝 Cobrança Terceira — COB</h2><div class="hint">D+91: um título vencido move o CPF inteiro da cobrança interna para a parceira. Carregando fila...</div></div></div></div>`;
+  if(reload) await loadCobTerceiraState(); const items=Array.isArray(COB_TERCEIRA_STATE.items)?COB_TERCEIRA_STATE.items:[]; const preview=Array.isArray(COB_TERCEIRA_STATE.preview)?COB_TERCEIRA_STATE.preview:[];
+  const q=String(document.getElementById('cobTSearch')?.value||window._cobTSearch||'').trim().toLowerCase(); const stf=String(document.getElementById('cobTStatus')?.value||window._cobTStatus||'');
+  const filtered=items.filter(x=>{const txt=[x.cliente,x.cpf_cnpj,x.status,x.marker_info,(x.titulos||[]).map(t=>[t.titulo,t.parcela,t.filial,t.vendedor].join(' ')).join(' ')].join(' ').toLowerCase();return(!q||txt.includes(q))&&(!stf||String(x.status||'')===stf)});
+  const ready=items.filter(x=>String(x.status||'')==='pronto'), sent=items.filter(x=>String(x.status||'')==='enviado'), hold=items.filter(x=>String(x.status||'')==='hold_acordo'), err=items.filter(x=>['erro_sgi','bloqueado_marcador'].includes(String(x.status||'')));
+  const pages=Math.max(1,Math.ceil(filtered.length/COB_TERCEIRA_PAGE_SIZE)); if(COB_TERCEIRA_PAGE>pages)COB_TERCEIRA_PAGE=pages; const ini=(COB_TERCEIRA_PAGE-1)*COB_TERCEIRA_PAGE_SIZE, page=filtered.slice(ini,ini+COB_TERCEIRA_PAGE_SIZE);
+  const canDownload=!!usuarioAtual?.is_cob_externa || String(usuarioAtual?.tipo||'')==='master' || String(usuarioAtual?.roleLabel||'').toLowerCase().includes('diretor');
+  const simHtml=preview.length?`<div class="glass panel" style="border-color:rgba(251,191,36,.45)"><strong>🧪 DRY RUN disponível:</strong> ${preview.length} CPF(s) simulados na última execução. Nenhum foi enviado nem teve nome alterado enquanto COB_TERCEIRA_DRY_RUN=1.</div>`:'';
+  host.innerHTML=`${simHtml}<div class="kpis" style="margin-bottom:14px"><div class="kpi"><div class="label">Prontos para COB</div><div class="value">${ready.length}</div><div class="subline">${cobTMoney(ready.reduce((a,x)=>a+cobTTotal(x),0))}</div></div><div class="kpi"><div class="label">Já baixados/enviados</div><div class="value">${sent.length}</div></div><div class="kpi"><div class="label">Acordo/promessa ativa</div><div class="value">${hold.length}</div></div><div class="kpi"><div class="label">Pendências SGI/marcador</div><div class="value">${err.length}</div></div></div>
+  <div class="glass panel"><div class="section-head"><div><h2>📤 Base da parceira</h2><div class="hint">O download marca automaticamente os CPFs como enviados para a COB e grava usuário/data/lote.</div></div><div style="display:flex;gap:8px;flex-wrap:wrap">${canDownload?`<button class="btn primary" onclick="cobTDownload('today')">⬇️ Novos de hoje</button><button class="btn soft" onclick="cobTDownload('7d')">⬇️ Últimos 7 dias</button><button class="btn soft" onclick="cobTDownload('pending')">⬇️ Todos pendentes</button>`:''}</div></div>
+  <div class="filters" style="margin:10px 0;display:flex"><input id="cobTSearch" value="${esc(q)}" placeholder="Buscar nome, CPF, título..." oninput="window._cobTSearch=this.value;COB_TERCEIRA_PAGE=1;renderCobTerceiraTab(false)"><select id="cobTStatus" onchange="window._cobTStatus=this.value;COB_TERCEIRA_PAGE=1;renderCobTerceiraTab(false)"><option value="">Todos os status</option>${['pronto','enviado','hold_acordo','erro_sgi','bloqueado_marcador','ja_marcado_cob'].map(s=>`<option value="${s}" ${stf===s?'selected':''}>${cobTStatusLabel(s)}</option>`).join('')}</select></div>
+  <div class="wa-master-scroll"><table class="wa-master-table"><thead><tr><th>Status</th><th>Cliente / CPF</th><th>Títulos</th><th>Valor</th><th>Gatilho</th><th>SGI / Envio</th></tr></thead><tbody>${page.length?page.map(x=>`<tr><td>${cobTBadge(x.status)}</td><td><strong>${esc(x.cliente||'—')}</strong><div class="small muted">${esc(x.cpf_cnpj||'—')}</div></td><td>${(x.titulos||[]).length}<div class="small muted">${esc((x.titulos||[]).slice(0,3).map(t=>`${t.titulo||''}/${t.parcela||''}`).join(' · '))}</div></td><td><strong>${cobTMoney(cobTTotal(x))}</strong></td><td>D+${Number(x.trigger_dias_max||91)}<div class="small muted">${cobTDate(x.trigger_at)}</div></td><td>${x.sent_at?`Baixado ${cobTDate(x.sent_at)}<div class="small muted">${esc(x.downloaded_by||'')}</div>`:(x.erro_sgi?`<span style="color:var(--red)">${esc(x.erro_sgi)}</span>`:`${esc(x.marker_info||x.ready_at||'—')}`)}</td></tr>`).join(''):'<tr><td colspan="6"><div class="empty">Nenhum CPF nesta seleção.</div></td></tr>'}</tbody></table></div>
+  <div class="log-pager"><div>${filtered.length} CPF(s) · página ${COB_TERCEIRA_PAGE}/${pages}</div><div style="display:flex;gap:8px"><button class="btn soft" ${COB_TERCEIRA_PAGE<=1?'disabled':''} onclick="COB_TERCEIRA_PAGE--;renderCobTerceiraTab(false)">⬅️ Anterior</button><button class="btn soft" ${COB_TERCEIRA_PAGE>=pages?'disabled':''} onclick="COB_TERCEIRA_PAGE++;renderCobTerceiraTab(false)">Próxima ➡️</button></div></div></div>
+  <div class="glass panel"><div class="section-head"><div><h2>🗂️ Histórico de downloads</h2><div class="hint">Cada download é um lote auditável.</div></div></div><div class="logs-list">${(COB_TERCEIRA_STATE.batches||[]).slice().reverse().slice(0,30).map(b=>`<div class="log-row"><div><strong>${esc(b.batch_id||'Lote')}</strong><div class="small muted">${cobTDate(b.created_at)} · ${esc(b.downloaded_by||'—')}</div></div><div>${Number(b.cpfs||0)} CPF(s) · ${Number(b.titulos||0)} título(s) · ${cobTMoney(b.valor||0)}</div></div>`).join('')||'<div class="empty">Ainda não houve download.</div>'}</div></div>`;
 }
 
 const WA_MASTER_MONITOR_URL='https://dashbboardcobvendasmdl.up.railway.app';
@@ -14776,7 +14885,7 @@ async function fazerLogin(){
 }
 async function abrirApp(){
   try{document.body.classList.toggle('master-view', String(usuarioAtual?.tipo||'').toLowerCase()==='master'); document.body.classList.toggle('diretor-view', String(usuarioAtual?.tipo||'').toLowerCase()==='diretor');}catch(e){}
- loginScreen.classList.add('hidden'); app.classList.remove('hidden'); if(usuarioAtual.tipo==='master'){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); const isDiretor=usuarioAtual?.roleLabel==='Diretor Comercial'; userBadge.textContent=isDiretor?'👑 Diretor Comercial':'👑 Master'; masterTabs.classList.remove('hidden'); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{const t=btn.dataset.tab; btn.classList.toggle('hidden', isDiretor && ['cobrancas','senhas','whatsapp_master'].includes(t));}); setMainTab('inicio')} else if(usuarioAtual.is_viewer){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); userBadge.textContent='📺 Painel'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); listSection.classList.add('hidden'); metaSection.classList.add('hidden'); logSection.classList.add('hidden'); avisosSection.classList.add('hidden'); senhasSection.classList.add('hidden'); histSection.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden'); mainTab='inicio'; renderTopMural(); renderInicioTab();} else {document.getElementById('kpis').classList.add('hidden'); userBadge.textContent=usuarioAtual.is_terceiro?`🤝 ${usuarioAtual.nome}`:(usuarioAtual.is_crediarista?`🧾 ${usuarioAtual.nome}`:(usuarioAtual.is_gerente?`🏬 ${usuarioAtual.filial}`:`👤 ${usuarioAtual.nome}`)); masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(usuarioAtual.is_terceiro){openThirdChargePanel()} else if(usuarioAtual.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login}) }
+ loginScreen.classList.add('hidden'); app.classList.remove('hidden'); if(usuarioAtual.tipo==='master'){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); const isDiretor=usuarioAtual?.roleLabel==='Diretor Comercial'; userBadge.textContent=isDiretor?'👑 Diretor Comercial':'👑 Master'; masterTabs.classList.remove('hidden'); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{const t=btn.dataset.tab; btn.classList.toggle('hidden', isDiretor && ['cobrancas','senhas','whatsapp_master'].includes(t));}); setMainTab('inicio')} else if(usuarioAtual.is_viewer){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); userBadge.textContent='📺 Painel'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); listSection.classList.add('hidden'); metaSection.classList.add('hidden'); logSection.classList.add('hidden'); avisosSection.classList.add('hidden'); senhasSection.classList.add('hidden'); histSection.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden'); mainTab='inicio'; renderTopMural(); renderInicioTab();} else if(usuarioAtual.is_cob_externa){document.getElementById('kpis').classList.add('hidden'); userBadge.textContent='🤝 COB - Cobrança Terceira'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden'); setMainTab('cob_terceira');} else {document.getElementById('kpis').classList.add('hidden'); userBadge.textContent=usuarioAtual.is_terceiro?`🤝 ${usuarioAtual.nome}`:(usuarioAtual.is_crediarista?`🧾 ${usuarioAtual.nome}`:(usuarioAtual.is_gerente?`🏬 ${usuarioAtual.filial}`:`👤 ${usuarioAtual.nome}`)); masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(usuarioAtual.is_terceiro){openThirdChargePanel()} else if(usuarioAtual.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login}) }
   setTimeout(()=>{tentarAtualizarOnlineDepoisLogin();}, 80);
 }
 function logout(){
@@ -16792,10 +16901,10 @@ Preparamos condições especiais para você comemorar com a gente.
     window.salvarMensagemAniversarioFilial = async function(){ const f=mdlV97FilialKey(document.getElementById('anivMsgFilial')?.value||''), el=document.getElementById('anivMsgTemplateFilial'); if(!f){toast('Selecione uma filial para salvar mensagem individual.','warn');return} CONFIG_META.aniversario_msg_template_filiais=CONFIG_META.aniversario_msg_template_filiais||{}; CONFIG_META.aniversario_msg_template_filiais[f]=String(el?.value||''); try{ const j=await mdlV97SaveConfig(); toast(j.ok?`Mensagem de aniversário da ${f} salva com emojis.`:'Não consegui salvar mensagem por filial.',j.ok?'success':'warn'); }catch(e){console.warn(e); toast('Falha ao salvar mensagem por filial.','warn')} };
     window.saveSession = function(){ try{ const auth=getAuthUser(usuarioAtual?.login||'')||{}; const data={usuarioAtual,exp:Date.now()+45*24*60*60*1000,version:DASHBOARD_BUILD_VERSION,accessRevision:Number(AUTH_STATE?.access_revision||0),userRevision:Number(auth?.session_revision||0)}; localStorage.setItem(SESSION_KEY, JSON.stringify(data)); sessionStorage.setItem(SESSION_KEY, JSON.stringify(data)); }catch(e){} };
     window.restoreSession = function(){ try{ const raw=localStorage.getItem(SESSION_KEY)||sessionStorage.getItem(SESSION_KEY); if(!raw) return false; const data=JSON.parse(raw); if(!data||!data.usuarioAtual||!data.exp||Date.now()>Number(data.exp)){clearSession();return false;} const adm=String(data.usuarioAtual?.tipo||'').toLowerCase()==='master'||String(data.usuarioAtual?.roleLabel||'').toLowerCase().includes('diretor'); if(!adm){const auth=getAuthUser(data.usuarioAtual?.login||''); if(!auth||data.accessRevision===undefined||data.userRevision===undefined||Number(data.accessRevision)!==Number(AUTH_STATE?.access_revision||0)||Number(data.userRevision)!==Number(auth?.session_revision||0)||AUTH_STATE?.access_blocked||auth?.access_disabled||['inativo','bloqueado','desligado'].includes(String(auth?.status_operacional||'ativo').toLowerCase())){clearSession();return false;}} usuarioAtual=data.usuarioAtual; return true; }catch(e){clearSession();return false} };
-    const DEFAULT_DIRECTOR_TABS_V97=['inicio','vendedores','filiais','servicos','cobrancas','avisos','historico'];
-    const ALL_TABS_V97=[['inicio','Início'],['vendedores','Por Colaborador'],['filiais','Por Filial'],['metas','Metas'],['servicos','Serviços'],['cobrancas','Cobranças'],['reativacao','Clientes sem movimento'],['aniversariantes','Aniversariantes'],['avisos','Avisos'],['telegram','WhatsApp Resumos'],['senhas','Senhas'],['historico','Histórico']];
+    const DEFAULT_DIRECTOR_TABS_V97=['inicio','vendedores','filiais','servicos','cobrancas','cob_terceira','avisos','historico'];
+    const ALL_TABS_V97=[['inicio','Início'],['vendedores','Por Colaborador'],['filiais','Por Filial'],['metas','Metas'],['servicos','Serviços'],['cobrancas','Cobranças'],['cob_terceira','Cobrança Terceira'],['reativacao','Clientes sem movimento'],['aniversariantes','Aniversariantes'],['avisos','Avisos'],['telegram','WhatsApp Resumos'],['senhas','Senhas'],['historico','Histórico']];
     function isDiretorV97(){ return String(usuarioAtual?.roleLabel||'').toLowerCase().includes('diretor') || String(usuarioAtual?.login||'').toLowerCase()==='diretorcomercial' || String(usuarioAtual?.tipo||'').toLowerCase()==='diretor'; }
-    function diretorTabsV97(){ const arr=Array.isArray(CONFIG_META?.director_visible_tabs)?CONFIG_META.director_visible_tabs:[]; return (arr.length?arr:DEFAULT_DIRECTOR_TABS_V97).map(String); }
+    function diretorTabsV97(){ const arr=Array.isArray(CONFIG_META?.director_visible_tabs)?CONFIG_META.director_visible_tabs:[]; const out=(arr.length?arr:DEFAULT_DIRECTOR_TABS_V97).map(String); if(!out.includes('cob_terceira')) out.push('cob_terceira'); return out; }
     function applyDirectorTabsV97(){ try{ if(!isDiretorV97()) return; const allowed=new Set(diretorTabsV97()); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{ const t=String(btn.dataset.tab||''); btn.classList.toggle('hidden', !allowed.has(t)); }); if(!allowed.has(String(window.mainTab||'inicio')) && typeof setMainTab==='function') setMainTab('inicio'); }catch(e){console.warn('[MDL V9.7] apply tabs',e)} }
     window.applyDirectorTabsV97=applyDirectorTabsV97;
     const _oldAbrirV97=typeof abrirApp==='function'?abrirApp:null; if(_oldAbrirV97){ abrirApp=async function(){ const r=await _oldAbrirV97.apply(this,arguments); setTimeout(()=>{applyDirectorTabsV97();mdlV97EnsureMsgDefaults();},80); return r; }; }
@@ -19066,7 +19175,170 @@ try{console.log('[V10.69] auditoria imediata + aprovação automática + control
 </script>
 
 <script>
-try{window.DASHBOARD_BUILD_VERSION='V10.79';console.log('[V10.79] retorno 10/página + CSM lote reconstruível + aniversariantes estáveis + gerentes em linha');}catch(e){}
+try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.80] Cobrança Terceira D+91 por CPF + exportação COB + exclusão interna');}catch(e){}
+</script>
+
+<script>
+/* ===== V10.81: painel individual estável — anti salto de rolagem PC + celular =====
+   Corrige re-renderizações assíncronas antigas que podiam restaurar um scroll capturado
+   antes do usuário terminar de rolar a tela. Também posterga redraw completo enquanto
+   há toque/roda/teclado/campo em uso e preserva posição, acordeões e aba de cobrança.
+*/
+(function(){
+  const TAG='[V10.81 tela individual estável]';
+  try{
+    let userNavSeq=0;
+    let lastHumanInteraction=0;
+    let deferredCoreTimer=null;
+    let deferredCoreRef=null;
+
+    function markHuman(){ userNavSeq++; lastHumanInteraction=Date.now(); }
+    ['wheel','touchstart','touchmove','pointerdown'].forEach(ev=>{
+      document.addEventListener(ev,markHuman,{capture:true,passive:true});
+    });
+    document.addEventListener('keydown',ev=>{
+      const k=String(ev.key||'');
+      if(['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' ','Tab'].includes(k)) markHuman();
+    },true);
+    document.addEventListener('input',markHuman,true);
+    document.addEventListener('change',markHuman,true);
+
+    function detailVisible81(){
+      const d=document.getElementById('detailScreen');
+      return !!(d && !d.classList.contains('hidden'));
+    }
+    function norm81(v){return String(v??'').trim().toUpperCase()}
+    function refKey81(r){
+      if(!r)return '';
+      const f=norm81(r.filial||'');
+      let t=String(r.type||'').toLowerCase();
+      if(r.is_gerente||r.is_fixed_gerente||r.is_gerente_filial_fixo||t==='gerente') t='filial';
+      if(t==='filial') return 'FILIAL|'+f;
+      return [t,f,String(r.login||'').toLowerCase(),norm81(r.nome||'')].join('|');
+    }
+    function sameCurrent81(r){
+      try{return detailVisible81() && !!window.currentDetailRef && refKey81(window.currentDetailRef)===refKey81(r)}catch(e){return false}
+    }
+    function focusedEditor81(){
+      const a=document.activeElement;
+      if(!a)return false;
+      const tag=String(a.tagName||'').toUpperCase();
+      return ['INPUT','TEXTAREA','SELECT','BUTTON'].includes(tag) || !!a.isContentEditable;
+    }
+    function humanBusy81(){
+      return focusedEditor81() || (Date.now()-lastHumanInteraction)<1800;
+    }
+    function uiSnapshot81(){
+      const d=document.getElementById('detailScreen');
+      if(!d)return null;
+      const open=[];
+      d.querySelectorAll('.accordion.open').forEach(a=>{
+        const h=(a.querySelector('.acc-head')?.innerText||'').trim().slice(0,140);
+        if(h)open.push(h);
+      });
+      const active=d.querySelector('[data-cobtab].active')?.dataset?.cobtab||'';
+      const el=document.activeElement;
+      const focusId=(el && d.contains(el) && el.id)?el.id:'';
+      return {scrollY:window.scrollY,open,active,focusId,userNavSeq};
+    }
+    function restoreUi81(st,restoreScroll=true){
+      if(!st)return;
+      const d=document.getElementById('detailScreen');
+      if(!d)return;
+      try{
+        d.querySelectorAll('.accordion').forEach(a=>{
+          const h=(a.querySelector('.acc-head')?.innerText||'').trim().slice(0,140);
+          if(st.open?.includes(h)) a.classList.add('open');
+        });
+        if(st.active){
+          const btn=d.querySelector(`[data-cobtab="${st.active}"]`);
+          if(btn && typeof window.switchCobTab==='function') window.switchCobTab(btn,st.active);
+        }
+        if(st.focusId){
+          const f=document.getElementById(st.focusId);
+          if(f){try{f.focus({preventScroll:true})}catch(e){}}
+        }
+        if(restoreScroll){
+          const y=Math.max(0,Number(st.scrollY||0));
+          requestAnimationFrame(()=>requestAnimationFrame(()=>{
+            try{window.scrollTo({top:y,left:0,behavior:'auto'})}catch(e){window.scrollTo(0,y)}
+          }));
+        }
+      }catch(e){console.warn(TAG,'restore',e)}
+    }
+
+    // Substitui a restauração antiga: nunca volta para um scroll capturado se o usuário
+    // continuou rolando enquanto um fetch assíncrono estava em andamento.
+    const oldCapture81=typeof window.captureDetailUiState==='function'?window.captureDetailUiState:null;
+    window.captureDetailUiState=captureDetailUiState=function(){
+      let st=null;
+      try{st=oldCapture81?oldCapture81():uiSnapshot81()}catch(e){st=uiSnapshot81()}
+      if(st){st.v1081NavSeq=userNavSeq;st.v1081CapturedAt=Date.now();}
+      return st;
+    };
+    window.restoreDetailUiState=restoreDetailUiState=function(st){
+      if(!st)return;
+      // Acordeões/aba podem ser restaurados, mas scroll só se não houve navegação humana depois da captura.
+      const allowScroll=Number(st.v1081NavSeq??userNavSeq)===userNavSeq;
+      restoreUi81(st,allowScroll);
+    };
+
+    // Protege qualquer redraw completo direto do painel (inclusive os legados V9/V10.x).
+    const oldCore81=typeof window.openEntityCore==='function'?window.openEntityCore:null;
+    if(oldCore81){
+      window.openEntityCore=openEntityCore=function(ref){
+        const same=sameCurrent81(ref);
+        if(same && humanBusy81()){
+          deferredCoreRef={...(ref||{})};
+          clearTimeout(deferredCoreTimer);
+          deferredCoreTimer=setTimeout(function runWhenIdle(){
+            if(humanBusy81()){
+              deferredCoreTimer=setTimeout(runWhenIdle,900);
+              return;
+            }
+            const rr=deferredCoreRef; deferredCoreRef=null;
+            if(rr && detailVisible81() && sameCurrent81(rr)) window.openEntityCore(rr);
+          },1900);
+          return;
+        }
+        const st=same?uiSnapshot81():null;
+        const out=oldCore81.apply(this,arguments);
+        if(st) restoreUi81(st,true);
+        return out;
+      };
+    }
+
+    // Blindagem adicional para chamadas automáticas openEntity(currentDetailRef).
+    const oldOpen81=typeof window.openEntity==='function'?window.openEntity:null;
+    if(oldOpen81){
+      window.openEntity=openEntity=async function(ref){
+        const same=sameCurrent81(ref);
+        const st=same?uiSnapshot81():null;
+        const seqBefore=userNavSeq;
+        const out=await oldOpen81.apply(this,arguments);
+        if(st && seqBefore===userNavSeq) restoreUi81(st,true);
+        return out;
+      };
+    }
+
+    // Enquanto a pessoa estiver tocando/rolando o painel, não permite que o navegador
+    // faça ancoragem inesperada por blocos que chegam assincronamente.
+    const css=document.createElement('style');
+    css.id='mdl-v1081-stable-scroll-css';
+    css.textContent=`
+      #detailScreen{scroll-behavior:auto!important;overscroll-behavior-y:auto;}
+      body.individual-view #detailScreen,body.gerente-filial-view #detailScreen{overflow-anchor:none;}
+      @media(max-width:760px){
+        body.individual-view,body.gerente-filial-view{touch-action:pan-y pinch-zoom;}
+        body.individual-view #detailScreen *,body.gerente-filial-view #detailScreen *{scroll-margin-top:0!important;}
+      }
+    `;
+    document.head.appendChild(css);
+
+    window.DASHBOARD_BUILD_VERSION='V10.81';
+    console.log(TAG,'ativo: redraw automático adiado durante uso + scroll preservado');
+  }catch(e){console.warn('[V10.81] falhou',e)}
+})();
 </script>
 </body>
 </html>
@@ -19407,6 +19679,71 @@ print(f'🌐 HTML salvo: {html_path}')
 # =========================================
 # 📡 APIs PHP PARA LOG ONLINE / CONFIG ONLINE
 # =========================================
+
+COBRANCA_TERCEIRA_API_PHP = r"""<?php
+date_default_timezone_set('America/Sao_Paulo');
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('X-Content-Type-Options: nosniff');
+if ($_SERVER['REQUEST_METHOD']==='OPTIONS'){http_response_code(204);exit;}
+$stateFile=__DIR__.'/cobranca_terceira_fila_privada.php';
+$previewFile=__DIR__.'/cobranca_terceira_preview_privado.php';
+$summaryFile=__DIR__.'/cobranca_terceira_resumo.json';
+$credFile=__DIR__.'/credenciais_dashboard.json';
+$privatePrefix="<?php http_response_code(404); exit; ?>\n";
+function cob_read_private($p,$d){
+  if(!file_exists($p))return $d;$raw=@file_get_contents($p);if($raw===false)return $d;
+  if(strpos($raw,'<?php')===0){$pos=strpos($raw,"\n");$raw=$pos===false?'':substr($raw,$pos+1);}
+  $x=json_decode($raw,true);return is_array($x)?$x:$d;
+}
+function cob_write_private($p,$data){global $privatePrefix;$tmp=$p.'.tmp.'.bin2hex(random_bytes(4));$json=json_encode($data,JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT);if($json===false)return false;$ok=@file_put_contents($tmp,$privatePrefix.$json,LOCK_EX);if($ok===false)return false;if(file_exists($p))@unlink($p);return @rename($tmp,$p);}
+function cob_write_json($p,$data){$tmp=$p.'.tmp.'.bin2hex(random_bytes(4));$json=json_encode($data,JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT);if($json===false)return false;if(@file_put_contents($tmp,$json,LOCK_EX)===false)return false;if(file_exists($p))@unlink($p);return @rename($tmp,$p);}
+function cob_header($name){$k='HTTP_'.strtoupper(str_replace('-','_',$name));return trim((string)($_SERVER[$k]??''));}
+function cob_auth(){global $credFile;
+  $login=strtolower(cob_header('X-MDL-Login'));$pass=cob_header('X-MDL-Password');if($login===''||$pass==='')return [false,''];
+  if($login===strtolower('__MASTER_LOGIN__') && hash_equals('__MASTER_PASSWORD__',$pass))return [true,$login];
+  $cred=json_decode(@file_get_contents($credFile),true);if(!is_array($cred))$cred=[];
+  if($login==='diretorcomercial'){$dir=is_array($cred['director']??null)?$cred['director']:[];$expected=(string)($dir['password']??'__DIRECTOR_PASSWORD__');if($expected!==''&&hash_equals($expected,$pass))return [true,$login];return [false,''];}
+  foreach(($cred['users']??[]) as $k=>$u){if(strtolower((string)$k)!==$login && strtolower((string)($u['login']??''))!==$login)continue;$expected=(string)($u['password']??'');$allowed=!empty($u['is_cob_externa']);if($allowed&&$expected!==''&&hash_equals($expected,$pass))return [true,$login];break;}
+  return [false,''];
+}
+function cob_day($v){$v=(string)$v;return preg_match('/^\\d{4}-\\d{2}-\\d{2}/',$v,$m)?$m[0]:'';}
+function cob_num($v){return is_numeric($v)?(float)$v:(float)str_replace(',','.',preg_replace('/[^0-9,.-]/','',(string)$v));}
+function cob_clip($s,$n=900){$s=(string)$s;return function_exists('mb_substr')?mb_substr($s,0,$n,'UTF-8'):substr($s,0,$n);}
+function cob_public_summary($state){$items=is_array($state['items']??null)?$state['items']:[];$today=date('Y-m-d');$new=0;$sent=0;$titles=0;$value=0.0;$hold=0;$err=0;$ready=0;$sentTotal=0;
+  foreach($items as $x){$st=strtolower((string)($x['status']??''));if($st==='pronto')$ready++;if($st==='enviado')$sentTotal++;if($st==='hold_acordo')$hold++;if(in_array($st,['erro_sgi','bloqueado_marcador']))$err++;
+    if(cob_day($x['ready_at']??$x['trigger_at']??'')===$today && in_array($st,['pronto','enviado'])){$new++;foreach(($x['titulos']??[]) as $t)$value+=cob_num($t['pendente']??0);}
+    if(cob_day($x['sent_at']??$x['last_download_at']??'')===$today && $st==='enviado'){$sent++;$titles+=count($x['titulos']??[]);}
+  }
+  return ['version'=>'V10.80','updated_at'=>date(DATE_ATOM),'date'=>$today,'new_cpfs_today'=>$new,'sent_cpfs_today'=>$sent,'sent_titles_today'=>$titles,'new_value_today'=>round($value,2),'hold_count'=>$hold,'error_count'=>$err,'ready_count'=>$ready,'sent_total'=>$sentTotal];
+}
+function cob_csv_row($item,$t){
+  $p=is_array($item['pessoa']??null)?$item['pessoa']:[];$a=is_array($p['address']??null)?$p['address']:[];$phones=is_array($p['phones']??null)?$p['phones']:[];
+  while(count($phones)<3)$phones[]='';$extra=[];
+  if(!empty($t['filial']))$extra[]='FILIAL: '.$t['filial']; if(!empty($t['forma_pagamento']))$extra[]='FORMA: '.$t['forma_pagamento']; if(!empty($t['vendedor']))$extra[]='VENDEDOR: '.$t['vendedor'];
+  $extra[]='DIAS VENCIDOS: '.($t['dias']??0); if(!empty($t['avalista']))$extra[]='AVALISTA: '.$t['avalista']; if(!empty($t['observacoes']))$extra[]='OBS: '.cob_clip($t['observacoes'],900);
+  return [(string)($p['pessoa_id']??$item['codigo_devedor']??$item['cpf_cnpj']??''),(string)($item['nome_exportacao']??$item['cliente']??''),(string)($item['cpf_cnpj']??''),(string)$phones[0],(string)$phones[1],(string)$phones[2],(string)($p['email']??''),(string)($a['logradouro']??''),(string)($a['numero']??''),(string)($a['complemento']??''),(string)($a['bairro']??''),(string)($a['cidade']??''),(string)($a['uf']??''),(string)($a['cep']??''),implode(' | ',$extra),(string)($t['titulo']??''),(string)($t['parcela']??''),(string)($t['lancamento']??''),(string)($t['vencimento']??''),number_format(cob_num($t['pendente']??0),2,',','')];
+}
+[$authorized,$login]=cob_auth();if(!$authorized){http_response_code(401);header('Content-Type: application/json; charset=UTF-8');echo json_encode(['ok'=>false,'error'=>'nao_autorizado'],JSON_UNESCAPED_UNICODE);exit;}
+$state=cob_read_private($stateFile,['version'=>'V10.80','items'=>[],'batches'=>[]]);if(!isset($state['items'])||!is_array($state['items']))$state['items']=[];if(!isset($state['batches'])||!is_array($state['batches']))$state['batches']=[];
+$action=(string)($_GET['action']??$_POST['action']??'');
+if($action==='download'){
+  $period=(string)($_GET['period']??$_POST['period']??'pending');$today=date('Y-m-d');$cut=date('Y-m-d',strtotime('-6 days'));
+  $selected=[];$indexes=[];$valor=0.0;$titulos=0;
+  foreach($state['items'] as $i=>$item){if(strtolower((string)($item['status']??''))!=='pronto')continue;$d=cob_day($item['ready_at']??$item['trigger_at']??'');$ok=($period==='pending')||($period==='today'&&$d===$today)||($period==='7d'&&$d>=$cut&&$d<=$today);if(!$ok)continue;$selected[]=$item;$indexes[]=$i;foreach(($item['titulos']??[]) as $tt){$valor+=cob_num($tt['pendente']??0);$titulos++;}}
+  if(count($selected)===0){http_response_code(409);header('Content-Type: application/json; charset=UTF-8');echo json_encode(['ok'=>false,'error'=>'sem_clientes_prontos'],JSON_UNESCAPED_UNICODE);exit;}
+  $batch='COB-'.date('Ymd-His').'-'.substr(bin2hex(random_bytes(4)),0,8);$now=date(DATE_ATOM);
+  foreach($indexes as $idx){$state['items'][$idx]['status']='enviado';$state['items'][$idx]['sent_at']=$now;$state['items'][$idx]['last_download_at']=$now;$state['items'][$idx]['downloaded_by']=$login;$state['items'][$idx]['batch_id']=$batch;$state['items'][$idx]['downloads']=(int)($state['items'][$idx]['downloads']??0)+1;}
+  $state['batches'][]=['batch_id'=>$batch,'created_at'=>$now,'downloaded_by'=>$login,'period'=>$period,'cpfs'=>count($selected),'titulos'=>$titulos,'valor'=>round($valor,2)];$state['updated_at']=$now;cob_write_private($stateFile,$state);cob_write_json($summaryFile,cob_public_summary($state));
+  while(ob_get_level())ob_end_clean();header('Content-Type: text/csv; charset=UTF-8');header('Content-Disposition: attachment; filename="cobranca_COB_'.$period.'_'.date('Y-m-d_His').'.csv"');echo "\xEF\xBB\xBF";$out=fopen('php://output','w');
+  fwrite($out,"COD_DEVEDOR;NOME;CNPJ_CPF;FONE 1;FONE 2;FONE 3;EMAIL;ENDERECO;NUMERO;COMPLEMENTO;BAIRRO;CIDADE;ESTADO;CEP;DADOS_ADICIONAIS;COD_TITULO;PARCELA;CONTRATO;DT_VENCIMENTO; VL_TITULO \r\n");
+  foreach($selected as $item){foreach(($item['titulos']??[]) as $tt){fputcsv($out,cob_csv_row($item,$tt),';');}}fclose($out);exit;
+}
+$preview=cob_read_private($previewFile,['items'=>[]]);$out=['ok'=>true,'data'=>$state,'items'=>$state['items'],'batches'=>$state['batches'],'preview'=>is_array($preview['items']??null)?$preview['items']:[],'updated_at'=>$state['updated_at']??''];header('Content-Type: application/json; charset=UTF-8');echo json_encode($out,JSON_UNESCAPED_UNICODE);exit;
+?>"""
+COBRANCA_TERCEIRA_API_PHP = (COBRANCA_TERCEIRA_API_PHP
+    .replace('__MASTER_LOGIN__', str(LOGIN_MASTER))
+    .replace('__MASTER_PASSWORD__', str(SENHA_MASTER))
+    .replace('__DIRECTOR_PASSWORD__', str(cred_state.get('director', {}).get('password') or SENHA_DIRETOR)))
 
 HISTORICO_COMISSIONAMENTO_API_PHP = r"""<?php
 header('Content-Type: application/json; charset=utf-8');
@@ -20465,6 +20802,7 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
     # 2) APIs pequenas e essenciais.
     _ftp_upload_bytes_v1019('cobrancas_api.php', COBRANCAS_API_PHP.encode('utf-8'), label='cobrancas_api.php')
     _ftp_upload_bytes_v1019('cobranca_auditoria_api.php', COBRANCA_AUDITORIA_API_PHP.encode('utf-8'), label='cobranca_auditoria_api.php')
+    _ftp_upload_bytes_v1019('cobranca_terceira_api.php', COBRANCA_TERCEIRA_API_PHP.encode('utf-8'), label='cobranca_terceira_api.php')
     _ftp_upload_bytes_v1019('config_meta_api.php', CONFIG_META_API_PHP.encode('utf-8'), label='config_meta_api.php')
     _ftp_upload_bytes_v1019('mensagens_api.php', MESSAGES_API_PHP.encode('utf-8'), label='mensagens_api.php')
     _ftp_upload_bytes_v1019('access_guard_api.php', ACCESS_GUARD_API_PHP.encode('utf-8'), label='access_guard_api.php')

@@ -1,4 +1,4 @@
-# VERSAO: WHATSAPP_MASTER_NOTIFICACOES_V10_76
+# VERSAO: WHATSAPP_MASTER_NOTIFICACOES_V10_80_COB_TERCEIRA
 from __future__ import annotations
 
 import json
@@ -25,7 +25,7 @@ from telegram_monitor_mdl import (
     tail_file,
 )
 
-VERSION = "V10.76"
+VERSION = "V10.80"
 TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 PUBLIC_BASE = os.getenv("DASHBOARD_PUBLIC_BASE_URL", "https://moveisdolar.com.br/colaborador").rstrip("/")
 WHATSAPP_BASE = os.getenv(
@@ -279,6 +279,17 @@ def build_whatsapp_daily_summary(base_dir: str, date_str: str | None = None) -> 
     for x in created:
         fx = str(x.get("faixa") or "").lower()
         by_faixa[fx if fx in by_faixa else "outro"] += 1
+    # V10.80: resumo COB é público somente em forma agregada; nenhuma PII da fila é publicada em JSON.
+    cob_summary = _url_json(f"{PUBLIC_BASE}/cobranca_terceira_resumo.json?_={int(datetime.now(TZ).timestamp())}", {}, timeout=20)
+    if not isinstance(cob_summary, dict) or str(cob_summary.get("date") or "") != date_str:
+        cob_summary = {}
+    cob_new_count = int(cob_summary.get("new_cpfs_today") or 0)
+    cob_sent_count = int(cob_summary.get("sent_cpfs_today") or 0)
+    cob_titles_sent = int(cob_summary.get("sent_titles_today") or 0)
+    cob_value_new = float(cob_summary.get("new_value_today") or 0)
+    cob_hold_count = int(cob_summary.get("hold_count") or 0)
+    cob_error_count = int(cob_summary.get("error_count") or 0)
+
     clean_lines.extend([
         "",
         "💬 RESPOSTAS DE CLIENTES / AUDITORIA",
@@ -288,6 +299,14 @@ def build_whatsapp_daily_summary(base_dir: str, date_str: str | None = None) -> 
         f"• Aprovadas pelo MASTER hoje: {len(approved_master)}",
         f"• Recusadas pelo MASTER hoje: {len(rejected_master)}",
         f"• Aguardando decisão do MASTER agora: {len(pending)}",
+        "",
+        "🤝 COBRANÇA TERCEIRA / COB",
+        f"• Novos CPFs encaminhados hoje: {cob_new_count}",
+        f"• CPFs baixados/enviados pela COB hoje: {cob_sent_count}",
+        f"• Títulos enviados hoje: {cob_titles_sent}",
+        f"• Valor novo encaminhado hoje: R$ {cob_value_new:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+        f"• Em acordo/promessa temporária: {cob_hold_count}",
+        f"• Pendências de atualização SGI/marcadores: {cob_error_count}",
     ])
     return "\n".join(clean_lines)
 
