@@ -1,4 +1,4 @@
-# V10_83_FIX_HASHLIB_VALIDADO
+# V10_84_COB_HEADER_ROBUSTO
 # VERSAO: RAILWAY_SCHEDULER_MDL_V10_82_COBRANCA_TERCEIRA_BACKOFF
 import json
 import os
@@ -81,7 +81,7 @@ STATUS_PATH = os.path.join(LOG_DIR, 'monitor_status.json')
 SALES_CMD = [sys.executable, os.path.join(BASE_DIR, 'dashboard_sales_worker_headless.py')]
 COBRANCA_CMD = [sys.executable, os.path.join(BASE_DIR, 'dashboard_railway_main_headless.py')]
 PREVENTIVA_CMD = [sys.executable, os.path.join(BASE_DIR, 'whatsapp_master_preventiva_worker.py')]
-COB_TERCEIRA_CMD = [sys.executable, os.path.join(BASE_DIR, 'cobranca_terceira_worker_v1080.py')]
+COB_TERCEIRA_CMD = [sys.executable, os.path.join(BASE_DIR, 'cobranca_terceira_worker_v1084.py')]
 
 _sales_proc = None
 _cobranca_proc = None
@@ -524,7 +524,7 @@ def start_http_panel():
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log(f'VERSAO V10.82: Cobrança Terceira D+91 + backoff de {COB_TERCEIRA_RETRY_MINUTES} min em falhas + notificações WhatsApp Master')
+log(f'VERSAO V10.84: Cobrança Terceira D+91 + backoff de {COB_TERCEIRA_RETRY_MINUTES} min em falhas + notificações WhatsApp Master')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
