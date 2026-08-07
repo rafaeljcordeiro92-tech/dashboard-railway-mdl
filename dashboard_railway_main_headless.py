@@ -36,7 +36,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.78"
+DASHBOARD_BUILD_VERSION = "V10.79"
 DASHBOARD_BUILD_TAG = "comissao_crediarista_fonte_unica_oficial"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -8622,7 +8622,12 @@ def carregar_clientes_sem_movimento_local():
             pass
     _lote_reusado_v1016 = False
     _lote_ant_v1016 = _load_lote_diario_v1016()
-    if isinstance(_lote_ant_v1016, dict) and isinstance(_lote_ant_v1016.get('clientes'), list) and _lote_ant_v1016.get('clientes'):
+    _lote_ant_mesma_regra_v1079 = bool(
+        isinstance(_lote_ant_v1016, dict)
+        and str(_lote_ant_v1016.get('data') or '') == hoje_lote_v1016
+        and str(_lote_ant_v1016.get('versao') or '') == DASHBOARD_BUILD_VERSION
+    )
+    if isinstance(_lote_ant_v1016, dict) and isinstance(_lote_ant_v1016.get('clientes'), list) and _lote_ant_v1016.get('clientes') and _lote_ant_mesma_regra_v1079:
         lote_rows = []
         for oldr in _lote_ant_v1016.get('clientes') or []:
             atual = None
@@ -8641,8 +8646,10 @@ def carregar_clientes_sem_movimento_local():
             lote_rows.append(base_r)
         actionable = lote_rows
         _lote_reusado_v1016 = True
-        print(f"🧡 V10.38: lote diário CSM reaproveitado ({len(actionable)} cliente(s)); não libero novos no mesmo dia.")
+        print(f"🧡 V10.79: lote diário CSM reaproveitado ({len(actionable)} cliente(s)); mesma regra/versão do dia.")
     else:
+        if isinstance(_lote_ant_v1016, dict) and str(_lote_ant_v1016.get('data') or '') == hoje_lote_v1016:
+            print(f"🔄 V10.79 CSM: lote de hoje era de outra versão/regra ({_lote_ant_v1016.get('versao') or 'sem versão'}); reconstruindo a distribuição para não deixar usuários zerados.")
         por_owner = {}
         for r in actionable_sem_limite_v1016:
             rr = _annot_owner_py_v1016(r)
@@ -8694,7 +8701,7 @@ def carregar_clientes_sem_movimento_local():
         actionable = sorted(lote_rows, key=lambda x: (str(x.get('filial','')), str(x.get('_owner_key_py','')), int(x.get('dias_sem_movimento') or 999999), str(x.get('cliente',''))))
         _fila_state_v1038['gerado_em'] = now_brasilia().isoformat()
         _fila_state_v1038['versao'] = DASHBOARD_BUILD_VERSION
-        _fila_state_v1038['regra'] = '30_por_usuario_dia_rotativo_recente_primeiro_nao_acionado_vai_final_fila_reenvio_30d'
+        _fila_state_v1038['regra'] = 'v1079_lote_rotativo_por_usuario_com_teto_global_50_rebuild_por_versao'
         _fila_state_v1038['limite_por_usuario_dia'] = max_por_usuario_v1016
         try:
             with open(csm_fila_path_v1038, 'w', encoding='utf-8') as f_fila:
@@ -8730,9 +8737,9 @@ def carregar_clientes_sem_movimento_local():
                     _restantes_v1077.append(_ok)
             _keys_v1077 = _restantes_v1077
         actionable = _limitado_v1077
-        print(f"🪶 V10.77 CSM: lote global limitado a {len(actionable)}/{max_global_dia_v1077} clientes no dia; base completa permanece somente no FTP.")
+        print(f"🪶 V10.79 CSM: lote global limitado a {len(actionable)}/{max_global_dia_v1077} clientes no dia; base completa permanece somente no FTP.")
     else:
-        print(f"🪶 V10.77 CSM: lote diário já está dentro do limite global ({len(actionable)}/{max_global_dia_v1077}).")
+        print(f"🪶 V10.79 CSM: lote diário já está dentro do limite global ({len(actionable)}/{max_global_dia_v1077}).")
 
     _por_owner_count_v1016 = {}
     for _r in actionable:
@@ -11759,7 +11766,7 @@ function renderCrediaristaDetail(ent){
   `;
 }
 
-function openEntityCore(ref){if(ref && (ref.type==='crediarista' || ref.is_crediarista)){return openCrediaristaPanel(ref.login||'', ref.filial||'', ref.nome||'')} const ent=findEntity(ref); if(!ent) return; currentDetailRef={type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''}; mascotCongrats(ent); try{renderLaranjitoNotify(); showLaranjitoOncePerAccess()}catch(e){}; document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(ent.is_terceiro || ent.type==='terceiro'){return renderTerceiroDetail(ent)} if(ent.is_crediarista || ent.type==='crediarista'){return openCrediaristaPanel(ent.login||'', ent.filial||'', ent.nome||'')} const meta=calcMeta(ent); const bonus=getBonus(meta.cfg,meta.geral); const deltaVal=Number(ent.var_pago_delta||0); const prevBase=Math.max(Math.abs(Number(ent.pago||0)-deltaVal),1); const pctFallback=(Math.abs(deltaVal)/prevBase)*100; const compPerc=(ent.var_pago_perc==null || Math.abs(Number(ent.var_pago_perc||0))<0.01)?pctFallback:Math.abs(Number(ent.var_pago_perc||0)); detailScreen.innerHTML=`${usuarioAtual && usuarioAtual.tipo!=='master' ? renderInboxBanner() : ''}${renderUpdateStrip()}<div class="back-row">${renderBackButton()}<div><h2>${ent.type==='filial'?filialLabel(ent.filial):esc(ent.nome)}</h2><div class="sub">${ent.type==='filial'?'Painel individual da filial':'Painel individual do vendedor'} · ${ent.filial}</div></div><div class="badge">${ent.type==='filial'?'🏬 Filial':'👤 Vendedor'}</div></div><div class="detail-top"><div class="glass panel"><h3>🎯 Meta do mês <span class="note">· Não acumulativo</span></h3><div class="mega-progress"><div class="ring-wrap">${renderPiggyBank(meta.geral)}</div><div><div class="metrics-grid"><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">% da filial</div><div class="v">${pct(ent.perc_filial||100)}</div></div><div class="metric"><div class="k">Configuração usada</div><div class="v">${Number(meta.cfg.grave_pct||0)}/${Number(meta.cfg.alerta_pct||0)}/${Number(meta.cfg.atencao_pct||0)}</div></div><div class="metric"><div class="k">Comparado a ontem</div><div class="v" style="font-size:16px">${renderDeltaPill(ent.var_pago_delta,compPerc)} <span>${R(Math.abs(Number(ent.var_pago_delta||0)))}</span></div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave alvo ${R(meta.grave.alvo)} · recebido ${R(meta.grave.rec)}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta alvo ${R(meta.alerta.alvo)} · recebido ${R(meta.alerta.rec)}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção alvo ${R(meta.atencao.alvo)} · recebido ${R(meta.atencao.rec)}</span></div></div></div><div class="meta-grid">${renderMetaBox('Grave','var(--red)',meta.grave)}${renderMetaBox('Alerta','var(--orange)',meta.alerta)}${renderMetaBox('Atenção','var(--yellow)',meta.atencao)}${renderMetaBox('Meta geral','var(--blue)',{perc:meta.geral,alvo:meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,rec:meta.grave.rec+meta.alerta.rec+meta.atencao.rec})}</div><div style="height:18px"></div><h3>🌊 Gráfico Geral Contas a Receber</h3>${renderSingleBars(ent,meta,true)}<div style="height:16px"></div><div class="glass panel"><h3>🏆 Bônus e premiações <span class="note">· Não acumulativo</span></h3>${renderBonusBox(meta.cfg,meta.geral)}</div></div><div>${renderSalesPanel(ent)}<div style="height:16px"></div>${renderCommissionSummary(ent)}<div style="height:16px"></div>${renderCobrancaUsuarioCommission(ent)}<div style="height:16px"></div>${renderCampaignSummary(ent)}</div></div>${renderReativacaoEnt(ent)}<div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span class="acc-hint">clique para ${'abrir'}</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span class="acc-hint">clique para ${'abrir'}</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
+function openEntityCore(ref){if(ref && (ref.type==='crediarista' || ref.is_crediarista)){return openCrediaristaPanel(ref.login||'', ref.filial||'', ref.nome||'')} const ent=findEntity(ref); if(!ent) return; currentDetailRef={type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''}; mascotCongrats(ent); try{renderLaranjitoNotify(); showLaranjitoOncePerAccess()}catch(e){}; document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(ent.is_terceiro || ent.type==='terceiro'){return renderTerceiroDetail(ent)} if(ent.is_crediarista || ent.type==='crediarista'){return openCrediaristaPanel(ent.login||'', ent.filial||'', ent.nome||'')} const meta=calcMeta(ent); const bonus=getBonus(meta.cfg,meta.geral); const deltaVal=Number(ent.var_pago_delta||0); const prevBase=Math.max(Math.abs(Number(ent.pago||0)-deltaVal),1); const pctFallback=(Math.abs(deltaVal)/prevBase)*100; const compPerc=(ent.var_pago_perc==null || Math.abs(Number(ent.var_pago_perc||0))<0.01)?pctFallback:Math.abs(Number(ent.var_pago_perc||0)); detailScreen.innerHTML=`${usuarioAtual && usuarioAtual.tipo!=='master' ? renderInboxBanner() : ''}${renderUpdateStrip()}<div class="back-row">${renderBackButton()}<div><h2>${ent.type==='filial'?filialLabel(ent.filial):esc(ent.nome)}</h2><div class="sub">${ent.type==='filial'?'Painel individual da filial':'Painel individual do vendedor'} · ${ent.filial}</div></div><div class="badge">${ent.type==='filial'?'🏬 Filial':'👤 Vendedor'}</div></div><div class="detail-top"><div class="glass panel"><h3>🎯 Meta do mês <span class="note">· Não acumulativo</span></h3><div class="mega-progress"><div class="ring-wrap">${renderPiggyBank(meta.geral)}</div><div><div class="metrics-grid"><div class="metric"><div class="k">Pendente</div><div class="v" style="color:var(--red)">${R(ent.pendente||0)}</div></div><div class="metric"><div class="k">Recebido</div><div class="v" style="color:var(--green)">${R(ent.pago||0)}</div></div><div class="metric"><div class="k">% da filial</div><div class="v">${pct(ent.perc_filial||100)}</div></div><div class="metric"><div class="k">Configuração usada</div><div class="v">${Number(meta.cfg.grave_pct||0)}/${Number(meta.cfg.alerta_pct||0)}/${Number(meta.cfg.atencao_pct||0)}</div></div><div class="metric"><div class="k">Comparado a ontem</div><div class="v" style="font-size:16px">${renderDeltaPill(ent.var_pago_delta,compPerc)} <span>${R(Math.abs(Number(ent.var_pago_delta||0)))}</span></div></div></div><div class="legend-inline" style="margin-top:12px"><span><i class="dot" style="background:var(--red)"></i>Grave alvo ${R(meta.grave.alvo)} · recebido ${R(meta.grave.rec)}</span><span><i class="dot" style="background:var(--orange)"></i>Alerta alvo ${R(meta.alerta.alvo)} · recebido ${R(meta.alerta.rec)}</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção alvo ${R(meta.atencao.alvo)} · recebido ${R(meta.atencao.rec)}</span></div></div></div><div class="meta-grid">${renderMetaBox('Grave','var(--red)',meta.grave)}${renderMetaBox('Alerta','var(--orange)',meta.alerta)}${renderMetaBox('Atenção','var(--yellow)',meta.atencao)}${renderMetaBox('Meta geral','var(--blue)',{perc:meta.geral,alvo:meta.grave.alvo+meta.alerta.alvo+meta.atencao.alvo,rec:meta.grave.rec+meta.alerta.rec+meta.atencao.rec})}</div><div style="height:18px"></div><h3>🌊 Gráfico Geral Contas a Receber</h3>${renderSingleBars(ent,meta,true)}<div style="height:16px"></div><div class="glass panel"><h3>🏆 Bônus e premiações <span class="note">· Não acumulativo</span></h3>${renderBonusBox(meta.cfg,meta.geral)}</div></div><div>${renderSalesPanel(ent)}<div style="height:16px"></div>${renderCommissionSummary(ent)}<div style="height:16px"></div>${renderCobrancaUsuarioCommission(ent)}<div style="height:16px"></div>${renderCampaignSummary(ent)}</div></div>${renderReativacaoEnt(ent)}${typeof renderAniversariantesEnt==='function'?renderAniversariantesEnt(ent):''}<div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos por faixa <span class="acc-hint">clique para ${'abrir'}</span></div><div class="acc-body">${renderRecebimentos(ent)}</div></div><div class="accordion"><div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span class="acc-hint">clique para ${'abrir'}</span></div><div class="acc-body">${renderCobrancasEnt(ent)}</div></div>`}
 function canVerComissionamento(){return usuarioAtual?.tipo==='master'}
 function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';
   const c=calcCommissionSummary(ent);
@@ -12831,7 +12838,7 @@ function cobChangePage(id,delta){COB_DETAIL_PAGES[id]=Number(COB_DETAIL_PAGES[id
    Busca por nome, CPF/CNPJ ou título e limita o DOM aos primeiros resultados.
 */
 const COB_RETORNO_SEARCH={};
-const COB_RETORNO_SEARCH_LIMIT=25;
+const COB_RETORNO_PAGE_SIZE=10;
 function cobRetornoNorm(v){
   try{return String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim();}
   catch(e){return String(v??'').toUpperCase().trim();}
@@ -12839,7 +12846,8 @@ function cobRetornoNorm(v){
 function cobRetornoDigits(v){return String(v??'').replace(/\D/g,'');}
 function cobRetornoMatch(r,q){
   const raw=String(q??'').trim();
-  if(raw.length<2)return false;
+  if(!raw)return true;
+  if(raw.length<2)return true;
   const nq=cobRetornoNorm(raw);
   const qd=cobRetornoDigits(raw);
   const nome=cobRetornoNorm(r?.cliente||r?.nome||'');
@@ -12851,24 +12859,44 @@ function cobRetornoMatch(r,q){
 function cobRetornoResultRow(r,entRef){
   return `<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div>${r.cpf_cnpj?`<div class="small muted">🪪 CPF/CNPJ: <strong>${esc(r.cpf_cnpj)}</strong></div>`:''}<div class="small muted">Título <strong>${esc(r.titulo||'')}</strong> · parcela ${esc(r.parcela||'')} · ${esc(r.faixa_label||'')}</div></div><div>${printAuditBox(r,entRef)}</div></div></div>`;
 }
-function cobRetornoSearch(id,q){
+function cobRetornoFiltered(id){
+  const cfg=COB_RETORNO_SEARCH[id]; if(!cfg)return [];
+  const q=String(cfg.query||'').trim();
+  return q.length>=2?cfg.rows.filter(r=>cobRetornoMatch(r,q)):cfg.rows.slice();
+}
+function cobRetornoRender(id){
   const cfg=COB_RETORNO_SEARCH[id];
   const host=document.getElementById(id+'_results');
   const info=document.getElementById(id+'_info');
   if(!cfg||!host)return;
-  const raw=String(q??'').trim();
-  if(raw.length<2){
-    host.innerHTML='<div class="empty">Digite pelo menos 2 caracteres para localizar o cliente.</div>';
-    if(info)info.textContent=`${cfg.rows.length} cobrança(s) aguardando retorno · nenhuma carregada na tela`;
-    return;
-  }
-  const achados=cfg.rows.filter(r=>cobRetornoMatch(r,raw));
-  const vis=achados.slice(0,COB_RETORNO_SEARCH_LIMIT);
-  if(info)info.textContent=achados.length?`${achados.length} resultado(s) encontrado(s) · mostrando ${vis.length}`:'Nenhum resultado encontrado';
-  host.innerHTML=vis.length?vis.map(r=>cobRetornoResultRow(r,cfg.entRef)).join(''):'<div class="empty">Nenhum cliente encontrado por nome, CPF/CNPJ ou título.</div>';
+  const rows=cobRetornoFiltered(id);
+  const pages=Math.max(1,Math.ceil(rows.length/COB_RETORNO_PAGE_SIZE));
+  cfg.page=Math.min(Math.max(1,Number(cfg.page||1)),pages);
+  const ini=(cfg.page-1)*COB_RETORNO_PAGE_SIZE;
+  const vis=rows.slice(ini,ini+COB_RETORNO_PAGE_SIZE);
+  const q=String(cfg.query||'').trim();
+  if(info)info.textContent=q.length>=2?`${rows.length} resultado(s) · página ${cfg.page}/${pages}`:`${cfg.rows.length} cobrança(s) aguardando retorno · página ${cfg.page}/${pages}`;
+  const body=vis.length?vis.map(r=>cobRetornoResultRow(r,cfg.entRef)).join(''):'<div class="empty">Nenhum cliente encontrado por nome, CPF/CNPJ ou título.</div>';
+  const pager=rows.length>COB_RETORNO_PAGE_SIZE?`<div class="log-pager"><span>${rows.length} cliente(s) · 10 por página · página ${cfg.page}/${pages}</span><span><button class="btn soft" ${cfg.page<=1?'disabled':''} onclick="cobRetornoPage('${id}',${cfg.page-1})">⬅️ Anterior</button> <button class="btn soft" ${cfg.page>=pages?'disabled':''} onclick="cobRetornoPage('${id}',${cfg.page+1})">Próxima ➡️</button></span></div>`:'';
+  host.innerHTML=body+pager;
+}
+function cobRetornoSearch(id,q){
+  const cfg=COB_RETORNO_SEARCH[id]; if(!cfg)return;
+  cfg.query=String(q??''); cfg.page=1; cobRetornoRender(id);
+}
+function cobRetornoPage(id,page){
+  const cfg=COB_RETORNO_SEARCH[id]; if(!cfg)return;
+  cfg.page=Math.max(1,Number(page||1)); cobRetornoRender(id);
 }
 function cobRetornoSearchBox(id,total){
-  return `<div class="glass" style="padding:12px;border-radius:14px;margin-bottom:12px"><div style="display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:10px;align-items:center"><input type="search" autocomplete="off" placeholder="🔎 Buscar por nome, CPF/CNPJ ou título..." oninput="cobRetornoSearch('${id}',this.value)" style="width:100%;padding:11px 13px;border-radius:11px;border:1px solid var(--glass-border);background:rgba(0,0,0,.28);color:var(--text-primary);outline:none;font:inherit"><div id="${id}_info" class="small muted" style="white-space:nowrap">${total} cobrança(s) aguardando retorno · nenhuma carregada na tela</div></div></div><div id="${id}_results"><div class="empty">Pesquise o cliente para anexar as evidências. A lista completa não é renderizada para manter o dashboard leve.</div></div>`;
+  const cfg=COB_RETORNO_SEARCH[id];
+  if(cfg){cfg.query='';cfg.page=1;}
+  const rows=cfg?.rows||[];
+  const pages=Math.max(1,Math.ceil(rows.length/COB_RETORNO_PAGE_SIZE));
+  const vis=rows.slice(0,COB_RETORNO_PAGE_SIZE);
+  const first=vis.length?vis.map(r=>cobRetornoResultRow(r,cfg?.entRef||{})).join(''):'<div class="empty">Nenhuma cobrança aguardando print de retorno.</div>';
+  const pager=rows.length>COB_RETORNO_PAGE_SIZE?`<div class="log-pager"><span>${rows.length} cliente(s) · 10 por página · página 1/${pages}</span><span><button class="btn soft" disabled>⬅️ Anterior</button> <button class="btn soft" onclick="cobRetornoPage('${id}',2)">Próxima ➡️</button></span></div>`:'';
+  return `<div class="glass" style="padding:12px;border-radius:14px;margin-bottom:12px"><div style="display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:10px;align-items:center"><input type="search" autocomplete="off" placeholder="🔎 Buscar por nome, CPF/CNPJ ou título..." oninput="cobRetornoSearch('${id}',this.value)" style="width:100%;padding:11px 13px;border-radius:11px;border:1px solid var(--glass-border);background:rgba(0,0,0,.28);color:var(--text-primary);outline:none;font:inherit"><div id="${id}_info" class="small muted" style="white-space:nowrap">${total} cobrança(s) aguardando retorno · página 1/${pages}</div></div></div><div id="${id}_results">${first}${pager}</div>`;
 }
 
 function renderCobrancasEnt(ent){
@@ -14271,26 +14299,29 @@ function gerentesFiliaisFixos(){
   });
 }
 function renderGerentesFiliaisPanel(){
-  const cards=gerentesFiliaisFixos().map(g=>{
+  const rows=gerentesFiliaisFixos().map(g=>{
     const dom=_senhaDomKey(g.login);
-    return `<div class="ger-filial-card">
-      <div class="ger-filial-head"><div><strong>${esc(g.filial)}</strong><div class="small muted">Conta fixa da filial</div></div><code>${esc(g.login)}</code></div>
-      <div class="form-grid bonus" style="margin-top:10px">
-        <div class="input-card"><label>Nome do gerente atual</label><input id="ger_nome_${dom}" value="${esc(g.nome)}" placeholder="Nome do gerente atual"></div>
-        <div class="input-card"><label>Status</label>${g.must_change_password?'<span class="mini-chip warn">Precisa trocar</span>':'<span class="mini-chip ok">Ativa</span>'}</div>
-        <div class="input-card"><label>Nova senha</label><input id="ger_pwd_${dom}" placeholder="Nova senha"></div>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-        <button class="btn primary" onclick="adminSalvarGerenteFilial('${g.login}')">💾 Salvar</button>
-        <button class="btn soft" onclick="adminMarcarTroca('${g.login}')">🔁 Exigir troca</button>
-      </div>
-      <div class="small muted" id="ger_msg_${dom}" style="margin-top:6px"></div>
-    </div>`;
+    return `<tr>
+      <td><strong>${esc(g.filial)}</strong></td>
+      <td><code>${esc(g.login)}</code></td>
+      <td><input id="ger_nome_${dom}" value="${esc(g.nome)}" placeholder="Nome do gerente atual"></td>
+      <td>${g.must_change_password?'<span class="mini-chip warn">Precisa trocar</span>':'<span class="mini-chip ok">Ativa</span>'}</td>
+      <td><input id="ger_pwd_${dom}" placeholder="Nova senha"></td>
+      <td><div class="ger-actions"><button class="btn primary btn-xs" onclick="adminSalvarGerenteFilial('${g.login}')">💾 Salvar</button><button class="btn soft btn-xs" onclick="adminMarcarTroca('${g.login}')">🔁 Exigir troca</button></div><div class="small muted" id="ger_msg_${dom}"></div></td>
+    </tr>`;
   }).join('');
-  return `<div class="glass panel" style="margin-bottom:14px;border-color:rgba(59,130,246,.35)">
-    <div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">🏬 Gerentes por filial</h2><div class="hint">Acesso fixo por filial. Troque só o nome do gerente atual; o login continua o mesmo e sempre abre a filial inteira.</div></div></div>
-    <style>.ger-filial-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.ger-filial-card{background:rgba(15,23,42,.55);border:1px solid rgba(148,163,184,.22);border-radius:14px;padding:10px}.ger-filial-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.ger-filial-card code{font-weight:900;color:#bfdbfe;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.25);border-radius:999px;padding:4px 8px}.ger-filial-card input{width:100%;min-width:0}</style>
-    <div class="ger-filial-grid">${cards}</div>
+  return `<div class="glass panel gerentes-filial-panel" style="margin-bottom:14px;border-color:rgba(59,130,246,.35)">
+    <div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">🏬 Gerentes por filial</h2><div class="hint">Uma linha por filial. O login é fixo; altere somente o nome do gerente atual e a senha quando necessário.</div></div></div>
+    <style>
+      .gerentes-filial-panel{overflow:hidden!important}.gerentes-filial-wrap{width:100%;overflow:hidden!important}
+      .gerentes-filial-table{width:100%!important;min-width:0!important;table-layout:fixed!important;border-collapse:separate;border-spacing:0}
+      .gerentes-filial-table th,.gerentes-filial-table td{padding:7px 6px!important;font-size:11px!important;line-height:1.2!important;vertical-align:middle!important;overflow:hidden!important}
+      .gerentes-filial-table th:nth-child(1),.gerentes-filial-table td:nth-child(1){width:6%}.gerentes-filial-table th:nth-child(2),.gerentes-filial-table td:nth-child(2){width:13%}.gerentes-filial-table th:nth-child(3),.gerentes-filial-table td:nth-child(3){width:27%}.gerentes-filial-table th:nth-child(4),.gerentes-filial-table td:nth-child(4){width:12%}.gerentes-filial-table th:nth-child(5),.gerentes-filial-table td:nth-child(5){width:18%}.gerentes-filial-table th:nth-child(6),.gerentes-filial-table td:nth-child(6){width:24%}
+      .gerentes-filial-table input{width:100%!important;min-width:0!important;padding:7px 8px!important;font-size:11px!important;border-radius:9px!important;border:1px solid rgba(148,163,184,.22)!important;background:#060a12!important;color:#e5e7eb!important}
+      .gerentes-filial-table code{font-size:11px!important;color:#bfdbfe!important;white-space:nowrap!important}.ger-actions{display:flex!important;gap:5px!important;align-items:center!important;flex-wrap:nowrap!important}.ger-actions .btn{padding:7px 8px!important;font-size:10px!important;white-space:nowrap!important}
+      @media(max-width:1050px){.gerentes-filial-table th,.gerentes-filial-table td{font-size:10px!important;padding:6px 4px!important}.gerentes-filial-table input{font-size:10px!important;padding:6px!important}.ger-actions .btn{padding:6px!important;font-size:9px!important}}
+    </style>
+    <div class="gerentes-filial-wrap"><table class="senhas-table gerentes-filial-table"><thead><tr><th>Filial</th><th>Login fixo</th><th>Gerente atual</th><th>Status</th><th>Nova senha</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div>
   </div>`;
 }
 async function adminSalvarGerenteFilial(login){
@@ -19034,6 +19065,9 @@ try{console.log('[V10.69] auditoria imediata + aprovação automática + control
 })();
 </script>
 
+<script>
+try{window.DASHBOARD_BUILD_VERSION='V10.79';console.log('[V10.79] retorno 10/página + CSM lote reconstruível + aniversariantes estáveis + gerentes em linha');}catch(e){}
+</script>
 </body>
 </html>
 """
