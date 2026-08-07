@@ -36,7 +36,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.76"
+DASHBOARD_BUILD_VERSION = "V10.78"
 DASHBOARD_BUILD_TAG = "comissao_crediarista_fonte_unica_oficial"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -8512,7 +8512,8 @@ def carregar_clientes_sem_movimento_local():
     csm_hist_path_v1016 = os.path.join(pasta, f"clientes_sem_movimento_historico_{now_brasilia().strftime('%Y-%m-%d')}.json")
     csm_fila_path_v1038 = os.path.join(pasta, 'clientes_sem_movimento_fila.json')
     hoje_lote_v1016 = now_brasilia().strftime('%Y-%m-%d')
-    max_por_usuario_v1016 = int(os.getenv('CSM_MAX_CLIENTES_USUARIO_DIA', '30') or '30')
+    max_por_usuario_v1016 = int(os.getenv('CSM_MAX_CLIENTES_USUARIO_DIA', '50') or '50')
+    max_global_dia_v1077 = max(1, int(os.getenv('CSM_MAX_CLIENTES_DIA', '50') or '50'))
 
     def _js_hash_py_v1016(txt):
         h = 0
@@ -8703,6 +8704,36 @@ def carregar_clientes_sem_movimento_local():
             print(f"⚠️ V10.38 não consegui salvar fila CSM: {e}")
         print(f"🧡 V10.38: lote diário CSM criado com limite {max_por_usuario_v1016}/usuário, rotativo recente→antigo: {len(actionable)} de {len(actionable_sem_limite_v1016)} acionáveis.")
 
+    # ===== V10.77: limite GLOBAL de clientes sem movimento no dashboard =====
+    # A base completa continua arquivada no FTP para histórico, mas nunca é enviada ao navegador.
+    # O lote operacional do dia fica limitado a 50 clientes no total (configurável),
+    # distribuídos em rodízio entre os responsáveis para não concentrar tudo em uma única filial.
+    if len(actionable) > max_global_dia_v1077:
+        _grupos_v1077 = {}
+        for _r in actionable:
+            try:
+                if not _r.get('_owner_key_py'):
+                    _r = _annot_owner_py_v1016(_r)
+                _ok = str(_r.get('_owner_key_py') or 'SEM_OWNER')
+            except Exception:
+                _ok = 'SEM_OWNER'
+            _grupos_v1077.setdefault(_ok, []).append(_r)
+        _keys_v1077 = sorted(_grupos_v1077)
+        _limitado_v1077 = []
+        while len(_limitado_v1077) < max_global_dia_v1077 and _keys_v1077:
+            _restantes_v1077 = []
+            for _ok in _keys_v1077:
+                _arr = _grupos_v1077.get(_ok) or []
+                if _arr and len(_limitado_v1077) < max_global_dia_v1077:
+                    _limitado_v1077.append(_arr.pop(0))
+                if _arr:
+                    _restantes_v1077.append(_ok)
+            _keys_v1077 = _restantes_v1077
+        actionable = _limitado_v1077
+        print(f"🪶 V10.77 CSM: lote global limitado a {len(actionable)}/{max_global_dia_v1077} clientes no dia; base completa permanece somente no FTP.")
+    else:
+        print(f"🪶 V10.77 CSM: lote diário já está dentro do limite global ({len(actionable)}/{max_global_dia_v1077}).")
+
     _por_owner_count_v1016 = {}
     for _r in actionable:
         _ok = str(_r.get('_owner_key_py') or _owner_row_py_v1016(_r).get('key') or 'SEM_OWNER')
@@ -8712,8 +8743,9 @@ def carregar_clientes_sem_movimento_local():
             'data': hoje_lote_v1016,
             'gerado_em': now_brasilia().isoformat(),
             'versao': DASHBOARD_BUILD_VERSION,
-            'regra': '30_por_usuario_dia_rotativo_recente_primeiro_nao_acionado_vai_final_fila_reenvio_30d',
+            'regra': 'max_50_global_dia_rotativo_entre_responsaveis_reenvio_30d',
             'limite_por_usuario_dia': max_por_usuario_v1016,
+            'limite_global_dia': max_global_dia_v1077,
             'lote_reusado': _lote_reusado_v1016,
             'acionaveis_sem_limite': len(actionable_sem_limite_v1016),
             'publicados_no_dashboard': len(actionable),
@@ -8753,7 +8785,8 @@ def carregar_clientes_sem_movimento_local():
         "retorno_30d_total":retorno_count,
         "aguardando_reenvio_total":aguardando_count,
         "acionaveis_sem_limite_total":len(actionable_sem_limite_v1016) if 'actionable_sem_limite_v1016' in locals() else len(actionable),
-        "limite_por_usuario_dia":max_por_usuario_v1016 if 'max_por_usuario_v1016' in locals() else 10,
+        "limite_por_usuario_dia":max_por_usuario_v1016 if 'max_por_usuario_v1016' in locals() else 50,
+        "limite_global_dia":max_global_dia_v1077 if 'max_global_dia_v1077' in locals() else 50,
         "lote_diario_reusado":bool(_lote_reusado_v1016) if '_lote_reusado_v1016' in locals() else False,
         "publicados_no_dashboard":len(actionable),
         "seen_total":len(seen_union),
@@ -12792,6 +12825,52 @@ function cobDatasetHtml(id){
   return total?pager+rows.map(r=>cfg.renderOne(r,cfg.showFaixa)).join('')+pager:'<div class="empty">Nada nesta aba.</div>';
 }
 function cobChangePage(id,delta){COB_DETAIL_PAGES[id]=Number(COB_DETAIL_PAGES[id]||1)+Number(delta||0);const host=document.getElementById(id);if(host)host.innerHTML=cobDatasetHtml(id);}
+
+/* ===== V10.78: busca leve em Aguardando retorno cliente =====
+   Nada é renderizado nessa aba até o usuário pesquisar.
+   Busca por nome, CPF/CNPJ ou título e limita o DOM aos primeiros resultados.
+*/
+const COB_RETORNO_SEARCH={};
+const COB_RETORNO_SEARCH_LIMIT=25;
+function cobRetornoNorm(v){
+  try{return String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim();}
+  catch(e){return String(v??'').toUpperCase().trim();}
+}
+function cobRetornoDigits(v){return String(v??'').replace(/\D/g,'');}
+function cobRetornoMatch(r,q){
+  const raw=String(q??'').trim();
+  if(raw.length<2)return false;
+  const nq=cobRetornoNorm(raw);
+  const qd=cobRetornoDigits(raw);
+  const nome=cobRetornoNorm(r?.cliente||r?.nome||'');
+  const titulo=cobRetornoNorm(r?.titulo||'');
+  const parcela=cobRetornoNorm(r?.parcela||'');
+  const cpf=cobRetornoDigits(r?.cpf_cnpj_normalizado||r?.cpf_cnpj||'');
+  return nome.includes(nq) || titulo.includes(nq) || parcela===nq || (qd.length>=3 && cpf.includes(qd));
+}
+function cobRetornoResultRow(r,entRef){
+  return `<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div>${r.cpf_cnpj?`<div class="small muted">🪪 CPF/CNPJ: <strong>${esc(r.cpf_cnpj)}</strong></div>`:''}<div class="small muted">Título <strong>${esc(r.titulo||'')}</strong> · parcela ${esc(r.parcela||'')} · ${esc(r.faixa_label||'')}</div></div><div>${printAuditBox(r,entRef)}</div></div></div>`;
+}
+function cobRetornoSearch(id,q){
+  const cfg=COB_RETORNO_SEARCH[id];
+  const host=document.getElementById(id+'_results');
+  const info=document.getElementById(id+'_info');
+  if(!cfg||!host)return;
+  const raw=String(q??'').trim();
+  if(raw.length<2){
+    host.innerHTML='<div class="empty">Digite pelo menos 2 caracteres para localizar o cliente.</div>';
+    if(info)info.textContent=`${cfg.rows.length} cobrança(s) aguardando retorno · nenhuma carregada na tela`;
+    return;
+  }
+  const achados=cfg.rows.filter(r=>cobRetornoMatch(r,raw));
+  const vis=achados.slice(0,COB_RETORNO_SEARCH_LIMIT);
+  if(info)info.textContent=achados.length?`${achados.length} resultado(s) encontrado(s) · mostrando ${vis.length}`:'Nenhum resultado encontrado';
+  host.innerHTML=vis.length?vis.map(r=>cobRetornoResultRow(r,cfg.entRef)).join(''):'<div class="empty">Nenhum cliente encontrado por nome, CPF/CNPJ ou título.</div>';
+}
+function cobRetornoSearchBox(id,total){
+  return `<div class="glass" style="padding:12px;border-radius:14px;margin-bottom:12px"><div style="display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:10px;align-items:center"><input type="search" autocomplete="off" placeholder="🔎 Buscar por nome, CPF/CNPJ ou título..." oninput="cobRetornoSearch('${id}',this.value)" style="width:100%;padding:11px 13px;border-radius:11px;border:1px solid var(--glass-border);background:rgba(0,0,0,.28);color:var(--text-primary);outline:none;font:inherit"><div id="${id}_info" class="small muted" style="white-space:nowrap">${total} cobrança(s) aguardando retorno · nenhuma carregada na tela</div></div></div><div id="${id}_results"><div class="empty">Pesquise o cliente para anexar as evidências. A lista completa não é renderizada para manter o dashboard leve.</div></div>`;
+}
+
 function renderCobrancasEnt(ent){
   const src=getClientesEnt(ent);
   const cobradosHoje=getCobradosHoje(ent);
@@ -12855,6 +12934,11 @@ function renderCobrancasEnt(ent){
   });
   const retornoRows=aguardando.filter(r=>!auditoriaDoTitulo(r));
   const auditoriaRows=aguardando.filter(r=>!!auditoriaDoTitulo(r));
+  const retornoSearchId=renderBaseId+'_retorno_search';
+  COB_RETORNO_SEARCH[retornoSearchId]={
+    rows:retornoRows,
+    entRef:{type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''}
+  };
   const exportId='cob_export_'+(++cobExportCounter);
   const exportRows=[];
   faixas.forEach(fx=>{((src[fx]||[]).map(r=>decorateRow({...r,faixa_label:fx}))).forEach(r=>exportRows.push(mdlCobExportRow(r,'Para cobrar')))});
@@ -12863,7 +12947,7 @@ function renderCobrancasEnt(ent){
   aguardando.forEach(r=>exportRows.push(mdlCobExportRow(r,'Aguardando 3 dias')));
   mdlRegisterExport(exportId, 'Relatorio de cobrancas - '+(ent?.nome||ent?.filial||'usuario'), exportRows);
 
-  return `${renderMeuNomeCobrador(ent)}<div style="display:flex;justify-content:flex-end;margin:0 0 10px">${mdlExportButtons(exportId)}</div>${tabs}<div class="cob-pane" data-cobpane="geral">${geral}</div><div class="cob-pane hidden" data-cobpane="novos">${renderRows(allHoje.map(r=>decorateRow({...r,faixa_label:r.faixa||''})).filter(shouldShowInGeral),true,'novos')}</div><div class="cob-pane hidden" data-cobpane="cobrados">${renderRows(cobradosRows,true,'cobrados')}</div><div class="cob-pane hidden" data-cobpane="retorno">${retornoRows.length?retornoRows.map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · parcela ${esc(r.parcela||'')} · ${esc(r.faixa_label||'')}</div></div><div>${printAuditBox(r,{type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''})}</div></div></div>`).join(''):'<div class="empty">Nenhuma cobrança aguardando print de retorno.</div>'}</div><div class="cob-pane hidden" data-cobpane="auditoria">${auditoriaRows.length?auditoriaRows.map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · parcela ${esc(r.parcela||'')}</div></div><div>${printAuditBox(r,{type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''})}</div></div></div>`).join(''):'<div class="empty">Nenhum print enviado para auditoria.</div>'}</div><div class="cob-pane hidden" data-cobpane="aguardando">${renderRows(aguardando,true,'aguardando')}</div>`;
+  return `${renderMeuNomeCobrador(ent)}<div style="display:flex;justify-content:flex-end;margin:0 0 10px">${mdlExportButtons(exportId)}</div>${tabs}<div class="cob-pane" data-cobpane="geral">${geral}</div><div class="cob-pane hidden" data-cobpane="novos">${renderRows(allHoje.map(r=>decorateRow({...r,faixa_label:r.faixa||''})).filter(shouldShowInGeral),true,'novos')}</div><div class="cob-pane hidden" data-cobpane="cobrados">${renderRows(cobradosRows,true,'cobrados')}</div><div class="cob-pane hidden" data-cobpane="retorno">${retornoRows.length?cobRetornoSearchBox(retornoSearchId,retornoRows.length):'<div class="empty">Nenhuma cobrança aguardando print de retorno.</div>'}</div><div class="cob-pane hidden" data-cobpane="auditoria">${auditoriaRows.length?auditoriaRows.map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · parcela ${esc(r.parcela||'')}</div></div><div>${printAuditBox(r,{type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''})}</div></div></div>`).join(''):'<div class="empty">Nenhum print enviado para auditoria.</div>'}</div><div class="cob-pane hidden" data-cobpane="aguardando">${renderRows(aguardando,true,'aguardando')}</div>`;
 }
 function switchCobTab(btn,name){const box=btn.closest('.acc-body'); box.querySelectorAll('[data-cobtab]').forEach(b=>b.classList.toggle('active',b===btn)); box.querySelectorAll('[data-cobpane]').forEach(p=>p.classList.toggle('hidden',p.dataset.cobpane!==name));}
 function abrirWhats(reg,entRef){const nums=normalizarListaTelefones((reg.telefones&&reg.telefones.length)?reg.telefones:reg.contato); if(!nums.length){toast('Cliente sem telefone válido.'); return} reg._cob_status=cobStatusTitulo(reg,entRef); phoneContext={reg,entRef}; if(nums.length===1){enviarWhats(nums[0]); return} const phoneList=document.getElementById('phoneList'); phoneList.innerHTML=nums.map(n=>`<button class="btn soft" style="width:100%" onclick="enviarWhats('${n}')">${n}</button>`).join(''); document.getElementById('phoneModal').classList.add('show')}
@@ -13586,16 +13670,14 @@ function renderSenhaRow(u, isDirector=false){
   const nome=isDirector?'Diretor Comercial':String(u.nome||key);
   const tipo=isDirector?'Diretor':(u.is_crediarista?'Crediarista':(u.is_terceiro?'Cobrança terceiro':(u.is_gerente?'Gerente':'Vendedor')));
   return `<tr>
-    <td><strong>${esc(nome)}</strong>${pend?`<div class="small" style="color:#ef4444">${pend} solicitação(ões)</div>`:''}</td>
-    <td><div class="senha-nova-row"><input id="wa_nome_${dom}" value="${esc(u.whatsapp_nome_global||nome)}" placeholder="Ex: DANIELE"><button class="btn primary btn-xs" type="button" onclick='adminSalvarNomeWhats(${keyJs})'>💾</button></div><div id="wa_nome_msg_${dom}" class="note" style="margin-top:4px"></div></td>
-    <td><strong style="font-family:ui-monospace,'Cascadia Mono','Segoe UI Mono',monospace">${esc(key)}</strong></td>
-    <td><div class="senha-nova-row"><input id="login_new_${dom}" placeholder="Novo login" value="${esc(key)}"><button class="btn soft btn-xs" type="button" onclick='adminAlterarLogin(${keyJs})'>✏️ Alterar</button></div></td>
-    <td>${esc(u.filial||'')}</td>
-    <td>${esc(tipo)}</td>
-    <td><span class="status-dot"><i style="background:${u.must_change_password?'#f59e0b':'#22c55e'}"></i>${u.must_change_password?'Precisa trocar':'Ativa'}</span></td>
-    <td><div class="senha-view-row"><input id="senha_atual_${dom}" type="password" readonly value="${esc(senhaAtual)}"><button class="btn soft btn-xs" type="button" onclick="toggleSenhaAtual('senha_atual_${dom}')">👁️</button><button class="btn soft btn-xs" type="button" onclick="copiarSenhaAtual('senha_atual_${dom}')">📋</button></div></td>
-    <td><div class="senha-nova-row"><input id="pwd_${key}" placeholder="Nova senha"><button class="btn primary btn-xs" type="button" onclick='adminSalvarSenha(${keyJs})'>💾 Salvar</button></div><div id="pwd_msg_${key}" class="note" style="margin-top:4px"></div></td>
-    <td><button class="btn soft btn-xs" type="button" onclick='adminMarcarTroca(${keyJs})'>🔁 Exigir troca</button>${pend?`<button class="btn soft btn-xs" type="button" onclick='adminResolverReset(${keyJs})'>Resolver</button>`:''}</td>
+    <td class="senha-col-user"><strong>${esc(nome)}</strong>${pend?`<div class="small senha-alert">${pend} solicitação(ões)</div>`:''}</td>
+    <td class="senha-col-wa"><div class="senha-inline"><input id="wa_nome_${dom}" value="${esc(u.whatsapp_nome_global||nome)}" placeholder="Nome WhatsApp"><button class="senha-icon-btn senha-save" type="button" title="Salvar nome" onclick='adminSalvarNomeWhats(${keyJs})'>💾</button></div><div id="wa_nome_msg_${dom}" class="senha-msg"></div></td>
+    <td class="senha-col-login"><div class="senha-login-atual">${esc(key)}</div><div class="senha-inline"><input id="login_new_${dom}" placeholder="Novo login" value="${esc(key)}"><button class="senha-icon-btn" type="button" title="Alterar login" onclick='adminAlterarLogin(${keyJs})'>✏️</button></div></td>
+    <td class="senha-col-perfil"><strong>${esc(u.filial||'-')}</strong><span>${esc(tipo)}</span></td>
+    <td class="senha-col-status"><span class="status-dot"><i style="background:${u.must_change_password?'#f59e0b':'#22c55e'}"></i>${u.must_change_password?'Trocar':'Ativa'}</span></td>
+    <td class="senha-col-atual"><div class="senha-inline senha-atual"><input id="senha_atual_${dom}" type="password" readonly value="${esc(senhaAtual)}"><button class="senha-icon-btn" type="button" title="Ver senha" onclick="toggleSenhaAtual('senha_atual_${dom}')">👁️</button><button class="senha-icon-btn" type="button" title="Copiar senha" onclick="copiarSenhaAtual('senha_atual_${dom}')">📋</button></div></td>
+    <td class="senha-col-nova"><div class="senha-inline"><input id="pwd_${key}" placeholder="Nova senha"><button class="senha-icon-btn senha-save" type="button" title="Salvar nova senha" onclick='adminSalvarSenha(${keyJs})'>💾</button></div><div id="pwd_msg_${key}" class="senha-msg"></div></td>
+    <td class="senha-col-acoes"><button class="senha-action-btn" type="button" onclick='adminMarcarTroca(${keyJs})'>🔁 Troca</button>${pend?`<button class="senha-action-btn" type="button" onclick='adminResolverReset(${keyJs})'>✅ Resolver</button>`:''}</td>
   </tr>`;
 }
 
@@ -14068,7 +14150,7 @@ function renderColaboradorStatusPanel(users){
   return `<div class="glass panel" style="margin-bottom:14px;border-color:rgba(34,197,94,.28)">
     <div class="section-head" style="margin:0 0 10px"><div><h2 style="font-size:18px">👥 Status operacional dos colaboradores</h2><div class="hint">Use quando alguém sair, entrar ou trocar de função. Inativo não acessa e, na próxima geração, sai do rateio de cobrança. A data de saída é só histórico/controle interno. As flags controlam em quais murais/listas ele participa.</div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn primary" onclick="adminSalvarTodasEntradasCobrancaV1040()">💾 Salvar datas de entrada cobrança</button><button class="btn soft" onclick="adminLimparDatasEntradaCobrancaV1040()">🧹 Limpar datas preenchidas</button></div></div>
     <div id="colab_entrada_all_msg" class="note" style="margin:0 0 10px;color:#fbbf24;font-weight:800">Preencha a data somente para vendedor novo. Nos primeiros 30 dias corridos o rateio será proporcional; depois fica 100% automaticamente. Vazio mantém rateio normal.</div>
-    <div class="senhas-table-wrap"><table class="senhas-table"><thead><tr><th>Colaborador</th><th>Filial</th><th>Tipo</th><th>Status</th><th>Cobrança</th><th>Sem movimento</th><th>Aniversário</th><th>Murais</th><th>Data entrada cobrança</th><th>Saída</th><th>Substituto</th><th>Obs</th><th>Ações</th></tr></thead><tbody>${normalUsers.map(u=>{
+    <div class="senhas-table-wrap"><table class="senhas-table senhas-status-table"><thead><tr><th>Colaborador</th><th>Filial</th><th>Tipo</th><th>Status</th><th>Cobrança</th><th>Sem movimento</th><th>Aniversário</th><th>Murais</th><th>Data entrada cobrança</th><th>Saída</th><th>Substituto</th><th>Obs</th><th>Ações</th></tr></thead><tbody>${normalUsers.map(u=>{
       const login=String(u.login||'').toLowerCase(); const dom=_senhaDomKey(login);
       return `<tr>
         <td><strong>${esc(u.nome||login)}</strong><div class="small muted">${esc(login)}</div></td>
@@ -14207,7 +14289,7 @@ function renderGerentesFiliaisPanel(){
   }).join('');
   return `<div class="glass panel" style="margin-bottom:14px;border-color:rgba(59,130,246,.35)">
     <div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">🏬 Gerentes por filial</h2><div class="hint">Acesso fixo por filial. Troque só o nome do gerente atual; o login continua o mesmo e sempre abre a filial inteira.</div></div></div>
-    <style>.ger-filial-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}.ger-filial-card{background:rgba(15,23,42,.55);border:1px solid rgba(148,163,184,.22);border-radius:18px;padding:14px}.ger-filial-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.ger-filial-card code{font-weight:900;color:#bfdbfe;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.25);border-radius:999px;padding:4px 8px}.ger-filial-card input{width:100%;min-width:0}</style>
+    <style>.ger-filial-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.ger-filial-card{background:rgba(15,23,42,.55);border:1px solid rgba(148,163,184,.22);border-radius:14px;padding:10px}.ger-filial-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.ger-filial-card code{font-weight:900;color:#bfdbfe;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.25);border-radius:999px;padding:4px 8px}.ger-filial-card input{width:100%;min-width:0}</style>
     <div class="ger-filial-grid">${cards}</div>
   </div>`;
 }
@@ -14280,12 +14362,12 @@ function renderSenhasTab(){
       <div></div>
     </div>`).join('')}</div>`:''}
   </div>
-  <div class="glass panel admin-accounts-line" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">👑 Contas administrativas</h2><div class="hint">Contas administrativas em linha para caber melhor na tela.</div></div></div><div class="senhas-table-wrap"><table class="senhas-table"><thead><tr><th>Usuário</th><th>Nome no WhatsApp</th><th>Login atual</th><th>Alterar login</th><th>Filial</th><th>Tipo</th><th>Status</th><th>Senha ativa atual</th><th>Nova senha</th><th>Ações</th></tr></thead><tbody>${renderSenhaRow(AUTH_STATE?.director||{login:'diretorcomercial',nome:'Diretor Comercial',must_change_password:true}, true)}</tbody></table></div></div>
+  <div class="glass panel admin-accounts-line" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">👑 Contas administrativas</h2><div class="hint">Contas administrativas em linha para caber melhor na tela.</div></div></div><div class="senhas-table-wrap"><table class="senhas-table senhas-main-table"><thead><tr><th>Usuário</th><th>WhatsApp</th><th>Login</th><th>Perfil</th><th>Status</th><th>Senha atual</th><th>Nova senha</th><th>Ações</th></tr></thead><tbody>${renderSenhaRow(AUTH_STATE?.director||{login:'diretorcomercial',nome:'Diretor Comercial',must_change_password:true}, true)}</tbody></table></div></div>
   ${renderGerentesFiliaisPanel()}
   <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">➕ Criar usuário de acesso</h2><div class="hint">Aqui você cria apenas o login/senha de acesso. Depois vá em Metas > Crediaristas configuráveis para vincular esse usuário à filial/base e ao percentual.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Login</label><input id="newUserLogin" placeholder="ex: crediaristaf08"></div><div class="input-card"><label>Nome</label><input id="newUserNome" placeholder="ex: CREDIARISTAF08"></div><div class="input-card"><label>Filial</label><input id="newUserFilial" placeholder="ex: F8"></div><div class="input-card"><label>Senha inicial</label><input id="newUserSenha" placeholder="mín. 4 caracteres"></div></div><div class="form-grid bonus" style="margin-top:10px"><div class="input-card"><label>Tipo</label><select id="newUserTipo"><option value="crediarista">Crediarista</option><option value="cobranca">Cobrança</option></select></div></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="adminCriarUsuarioCobranca()">💾 Criar usuário</button></div><div id="newUserMsg" class="note" style="margin-top:10px"></div></div>
   ${renderColaboradorStatusPanel(users)}
   <div class="section-head"><div><h2>👥 Usuários do dashboard</h2><div class="hint">Visualização em linha para conferir login, senha ativa, status e alterar rapidamente.</div></div></div>
-  <div class="senhas-table-wrap"><table class="senhas-table"><thead><tr><th>Usuário</th><th>Nome no WhatsApp</th><th>Login atual</th><th>Alterar login</th><th>Filial</th><th>Tipo</th><th>Status</th><th>Senha ativa atual</th><th>Nova senha</th><th>Ações</th></tr></thead><tbody>${users.map(u=>renderSenhaRow(u,false)).join('')}</tbody></table></div>`;
+  <div class="senhas-table-wrap"><table class="senhas-table senhas-main-table"><thead><tr><th>Usuário</th><th>WhatsApp</th><th>Login</th><th>Perfil</th><th>Status</th><th>Senha atual</th><th>Nova senha</th><th>Ações</th></tr></thead><tbody>${users.map(u=>renderSenhaRow(u,false)).join('')}</tbody></table></div>`;
 }
 async function adminSetAccessBlock(flag){
   try{
@@ -16859,25 +16941,24 @@ Preparamos condições especiais para você comemorar com a gente.
       window._mdlCsmLoadingV96 = true;
       window._mdlV100CsmLoadingPromise = (async()=>{
         let actionRows=[];
-        let baseRows=[];
-        try{ actionRows = mdlV100ExtractRows(await mdlV100FetchJson('clientes_sem_movimento.json')); }catch(e){ console.warn('[MDL V10.0] falha clientes_sem_movimento.json',e); }
-        try{ baseRows = mdlV100ExtractRows(await mdlV100FetchJson('clientes_sem_movimento_base.json')); }catch(e){ console.warn('[MDL V10.0] falha clientes_sem_movimento_base.json',e); }
-        // Para o usuário individual, o principal é não ficar travado. Se a lista acionável estiver vazia,
-        // usa a base completa como fallback visual, mantendo o histórico de enviados no cobrancas_log.json.
+        try{ actionRows = mdlV100ExtractRows(await mdlV100FetchJson('clientes_sem_movimento.json')); }catch(e){ console.warn('[MDL V10.77] falha clientes_sem_movimento.json',e); }
+        // V10.77: NUNCA baixa clientes_sem_movimento_base.json no dashboard.
+        // A base completa fica somente no FTP para histórico/robô; navegador recebe no máximo o lote diário.
         if(Array.isArray(CLIENTES_SEM_MOVIMENTO)){
-          mdlV100SpliceArray(CLIENTES_SEM_MOVIMENTO, actionRows.length ? actionRows : baseRows);
+          mdlV100SpliceArray(CLIENTES_SEM_MOVIMENTO, actionRows.slice(0,50));
         }
-        try{ mdlV100SpliceArray(CLIENTES_SEM_MOVIMENTO_BASE, baseRows.length ? baseRows : actionRows); }catch(e){}
+        try{ mdlV100SpliceArray(CLIENTES_SEM_MOVIMENTO_BASE, []); }catch(e){}
         try{ window.CLIENTES_SEM_MOVIMENTO_BASE = CLIENTES_SEM_MOVIMENTO_BASE; }catch(e){}
-        if((actionRows.length || baseRows.length) && typeof CLIENTES_SEM_MOVIMENTO_META==='object'){
-          CLIENTES_SEM_MOVIMENTO_META.base_total = Number(CLIENTES_SEM_MOVIMENTO_META.base_total || baseRows.length || actionRows.length || 0);
-          CLIENTES_SEM_MOVIMENTO_META.acionaveis_total = Number(CLIENTES_SEM_MOVIMENTO_META.acionaveis_total || actionRows.length || baseRows.length || 0);
-          CLIENTES_SEM_MOVIMENTO_META._loaded_frontend_v100 = true;
+        if(typeof CLIENTES_SEM_MOVIMENTO_META==='object'){
+          CLIENTES_SEM_MOVIMENTO_META.acionaveis_total = Math.min(50, Number(CLIENTES_SEM_MOVIMENTO_META.acionaveis_total || actionRows.length || 0));
+          CLIENTES_SEM_MOVIMENTO_META.publicados_no_dashboard = Math.min(50, actionRows.length);
+          CLIENTES_SEM_MOVIMENTO_META.limite_global_dia = 50;
+          CLIENTES_SEM_MOVIMENTO_META._loaded_frontend_v1077 = true;
         }
         window._mdlCsmLoadedV96 = true;
         window._mdlCsmLoadingV96 = false;
         window._mdlV100CsmLoadingPromise = null;
-        console.log('[MDL V10.0] clientes sem movimento carregados no acesso individual:', {acionaveis:actionRows.length, base:baseRows.length});
+        console.log('[MDL V10.77] clientes sem movimento carregados no acesso individual:', {publicados:Math.min(50,actionRows.length)});
         return true;
       })().catch(e=>{
         console.warn('[MDL V10.0] falha geral ao carregar reativação',e);
@@ -18692,7 +18773,7 @@ try{console.log('[V10.69] auditoria imediata + aprovação automática + control
 <script>
 // ===== V10.75: MASTER/DIRETOR ULTRALEVE + DADOS GRANDES SOB DEMANDA =====
 (function(){
-  const TAG='[V10.76 master leve + WhatsApp notificações]';
+  const TAG='[V10.77 master leve + CSM50 + senhas compactas]';
   try{
     const baseAbrir75=window.abrirApp;
     const baseSetTab75=window.setMainTab;
@@ -18768,7 +18849,7 @@ try{console.log('[V10.69] auditoria imediata + aprovação automática + control
       if(!inicioSection)return;
       inicioSection.innerHTML=`
         <div class="glass panel v1075-lite-home">
-          <div class="section-head"><div><h2>⚡ Painel rápido</h2><div class="hint">Modo ultraleve ativo. Os módulos e relatórios são carregados somente quando abertos.</div></div><div class="badge">V10.75</div></div>
+          <div class="section-head"><div><h2>⚡ Painel rápido</h2><div class="hint">Modo ultraleve ativo. Os módulos e relatórios são carregados somente quando abertos.</div></div><div class="badge">V10.77</div></div>
           <div class="v1075-quick-grid">
             <button class="v1075-quick" onclick="setMainTab('vendedores')"><strong>👥 Colaboradores</strong><span>${s.vendors} ativos</span></button>
             <button class="v1075-quick" onclick="setMainTab('filiais')"><strong>🏬 Filiais</strong><span>${s.branches} unidades</span></button>
@@ -18911,11 +18992,44 @@ try{console.log('[V10.69] auditoria imediata + aprovação automática + control
       .v1075-lazy-actions{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.v1075-toolbar{padding:14px!important}
       @media(max-width:900px){.v1075-quick-grid{grid-template-columns:1fr 1fr}.v1075-cob-row{grid-template-columns:1fr 1fr}}
       @media(max-width:560px){.v1075-quick-grid,.v1075-cob-row{grid-template-columns:1fr}}
+
+      /* ===== V10.77 SENHAS COMPACTAS: SEM ROLAGEM HORIZONTAL ===== */
+      #senhasSection{max-width:100%;overflow-x:hidden!important}
+      #senhasSection .senhas-table-wrap{width:100%!important;max-width:100%!important;overflow-x:hidden!important;border-radius:12px!important}
+      #senhasSection .senhas-main-table{width:100%!important;min-width:0!important;table-layout:fixed!important;border-spacing:0!important;font-size:10px!important}
+      #senhasSection .senhas-main-table th,#senhasSection .senhas-main-table td{padding:6px 5px!important;font-size:10px!important;line-height:1.15!important;white-space:normal!important;overflow:hidden!important;vertical-align:middle!important}
+      #senhasSection .senhas-main-table th:nth-child(1){width:13%}#senhasSection .senhas-main-table th:nth-child(2){width:17%}#senhasSection .senhas-main-table th:nth-child(3){width:18%}#senhasSection .senhas-main-table th:nth-child(4){width:8%}#senhasSection .senhas-main-table th:nth-child(5){width:7%}#senhasSection .senhas-main-table th:nth-child(6){width:14%}#senhasSection .senhas-main-table th:nth-child(7){width:15%}#senhasSection .senhas-main-table th:nth-child(8){width:8%}
+      #senhasSection .senha-inline{display:flex;align-items:center;gap:3px;width:100%;min-width:0}
+      #senhasSection .senha-inline input{width:100%!important;min-width:0!important;max-width:none!important;height:27px!important;padding:4px 6px!important;font-size:10px!important;border-radius:7px!important}
+      #senhasSection .senha-login-atual{font-family:ui-monospace,'Cascadia Mono','Segoe UI Mono',monospace;font-weight:900;font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:3px;color:#dbeafe}
+      #senhasSection .senha-col-perfil span{display:block;color:#9aa4b8;font-size:9px;margin-top:2px}
+      #senhasSection .senha-icon-btn,#senhasSection .senha-action-btn{border:1px solid rgba(255,255,255,.10);background:#202631;color:#eef2ff;border-radius:7px;min-width:26px;height:27px;padding:0 5px;font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap}
+      #senhasSection .senha-icon-btn.senha-save{background:#f58c10;color:#1a0d00;border-color:#f58c10}
+      #senhasSection .senha-col-acoes{display:flex;gap:3px;flex-wrap:wrap}
+      #senhasSection .senha-action-btn{width:100%;height:25px;font-size:9px}
+      #senhasSection .senha-msg{font-size:8px;line-height:1.1;color:#9aa4b8;margin-top:2px;max-height:20px;overflow:hidden}
+      #senhasSection .senha-alert{color:#f87171!important;font-size:8px!important}
+      #senhasSection .status-dot{font-size:9px!important;gap:4px!important}
+      #senhasSection .status-dot i{width:6px!important;height:6px!important}
+
+      /* Status operacional também cabe em 100% sem arrastar lateralmente. */
+      #senhasSection .senhas-status-table{width:100%!important;min-width:0!important;table-layout:fixed!important;font-size:9px!important}
+      #senhasSection .senhas-status-table th,#senhasSection .senhas-status-table td{padding:5px 3px!important;font-size:9px!important;line-height:1.1!important;white-space:normal!important;overflow:hidden!important;vertical-align:middle!important}
+      #senhasSection .senhas-status-table input,#senhasSection .senhas-status-table select{width:100%!important;min-width:0!important;max-width:100%!important;height:27px!important;padding:3px 4px!important;font-size:9px!important}
+      #senhasSection .senhas-status-table th:nth-child(1){width:13%}#senhasSection .senhas-status-table th:nth-child(2){width:4%}#senhasSection .senhas-status-table th:nth-child(3){width:6%}#senhasSection .senhas-status-table th:nth-child(4){width:7%}#senhasSection .senhas-status-table th:nth-child(5),#senhasSection .senhas-status-table th:nth-child(6),#senhasSection .senhas-status-table th:nth-child(7),#senhasSection .senhas-status-table th:nth-child(8){width:4%}#senhasSection .senhas-status-table th:nth-child(9){width:9%}#senhasSection .senhas-status-table th:nth-child(10){width:9%}#senhasSection .senhas-status-table th:nth-child(11){width:11%}#senhasSection .senhas-status-table th:nth-child(12){width:12%}#senhasSection .senhas-status-table th:nth-child(13){width:8%}
+      #senhasSection .senhas-status-table .btn{min-height:25px!important;height:25px!important;padding:4px 6px!important;font-size:9px!important}
+      #senhasSection .ger-filial-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:8px!important}
+      #senhasSection .ger-filial-card{padding:9px!important;border-radius:12px!important}
+      #senhasSection .ger-filial-card .form-grid.bonus{grid-template-columns:1fr 1fr!important;gap:6px!important}
+      #senhasSection .ger-filial-card .input-card{padding:7px!important}
+      #senhasSection .ger-filial-card input{height:29px!important;padding:5px 7px!important;font-size:10px!important}
+      #senhasSection .ger-filial-card .btn{padding:6px 8px!important;min-height:28px!important;font-size:9px!important}
+      @media(max-width:1200px){#senhasSection .senhas-main-table th,#senhasSection .senhas-main-table td{font-size:9px!important;padding:5px 3px!important}#senhasSection .senha-inline input{font-size:9px!important}#senhasSection .ger-filial-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
     `;document.head.appendChild(css);
 
     document.addEventListener('visibilitychange',()=>{if(document.hidden){try{if(window._mdlHeroTimer){clearInterval(window._mdlHeroTimer);window._mdlHeroTimer=null}}catch(e){}}});
-    window.DASHBOARD_BUILD_VERSION='V10.76';
-    console.log(TAG,'ativo: auditoria com decisão MASTER + WhatsApp resumos');
+    window.DASHBOARD_BUILD_VERSION='V10.77';
+    console.log(TAG,'ativo: CSM máximo 50/dia + senhas compactas sem rolagem horizontal');
   }catch(e){console.warn(TAG,e)}
 })();
 </script>
