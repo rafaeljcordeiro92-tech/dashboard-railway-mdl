@@ -37,7 +37,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.86"
+DASHBOARD_BUILD_VERSION = "V10.87"
 DASHBOARD_BUILD_TAG = "cobranca_terceira_91_dias_cpf_inteiro"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -5669,12 +5669,22 @@ def calc_metas_alvo(faixas, cfg=None):
     }
 
 def calc_perc_geral(grave_perc, alerta_perc, atencao_perc, cfg=None):
-    """Gráfico geral ponderado pelos pesos da config."""
+    """Gráfico geral ponderado pelos pesos da config.
+
+    V10.87:
+    - cada faixa pode exibir mais de 100% individualmente;
+    - porém, para a META GERAL, cada faixa contribui no máximo 100%
+      do seu próprio peso (regra não acumulativa);
+    - mantém consistência com o cálculo já existente no JavaScript.
+    """
     c = cfg or CONFIG_META
     pg = c["peso_grave"]   / 100
     pa = c["peso_alerta"]  / 100
     pt = c["peso_atencao"] / 100
-    return round(grave_perc * pg + alerta_perc * pa + atencao_perc * pt, 1)
+    g = max(0.0, min(float(grave_perc or 0), 100.0))
+    a = max(0.0, min(float(alerta_perc or 0), 100.0))
+    t = max(0.0, min(float(atencao_perc or 0), 100.0))
+    return round(g * pg + a * pa + t * pt, 1)
 
 # =========================================================================
 # RECEBIMENTOS E META — FONTE ÚNICA
@@ -6613,7 +6623,7 @@ for _f86, _fm86 in (meta_mes.get('filiais') or {}).items():
 with open(meta_file, "w", encoding="utf-8") as _f_v1086:
     json.dump(meta_mes, _f_v1086, ensure_ascii=False, indent=2)
 
-print("✅ V10.86 metas de cobrança = recebimentos reais do relatório por usuário/faixa; comissão continua separada pela auditoria.")
+print("✅ V10.87 metas de cobrança = recebimentos reais por faixa + Meta Geral limitada a 100% por faixa/peso; comissão separada.")
 for _k86_dbg, _m86_dbg in (meta_mes.get('vendedores') or {}).items():
     if str((_m86_dbg or {}).get('filial') or '').upper() == 'F9':
         print(
@@ -6624,7 +6634,7 @@ for _k86_dbg, _m86_dbg in (meta_mes.get('vendedores') or {}).items():
             f"Total={float(_m86_dbg.get('recebido_operacional_real',0) or 0):,.2f}"
         )
 
-print("✅ V10.86 MASTER/Diretor ultraleve + recebimentos reais nas metas")
+print("✅ V10.87 MASTER/Diretor ultraleve + recebimentos reais + Meta Geral não acumulativa")
 
 # Vendedores por filial (somente NÃO gerentes para o painel individual)
 todos_js = {}
@@ -19464,7 +19474,7 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.80] Cobrança Terc
     `;
     document.head.appendChild(css);
 
-    window.DASHBOARD_BUILD_VERSION='V10.86';
+    window.DASHBOARD_BUILD_VERSION='V10.87';
     console.log(TAG,'ativo: redraw automático adiado durante uso + scroll preservado');
   }catch(e){console.warn('[V10.81] falhou',e)}
 })();
@@ -21176,3 +21186,5 @@ driver.quit()
 # MDL_V10_37_FILIAL_OWNER_FIRST_RECEBIMENTOS_FIX: responsável/origem/crediarista manda sobre F90/F99/FDEP na soma da filial/gerente.
 
 # V10.86_RECEBIMENTO_REAL_FAIXA_VENDEDOR
+
+# V10.87_META_GERAL_CAP_100_POR_FAIXA
