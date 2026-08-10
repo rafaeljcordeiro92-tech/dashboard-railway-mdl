@@ -1,4 +1,4 @@
-# VERSAO: WHATSAPP_MASTER_NOTIFICACOES_V10_80_COB_TERCEIRA
+# VERSAO: WHATSAPP_MASTER_NOTIFICACOES_V10_88_COB_EXTERNA
 from __future__ import annotations
 
 import json
@@ -25,7 +25,7 @@ from telegram_monitor_mdl import (
     tail_file,
 )
 
-VERSION = "V10.80"
+VERSION = "V10.88"
 TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 PUBLIC_BASE = os.getenv("DASHBOARD_PUBLIC_BASE_URL", "https://moveisdolar.com.br/colaborador").rstrip("/")
 WHATSAPP_BASE = os.getenv(
@@ -130,13 +130,14 @@ def _contacts(base_dir: str | None = None) -> list[dict[str, Any]]:
                 "avisos": _bool(c.get("avisos"), True),
                 "resumo": _bool(c.get("resumo"), True),
                 "auditoria": _bool(c.get("auditoria"), True),
+                "cob_externa": _bool(c.get("cob_externa"), False),
                 "teste": True,
             })
     if not out:
         for i, p in enumerate(DEFAULT_PHONES):
             phone = _normalize_phone(p)
             if phone:
-                out.append({"id": f"env_{i}", "nome": f"Diretoria {i+1}", "telefone": phone, "ativo": True, "erros": True, "meta_diaria": True, "meta_mensal": True, "avisos": True, "resumo": True, "auditoria": True, "teste": True})
+                out.append({"id": f"env_{i}", "nome": f"Diretoria {i+1}", "telefone": phone, "ativo": True, "erros": True, "meta_diaria": True, "meta_mensal": True, "avisos": True, "resumo": True, "auditoria": True, "cob_externa": False, "teste": True})
     return out
 
 
@@ -148,11 +149,13 @@ def _contacts_for(alert_type: str, base_dir: str | None = None) -> list[dict[str
         "meta_mensal": "meta_mensal",
         "avisos": "avisos",
         "auditoria": "auditoria",
+        "cob_externa": "cob_externa",
         "erros": "erros",
         "teste": "teste",
     }
     key = key_map.get(str(alert_type or "").lower(), "avisos")
-    return [c for c in _contacts(base_dir) if c.get("ativo") and _bool(c.get(key), True)]
+    default_enabled = False if key == "cob_externa" else True
+    return [c for c in _contacts(base_dir) if c.get("ativo") and _bool(c.get(key), default_enabled)]
 
 
 def _send_one(text: str, phone: str, recipient_name: str = "Diretoria MDL", alert_type: str = "geral") -> tuple[bool, str]:
@@ -279,17 +282,6 @@ def build_whatsapp_daily_summary(base_dir: str, date_str: str | None = None) -> 
     for x in created:
         fx = str(x.get("faixa") or "").lower()
         by_faixa[fx if fx in by_faixa else "outro"] += 1
-    # V10.80: resumo COB é público somente em forma agregada; nenhuma PII da fila é publicada em JSON.
-    cob_summary = _url_json(f"{PUBLIC_BASE}/cobranca_terceira_resumo.json?_={int(datetime.now(TZ).timestamp())}", {}, timeout=20)
-    if not isinstance(cob_summary, dict) or str(cob_summary.get("date") or "") != date_str:
-        cob_summary = {}
-    cob_new_count = int(cob_summary.get("new_cpfs_today") or 0)
-    cob_sent_count = int(cob_summary.get("sent_cpfs_today") or 0)
-    cob_titles_sent = int(cob_summary.get("sent_titles_today") or 0)
-    cob_value_new = float(cob_summary.get("new_value_today") or 0)
-    cob_hold_count = int(cob_summary.get("hold_count") or 0)
-    cob_error_count = int(cob_summary.get("error_count") or 0)
-
     clean_lines.extend([
         "",
         "💬 RESPOSTAS DE CLIENTES / AUDITORIA",
@@ -299,20 +291,47 @@ def build_whatsapp_daily_summary(base_dir: str, date_str: str | None = None) -> 
         f"• Aprovadas pelo MASTER hoje: {len(approved_master)}",
         f"• Recusadas pelo MASTER hoje: {len(rejected_master)}",
         f"• Aguardando decisão do MASTER agora: {len(pending)}",
-        "",
-        "🤝 COBRANÇA TERCEIRA / COB",
-        f"• Novos CPFs encaminhados hoje: {cob_new_count}",
-        f"• CPFs baixados/enviados pela COB hoje: {cob_sent_count}",
-        f"• Títulos enviados hoje: {cob_titles_sent}",
-        f"• Valor novo encaminhado hoje: R$ {cob_value_new:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
-        f"• Em acordo/promessa temporária: {cob_hold_count}",
-        f"• Pendências de atualização SGI/marcadores: {cob_error_count}",
     ])
+    cob = _url_json(f"{PUBLIC_BASE}/cobranca_terceira_resumo.json?_={int(datetime.now(TZ).timestamp())}", {}, timeout=15)
+    if isinstance(cob, dict) and cob:
+        clean_lines.extend([
+            "",
+            "🤝 COB EXTERNA",
+            f"• Novos CPFs prontos hoje: {int(cob.get('new_cpfs_today') or 0)}",
+            f"• CPFs baixados pela parceira hoje: {int(cob.get('sent_cpfs_today') or 0)}",
+            f"• Títulos baixados hoje: {int(cob.get('sent_titles_today') or 0)}",
+            f"• Valor novo encaminhável hoje: R$ {float(cob.get('new_value_today') or 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", "."),
+            f"• Aguardando download agora: {int(cob.get('ready_count') or 0)}",
+            f"• Acordo/promessa em hold: {int(cob.get('hold_count') or 0)}",
+        ])
     return "\n".join(clean_lines)
 
 
+def build_cob_external_base_alert(summary: dict[str, Any]) -> str:
+    cpfs = int((summary or {}).get("cpfs") or 0)
+    titulos = int((summary or {}).get("titulos") or 0)
+    valor = float((summary or {}).get("valor") or 0)
+    test_mode = bool((summary or {}).get("test_mode"))
+    test_limit = int((summary or {}).get("test_limit") or 0)
+    dashboard = str((summary or {}).get("dashboard") or PUBLIC_BASE)
+    valor_br = f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    titulo = "🧪 *LOTE DE HOMOLOGAÇÃO COB DISPONÍVEL*" if test_mode else "🤝 *NOVA BASE COB DISPONÍVEL*"
+    extra = f"\nModo homologação: limite total {test_limit} CPF(s)." if test_mode and test_limit else ""
+    return (
+        f"{titulo}\n\n"
+        f"Novos clientes: {cpfs} CPF(s)\n"
+        f"Títulos: {titulos}\n"
+        f"Valor total: R$ {valor_br}{extra}\n\n"
+        "Acesse o Dashboard → COB Externa → Base COB Externa para baixar o lote.\n"
+        "Por segurança, nenhum CPF, telefone, endereço ou dado pessoal é enviado por WhatsApp.\n"
+        f"Portal: {dashboard}"
+    )
+
+
 __all__ = [
-    "VERSION", "whatsapp_send", "build_whatsapp_daily_summary", "load_auditorias_master", "build_audit_master_alert",
+    "VERSION", "whatsapp_send", "build_whatsapp_daily_summary", "load_auditorias_master", "build_audit_master_alert", "build_cob_external_base_alert",
     "tail_file", "now_br", "load_active_general_messages", "build_general_message_alert", "load_meta_diaria_batidas",
     "build_meta_diaria_alert", "load_meta_mercantil_100", "build_meta_mercantil_100_alert",
 ]
+
+# V10.88_WHATSAPP_COB_EXTERNA_SEM_PII

@@ -1,4 +1,4 @@
-# V10_85_COB_DRYRUN_RAPIDO_PROGRESSO
+# V10_88_COB_EXTERNA_TESTE30_NOTIFICACAO
 # V10_84_COB_HEADER_ROBUSTO
 # VERSAO: RAILWAY_SCHEDULER_MDL_V10_82_COBRANCA_TERCEIRA_BACKOFF
 import json
@@ -64,6 +64,7 @@ DAILY_LISTS_MINUTE_MAX = int(os.getenv('RELATORIOS_DIARIOS_MINUTE_MAX', '20'))
 COB_TERCEIRA_HOUR = int(os.getenv('COB_TERCEIRA_RUN_HOUR', '6'))
 COB_TERCEIRA_MINUTE = int(os.getenv('COB_TERCEIRA_RUN_MINUTE', '30'))
 COB_TERCEIRA_ENABLED = os.getenv('COB_TERCEIRA_ENABLED', '1') == '1'
+COB_TERCEIRA_MANUAL_ONLY = os.getenv('COB_TERCEIRA_MANUAL_ONLY', '0') == '1'
 COB_TERCEIRA_RETRY_MINUTES = max(5, int(os.getenv('COB_TERCEIRA_RETRY_MINUTES', '15')))
 WHATSAPP_ALERTAS_ENABLED = os.getenv('WHATSAPP_MASTER_NOTIFICACOES_ALERTAS_ENABLED', '1') != '0'
 WHATSAPP_ENABLED = os.getenv('WHATSAPP_MASTER_NOTIFICACOES_ENABLED', '1') != '0'
@@ -82,7 +83,7 @@ STATUS_PATH = os.path.join(LOG_DIR, 'monitor_status.json')
 SALES_CMD = [sys.executable, os.path.join(BASE_DIR, 'dashboard_sales_worker_headless.py')]
 COBRANCA_CMD = [sys.executable, os.path.join(BASE_DIR, 'dashboard_railway_main_headless.py')]
 PREVENTIVA_CMD = [sys.executable, os.path.join(BASE_DIR, 'whatsapp_master_preventiva_worker.py')]
-COB_TERCEIRA_CMD = [sys.executable, os.path.join(BASE_DIR, 'cobranca_terceira_worker_v1085.py')]
+COB_TERCEIRA_CMD = [sys.executable, os.path.join(BASE_DIR, 'cobranca_terceira_worker_v1088.py')]
 
 _sales_proc = None
 _cobranca_proc = None
@@ -96,7 +97,7 @@ _force_main_boot = True
 _force_sales_after_main = False
 
 STATE = {
-    'version': 'V10.82_COBRANCA_TERCEIRA',
+    'version': 'V10.88_COB_EXTERNA',
     'started_at': None,
     'updated_at': None,
     'scheduler': 'starting',
@@ -525,7 +526,7 @@ def start_http_panel():
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log(f'VERSAO V10.84: Cobrança Terceira D+91 + backoff de {COB_TERCEIRA_RETRY_MINUTES} min em falhas + notificações WhatsApp Master')
+log(f'VERSAO V10.88: COB Externa D+91 + teste controlado + manual_only={COB_TERCEIRA_MANUAL_ONLY} + backoff {COB_TERCEIRA_RETRY_MINUTES} min')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
@@ -547,7 +548,7 @@ while True:
     gap_ok = (_last_cobranca_end is None) or ((now - _last_cobranca_end).total_seconds() >= COBRANCA_MIN_GAP_MIN*60)
     cobranca_ok = ((now.hour in COBRANCA_HOURS and 0 <= now.minute <= COBRANCA_MINUTE_MAX) or is_last_day_23_window(now)) and gap_ok
 
-    if cob_terceira_due(now) and not sales_running and not cobranca_running and not cob_terceira_running:
+    if (not COB_TERCEIRA_MANUAL_ONLY) and cob_terceira_due(now) and not sales_running and not cobranca_running and not cob_terceira_running:
         STATE['last_cob_terceira_attempt_at'] = iso_now()
         _save_status()
         _cob_terceira_proc = start_job('cobranca_terceira_prioridade_diaria', COB_TERCEIRA_CMD); cob_terceira_running=True
@@ -582,3 +583,7 @@ while True:
 # MDL_V42_MONITOR_LOGS_FIX: painel de logs não recria/zera área enquanto usuário lê.
 
 # MDL_V43_V103_CRED_FREEZE_RESUMO
+
+# V10.88_SCHEDULER_COB_EXTERNA
+
+# V10.88_COB_MANUAL_ONLY_HOMOLOGACAO
