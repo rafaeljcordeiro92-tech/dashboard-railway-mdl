@@ -37,7 +37,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.89"
+DASHBOARD_BUILD_VERSION = "V10.90"
 DASHBOARD_BUILD_TAG = "cobranca_terceira_91_dias_cpf_inteiro"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -11608,6 +11608,28 @@ async function cobTDownload(period){
     toast('Arquivo CSV da COB baixado. O lote foi marcado como enviado.','success');await loadCobTerceiraState();await renderCobTerceiraTab(false);
   }catch(e){console.warn('[V10.80 COB download]',e);toast(String(e?.message||e)==='sem_clientes_prontos'?'Não há clientes prontos nesse período.':'Não foi possível baixar a base COB.');}
 }
+
+async function cobTRedownloadBatch(batchId){
+  try{
+    const id=String(batchId||'').trim(); if(!id)return;
+    const a=cobTAuth(); const fd=new FormData(); fd.append('action','redownload_batch'); fd.append('batch_id',id);
+    const r=await fetch(COB_TERCEIRA_API,{method:'POST',body:fd,headers:{'X-MDL-Login':a.login,'X-MDL-Password':a.password}});
+    if(!r.ok){let j={};try{j=await r.json()}catch(e){};throw new Error(j.error||('HTTP '+r.status));}
+    const blob=await r.blob(); const cd=r.headers.get('Content-Disposition')||''; const m=cd.match(/filename="?([^";]+)"?/i); const nome=m?m[1]:('cobranca_COB_lote_'+id+'.csv');
+    const u=URL.createObjectURL(blob); const link=document.createElement('a'); link.href=u; link.download=nome; document.body.appendChild(link); link.click(); link.remove(); setTimeout(()=>URL.revokeObjectURL(u),30000);
+    toast('Lote baixado novamente. O status de envio não foi alterado.','success'); await loadCobTerceiraState(); await renderCobTerceiraTab(false);
+  }catch(e){console.warn('[V10.90 COB redownload]',e);toast('Não foi possível baixar novamente este lote.');}
+}
+async function cobTReopenBatch(batchId){
+  try{
+    const id=String(batchId||'').trim(); if(!id)return;
+    if(!confirm('Reabrir este lote de teste? Os clientes voltarão para Pronto para COB, mas continuarão bloqueados da cobrança interna e permanecerão com (COB) no SGI.'))return;
+    const a=cobTAuth(); const fd=new FormData(); fd.append('action','reopen_batch'); fd.append('batch_id',id); fd.append('reason','teste/homologacao');
+    const r=await fetch(COB_TERCEIRA_API,{method:'POST',body:fd,headers:{'X-MDL-Login':a.login,'X-MDL-Password':a.password}});
+    let j={};try{j=await r.json()}catch(e){}; if(!r.ok||j?.ok===false)throw new Error(j.error||('HTTP '+r.status));
+    toast(`${Number(j.reopened||0)} CPF(s) reabertos para envio real. O histórico do teste foi preservado.`,'success'); await loadCobTerceiraState(); await renderCobTerceiraTab(false);
+  }catch(e){console.warn('[V10.90 COB reopen]',e);toast('Não foi possível reabrir este lote.');}
+}
 function cobTBadge(st){const s=String(st||'').toLowerCase();const cls=s==='enviado'?'ok':(s==='pronto'?'warn':(s.includes('erro')||s.includes('bloqueado')?'bad':''));return `<span class="badge ${cls}">${esc(cobTStatusLabel(st))}</span>`}
 async function renderCobTerceiraTab(reload=true){
   const host=document.getElementById('cobTerceiraSection'); if(!host)return;
@@ -11628,7 +11650,7 @@ async function renderCobTerceiraTab(reload=true){
   <div class="filters" style="margin:10px 0;display:flex"><input id="cobTSearch" value="${esc(q)}" placeholder="Buscar nome, CPF, título..." oninput="window._cobTSearch=this.value;COB_TERCEIRA_PAGE=1;renderCobTerceiraTab(false)"><select id="cobTStatus" onchange="window._cobTStatus=this.value;COB_TERCEIRA_PAGE=1;renderCobTerceiraTab(false)"><option value="">Todos os status</option>${['simulado','pronto','enviado','hold_acordo','erro_sgi','bloqueado_marcador','ja_marcado_cob'].map(s=>`<option value="${s}" ${stf===s?'selected':''}>${cobTStatusLabel(s)}</option>`).join('')}</select></div>
   <div class="wa-master-scroll"><table class="wa-master-table"><thead><tr><th>Status</th><th>Cliente / CPF</th><th>Títulos</th><th>Valor</th><th>Gatilho</th><th>SGI / Envio</th></tr></thead><tbody>${page.length?page.map(x=>`<tr><td>${cobTBadge(x.status)}</td><td><strong>${esc(x.cliente||'—')}</strong><div class="small muted">${esc(x.cpf_cnpj||'—')}</div></td><td>${(x.titulos||[]).length}<div class="small muted">${esc((x.titulos||[]).slice(0,3).map(t=>`${t.titulo||''}/${t.parcela||''}`).join(' · '))}</div></td><td><strong>${cobTMoney(cobTTotal(x))}</strong></td><td>D+${Number(x.trigger_dias_max||91)}<div class="small muted">${cobTDate(x.trigger_at)}</div></td><td>${x.sent_at?`Baixado ${cobTDate(x.sent_at)}<div class="small muted">${esc(x.downloaded_by||'')}</div>`:(x.erro_sgi?`<span style="color:var(--red)">${esc(x.erro_sgi)}</span>`:`${esc(x.marker_info||x.ready_at||'—')}`)}</td></tr>`).join(''):'<tr><td colspan="6"><div class="empty">Nenhum CPF nesta seleção.</div></td></tr>'}</tbody></table></div>
   <div class="log-pager"><div>${filtered.length} CPF(s) · página ${COB_TERCEIRA_PAGE}/${pages}</div><div style="display:flex;gap:8px"><button class="btn soft" ${COB_TERCEIRA_PAGE<=1?'disabled':''} onclick="COB_TERCEIRA_PAGE--;renderCobTerceiraTab(false)">⬅️ Anterior</button><button class="btn soft" ${COB_TERCEIRA_PAGE>=pages?'disabled':''} onclick="COB_TERCEIRA_PAGE++;renderCobTerceiraTab(false)">Próxima ➡️</button></div></div></div>
-  <div class="glass panel"><div class="section-head"><div><h2>🗂️ Histórico de downloads</h2><div class="hint">Cada download é um lote auditável.</div></div></div><div class="logs-list">${(COB_TERCEIRA_STATE.batches||[]).slice().reverse().slice(0,30).map(b=>`<div class="log-row"><div><strong>${esc(b.batch_id||'Lote')}</strong><div class="small muted">${cobTDate(b.created_at)} · ${esc(b.downloaded_by||'—')}</div></div><div>${Number(b.cpfs||0)} CPF(s) · ${Number(b.titulos||0)} título(s) · ${cobTMoney(b.valor||0)}</div></div>`).join('')||'<div class="empty">Ainda não houve download.</div>'}</div></div>`;
+  <div class="glass panel"><div class="section-head"><div><h2>🗂️ Histórico de downloads</h2><div class="hint">Cada download é um lote auditável. Você pode baixar novamente sem alterar o status. MASTER/Diretor também podem reabrir um lote de teste para que a COB faça o envio oficial depois.</div></div></div><div class="logs-list">${(COB_TERCEIRA_STATE.batches||[]).slice().reverse().slice(0,30).map(b=>{const adminReopen=!usuarioAtual?.is_cob_externa&&(String(usuarioAtual?.tipo||'')==='master'||String(usuarioAtual?.roleLabel||'').toLowerCase().includes('diretor'));const reopened=!!b.reopened_at;return `<div class="log-row"><div><strong>${esc(b.batch_id||'Lote')}</strong><div class="small muted">${cobTDate(b.created_at)} · ${esc(b.downloaded_by||'—')}${reopened?` · <span style="color:var(--orange)">reaberto ${cobTDate(b.reopened_at)} por ${esc(b.reopened_by||'—')}</span>`:''}${Number(b.redownloads||0)>0?` · ${Number(b.redownloads||0)} re-download(s)`:''}</div></div><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end"><span>${Number(b.cpfs||0)} CPF(s) · ${Number(b.titulos||0)} título(s) · ${cobTMoney(b.valor||0)}</span><button class="btn soft" onclick="cobTRedownloadBatch('${esc(b.batch_id||'')}')">⬇️ Baixar novamente</button>${adminReopen&&!reopened?`<button class="btn soft" onclick="cobTReopenBatch('${esc(b.batch_id||'')}')">↩️ Reabrir lote de teste</button>`:''}</div></div>`}).join('')||'<div class="empty">Ainda não houve download.</div>'}</div></div>`;
 }
 
 const WA_MASTER_MONITOR_URL='https://dashbboardcobvendasmdl.up.railway.app';
@@ -19520,7 +19542,7 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
     `;
     document.head.appendChild(css);
 
-    window.DASHBOARD_BUILD_VERSION='V10.89';
+    window.DASHBOARD_BUILD_VERSION='V10.90';
     console.log(TAG,'ativo: redraw automático adiado durante uso + scroll preservado');
   }catch(e){console.warn('[V10.81] falhou',e)}
 })();
@@ -19908,9 +19930,33 @@ function cob_csv_row($item,$t){
   $extra[]='DIAS VENCIDOS: '.($t['dias']??0); if(!empty($t['avalista']))$extra[]='AVALISTA: '.$t['avalista']; if(!empty($t['observacoes']))$extra[]='OBS: '.cob_clip($t['observacoes'],900);
   return [(string)($p['pessoa_id']??$item['codigo_devedor']??$item['cpf_cnpj']??''),(string)($item['nome_exportacao']??$item['cliente']??''),(string)($item['cpf_cnpj']??''),(string)$phones[0],(string)$phones[1],(string)$phones[2],(string)($p['email']??''),(string)($a['logradouro']??''),(string)($a['numero']??''),(string)($a['complemento']??''),(string)($a['bairro']??''),(string)($a['cidade']??''),(string)($a['uf']??''),(string)($a['cep']??''),implode(' | ',$extra),(string)($t['titulo']??''),(string)($t['parcela']??''),(string)($t['lancamento']??''),(string)($t['vencimento']??''),number_format(cob_num($t['pendente']??0),2,',','')];
 }
+function cob_is_admin_reopen($login){return $login===strtolower('__MASTER_LOGIN__')||$login==='diretorcomercial';}
+function cob_batch_items($state,$batch){$ids=is_array($batch['item_ids']??null)?$batch['item_ids']:[];$cpfs=is_array($batch['cpf_list']??null)?$batch['cpf_list']:[];$bid=(string)($batch['batch_id']??'');$out=[];
+  foreach(($state['items']??[]) as $item){$iid=(string)($item['id']??'');$cpf=(string)($item['cpf_cnpj']??'');$prev=is_array($item['previous_batch_ids']??null)?$item['previous_batch_ids']:[];
+    if(($iid!==''&&in_array($iid,$ids,true))||($cpf!==''&&in_array($cpf,$cpfs,true))||((string)($item['batch_id']??'')===$bid)||in_array($bid,$prev,true))$out[]=$item;}
+  return $out;}
+function cob_emit_csv($selected,$filename){while(ob_get_level())ob_end_clean();header('Content-Type: text/csv; charset=UTF-8');header('Content-Disposition: attachment; filename="'.$filename.'"');echo "\xEF\xBB\xBF";$out=fopen('php://output','w');
+  fwrite($out,"COD_DEVEDOR;NOME;CNPJ_CPF;FONE 1;FONE 2;FONE 3;EMAIL;ENDERECO;NUMERO;COMPLEMENTO;BAIRRO;CIDADE;ESTADO;CEP;DADOS_ADICIONAIS;COD_TITULO;PARCELA;CONTRATO;DT_VENCIMENTO; VL_TITULO \r\n");
+  foreach($selected as $item){foreach(($item['titulos']??[]) as $tt){fputcsv($out,cob_csv_row($item,$tt),';');}}fclose($out);exit;}
 [$authorized,$login]=cob_auth();if(!$authorized){http_response_code(401);header('Content-Type: application/json; charset=UTF-8');echo json_encode(['ok'=>false,'error'=>'nao_autorizado'],JSON_UNESCAPED_UNICODE);exit;}
 $state=cob_read_private($stateFile,['version'=>'V10.80','items'=>[],'batches'=>[]]);if(!isset($state['items'])||!is_array($state['items']))$state['items']=[];if(!isset($state['batches'])||!is_array($state['batches']))$state['batches']=[];
 $action=(string)($_GET['action']??$_POST['action']??'');
+if($action==='redownload_batch'){
+  $batchId=trim((string)($_POST['batch_id']??$_GET['batch_id']??''));$batchIdx=-1;$batch=null;foreach($state['batches'] as $i=>$b){if((string)($b['batch_id']??'')===$batchId){$batchIdx=$i;$batch=$b;break;}}
+  if($batchIdx<0||!is_array($batch)){http_response_code(404);header('Content-Type: application/json; charset=UTF-8');echo json_encode(['ok'=>false,'error'=>'lote_nao_encontrado'],JSON_UNESCAPED_UNICODE);exit;}
+  $selected=cob_batch_items($state,$batch);if(count($selected)===0){http_response_code(409);header('Content-Type: application/json; charset=UTF-8');echo json_encode(['ok'=>false,'error'=>'lote_sem_itens'],JSON_UNESCAPED_UNICODE);exit;}
+  $now=date(DATE_ATOM);$state['batches'][$batchIdx]['redownloads']=(int)($state['batches'][$batchIdx]['redownloads']??0)+1;$state['batches'][$batchIdx]['last_redownload_at']=$now;$state['batches'][$batchIdx]['last_redownload_by']=$login;$state['updated_at']=$now;cob_write_private($stateFile,$state);cob_write_json($summaryFile,cob_public_summary($state));
+  cob_emit_csv($selected,'cobranca_COB_lote_'.$batchId.'_REIMPRESSAO_'.date('Y-m-d_His').'.csv');
+}
+if($action==='reopen_batch'){
+  if(!cob_is_admin_reopen($login)){http_response_code(403);header('Content-Type: application/json; charset=UTF-8');echo json_encode(['ok'=>false,'error'=>'somente_master_diretor'],JSON_UNESCAPED_UNICODE);exit;}
+  $batchId=trim((string)($_POST['batch_id']??$_GET['batch_id']??''));$reason=trim((string)($_POST['reason']??'teste/homologacao'));$batchIdx=-1;foreach($state['batches'] as $i=>$b){if((string)($b['batch_id']??'')===$batchId){$batchIdx=$i;break;}}
+  if($batchIdx<0){http_response_code(404);header('Content-Type: application/json; charset=UTF-8');echo json_encode(['ok'=>false,'error'=>'lote_nao_encontrado'],JSON_UNESCAPED_UNICODE);exit;}
+  $ids=[];$cpfs=[];$reopened=0;$now=date(DATE_ATOM);
+  foreach($state['items'] as $idx=>$item){if((string)($item['batch_id']??'')!==$batchId)continue;$ids[]=(string)($item['id']??'');$cpfs[]=(string)($item['cpf_cnpj']??'');$prev=is_array($item['previous_batch_ids']??null)?$item['previous_batch_ids']:[];if(!in_array($batchId,$prev,true))$prev[]=$batchId;$state['items'][$idx]['previous_batch_ids']=$prev;$state['items'][$idx]['previous_downloads'][]=['batch_id'=>$batchId,'sent_at'=>$item['sent_at']??'','downloaded_by'=>$item['downloaded_by']??'','reopened_at'=>$now,'reopened_by'=>$login];$state['items'][$idx]['status']='pronto';$state['items'][$idx]['reopened_at']=$now;$state['items'][$idx]['reopened_by']=$login;$state['items'][$idx]['reopen_reason']=$reason;$state['items'][$idx]['sent_at']='';$state['items'][$idx]['downloaded_by']='';$state['items'][$idx]['batch_id']='';$reopened++;}
+  if($reopened===0){http_response_code(409);header('Content-Type: application/json; charset=UTF-8');echo json_encode(['ok'=>false,'error'=>'lote_ja_reaberto_ou_sem_itens'],JSON_UNESCAPED_UNICODE);exit;}
+  $state['batches'][$batchIdx]['item_ids']=array_values(array_filter($ids));$state['batches'][$batchIdx]['cpf_list']=array_values(array_filter($cpfs));$state['batches'][$batchIdx]['reopened_at']=$now;$state['batches'][$batchIdx]['reopened_by']=$login;$state['batches'][$batchIdx]['reopen_reason']=$reason;$state['updated_at']=$now;cob_write_private($stateFile,$state);cob_write_json($summaryFile,cob_public_summary($state));header('Content-Type: application/json; charset=UTF-8');echo json_encode(['ok'=>true,'reopened'=>$reopened,'batch_id'=>$batchId],JSON_UNESCAPED_UNICODE);exit;
+}
 if($action==='download'){
   $period=(string)($_GET['period']??$_POST['period']??'pending');$today=date('Y-m-d');$cut=date('Y-m-d',strtotime('-6 days'));
   $selected=[];$indexes=[];$valor=0.0;$titulos=0;
@@ -19918,10 +19964,8 @@ if($action==='download'){
   if(count($selected)===0){http_response_code(409);header('Content-Type: application/json; charset=UTF-8');echo json_encode(['ok'=>false,'error'=>'sem_clientes_prontos'],JSON_UNESCAPED_UNICODE);exit;}
   $batch='COB-'.date('Ymd-His').'-'.substr(bin2hex(random_bytes(4)),0,8);$now=date(DATE_ATOM);
   foreach($indexes as $idx){$state['items'][$idx]['status']='enviado';$state['items'][$idx]['sent_at']=$now;$state['items'][$idx]['last_download_at']=$now;$state['items'][$idx]['downloaded_by']=$login;$state['items'][$idx]['batch_id']=$batch;$state['items'][$idx]['downloads']=(int)($state['items'][$idx]['downloads']??0)+1;}
-  $state['batches'][]=['batch_id'=>$batch,'created_at'=>$now,'downloaded_by'=>$login,'period'=>$period,'cpfs'=>count($selected),'titulos'=>$titulos,'valor'=>round($valor,2)];$state['updated_at']=$now;cob_write_private($stateFile,$state);cob_write_json($summaryFile,cob_public_summary($state));
-  while(ob_get_level())ob_end_clean();header('Content-Type: text/csv; charset=UTF-8');header('Content-Disposition: attachment; filename="cobranca_COB_'.$period.'_'.date('Y-m-d_His').'.csv"');echo "\xEF\xBB\xBF";$out=fopen('php://output','w');
-  fwrite($out,"COD_DEVEDOR;NOME;CNPJ_CPF;FONE 1;FONE 2;FONE 3;EMAIL;ENDERECO;NUMERO;COMPLEMENTO;BAIRRO;CIDADE;ESTADO;CEP;DADOS_ADICIONAIS;COD_TITULO;PARCELA;CONTRATO;DT_VENCIMENTO; VL_TITULO \r\n");
-  foreach($selected as $item){foreach(($item['titulos']??[]) as $tt){fputcsv($out,cob_csv_row($item,$tt),';');}}fclose($out);exit;
+  $state['batches'][]=['batch_id'=>$batch,'created_at'=>$now,'downloaded_by'=>$login,'period'=>$period,'cpfs'=>count($selected),'titulos'=>$titulos,'valor'=>round($valor,2),'item_ids'=>array_values(array_filter(array_map(function($x){return (string)($x['id']??'');},$selected))),'cpf_list'=>array_values(array_filter(array_map(function($x){return (string)($x['cpf_cnpj']??'');},$selected)))];$state['updated_at']=$now;cob_write_private($stateFile,$state);cob_write_json($summaryFile,cob_public_summary($state));
+  cob_emit_csv($selected,'cobranca_COB_'.$period.'_'.date('Y-m-d_His').'.csv');
 }
 $preview=cob_read_private($previewFile,['items'=>[]]);$out=['ok'=>true,'data'=>$state,'items'=>$state['items'],'batches'=>$state['batches'],'preview'=>is_array($preview['items']??null)?$preview['items']:[],'updated_at'=>$state['updated_at']??''];header('Content-Type: application/json; charset=UTF-8');echo json_encode($out,JSON_UNESCAPED_UNICODE);exit;
 ?>"""
@@ -21238,3 +21282,5 @@ driver.quit()
 # V10.88_SEPARA_COB_INTERNA_GLOBAL_DA_COB_EXTERNA
 
 # V10.89_COB_EXTERNA_PERFIL_DOWNLOAD_UI
+
+# V10.90_COB_REDOWNLOAD_REOPEN_BATCH
