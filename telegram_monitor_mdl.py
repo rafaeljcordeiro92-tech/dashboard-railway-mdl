@@ -34,7 +34,7 @@ def _extract_list_payload(data):
     return []
 
 
-# VERSAO: TELEGRAM_MONITOR_MDL_V29_RESUMO_LOGS_DIA_FIX
+# VERSAO: TELEGRAM_MONITOR_MDL_V10_91_CANAL_PRINCIPAL
 import json
 import os
 import re
@@ -46,6 +46,7 @@ from zoneinfo import ZoneInfo
 
 BR_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 PUBLIC_BASE = os.getenv("COLABORADOR_PUBLIC_BASE", "https://moveisdolar.com.br/colaborador").rstrip("/")
+TELEGRAM_NOTIFICACOES_ENABLED = os.getenv('TELEGRAM_NOTIFICACOES_ENABLED', '1') != '0'
 
 
 def now_br():
@@ -233,11 +234,14 @@ def _load_telegram_contacts_from_config(base_dir=None):
                 'meta_mensal': b('meta_mensal', True),
                 'avisos': b('avisos', True),
                 'resumo': b('resumo', True),
+                'auditoria': b('auditoria', True),
+                'cob_externa': b('cob_externa', True),
+                'teste': True,
             })
     if not out:
         env_chat = os.getenv('TELEGRAM_CHAT_ID', '').strip()
         if env_chat:
-            out.append({'nome':'TELEGRAM_CHAT_ID','chat_id':env_chat,'ativo':True,'erros':True,'meta_diaria':True,'meta_mensal':True,'avisos':True,'resumo':True})
+            out.append({'nome':'TELEGRAM_CHAT_ID','chat_id':env_chat,'ativo':True,'erros':True,'meta_diaria':True,'meta_mensal':True,'avisos':True,'resumo':True,'auditoria':True,'cob_externa':True,'teste':True})
     return out
 
 
@@ -249,6 +253,8 @@ def _telegram_contacts_for_alert(alert_type='geral', base_dir=None):
         'meta_mensal': 'meta_mensal', 'meta100': 'meta_mensal', 'mercantil100': 'meta_mensal',
         'aviso': 'avisos', 'avisos': 'avisos', 'campanha': 'avisos', 'geral': 'avisos',
         'resumo': 'resumo', 'daily_summary': 'resumo',
+        'auditoria': 'auditoria', 'audit': 'auditoria',
+        'cob_externa': 'cob_externa', 'cob': 'cob_externa',
         'teste': None, 'test': None,
     }
     flag = key_map.get(alert_type, None)
@@ -327,6 +333,8 @@ def _telegram_send_one(text, chat_id, parse_mode=None, disable_web_page_preview=
 
 def telegram_send(text, parse_mode=None, disable_web_page_preview=True, chat_id=None, alert_type='geral', base_dir=None):
     """Envia Telegram para um chat específico ou para os contatos configurados por tipo de alerta."""
+    if not TELEGRAM_NOTIFICACOES_ENABLED:
+        return False, 'TELEGRAM_NOTIFICACOES_ENABLED=0'
     atype = str(alert_type or '').lower().strip()
     if atype in {'meta_diaria', 'meta_mensal', 'meta100', 'mercantil100'}:
         text = _sanitize_meta_alert_text(text)
@@ -1525,3 +1533,5 @@ def build_daily_summary(base_dir, date_str=None):
 # MDL_V102_META_DIARIA_STRICT: bloqueia discrepância de Atingido Período e qualquer leitura acima de 500%.
 
 # MDL_V103_RESUMO_LOGS_ROBUSTO
+
+# V10.91_TELEGRAM_CANAL_PRINCIPAL_AUDITORIA_COB_EXTERNA

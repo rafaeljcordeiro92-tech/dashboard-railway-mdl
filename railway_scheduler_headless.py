@@ -30,6 +30,7 @@ try:
         load_meta_mercantil_100, build_meta_mercantil_100_alert,
         load_auditorias_master, build_audit_master_alert,
     )
+    from telegram_monitor_mdl import telegram_send
 except Exception as e:
     def whatsapp_send(text, *a, **k): return (False, f"whatsapp notificações import erro: {e}")
     def build_whatsapp_daily_summary(base_dir, date_str=None): return f"Resumo indisponível: {e}"
@@ -46,6 +47,7 @@ except Exception as e:
     def build_meta_mercantil_100_alert(item, base_dir=None): return 'Meta mercantil 100% indisponível'
     def load_auditorias_master(base_dir): return []
     def build_audit_master_alert(item, base_dir=None): return 'Auditoria pendente no Dashboard'
+    def telegram_send(text, *a, **k): return (False, f'telegram notificações import erro: {e}')
 
 BR_TZ = ZoneInfo(os.getenv('APP_TZ', 'America/Sao_Paulo'))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -57,8 +59,8 @@ SALES_INTERVAL_MIN = int(os.getenv('SALES_INTERVAL_MIN', '20'))
 COBRANCA_HOURS = {7, 9, 11, 13, 15, 17, 19, 21}
 COBRANCA_MINUTE_MAX = int(os.getenv('COBRANCA_RUN_MINUTE_MAX', '9'))
 COBRANCA_MIN_GAP_MIN = int(os.getenv('COBRANCA_MIN_GAP_MIN', '90'))
-DAILY_SUMMARY_HOUR = int(os.getenv('WHATSAPP_MASTER_DAILY_SUMMARY_HOUR', os.getenv('TELEGRAM_DAILY_SUMMARY_HOUR', '19')))
-DAILY_SUMMARY_MINUTE_MAX = int(os.getenv('WHATSAPP_MASTER_DAILY_SUMMARY_MINUTE_MAX', os.getenv('TELEGRAM_DAILY_SUMMARY_MINUTE_MAX', '9')))
+DAILY_SUMMARY_HOUR = int(os.getenv('TELEGRAM_DAILY_SUMMARY_HOUR', os.getenv('WHATSAPP_MASTER_DAILY_SUMMARY_HOUR', '19')))
+DAILY_SUMMARY_MINUTE_MAX = int(os.getenv('TELEGRAM_DAILY_SUMMARY_MINUTE_MAX', os.getenv('WHATSAPP_MASTER_DAILY_SUMMARY_MINUTE_MAX', '9')))
 DAILY_LISTS_HOUR = int(os.getenv('RELATORIOS_DIARIOS_HOUR', '7'))
 DAILY_LISTS_MINUTE_MAX = int(os.getenv('RELATORIOS_DIARIOS_MINUTE_MAX', '20'))
 COB_TERCEIRA_HOUR = int(os.getenv('COB_TERCEIRA_RUN_HOUR', '6'))
@@ -66,8 +68,11 @@ COB_TERCEIRA_MINUTE = int(os.getenv('COB_TERCEIRA_RUN_MINUTE', '30'))
 COB_TERCEIRA_ENABLED = os.getenv('COB_TERCEIRA_ENABLED', '1') == '1'
 COB_TERCEIRA_MANUAL_ONLY = os.getenv('COB_TERCEIRA_MANUAL_ONLY', '0') == '1'
 COB_TERCEIRA_RETRY_MINUTES = max(5, int(os.getenv('COB_TERCEIRA_RETRY_MINUTES', '15')))
-WHATSAPP_ALERTAS_ENABLED = os.getenv('WHATSAPP_MASTER_NOTIFICACOES_ALERTAS_ENABLED', '1') != '0'
-WHATSAPP_ENABLED = os.getenv('WHATSAPP_MASTER_NOTIFICACOES_ENABLED', '1') != '0'
+WHATSAPP_ALERTAS_ENABLED = os.getenv('WHATSAPP_MASTER_NOTIFICACOES_ALERTAS_ENABLED', '0') != '0'
+WHATSAPP_ENABLED = os.getenv('WHATSAPP_MASTER_NOTIFICACOES_ENABLED', '0') != '0'
+TELEGRAM_ENABLED = os.getenv('TELEGRAM_NOTIFICACOES_ENABLED', '1') != '0'
+NOTIFICATION_CHANNEL = os.getenv('NOTIFICATION_CHANNEL', 'telegram').strip().lower() or 'telegram'
+PREVENTIVA_ENABLED = os.getenv('WHATSAPP_MASTER_PREVENTIVA_ENABLED', '0') == '1'
 FORCE_DAILY_LISTS_ON_BOOT = os.getenv('FORCE_DAILY_LISTS_ON_BOOT', os.getenv('FORCE_RUN_DAILY_LISTS_ON_BOOT', '0')) == '1'
 
 SCHED_LOG = os.path.join(LOG_DIR, 'scheduler.log')
@@ -83,7 +88,7 @@ STATUS_PATH = os.path.join(LOG_DIR, 'monitor_status.json')
 SALES_CMD = [sys.executable, os.path.join(BASE_DIR, 'dashboard_sales_worker_headless.py')]
 COBRANCA_CMD = [sys.executable, os.path.join(BASE_DIR, 'dashboard_railway_main_headless.py')]
 PREVENTIVA_CMD = [sys.executable, os.path.join(BASE_DIR, 'whatsapp_master_preventiva_worker.py')]
-COB_TERCEIRA_CMD = [sys.executable, os.path.join(BASE_DIR, 'cobranca_terceira_worker_v1088.py')]
+COB_TERCEIRA_CMD = [sys.executable, os.path.join(BASE_DIR, 'cobranca_terceira_worker_v1091.py')]
 
 _sales_proc = None
 _cobranca_proc = None
@@ -97,10 +102,12 @@ _force_main_boot = True
 _force_sales_after_main = False
 
 STATE = {
-    'version': 'V10.88_COB_EXTERNA',
+    'version': 'V10.91_TELEGRAM_PRINCIPAL',
     'started_at': None,
     'updated_at': None,
     'scheduler': 'starting',
+    'notification_channel': NOTIFICATION_CHANNEL,
+    'telegram_notificacoes_enabled': TELEGRAM_ENABLED,
     'whatsapp_notificacoes_enabled': WHATSAPP_ENABLED,
     'last_summary_date': None,
     'last_daily_lists_date': None,
@@ -154,13 +161,30 @@ def log(msg):
     _save_status()
 
 def notify(text, alert_type='erros'):
-    if not WHATSAPP_ENABLED: return False
-    try:
-        ok, resp = whatsapp_send(text, alert_type=alert_type, base_dir=BASE_DIR)
-    except TypeError:
-        ok, resp = whatsapp_send(text, alert_type=alert_type)
-    log(f'💬 WhatsApp Master enviado ({alert_type})' if ok else f'⚠️ Falha WhatsApp Master ({alert_type}): {resp}')
-    return ok
+    channel = NOTIFICATION_CHANNEL
+    if channel == 'telegram':
+        if not TELEGRAM_ENABLED: return False
+        try: ok, resp = telegram_send(text, alert_type=alert_type, base_dir=BASE_DIR)
+        except TypeError: ok, resp = telegram_send(text, alert_type=alert_type)
+        log(f'📲 Telegram enviado ({alert_type})' if ok else f'⚠️ Falha Telegram ({alert_type}): {resp}')
+        return ok
+    if channel == 'whatsapp':
+        if not WHATSAPP_ENABLED: return False
+        try: ok, resp = whatsapp_send(text, alert_type=alert_type, base_dir=BASE_DIR)
+        except TypeError: ok, resp = whatsapp_send(text, alert_type=alert_type)
+        log(f'💬 WhatsApp Master enviado ({alert_type})' if ok else f'⚠️ Falha WhatsApp Master ({alert_type}): {resp}')
+        return ok
+    if channel == 'dual':
+        ok_t = ok_w = False
+        if TELEGRAM_ENABLED:
+            try: ok_t, _ = telegram_send(text, alert_type=alert_type, base_dir=BASE_DIR)
+            except Exception: ok_t = False
+        if WHATSAPP_ENABLED:
+            try: ok_w, _ = whatsapp_send(text, alert_type=alert_type, base_dir=BASE_DIR)
+            except Exception: ok_w = False
+        log(f'📣 Canal dual ({alert_type}) Telegram={ok_t} WhatsApp={ok_w}')
+        return ok_t or ok_w
+    return False
 
 def is_running(proc): return proc is not None and proc.poll() is None
 
@@ -298,7 +322,8 @@ def fmt_delta(target):
 
 def maybe_send_daily_summary(now):
     global _last_summary_date
-    if not WHATSAPP_ENABLED: return
+    if NOTIFICATION_CHANNEL == 'telegram' and not TELEGRAM_ENABLED: return
+    if NOTIFICATION_CHANNEL == 'whatsapp' and not WHATSAPP_ENABLED: return
     if not (now.hour == DAILY_SUMMARY_HOUR and 0 <= now.minute <= DAILY_SUMMARY_MINUTE_MAX): return
     day = now.strftime('%Y-%m-%d')
     if _last_summary_date == day or STATE.get('last_summary_date') == day: return
@@ -309,10 +334,11 @@ def maybe_send_daily_summary(now):
             STATE['last_summary_date'] = day
             _save_status()
     except Exception as e:
-        notify(f'⚠️ Falha ao montar resumo diário COB+VENDAS para WhatsApp Master: {e}', 'erros')
+        notify(f'⚠️ Falha ao montar resumo diário COB+VENDAS para Telegram: {e}', 'erros')
 
 def maybe_send_general_message_alerts(now):
-    if not (WHATSAPP_ENABLED and WHATSAPP_ALERTAS_ENABLED): return
+    if NOTIFICATION_CHANNEL == 'telegram' and not TELEGRAM_ENABLED: return
+    if NOTIFICATION_CHANNEL == 'whatsapp' and not (WHATSAPP_ENABLED and WHATSAPP_ALERTAS_ENABLED): return
     sent = set(STATE.get('whatsapp_sent_message_ids') or [])
     try:
         for m in load_active_general_messages(BASE_DIR):
@@ -340,10 +366,11 @@ def maybe_send_general_message_alerts(now):
         STATE['whatsapp_sent_message_ids'] = list(sent)[-500:]
         _save_status()
     except Exception as e:
-        log(f'⚠️ Falha watcher WhatsApp Master avisos gerais: {e}')
+        log(f'⚠️ Falha watcher Telegram avisos gerais: {e}')
 
 def maybe_send_meta_diaria_alerts(now):
-    if not (WHATSAPP_ENABLED and WHATSAPP_ALERTAS_ENABLED): return
+    if NOTIFICATION_CHANNEL == 'telegram' and not TELEGRAM_ENABLED: return
+    if NOTIFICATION_CHANNEL == 'whatsapp' and not (WHATSAPP_ENABLED and WHATSAPP_ALERTAS_ENABLED): return
     sent = set(STATE.get('whatsapp_sent_meta_keys') or [])
     today_prefix = now.strftime('%Y-%m-%d')
     try:
@@ -358,12 +385,13 @@ def maybe_send_meta_diaria_alerts(now):
         STATE['whatsapp_sent_meta_keys'] = [k for k in list(sent)[-800:] if k.startswith(today_prefix) or len(k) < 250]
         _save_status()
     except Exception as e:
-        log(f'⚠️ Falha watcher WhatsApp Master meta diária: {e}')
+        log(f'⚠️ Falha watcher Telegram meta diária: {e}')
 
 
 def maybe_send_meta_mercantil_100_alerts(now):
     """WhatsApp Master quando filial/vendedor bater 100% da meta mercantil mensal."""
-    if not (WHATSAPP_ENABLED and WHATSAPP_ALERTAS_ENABLED): return
+    if NOTIFICATION_CHANNEL == 'telegram' and not TELEGRAM_ENABLED: return
+    if NOTIFICATION_CHANNEL == 'whatsapp' and not (WHATSAPP_ENABLED and WHATSAPP_ALERTAS_ENABLED): return
     sent = set(STATE.get('whatsapp_sent_meta100_keys') or [])
     month_prefix = now.strftime('%Y-%m')
     try:
@@ -378,11 +406,12 @@ def maybe_send_meta_mercantil_100_alerts(now):
         STATE['whatsapp_sent_meta100_keys'] = [k for k in list(sent)[-1000:] if k.startswith(month_prefix) or len(k) < 250]
         _save_status()
     except Exception as e:
-        log(f'⚠️ Falha watcher WhatsApp Master meta mercantil 100%: {e}')
+        log(f'⚠️ Falha watcher Telegram meta mercantil 100%: {e}')
 
 def maybe_send_audit_master_alerts(now):
     """Avisa somente novos casos que realmente precisam de decisão humana."""
-    if not (WHATSAPP_ENABLED and WHATSAPP_ALERTAS_ENABLED): return
+    if NOTIFICATION_CHANNEL == 'telegram' and not TELEGRAM_ENABLED: return
+    if NOTIFICATION_CHANNEL == 'whatsapp' and not (WHATSAPP_ENABLED and WHATSAPP_ALERTAS_ENABLED): return
     try:
         items = load_auditorias_master(BASE_DIR)
         ids = [str(x.get('id') or '') for x in items if x.get('id')]
@@ -404,22 +433,26 @@ def maybe_send_audit_master_alerts(now):
         STATE['whatsapp_sent_audit_ids'] = list(sent)[-1500:]
         _save_status()
     except Exception as e:
-        log(f'⚠️ Falha watcher WhatsApp Master auditoria: {e}')
+        log(f'⚠️ Falha watcher Telegram auditoria: {e}')
 
 
 def _force_summary_worker():
     try:
         day = br_now().strftime('%Y-%m-%d')
         text = build_whatsapp_daily_summary(BASE_DIR, day)
-        ok, resp = whatsapp_send(text, alert_type='resumo', base_dir=BASE_DIR)
-        log('💬 Resumo WhatsApp Master manual enviado' if ok else f'⚠️ Falha resumo WhatsApp Master manual: {resp}')
+        if NOTIFICATION_CHANNEL == 'telegram':
+            ok, resp = telegram_send(text, alert_type='resumo', base_dir=BASE_DIR)
+            log('📲 Resumo Telegram manual enviado' if ok else f'⚠️ Falha resumo Telegram manual: {resp}')
+        else:
+            ok, resp = whatsapp_send(text, alert_type='resumo', base_dir=BASE_DIR)
+            log('💬 Resumo WhatsApp manual enviado' if ok else f'⚠️ Falha resumo WhatsApp manual: {resp}')
     except Exception as e:
-        log(f'⚠️ Erro montando/enviando resumo WhatsApp Master manual: {e}')
+        log(f'⚠️ Erro montando/enviando resumo manual: {e}')
 
 
 def force_summary_now():
     threading.Thread(target=_force_summary_worker, daemon=True).start()
-    return True, 'Resumo WhatsApp Master enfileirado. Confira os números configurados e o log em alguns segundos.'
+    return True, f'Resumo {NOTIFICATION_CHANNEL} enfileirado. Confira o log em alguns segundos.'
 
 
 def _load_json_safe(path, default=None):
@@ -455,6 +488,7 @@ def force_run(kind):
         _cob_terceira_proc = start_job('cobranca_terceira_manual', COB_TERCEIRA_CMD)
         return True, 'Cobrança Terceira iniciada. Confira o log; DRY RUN permanece controlado por variável.'
     if kind == 'preventiva':
+        if not PREVENTIVA_ENABLED: return False, 'WhatsApp Master está em standby (WHATSAPP_MASTER_PREVENTIVA_ENABLED=0).'
         if is_running(_preventiva_proc): return False, 'Preventiva WhatsApp Master já está rodando.'
         _preventiva_proc = start_job('whatsapp_master_preventiva_manual', PREVENTIVA_CMD)
         return True, 'Preventiva WhatsApp Master iniciada em modo configurado. Confira o log/preview.'
@@ -468,7 +502,7 @@ def force_run(kind):
         return True, 'Vendas iniciado manualmente.'
     return False, 'Tipo inválido.'
 
-HTML = '<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>COB+VENDAS Monitor Railway</title><style>:root{--bg:#070a10;--card:#111827;--line:#263244;--txt:#eef2ff;--mut:#94a3b8;--ok:#22c55e;--bad:#ef4444;--warn:#f59e0b}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#111827,#070a10 55%);font-family:Inter,Segoe UI,Arial,sans-serif;color:var(--txt);padding:24px}.wrap{max-width:1180px;margin:auto}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.brand h1{margin:0;font-size:28px}.brand p{margin:6px 0 0;color:var(--mut)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:20px 0}.card{background:rgba(17,24,39,.86);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 18px 55px rgba(0,0,0,.25)}.k{font-size:12px;color:var(--mut);font-weight:900;text-transform:uppercase;letter-spacing:.08em}.v{font-size:24px;font-weight:900;margin-top:8px}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}button{border:0;border-radius:12px;padding:12px 16px;font-weight:900;cursor:pointer;color:#111827;background:#f59e0b}button.soft{background:#1f2937;color:var(--txt);border:1px solid var(--line)}button.blue{background:#2563eb;color:white}button.active{outline:2px solid #f59e0b}.jobs{display:grid;grid-template-columns:1fr 1fr;gap:14px}.row{display:grid;grid-template-columns:160px 1fr;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)}pre{white-space:pre-wrap;background:#030712;border:1px solid var(--line);border-radius:14px;padding:14px;color:#d1d5db;max-height:430px;overflow:auto}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.logbox{height:560px;max-height:70vh;font-family:Consolas,monospace;font-size:12px;line-height:1.35}.mut{color:var(--mut)}@media(max-width:850px){.grid,.jobs{grid-template-columns:1fr}.row{grid-template-columns:1fr}.logbox{height:420px}}</style></head><body><div class="wrap"><div class="top"><div class="brand"><h1>🚦 COB+VENDAS Monitor Railway</h1><p>Ordem: Cobrança Terceira D+91 roda 1x/dia às 06:30; cobrança/recebimentos a cada 2h; vendas a cada 20min; listas pesadas às 07h.</p></div><div class="actions"><button onclick="run(\'main\')">Rodar cobrança agora</button><button class="blue" onclick="run(\'sales\')">Rodar vendas agora</button><button class="soft" onclick="sendSummary()">Enviar resumo WhatsApp</button><button class="soft" onclick="testTelegram()">Teste WhatsApp</button><button class="soft" onclick="run(\'preventiva\')">Rodar WhatsApp Master</button><button class="soft" onclick="run(\'cob_terceira\')">Rodar COB Terceira</button></div></div><div id="app">Carregando...</div><div class="card" id="logsCard" style="margin-top:14px"><h2>Logs</h2><div class="actions"><button class="soft" data-log="scheduler" onclick="loadLog(\'scheduler\')">Scheduler</button><button class="soft" data-log="main" onclick="loadLog(\'main\')">Cobrança/Main</button><button class="soft" data-log="sales" onclick="loadLog(\'sales\')">Vendas</button><button class="soft" data-log="preventiva" onclick="loadLog(\'preventiva\')">WhatsApp Master</button><button class="soft" data-log="cob_terceira" onclick="loadLog(\'cob_terceira\')">COB Terceira</button><button class="soft" onclick="togglePause()" id="pauseBtn">Pausar atualização</button></div><div class="mut" id="logStatus">Clique em um log. A tela não será mais recriada quando você estiver lendo.</div><pre id="logbox" class="logbox">Clique em um log.</pre></div></div><script>const R=v=>v==null?\'-\':String(v).replace(\'T\',\' \').slice(0,19);let selectedLog=\'\';let paused=false;let refreshing=false;async function api(p,o){const r=await fetch(p,o);return await r.json()}function esc(s){return String(s??\'\').replace(/[&<>]/g,m=>({\'&\':\'&amp;\',\'<\':\'&lt;\',\'>\':\'&gt;\'}[m]))}async function refresh(){if(paused||refreshing)return;refreshing=true;try{const s=await api(\'/api/status\');const j=s.jobs||{};const ev=(s.recent_events||[]).slice(-18).reverse().join(\'\\n\');document.getElementById(\'app\').innerHTML=`<div class="grid"><div class="card"><div class="k">Scheduler</div><div class="v ok">${s.scheduler||\'-\'}</div></div><div class="card"><div class="k">Próxima vendas</div><div class="v warn">${s.next_sales_label||\'-\'}</div></div><div class="card"><div class="k">Próxima cobrança</div><div class="v warn">${s.next_cobranca_label||\'-\'}</div></div><div class="card"><div class="k">Próxima COB Terceira</div><div class="v warn">${s.next_cob_terceira_label||\'-\'}</div></div><div class="card"><div class="k">Listas 07h</div><div class="v warn">${s.next_daily_lists_label||\'-\'}</div></div><div class="card"><div class="k">Atualizado</div><div class="v" style="font-size:17px">${R(s.updated_at)}</div></div></div><div class="jobs">${Object.entries(j).map(([name,x])=>`<div class="card"><h2>${name}</h2><div class="row"><b>Status</b><span class="${x.running?\'warn\':\'ok\'}">${x.running?\'Rodando\':\'Parado\'}</span></div><div class="row"><b>Início</b><span>${R(x.last_start)}</span></div><div class="row"><b>Fim</b><span>${R(x.last_end)}</span></div><div class="row"><b>Exit</b><span class="${x.last_exit===0?\'ok\':(x.last_exit?\'bad\':\'\')}">${x.last_exit??\'-\'}</span></div>${x.last_error?`<h3 class="bad">Último erro</h3><pre>${esc(x.last_error)}</pre>`:\'\'}</div>`).join(\'\')}</div><div class="card" style="margin-top:14px"><h2>Eventos recentes</h2><pre>${esc(ev)}</pre></div>`; if(selectedLog) await loadLog(selectedLog,true);}finally{refreshing=false}}async function loadLog(f,keepScroll=false){selectedLog=f;document.querySelectorAll(\'[data-log]\').forEach(b=>b.classList.toggle(\'active\',b.dataset.log===f));const box=document.getElementById(\'logbox\');const status=document.getElementById(\'logStatus\');const nearBottom=box && (box.scrollHeight-box.scrollTop-box.clientHeight<80);const oldTop=box?box.scrollTop:0;const r=await fetch(\'/api/logs?file=\'+encodeURIComponent(f)+\'&_=\'+Date.now());const txt=await r.text();if(box){box.textContent=txt||\'Sem log ainda.\'; if(keepScroll&&!nearBottom) box.scrollTop=oldTop; else box.scrollTop=box.scrollHeight;}if(status)status.textContent=\'Exibindo: \'+f+\' • atualizado \'+new Date().toLocaleTimeString(\'pt-BR\')+\'.\'}function togglePause(){paused=!paused;document.getElementById(\'pauseBtn\').textContent=paused?\'Retomar atualização\':\'Pausar atualização\';}async function run(k){const r=await api(\'/run/\'+k,{method:\'POST\'});alert(r.message||JSON.stringify(r));refresh()}async function sendSummary(){const r=await api(\'/whatsapp/summary\',{method:\'POST\'});alert(r.message||JSON.stringify(r))}async function testTelegram(){const r=await api(\'/whatsapp/test\',{method:\'POST\'});alert(r.message||JSON.stringify(r))}setInterval(refresh,7000);refresh();</script></body></html>'
+HTML = '<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>COB+VENDAS Monitor Railway</title><style>:root{--bg:#070a10;--card:#111827;--line:#263244;--txt:#eef2ff;--mut:#94a3b8;--ok:#22c55e;--bad:#ef4444;--warn:#f59e0b}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#111827,#070a10 55%);font-family:Inter,Segoe UI,Arial,sans-serif;color:var(--txt);padding:24px}.wrap{max-width:1180px;margin:auto}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.brand h1{margin:0;font-size:28px}.brand p{margin:6px 0 0;color:var(--mut)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:20px 0}.card{background:rgba(17,24,39,.86);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 18px 55px rgba(0,0,0,.25)}.k{font-size:12px;color:var(--mut);font-weight:900;text-transform:uppercase;letter-spacing:.08em}.v{font-size:24px;font-weight:900;margin-top:8px}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}button{border:0;border-radius:12px;padding:12px 16px;font-weight:900;cursor:pointer;color:#111827;background:#f59e0b}button.soft{background:#1f2937;color:var(--txt);border:1px solid var(--line)}button.blue{background:#2563eb;color:white}button.active{outline:2px solid #f59e0b}.jobs{display:grid;grid-template-columns:1fr 1fr;gap:14px}.row{display:grid;grid-template-columns:160px 1fr;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)}pre{white-space:pre-wrap;background:#030712;border:1px solid var(--line);border-radius:14px;padding:14px;color:#d1d5db;max-height:430px;overflow:auto}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.logbox{height:560px;max-height:70vh;font-family:Consolas,monospace;font-size:12px;line-height:1.35}.mut{color:var(--mut)}@media(max-width:850px){.grid,.jobs{grid-template-columns:1fr}.row{grid-template-columns:1fr}.logbox{height:420px}}</style></head><body><div class="wrap"><div class="top"><div class="brand"><h1>🚦 COB+VENDAS Monitor Railway</h1><p>Ordem: Cobrança Terceira D+91 roda 1x/dia às 06:30; cobrança/recebimentos a cada 2h; vendas a cada 20min; listas pesadas às 07h.</p></div><div class="actions"><button onclick="run(\'main\')">Rodar cobrança agora</button><button class="blue" onclick="run(\'sales\')">Rodar vendas agora</button><button class="soft" onclick="sendSummary()">Enviar resumo Telegram</button><button class="soft" onclick="testTelegram()">Teste Telegram</button><button class="soft" onclick="run(\'preventiva\')">WhatsApp Master · standby</button><button class="soft" onclick="run(\'cob_terceira\')">Rodar COB Terceira</button></div></div><div id="app">Carregando...</div><div class="card" id="logsCard" style="margin-top:14px"><h2>Logs</h2><div class="actions"><button class="soft" data-log="scheduler" onclick="loadLog(\'scheduler\')">Scheduler</button><button class="soft" data-log="main" onclick="loadLog(\'main\')">Cobrança/Main</button><button class="soft" data-log="sales" onclick="loadLog(\'sales\')">Vendas</button><button class="soft" data-log="preventiva" onclick="loadLog(\'preventiva\')">WhatsApp Master</button><button class="soft" data-log="cob_terceira" onclick="loadLog(\'cob_terceira\')">COB Terceira</button><button class="soft" onclick="togglePause()" id="pauseBtn">Pausar atualização</button></div><div class="mut" id="logStatus">Clique em um log. A tela não será mais recriada quando você estiver lendo.</div><pre id="logbox" class="logbox">Clique em um log.</pre></div></div><script>const R=v=>v==null?\'-\':String(v).replace(\'T\',\' \').slice(0,19);let selectedLog=\'\';let paused=false;let refreshing=false;async function api(p,o){const r=await fetch(p,o);return await r.json()}function esc(s){return String(s??\'\').replace(/[&<>]/g,m=>({\'&\':\'&amp;\',\'<\':\'&lt;\',\'>\':\'&gt;\'}[m]))}async function refresh(){if(paused||refreshing)return;refreshing=true;try{const s=await api(\'/api/status\');const j=s.jobs||{};const ev=(s.recent_events||[]).slice(-18).reverse().join(\'\\n\');document.getElementById(\'app\').innerHTML=`<div class="grid"><div class="card"><div class="k">Scheduler</div><div class="v ok">${s.scheduler||\'-\'}</div></div><div class="card"><div class="k">Próxima vendas</div><div class="v warn">${s.next_sales_label||\'-\'}</div></div><div class="card"><div class="k">Próxima cobrança</div><div class="v warn">${s.next_cobranca_label||\'-\'}</div></div><div class="card"><div class="k">Próxima COB Terceira</div><div class="v warn">${s.next_cob_terceira_label||\'-\'}</div></div><div class="card"><div class="k">Listas 07h</div><div class="v warn">${s.next_daily_lists_label||\'-\'}</div></div><div class="card"><div class="k">Atualizado</div><div class="v" style="font-size:17px">${R(s.updated_at)}</div></div></div><div class="jobs">${Object.entries(j).map(([name,x])=>`<div class="card"><h2>${name}</h2><div class="row"><b>Status</b><span class="${x.running?\'warn\':\'ok\'}">${x.running?\'Rodando\':\'Parado\'}</span></div><div class="row"><b>Início</b><span>${R(x.last_start)}</span></div><div class="row"><b>Fim</b><span>${R(x.last_end)}</span></div><div class="row"><b>Exit</b><span class="${x.last_exit===0?\'ok\':(x.last_exit?\'bad\':\'\')}">${x.last_exit??\'-\'}</span></div>${x.last_error?`<h3 class="bad">Último erro</h3><pre>${esc(x.last_error)}</pre>`:\'\'}</div>`).join(\'\')}</div><div class="card" style="margin-top:14px"><h2>Eventos recentes</h2><pre>${esc(ev)}</pre></div>`; if(selectedLog) await loadLog(selectedLog,true);}finally{refreshing=false}}async function loadLog(f,keepScroll=false){selectedLog=f;document.querySelectorAll(\'[data-log]\').forEach(b=>b.classList.toggle(\'active\',b.dataset.log===f));const box=document.getElementById(\'logbox\');const status=document.getElementById(\'logStatus\');const nearBottom=box && (box.scrollHeight-box.scrollTop-box.clientHeight<80);const oldTop=box?box.scrollTop:0;const r=await fetch(\'/api/logs?file=\'+encodeURIComponent(f)+\'&_=\'+Date.now());const txt=await r.text();if(box){box.textContent=txt||\'Sem log ainda.\'; if(keepScroll&&!nearBottom) box.scrollTop=oldTop; else box.scrollTop=box.scrollHeight;}if(status)status.textContent=\'Exibindo: \'+f+\' • atualizado \'+new Date().toLocaleTimeString(\'pt-BR\')+\'.\'}function togglePause(){paused=!paused;document.getElementById(\'pauseBtn\').textContent=paused?\'Retomar atualização\':\'Pausar atualização\';}async function run(k){const r=await api(\'/run/\'+k,{method:\'POST\'});alert(r.message||JSON.stringify(r));refresh()}async function sendSummary(){const r=await api(\'/telegram/summary\',{method:\'POST\'});alert(r.message||JSON.stringify(r))}async function testTelegram(){const r=await api(\'/telegram/test\',{method:\'POST\'});alert(r.message||JSON.stringify(r))}setInterval(refresh,7000);refresh();</script></body></html>'
 
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code=200, body='', ctype='text/html; charset=utf-8'):
@@ -507,13 +541,13 @@ class Handler(BaseHTTPRequestHandler):
             ok,msg=force_run('preventiva'); self._send(200, {'ok':ok,'message':msg})
         elif self.path.startswith('/run/cob_terceira'):
             ok,msg=force_run('cob_terceira'); self._send(200, {'ok':ok,'message':msg})
-        elif self.path.startswith('/whatsapp/test'):
-            ok,resp=whatsapp_send('✅ Teste WhatsApp Master COB+VENDAS OK\n'+br_now().strftime('%d/%m/%Y %H:%M:%S'), alert_type='teste', base_dir=BASE_DIR)
-            self._send(200, {'ok':ok,'message':'WhatsApp Master enviado' if ok else resp})
-        elif self.path.startswith('/whatsapp/summary'):
+        elif self.path.startswith('/telegram/test'):
+            ok,resp=telegram_send('✅ Teste Telegram COB+VENDAS OK\n'+br_now().strftime('%d/%m/%Y %H:%M:%S'), alert_type='teste', base_dir=BASE_DIR)
+            self._send(200, {'ok':ok,'message':'Telegram enviado com sucesso' if ok else resp})
+        elif self.path.startswith('/telegram/summary'):
             ok,resp=force_summary_now(); self._send(200, {'ok':ok,'message':resp})
-        elif self.path.startswith('/telegram/test') or self.path.startswith('/telegram/summary'):
-            self._send(410, {'ok':False,'message':'Telegram substituído por WhatsApp Master na V10.76'})
+        elif self.path.startswith('/whatsapp/test') or self.path.startswith('/whatsapp/summary'):
+            self._send(503, {'ok':False,'message':'WhatsApp Master temporariamente em standby. Canal ativo: Telegram.'})
         else: self._send(404, {'ok':False,'message':'not found'})
     def log_message(self, fmt, *args): return
 
@@ -526,7 +560,7 @@ def start_http_panel():
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log(f'VERSAO V10.88: COB Externa D+91 + teste controlado + manual_only={COB_TERCEIRA_MANUAL_ONLY} + backoff {COB_TERCEIRA_RETRY_MINUTES} min')
+log(f'VERSAO V10.91: Telegram principal + WhatsApp standby + COB Externa | canal={NOTIFICATION_CHANNEL} | manual_only={COB_TERCEIRA_MANUAL_ONLY}')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
@@ -587,3 +621,5 @@ while True:
 # V10.88_SCHEDULER_COB_EXTERNA
 
 # V10.88_COB_MANUAL_ONLY_HOMOLOGACAO
+
+# V10.91_TELEGRAM_PRINCIPAL_WHATSAPP_STANDBY

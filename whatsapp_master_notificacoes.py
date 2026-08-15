@@ -25,7 +25,7 @@ from telegram_monitor_mdl import (
     tail_file,
 )
 
-VERSION = "V10.88"
+VERSION = "V10.91"
 TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 PUBLIC_BASE = os.getenv("DASHBOARD_PUBLIC_BASE_URL", "https://moveisdolar.com.br/colaborador").rstrip("/")
 WHATSAPP_BASE = os.getenv(
@@ -231,7 +231,11 @@ def load_auditorias_master(base_dir: str | None = None) -> list[dict[str, Any]]:
 
 def build_audit_master_alert(item: dict[str, Any], base_dir: str | None = None) -> str:
     cfg = _global_config(base_dir)
-    templates = cfg.get("whatsapp_master_templates") if isinstance(cfg.get("whatsapp_master_templates"), dict) else {}
+    channel = os.getenv("NOTIFICATION_CHANNEL", "telegram").strip().lower()
+    if channel == "telegram":
+        templates = cfg.get("telegram_templates") if isinstance(cfg.get("telegram_templates"), dict) else {}
+    else:
+        templates = cfg.get("whatsapp_master_templates") if isinstance(cfg.get("whatsapp_master_templates"), dict) else {}
     tpl = str(templates.get("auditoria_master") or "").strip()
     default = (
         "🧑‍⚖️ *NOVA EVIDÊNCIA PARA DECISÃO DO MASTER*\n\n"
@@ -323,7 +327,7 @@ def build_cob_external_base_alert(summary: dict[str, Any]) -> str:
         f"Títulos: {titulos}\n"
         f"Valor total: R$ {valor_br}{extra}\n\n"
         "Acesse o Dashboard → COB Externa → Base COB Externa para baixar o lote.\n"
-        "Por segurança, nenhum CPF, telefone, endereço ou dado pessoal é enviado por WhatsApp.\n"
+        "Por segurança, nenhum CPF, telefone, endereço ou dado pessoal é enviado pelo Telegram.\n"
         f"Portal: {dashboard}"
     )
 
@@ -335,3 +339,5 @@ __all__ = [
 ]
 
 # V10.88_WHATSAPP_COB_EXTERNA_SEM_PII
+
+# V10.91_WHATSAPP_STANDBY_BUILDERS_COMPARTILHADOS_COM_TELEGRAM
