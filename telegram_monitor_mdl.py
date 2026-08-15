@@ -34,7 +34,7 @@ def _extract_list_payload(data):
     return []
 
 
-# VERSAO: TELEGRAM_MONITOR_MDL_V10_91_CANAL_PRINCIPAL
+# VERSAO: TELEGRAM_MONITOR_MDL_V10_92_MULTI_GRUPOS_REMOTE_FIRST
 import json
 import os
 import re
@@ -190,21 +190,35 @@ def load_json_local_or_remote(base_dir, local_rel, remote_name, default):
 
 
 def _load_telegram_global_config(base_dir=None):
-    """Carrega config_meta.json/global, incluindo contatos e templates Telegram."""
+    """V10.92: Telegram usa PRIMEIRO a config online mais recente.
+
+    Motivo: o dashboard salva novos Chat IDs no config_meta.json público.
+    O arquivo local do Railway pode ficar antigo entre execuções/deploys.
+    Só usamos cache/local se a leitura online falhar.
+    """
     base_dir = base_dir or os.path.dirname(os.path.abspath(__file__))
-    candidates = [
-        os.path.join(base_dir, 'cache_historico', 'config_meta.json'),
-        os.path.join(base_dir, 'config_meta.json'),
-    ]
-    cfg = None
-    for p in candidates:
-        cfg = _read_json_file(p, None)
-        if isinstance(cfg, dict):
-            break
+
+    # Fonte principal: config público salvo pelo dashboard, com cachebuster.
+    cfg = _read_url_json(
+        f"{PUBLIC_BASE}/config_meta.json?_tg={int(time.time())}",
+        None,
+        timeout=10,
+    )
+
+    # Fallback local apenas em indisponibilidade real da fonte online.
     if not isinstance(cfg, dict):
-        cfg = _read_url_json(f"{PUBLIC_BASE}/config_meta.json", {}, timeout=10)
+        candidates = [
+            os.path.join(base_dir, 'cache_historico', 'config_meta.json'),
+            os.path.join(base_dir, 'config_meta.json'),
+        ]
+        for p in candidates:
+            cfg = _read_json_file(p, None)
+            if isinstance(cfg, dict):
+                break
+
     if not isinstance(cfg, dict):
         return {}
+
     return (cfg.get('global') if isinstance(cfg.get('global'), dict) else cfg) or {}
 
 
@@ -349,7 +363,8 @@ def telegram_send(text, parse_mode=None, disable_web_page_preview=True, chat_id=
         ok, resp = _telegram_send_one(text, c.get('chat_id'), parse_mode=parse_mode, disable_web_page_preview=disable_web_page_preview)
         oks.append(ok)
         resps.append(f"{c.get('nome') or c.get('chat_id')}: {'OK' if ok else resp}")
-    return any(oks), " | ".join(resps)
+    total_ok = sum(1 for x in oks if x)
+    return any(oks), f"{total_ok}/{len(contacts)} contato(s) enviado(s) | " + " | ".join(resps)
 
 def tail_file(path, lines=45):
     try:
@@ -1535,3 +1550,5 @@ def build_daily_summary(base_dir, date_str=None):
 # MDL_V103_RESUMO_LOGS_ROBUSTO
 
 # V10.91_TELEGRAM_CANAL_PRINCIPAL_AUDITORIA_COB_EXTERNA
+
+# V10.92_TELEGRAM_MULTI_GRUPOS_REMOTE_FIRST

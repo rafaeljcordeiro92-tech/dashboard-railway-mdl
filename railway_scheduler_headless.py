@@ -102,7 +102,7 @@ _force_main_boot = True
 _force_sales_after_main = False
 
 STATE = {
-    'version': 'V10.91_TELEGRAM_PRINCIPAL',
+    'version': 'V10.92_TELEGRAM_MULTI_GRUPOS',
     'started_at': None,
     'updated_at': None,
     'scheduler': 'starting',
@@ -543,7 +543,7 @@ class Handler(BaseHTTPRequestHandler):
             ok,msg=force_run('cob_terceira'); self._send(200, {'ok':ok,'message':msg})
         elif self.path.startswith('/telegram/test'):
             ok,resp=telegram_send('✅ Teste Telegram COB+VENDAS OK\n'+br_now().strftime('%d/%m/%Y %H:%M:%S'), alert_type='teste', base_dir=BASE_DIR)
-            self._send(200, {'ok':ok,'message':'Telegram enviado com sucesso' if ok else resp})
+            self._send(200, {'ok':ok,'message':('Teste Telegram: '+str(resp)) if ok else str(resp)})
         elif self.path.startswith('/telegram/summary'):
             ok,resp=force_summary_now(); self._send(200, {'ok':ok,'message':resp})
         elif self.path.startswith('/whatsapp/test') or self.path.startswith('/whatsapp/summary'):
@@ -560,7 +560,7 @@ def start_http_panel():
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log(f'VERSAO V10.91: Telegram principal + WhatsApp standby + COB Externa | canal={NOTIFICATION_CHANNEL} | manual_only={COB_TERCEIRA_MANUAL_ONLY}')
+log(f'VERSAO V10.92: Telegram multi-grupos remote-first + WhatsApp standby | canal={NOTIFICATION_CHANNEL} | manual_only={COB_TERCEIRA_MANUAL_ONLY}')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
@@ -623,3 +623,5 @@ while True:
 # V10.88_COB_MANUAL_ONLY_HOMOLOGACAO
 
 # V10.91_TELEGRAM_PRINCIPAL_WHATSAPP_STANDBY
+
+# V10.92_TELEGRAM_TESTE_EXIBE_DESTINATARIOS
