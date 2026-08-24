@@ -37,7 +37,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.92"
+DASHBOARD_BUILD_VERSION = "V10.93"
 DASHBOARD_BUILD_TAG = "cobranca_terceira_91_dias_cpf_inteiro"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -6682,8 +6682,31 @@ for filial in ORDEM_FILIAIS:
         tv     = media_trimestral_vend.get(key, {})
         vv     = var_vendedores.get(key, {})
 
+        # V10.93: leva o login real do dashboard para a entidade do vendedor.
+        # A comissão auditada usa usuario_login; sem isto o vendedor podia ter
+        # auditorias aprovadas na fila e continuar mostrando 0 no painel.
+        _login_vend_v1093 = ""
+        try:
+            _nome_lookup_v1093 = _norm_login_lookup_py(limpar_nome_display(r["nome_exibicao"]))
+            _fil_lookup_v1093 = str(filial or "").strip().upper()
+            for _login_auth_v1093, _u_auth_v1093 in (auth_users or {}).items():
+                if not isinstance(_u_auth_v1093, dict):
+                    continue
+                if bool(_u_auth_v1093.get("is_gerente")) or bool(_u_auth_v1093.get("is_crediarista")) or bool(_u_auth_v1093.get("is_terceiro")) or bool(_u_auth_v1093.get("is_viewer")) or bool(_u_auth_v1093.get("is_cob_externa")):
+                    continue
+                if str(_u_auth_v1093.get("filial") or "").strip().upper() != _fil_lookup_v1093:
+                    continue
+                if _norm_login_lookup_py(limpar_nome_display(_u_auth_v1093.get("nome") or "")) != _nome_lookup_v1093:
+                    continue
+                _login_vend_v1093 = str(_login_auth_v1093 or "").strip().lower()
+                break
+        except Exception:
+            _login_vend_v1093 = ""
+        if not _login_vend_v1093:
+            _login_vend_v1093 = str(_buscar_login_existente_por_nome_filial(r["nome_exibicao"], filial, is_gerente=False) or normalizar_login(r["nome_exibicao"]) or "").strip().lower()
+
         todos_js[filial].append({
-            "nome": str(r["nome_exibicao"]), "filial": filial,
+            "nome": str(r["nome_exibicao"]), "filial": filial, "login": _login_vend_v1093,
             "is_gerente": False,
             "pendente": round(pf,2), "pago": round(pg,2), "pago_meta": pago_meta_real,
             "total": round(float(r["total"]),2),
@@ -19537,9 +19560,243 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
     `;
     document.head.appendChild(css);
 
-    window.DASHBOARD_BUILD_VERSION='V10.92';
+    window.DASHBOARD_BUILD_VERSION='V10.93';
     console.log(TAG,'ativo: redraw automático adiado durante uso + scroll preservado');
   }catch(e){console.warn('[V10.81] falhou',e)}
+
+
+// ===== V10.93 — COMISSÃO DE COBRANÇA AUDITADA UNIFICADA =====
+// Regra:
+// 1) cobrança/evidência aprovada pela IA ou MASTER;
+// 2) mesma pessoa (CPF/CNPJ), mesmo título e mesma parcela;
+// 3) pagamento no mês da comissão;
+// 4) horário da aprovação NÃO é usado como corte — o relatório de quitados só
+//    informa a data do pagamento. Se houver log da cobrança carregado, validamos
+//    que a cobrança ocorreu na mesma data ou antes do pagamento.
+// A META/GRÁFICO operacional continua independente da comissão.
+(function(){
+  const TAG='[V10.93 COMISSAO AUDITADA]';
+  try{
+    function normText93(v){return String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim()}
+    function digits93(v){return String(v||'').replace(/\D/g,'')}
+    function title93(v){const d=digits93(v);return d||String(v||'').trim().toUpperCase()}
+    function parcelParts93(v){return (String(v||'').match(/\d+/g)||[]).map(x=>Number(x))}
+    function parcelMatch93(a,b){const x=parcelParts93(a),y=parcelParts93(b);if(!x.length||!y.length)return String(a||'').trim()===String(b||'').trim();if(x[0]!==y[0])return false;if(x.length>1&&y.length>1&&x[1]!==y[1])return false;return true}
+    function month93(){try{return typeof mesAtualComissao==='function'?mesAtualComissao():dateOnlyISO(new Date()).slice(0,7)}catch(e){return new Date().toISOString().slice(0,7)}}
+    function isoDate93(v){try{return dateOnlyISO(v||'')}catch(e){return ''}}
+    function approved93(s){return ['aprovado','aprovado_ia','aprovado_manual'].includes(String(s||'').toLowerCase())}
+    function rejected93(s){return ['recusado','recusado_ia','recusado_manual'].includes(String(s||'').toLowerCase())}
+    function auditItemKey93(a){return [digits93(a?.cpf_cnpj),title93(a?.titulo),parcelParts93(a?.parcela).join('/')].join('|')}
+    function auditSortDate93(a){return String(a?.updated_at||a?.master_decidido_em||a?.ia_analisado_em||a?.server_time||a?.criado_em||'')}
+    function uniqueAudits93(rows){
+      const m=new Map();
+      [...(rows||[])].sort((a,b)=>auditSortDate93(a).localeCompare(auditSortDate93(b))).forEach(a=>{
+        const k=auditItemKey93(a)||String(a?.id||Math.random());m.set(k,a);
+      });
+      return [...m.values()];
+    }
+    function authAliases93(ent){
+      const aliases=new Set(); const add=v=>{const n=normText93(v);if(n)aliases.add(n)};
+      add(ent?.login);add(ent?.nome);
+      try{
+        const users=(typeof AUTH_STATE!=='undefined'&&AUTH_STATE?.users)||{};
+        Object.entries(users).forEach(([login,u])=>{
+          if(!u||typeof u!=='object')return;
+          const sameFil=!ent?.filial||String(u.filial||'').toUpperCase()===String(ent.filial||'').toUpperCase();
+          if(!sameFil)return;
+          if(normText93(u.nome)===normText93(ent?.nome)||String(login||'').toLowerCase()===String(ent?.login||'').toLowerCase()){
+            add(login);add(u.nome);
+          }
+        });
+      }catch(e){}
+      if(ent?.type==='terceiro'||ent?.is_terceiro){add(typeof COBRANCA10_LOGIN!=='undefined'?COBRANCA10_LOGIN:'cobranca10');add(typeof COBRANCA10_NOME!=='undefined'?COBRANCA10_NOME:'Cobrança10')}
+      return aliases;
+    }
+    function auditMatchesEnt93(a,ent){
+      const filial=String(ent?.filial||'').toUpperCase();
+      if(ent?.type==='filial')return String(a?.filial||'').toUpperCase()===filial;
+      const aliases=authAliases93(ent); const vals=[a?.usuario_login,a?.usuario_nome,a?.usuario,a?.responsavel].map(normText93).filter(Boolean);
+      return vals.some(v=>aliases.has(v));
+    }
+    function sameAuditQuitado93(a,q){
+      const ad=digits93(a?.cpf_cnpj),qd=digits93(q?.cpf_cnpj_normalizado||q?.cpf_cnpj);
+      if(ad&&qd&&ad!==qd)return false;
+      if(title93(a?.titulo)&&title93(q?.titulo)&&title93(a?.titulo)!==title93(q?.titulo))return false;
+      if(!parcelMatch93(a?.parcela,q?.parcela))return false;
+      return true;
+    }
+    function collectionBeforePayment93(a,q,ent){
+      // A auditoria nasce de uma cobrança existente. Quando o log dessa cobrança
+      // está carregado, fazemos a checagem adicional por DATA (não por hora), pois
+      // o SGI informa pagamento apenas como DD/MM/AAAA.
+      try{
+        const source=(Array.isArray(COB_LOGS_OFICIAIS)&&COB_LOGS_OFICIAIS.length)?COB_LOGS_OFICIAIS:(COB_LOGS||[]);
+        const aliases=authAliases93(ent); const pay=isoDate93(q?.pagamento||q?.data_pagamento||'');
+        const matching=source.filter(l=>{
+          if(!sameAuditQuitado93(a,l))return false;
+          if(ent?.type==='filial')return String(l?.filial||'').toUpperCase()===String(ent?.filial||'').toUpperCase();
+          const lv=[l?.usuario,l?.login,l?.destino_login,l?.destino_nome,l?.responsavel].map(normText93).filter(Boolean);
+          return lv.some(v=>aliases.has(v));
+        });
+        if(!matching.length)return true;
+        return matching.some(l=>{const ld=isoDate93(l?.server_time||l?.criado_em||l?.data||l?.server_date||'');return !ld||!pay||ld<=pay});
+      }catch(e){return true}
+    }
+    function findQuitado93(a,ent,monthOnly=true){
+      const m=month93();
+      const cand=(QUITADOS_180||[]).filter(q=>{
+        if(!sameAuditQuitado93(a,q))return false;
+        if(monthOnly&&isoDate93(q?.pagamento||q?.data_pagamento||'').slice(0,7)!==m)return false;
+        return collectionBeforePayment93(a,q,ent);
+      });
+      return cand.sort((x,y)=>Number(y?.pago||0)-Number(x?.pago||0))[0]||null;
+    }
+    function policy93(ent){
+      const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista');
+      const isThird=!!(ent?.is_terceiro||ent?.type==='terceiro');
+      const cfg=commissionCfg(entityConfig(ent));
+      let rows=[];
+      if(isCred)rows=cfg.camp_cob_crediarista||[];
+      else if(isThird)rows=cfg.camp_cobranca_terceiro||[];
+      else rows=cfg.camp_cob_usuarios||[];
+      if(!Array.isArray(rows)||!rows.length){
+        rows=isCred||isThird?[{faixa:'atencao',pct:'1.00'},{faixa:'alerta',pct:'2.00'},{faixa:'grave',pct:'3.00'}]:[{faixa:'atencao',pct:'0.50'},{faixa:'alerta',pct:'1.00'},{faixa:'grave',pct:'2.00'}];
+      }
+      return rows;
+    }
+    function calcAuditCommission93(ent){
+      const fx={atencao:{pct:0,recebido:0,comissao:0},alerta:{pct:0,recebido:0,comissao:0},grave:{pct:0,recebido:0,comissao:0}};
+      policy93(ent).forEach(r=>{const k=String(r?.faixa||'').toLowerCase();if(fx[k])fx[k].pct=Number(String(r?.pct||0).replace(',','.'))||0});
+      const all=uniqueAudits93((COB_AUDITORIAS||[]).filter(a=>auditMatchesEnt93(a,ent)));
+      const approved=all.filter(a=>approved93(a?.status));
+      const pending=all.filter(a=>!approved93(a?.status)&&!rejected93(a?.status));
+      const rejected=all.filter(a=>rejected93(a?.status));
+      let waiting=0,paid=0,settledPrior=0; const used=new Set();
+      approved.forEach(a=>{
+        const q=findQuitado93(a,ent,true);
+        if(!q){
+          const any=findQuitado93(a,ent,false);
+          if(any&&isoDate93(any?.pagamento||any?.data_pagamento||'').slice(0,7)!==month93()){settledPrior++;return}
+          waiting++;return;
+        }
+        const uk=[digits93(q?.cpf_cnpj_normalizado||q?.cpf_cnpj),title93(q?.titulo),parcelParts93(q?.parcela).join('/'),isoDate93(q?.pagamento||q?.data_pagamento||'')].join('|');
+        if(used.has(uk))return;used.add(uk);paid++;
+        let k=String(a?.faixa||q?.faixa||'atencao').toLowerCase();if(!fx[k])k='atencao';
+        fx[k].recebido+=Number(q?.pago||0);
+      });
+      Object.values(fx).forEach(v=>{v.recebido=Math.round(v.recebido*100)/100;v.comissao=Math.round(v.recebido*(v.pct/100)*100)/100});
+      return {fx,total:Math.round(Object.values(fx).reduce((s,v)=>s+v.comissao,0)*100)/100,aguardandoIa:pending.length,aprovados:approved.length,recusados:rejected.length,aguardandoPagamento:waiting,pagos:paid,liquidadosMesAnterior:settledPrior,totalCasos:all.length};
+    }
+    window.calcCobrancaAuditadaV1093=calcAuditCommission93;
+
+    // Mantém compatibilidade com nomes antigos usados em telas/exportação.
+    cobrancaAuditEntMatch=window.cobrancaAuditEntMatch=function(a,ent){return auditMatchesEnt93(a,ent)};
+    quitadoDoAudit=window.quitadoDoAudit=function(a){return findQuitado93(a,window.currentDetailRef||{},true)};
+    calcCobrancaUsuarioCommission=window.calcCobrancaUsuarioCommission=function(ent){return calcAuditCommission93(ent)};
+
+    canVerCobrancaUsuarioCommission=window.canVerCobrancaUsuarioCommission=function(ent){
+      try{
+        if(!ent)return false;
+        if(usuarioAtual?.tipo==='master'||usuarioAtual?.is_viewer)return true;
+        if(!usuarioAtual)return false;
+        const uf=String(usuarioAtual.filial||'').toUpperCase(),ef=String(ent.filial||'').toUpperCase();
+        if(ent?.type==='filial')return !!(usuarioAtual.is_gerente&&uf&&uf===ef);
+        if(ent?.type==='terceiro'||ent?.is_terceiro)return String(usuarioAtual.login||'').toLowerCase()===String(ent.login||COBRANCA10_LOGIN||'').toLowerCase();
+        if(ent?.type==='crediarista'||ent?.is_crediarista)return String(usuarioAtual.login||'').toLowerCase()===String(ent.login||'').toLowerCase();
+        const aliases=authAliases93(ent);return aliases.has(normText93(usuarioAtual.login))||aliases.has(normText93(usuarioAtual.nome));
+      }catch(e){return false}
+    };
+
+    function renderAuditCommission93(ent,title){
+      if(!canVerCobrancaUsuarioCommission(ent))return '';
+      const c=calcAuditCommission93(ent),f=c.fx;
+      const item=(t,v,extra='')=>`<div class="commission-item unlocked ${extra}"><div class="k">${t}</div><div class="v">${v}</div></div>`;
+      return `<div class="glass panel commission-card"><h3>📲 ${esc(title||'Comissão de cobrança auditada')} <span class="note">· evidência aprovada + baixa do mesmo CPF/título/parcela</span></h3><div class="commission-grid">${item('Atenção %',String(f.atencao.pct.toFixed(2)).replace('.',',')+'%')}${item('Alerta %',String(f.alerta.pct.toFixed(2)).replace('.',',')+'%')}${item('Grave %',String(f.grave.pct.toFixed(2)).replace('.',',')+'%')}${item('Recebido atenção',R(f.atencao.recebido))}${item('Recebido alerta',R(f.alerta.recebido))}${item('Recebido grave',R(f.grave.recebido))}${item('Comissão atenção',R(f.atencao.comissao))}${item('Comissão alerta',R(f.alerta.comissao))}${item('Comissão grave',R(f.grave.comissao))}${item('Total previsto',R(c.total),'total-final')}${item('Prints aguardando IA',String(c.aguardandoIa))}${item('Auditorias aprovadas',String(c.aprovados))}${item('Aguardando pagamento',String(c.aguardandoPagamento))}${item('Pagamentos conciliados',String(c.pagos))}</div><div class="commission-note">${esc(CONFIG_META?.comissao_pagamento_texto||'A comissão reinicia a cada mês e o pagamento é previsto para o dia 25 do mês seguinte.')} O gráfico/meta de cobrança é operacional e continua contabilizando os pagamentos da carteira; a comissão só entra após auditoria aprovada e conciliação exata.</div></div>`;
+    }
+    renderCobrancaUsuarioCommission=window.renderCobrancaUsuarioCommission=function(ent){return renderAuditCommission93(ent,'Comissão de cobrança auditada')};
+    renderTerceiroCommission=window.renderTerceiroCommission=function(ent){
+      const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista');
+      return renderAuditCommission93(ent,isCred?'Comissão crediarista auditada':'Comissão cobrança interna global auditada');
+    };
+
+    // Histórico/tela congelada de crediarista/cobrança interna usa a mesma fonte auditada.
+    if(typeof _v103CobCommissionSummary==='function'){
+      _v103CobCommissionSummary=window._v103CobCommissionSummary=function(ent){
+        const c=calcAuditCommission93(ent),b=c.fx;
+        return {isCred:!!(ent?.is_crediarista||ent?.type==='crediarista'),byFaixa:b,total:c.total,totalPrevisto:c.total,
+          recebidoAtencao:b.atencao.recebido,recebidoAlerta:b.alerta.recebido,recebidoGrave:b.grave.recebido,
+          comissaoAtencao:b.atencao.comissao,comissaoAlerta:b.alerta.comissao,comissaoGrave:b.grave.comissao,
+          pctAtencao:b.atencao.pct,pctAlerta:b.alerta.pct,pctGrave:b.grave.pct,
+          auditoriasAprovadas:c.aprovados,aguardandoPagamento:c.aguardandoPagamento,pagamentosConciliados:c.pagos};
+      };
+    }
+    if(typeof window.mdlV1017CommissionData==='function')window.mdlV1017CommissionData=function(ent){return _v103CobCommissionSummary(ent)};
+
+    // Meta/recebimentos do crediarista = espelho OPERACIONAL da filial.
+    // Isto não libera comissão; a comissão continua no cálculo auditado acima.
+    const baseCredEntities93=window.crediaristaEntities;
+    if(typeof baseCredEntities93==='function'){
+      crediaristaEntities=window.crediaristaEntities=function(){
+        return (baseCredEntities93()||[]).map(ent=>{
+          const fil=FILIAIS?.[String(ent.filial||'').toUpperCase()]||{};
+          const cfg=entityConfig(ent)||CONFIG_META||{};
+          const gp=Number(ent.grave_pend||0),ap=Number(ent.alerta_pend||0),tp=Number(ent.atencao_pend||0);
+          const gr=Number(fil.grave_rec||0),ar=Number(fil.alerta_rec||0),tr=Number(fil.atencao_rec||0);
+          const ga=gp*Number(cfg.grave_pct||20)/100,aa=ap*Number(cfg.alerta_pct||15)/100,ta=tp*Number(cfg.atencao_pct||10)/100;
+          const gpc=ga>0?gr/ga*100:0,apc=aa>0?ar/aa*100:0,tpc=ta>0?tr/ta*100:0;
+          const wg=Number(cfg.peso_grave||60),wa=Number(cfg.peso_alerta||30),wt=Number(cfg.peso_atencao||10),sw=wg+wa+wt||100;
+          const geral=(Math.min(gpc,100)*wg+Math.min(apc,100)*wa+Math.min(tpc,100)*wt)/sw;
+          const paid=Math.round((gr+ar+tr)*100)/100;
+          return {...ent,pago:paid,pago_meta:paid,grave_rec:gr,alerta_rec:ar,atencao_rec:tr,grave_alvo:ga,alerta_alvo:aa,atencao_alvo:ta,grave_perc:gpc,alerta_perc:apc,atencao_perc:tpc,perc_meta:geral};
+        });
+      };
+    }
+    const baseGetReceb93=window.getRecebimentos;
+    if(typeof baseGetReceb93==='function'){
+      getRecebimentos=window.getRecebimentos=function(ent){
+        if(ent?.type==='crediarista'||ent?.is_crediarista){
+          const ff=String(ent.filial||'').toUpperCase();
+          return baseGetReceb93({type:'filial',filial:ff,nome:filialLabel(ff)});
+        }
+        return baseGetReceb93.apply(this,arguments);
+      };
+    }
+
+    // Carrega auditorias + quitados quando abre painel especial (antes não acontecia no crediarista).
+    async function ensureCommissionData93(ref){
+      await Promise.allSettled([
+        (typeof ensureQuitadosV1075==='function'?ensureQuitadosV1075():Promise.resolve()),
+        (typeof carregarAuditoriasCobranca==='function'?carregarAuditoriasCobranca():Promise.resolve()),
+        (typeof carregarCobrancasOnline==='function'?carregarCobrancasOnline({ref}):Promise.resolve())
+      ]);
+    }
+    const baseCredOpen93=window.openCrediaristaPanel;
+    if(typeof baseCredOpen93==='function'){
+      openCrediaristaPanel=window.openCrediaristaPanel=async function(login,filial,nome){
+        const ref={type:'crediarista',login:String(login||'').toLowerCase(),filial:String(filial||'').toUpperCase(),nome:nome||''};
+        await ensureCommissionData93(ref);return baseCredOpen93.apply(this,arguments);
+      };
+    }
+    const baseThirdOpen93=window.openThirdChargePanel;
+    if(typeof baseThirdOpen93==='function'){
+      openThirdChargePanel=window.openThirdChargePanel=async function(){
+        const ref={type:'terceiro',login:String(COBRANCA10_LOGIN||'cobranca10'),filial:'FTER',nome:String(COBRANCA10_NOME||'Cobrança10')};
+        await ensureCommissionData93(ref);return baseThirdOpen93.apply(this,arguments);
+      };
+    }
+    const baseOpen93=window.openEntity;
+    if(typeof baseOpen93==='function'){
+      openEntity=window.openEntity=async function(ref){
+        if(ref?.type==='crediarista'||ref?.is_crediarista)return openCrediaristaPanel(ref.login||'',ref.filial||'',ref.nome||'');
+        if(ref?.type==='terceiro'||ref?.is_terceiro)return openThirdChargePanel();
+        await ensureCommissionData93(ref||{});return baseOpen93.apply(this,arguments);
+      };
+    }
+
+    console.log(TAG,'ativo: login vendedor + auditoria unificada + conciliação por CPF/título/parcela + crediarista operacional espelhado');
+  }catch(e){console.warn(TAG,'falhou',e)}
+})();
+
 })();
 </script>
 </body>
@@ -21283,3 +21540,5 @@ driver.quit()
 # V10.91_TELEGRAM_RESUMOS_WHATSAPP_STANDBY
 
 # V10.92_TELEGRAM_MULTI_GRUPOS_FIX
+
+# V10.93_COMISSAO_COBRANCA_AUDITADA_UNIFICADA
