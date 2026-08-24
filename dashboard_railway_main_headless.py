@@ -37,7 +37,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.94"
+DASHBOARD_BUILD_VERSION = "V10.95"
 DASHBOARD_BUILD_TAG = "cobranca_terceira_91_dias_cpf_inteiro"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -11608,7 +11608,7 @@ function setMainTab(tab){
 // ===== V10.80 COBRANÇA TERCEIRA / COB =====
 const COB_TERCEIRA_API='cobranca_terceira_api.php';
 let COB_TERCEIRA_STATE={items:[],batches:[],preview:[]}; let COB_TERCEIRA_PAGE=1; const COB_TERCEIRA_PAGE_SIZE=25;
-function cobTStatusLabel(st){const m={pronto:'Pronto para COB',enviado:'Enviado/baixado',erro_sgi:'Erro atualização SGI',hold_acordo:'Acordo/promessa ativa',bloqueado_marcador:'Bloqueado por marcador',ja_marcado_cob:'Já marcado COB',simulado:'Simulado'};return m[String(st||'').toLowerCase()]||String(st||'—')}
+function cobTStatusLabel(st){const m={pronto:'Pronto para COB',enviado:'Enviado/baixado',erro_sgi:'Erro atualização SGI',hold_acordo:'Acordo/promessa ativa',bloqueado_marcador:'Bloqueado por marcador',ja_marcado_cob:'Já marcado COB',override_cob_pendente:'Aguardando aplicar decisão MASTER',reprocessar_pendente:'Aguardando reprocessar SGI',excluido_master:'Excluído da COB pelo MASTER',simulado:'Simulado'};return m[String(st||'').toLowerCase()]||String(st||'—')}
 function cobTMoney(v){return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
 function cobTTotal(item){return (item?.titulos||[]).reduce((a,x)=>a+Number(x?.pendente||0),0)}
 function cobTDate(v){try{return v?new Date(v).toLocaleString('pt-BR'):'—'}catch(e){return String(v||'—')}}
@@ -11654,7 +11654,76 @@ async function cobTReopenBatch(batchId){
     toast(`${Number(j.reopened||0)} CPF(s) reabertos para envio real. O histórico do teste foi preservado.`,'success'); await loadCobTerceiraState(); await renderCobTerceiraTab(false);
   }catch(e){console.warn('[V10.90 COB reopen]',e);toast('Não foi possível reabrir este lote.');}
 }
-function cobTBadge(st){const s=String(st||'').toLowerCase();const cls=s==='enviado'?'ok':(s==='pronto'?'warn':(s.includes('erro')||s.includes('bloqueado')?'bad':''));return `<span class="badge ${cls}">${esc(cobTStatusLabel(st))}</span>`}
+
+function cobTCanDecideV1095(){
+  return !usuarioAtual?.is_cob_externa && (
+    String(usuarioAtual?.tipo||'')==='master' ||
+    String(usuarioAtual?.roleLabel||'').toLowerCase().includes('diretor')
+  );
+}
+async function cobTDecisionV1095(itemId,decision){
+  try{
+    if(!cobTCanDecideV1095())return;
+    const id=String(itemId||'').trim(); if(!id)return;
+    let reason='';
+    if(decision==='autorizar_cob'){
+      if(!confirm('Autorizar este cliente para COB Externa?\n\nO marcador atual (CURTY/ADV/ADV2/OBT) será PRESERVADO e o robô acrescentará apenas (COB) no cadastro SGI.'))return;
+      reason=prompt('Motivo/observação da autorização (opcional):','Autorizado pelo MASTER para COB Externa')||'Autorizado pelo MASTER para COB Externa';
+    }else if(decision==='excluir'){
+      reason=prompt('Motivo para excluir este cliente da COB Externa:','Manter na cobrança interna')||'Manter na cobrança interna';
+      if(!confirm('Confirmar exclusão da COB Externa?\n\nO cliente NÃO será apagado do histórico. Ele ficará como Excluído pelo MASTER e continuará elegível para cobrança interna.'))return;
+    }else if(decision==='reprocessar'){
+      reason=prompt('Observação para reprocessar o SGI (opcional):','Reprocessar cadastro SGI')||'Reprocessar cadastro SGI';
+    }else if(decision==='reabrir'){
+      if(!confirm('Reabrir esta decisão para nova análise?'))return;
+      reason='Reaberto pelo MASTER';
+    }
+    const a=cobTAuth();const fd=new FormData();
+    fd.append('action','decide_item');fd.append('item_id',id);fd.append('decision',decision);fd.append('reason',reason);
+    const r=await fetch(COB_TERCEIRA_API,{method:'POST',body:fd,headers:{'X-MDL-Login':a.login,'X-MDL-Password':a.password}});
+    let j={};try{j=await r.json()}catch(e){}
+    if(!r.ok||j?.ok===false)throw new Error(j.error||('HTTP '+r.status));
+
+    if(['autorizar_cob','reprocessar'].includes(decision) && j.run_worker){
+      try{
+        const rr=await fetch(WA_MASTER_MONITOR_URL+'/run/cob_terceira',{method:'POST'});
+        const jj=await rr.json();
+        toast((j.message||'Decisão salva.')+' '+(jj.message||''),'success');
+      }catch(_e){
+        toast((j.message||'Decisão salva.')+' Use Rodar COB Terceira para aplicar no SGI.','success');
+      }
+    }else{
+      toast(j.message||'Decisão salva.','success');
+    }
+    await loadCobTerceiraState();await renderCobTerceiraTab(false);
+  }catch(e){
+    console.warn('[V10.95 decisão COB]',e);
+    toast('Não foi possível salvar a decisão: '+String(e?.message||e),'warn');
+  }
+}
+function cobTActionsV1095(x){
+  if(!cobTCanDecideV1095())return '';
+  const st=String(x?.status||'').toLowerCase();
+  const id=esc(x?.id||'');
+  if(st==='bloqueado_marcador'){
+    return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+      <button class="btn primary btn-xs" onclick="cobTDecisionV1095('${id}','autorizar_cob')">✅ Autorizar (COB)</button>
+      <button class="btn soft btn-xs" onclick="cobTDecisionV1095('${id}','excluir')">🚫 Excluir da COB</button>
+    </div>`;
+  }
+  if(st==='erro_sgi'){
+    return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+      <button class="btn primary btn-xs" onclick="cobTDecisionV1095('${id}','reprocessar')">🔄 Reprocessar SGI</button>
+      <button class="btn soft btn-xs" onclick="cobTDecisionV1095('${id}','excluir')">🚫 Excluir da COB</button>
+    </div>`;
+  }
+  if(st==='excluido_master'){
+    return `<div style="margin-top:8px"><button class="btn soft btn-xs" onclick="cobTDecisionV1095('${id}','reabrir')">↩️ Reabrir decisão</button></div>`;
+  }
+  return '';
+}
+
+function cobTBadge(st){const s=String(st||'').toLowerCase();const cls=s==='enviado'?'ok':(s==='pronto'?'warn':((s.includes('erro')||s.includes('bloqueado'))?'bad':((s.includes('pendente')||s==='excluido_master')?'warn':'')));return `<span class="badge ${cls}">${esc(cobTStatusLabel(st))}</span>`}
 async function renderCobTerceiraTab(reload=true){
   const host=document.getElementById('cobTerceiraSection'); if(!host)return;
   host.classList.remove('hidden');
@@ -11663,18 +11732,18 @@ async function renderCobTerceiraTab(reload=true){
   const showingPreview=!items.length&&preview.length>0; const sourceItems=showingPreview?preview:items;
   const q=String(document.getElementById('cobTSearch')?.value||window._cobTSearch||'').trim().toLowerCase(); const stf=String(document.getElementById('cobTStatus')?.value||window._cobTStatus||'');
   const filtered=sourceItems.filter(x=>{const txt=[x.cliente,x.cpf_cnpj,x.status,x.marker_info,(x.titulos||[]).map(t=>[t.titulo,t.parcela,t.filial,t.vendedor].join(' ')).join(' ')].join(' ').toLowerCase();return(!q||txt.includes(q))&&(!stf||String(x.status||'')===stf)});
-  const ready=items.filter(x=>String(x.status||'')==='pronto'), sent=items.filter(x=>String(x.status||'')==='enviado'), hold=items.filter(x=>String(x.status||'')==='hold_acordo'), err=items.filter(x=>['erro_sgi','bloqueado_marcador'].includes(String(x.status||'')));
+  const ready=items.filter(x=>String(x.status||'')==='pronto'), sent=items.filter(x=>String(x.status||'')==='enviado'), hold=items.filter(x=>String(x.status||'')==='hold_acordo'), err=items.filter(x=>['erro_sgi','bloqueado_marcador','override_cob_pendente','reprocessar_pendente'].includes(String(x.status||''))), excluded=items.filter(x=>String(x.status||'')==='excluido_master');
   const pages=Math.max(1,Math.ceil(filtered.length/COB_TERCEIRA_PAGE_SIZE)); if(COB_TERCEIRA_PAGE>pages)COB_TERCEIRA_PAGE=pages; const ini=(COB_TERCEIRA_PAGE-1)*COB_TERCEIRA_PAGE_SIZE, page=filtered.slice(ini,ini+COB_TERCEIRA_PAGE_SIZE);
   const cobPartner=!!usuarioAtual?.is_cob_externa; const canDownload=!showingPreview && (cobPartner || String(usuarioAtual?.tipo||'')==='master' || String(usuarioAtual?.roleLabel||'').toLowerCase().includes('diretor'));
   const rule=COB_TERCEIRA_STATE?.rule||{}; const testMode=!!rule.test_mode; const testLimit=Number(rule.test_limit||0);
   const simHtml=(!cobPartner&&preview.length&&(!!COB_TERCEIRA_STATE?.dry_run||testMode))?`<div class="glass panel" style="border-color:rgba(251,191,36,.45)"><strong>🧪 DRY RUN disponível:</strong> ${preview.length} CPF(s) simulados na última execução. ${showingPreview?'A tabela abaixo está mostrando esta prévia; nenhum CPF foi enviado nem teve nome alterado.':'A fila oficial já existe; a prévia permanece apenas para consulta.'}</div>`:'';
   const testHtml=(!cobPartner&&testMode)?`<div class="glass panel" style="border-color:rgba(59,130,246,.5)"><strong>🧰 Homologação real controlada:</strong> máximo de <strong>${testLimit||'—'} CPF(s)</strong> externalizados no total enquanto COB_TERCEIRA_TEST_MODE=1. Somente CPFs com SGI confirmado em (COB) entram no bloqueio interno e ficam disponíveis para download.</div>`:'';
   const prodRule=COB_TERCEIRA_STATE?.rule||{};
-  const prodHtml=(!cobPartner&&!testMode&&!COB_TERCEIRA_STATE?.dry_run)?`<div class="glass panel" style="border-color:rgba(34,197,94,.45)"><strong>✅ COB Externa em produção:</strong> D+${prodRule.dias||91} automático às 06:30. Captura atual: ${esc(prodRule.capture_start||'—')} até ${esc(prodRule.capture_end||'—')} (${esc(prodRule.capture_reason||'janela diária')}). Nova base e lembretes de lote não baixado são enviados ao MASTER pelo Telegram.</div>`:'';
-  host.innerHTML=`${simHtml}${testHtml}<div class="kpis" style="margin-bottom:14px"><div class="kpi"><div class="label">Prontos para COB</div><div class="value">${ready.length}</div><div class="subline">${cobTMoney(ready.reduce((a,x)=>a+cobTTotal(x),0))}</div></div><div class="kpi"><div class="label">Já baixados/enviados</div><div class="value">${sent.length}</div></div><div class="kpi"><div class="label">Acordo/promessa ativa</div><div class="value">${hold.length}</div></div><div class="kpi"><div class="label">Pendências SGI/marcador</div><div class="value">${err.length}</div></div></div>
+  const prodHtml=(!cobPartner&&!testMode&&!COB_TERCEIRA_STATE?.dry_run)?`<div class="glass panel" style="border-color:rgba(34,197,94,.45)"><strong>✅ COB Externa em produção:</strong> D+${prodRule.dias||91} automático às 06:30. Captura atual: ${esc(prodRule.capture_start||'—')} até ${esc(prodRule.capture_end||'—')} (${esc(prodRule.capture_reason||'janela diária')}). Nova base e lembretes de lote não baixado são enviados ao MASTER pelo Telegram.<div class="hint" style="margin-top:6px"><strong>V10.95:</strong> clientes bloqueados por CURTY/ADV/ADV2/OBT aguardam decisão. MASTER/Diretor pode Autorizar (COB), Excluir da COB ou reprocessar erro SGI diretamente nesta tabela.</div></div>`:'';
+  host.innerHTML=`${simHtml}${testHtml}${prodHtml}<div class="kpis" style="margin-bottom:14px"><div class="kpi"><div class="label">Prontos para COB</div><div class="value">${ready.length}</div><div class="subline">${cobTMoney(ready.reduce((a,x)=>a+cobTTotal(x),0))}</div></div><div class="kpi"><div class="label">Já baixados/enviados</div><div class="value">${sent.length}</div></div><div class="kpi"><div class="label">Acordo/promessa ativa</div><div class="value">${hold.length}</div></div><div class="kpi"><div class="label">Pendências SGI/marcador</div><div class="value">${err.length}</div></div><div class="kpi"><div class="label">Excluídos pelo MASTER</div><div class="value">${excluded.length}</div></div></div>
   <div class="glass panel"><div class="section-head"><div><h2>📥 Baixar arquivo para a COB</h2><div class="hint">${showingPreview?'Prévia de simulação: download desabilitado até a externalização real.':'Formato oficial: CSV separado por ponto e vírgula, igual ao modelo de importação enviado pela COB. O arquivo abre normalmente no Excel. Ao baixar, o lote fica registrado como enviado com usuário/data/hora.'}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap">${canDownload?`<button class="btn primary" onclick="cobTDownload('today')">⬇️ Baixar novos de hoje (.CSV)</button><button class="btn soft" onclick="cobTDownload('7d')">⬇️ Baixar últimos 7 dias (.CSV)</button><button class="btn soft" onclick="cobTDownload('pending')">⬇️ Baixar todos pendentes (.CSV)</button>`:''}</div></div>
-  <div class="filters" style="margin:10px 0;display:flex"><input id="cobTSearch" value="${esc(q)}" placeholder="Buscar nome, CPF, título..." oninput="window._cobTSearch=this.value;COB_TERCEIRA_PAGE=1;renderCobTerceiraTab(false)"><select id="cobTStatus" onchange="window._cobTStatus=this.value;COB_TERCEIRA_PAGE=1;renderCobTerceiraTab(false)"><option value="">Todos os status</option>${['simulado','pronto','enviado','hold_acordo','erro_sgi','bloqueado_marcador','ja_marcado_cob'].map(s=>`<option value="${s}" ${stf===s?'selected':''}>${cobTStatusLabel(s)}</option>`).join('')}</select></div>
-  <div class="wa-master-scroll"><table class="wa-master-table"><thead><tr><th>Status</th><th>Cliente / CPF</th><th>Títulos</th><th>Valor</th><th>Gatilho</th><th>SGI / Envio</th></tr></thead><tbody>${page.length?page.map(x=>`<tr><td>${cobTBadge(x.status)}</td><td><strong>${esc(x.cliente||'—')}</strong><div class="small muted">${esc(x.cpf_cnpj||'—')}</div></td><td>${(x.titulos||[]).length}<div class="small muted">${esc((x.titulos||[]).slice(0,3).map(t=>`${t.titulo||''}/${t.parcela||''}`).join(' · '))}</div></td><td><strong>${cobTMoney(cobTTotal(x))}</strong></td><td>D+${Number(x.trigger_dias_max||91)}<div class="small muted">${cobTDate(x.trigger_at)}</div></td><td>${x.sent_at?`Baixado ${cobTDate(x.sent_at)}<div class="small muted">${esc(x.downloaded_by||'')}</div>`:(x.erro_sgi?`<span style="color:var(--red)">${esc(x.erro_sgi)}</span>`:`${esc(x.marker_info||x.ready_at||'—')}`)}</td></tr>`).join(''):'<tr><td colspan="6"><div class="empty">Nenhum CPF nesta seleção.</div></td></tr>'}</tbody></table></div>
+  <div class="filters" style="margin:10px 0;display:flex"><input id="cobTSearch" value="${esc(q)}" placeholder="Buscar nome, CPF, título..." oninput="window._cobTSearch=this.value;COB_TERCEIRA_PAGE=1;renderCobTerceiraTab(false)"><select id="cobTStatus" onchange="window._cobTStatus=this.value;COB_TERCEIRA_PAGE=1;renderCobTerceiraTab(false)"><option value="">Todos os status</option>${['simulado','pronto','enviado','hold_acordo','erro_sgi','bloqueado_marcador','override_cob_pendente','reprocessar_pendente','excluido_master','ja_marcado_cob'].map(s=>`<option value="${s}" ${stf===s?'selected':''}>${cobTStatusLabel(s)}</option>`).join('')}</select></div>
+  <div class="wa-master-scroll"><table class="wa-master-table"><thead><tr><th>Status</th><th>Cliente / CPF</th><th>Títulos</th><th>Valor</th><th>Gatilho</th><th>SGI / Envio</th></tr></thead><tbody>${page.length?page.map(x=>`<tr><td>${cobTBadge(x.status)}</td><td><strong>${esc(x.cliente||'—')}</strong><div class="small muted">${esc(x.cpf_cnpj||'—')}</div></td><td>${(x.titulos||[]).length}<div class="small muted">${esc((x.titulos||[]).slice(0,3).map(t=>`${t.titulo||''}/${t.parcela||''}`).join(' · '))}</div></td><td><strong>${cobTMoney(cobTTotal(x))}</strong></td><td>D+${Number(x.trigger_dias_max||91)}<div class="small muted">${cobTDate(x.trigger_at)}</div></td><td>${x.sent_at?`Baixado ${cobTDate(x.sent_at)}<div class="small muted">${esc(x.downloaded_by||'')}</div>`:(x.erro_sgi?`<span style="color:var(--red)">${esc(x.erro_sgi)}</span>`:`${esc(x.marker_info||x.ready_at||'—')}`)}${x.master_decision?`<div class="small muted" style="margin-top:5px">Decisão: ${esc(x.master_decision)} · ${esc(x.master_decision_by||'')} · ${cobTDate(x.master_decision_at)}</div>`:''}${cobTActionsV1095(x)}</td></tr>`).join(''):'<tr><td colspan="6"><div class="empty">Nenhum CPF nesta seleção.</div></td></tr>'}</tbody></table></div>
   <div class="log-pager"><div>${filtered.length} CPF(s) · página ${COB_TERCEIRA_PAGE}/${pages}</div><div style="display:flex;gap:8px"><button class="btn soft" ${COB_TERCEIRA_PAGE<=1?'disabled':''} onclick="COB_TERCEIRA_PAGE--;renderCobTerceiraTab(false)">⬅️ Anterior</button><button class="btn soft" ${COB_TERCEIRA_PAGE>=pages?'disabled':''} onclick="COB_TERCEIRA_PAGE++;renderCobTerceiraTab(false)">Próxima ➡️</button></div></div></div>
   <div class="glass panel"><div class="section-head"><div><h2>🗂️ Histórico de downloads</h2><div class="hint">Cada download é um lote auditável. Você pode baixar novamente sem alterar o status. MASTER/Diretor também podem reabrir um lote de teste para que a COB faça o envio oficial depois.</div></div></div><div class="logs-list">${(COB_TERCEIRA_STATE.batches||[]).slice().reverse().slice(0,30).map(b=>{const adminReopen=!usuarioAtual?.is_cob_externa&&(String(usuarioAtual?.tipo||'')==='master'||String(usuarioAtual?.roleLabel||'').toLowerCase().includes('diretor'));const reopened=!!b.reopened_at;return `<div class="log-row"><div><strong>${esc(b.batch_id||'Lote')}</strong><div class="small muted">${cobTDate(b.created_at)} · ${esc(b.downloaded_by||'—')}${reopened?` · <span style="color:var(--orange)">reaberto ${cobTDate(b.reopened_at)} por ${esc(b.reopened_by||'—')}</span>`:''}${Number(b.redownloads||0)>0?` · ${Number(b.redownloads||0)} re-download(s)`:''}</div></div><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end"><span>${Number(b.cpfs||0)} CPF(s) · ${Number(b.titulos||0)} título(s) · ${cobTMoney(b.valor||0)}</span><button class="btn soft" onclick="cobTRedownloadBatch('${esc(b.batch_id||'')}')">⬇️ Baixar novamente</button>${adminReopen&&!reopened?`<button class="btn soft" onclick="cobTReopenBatch('${esc(b.batch_id||'')}')">↩️ Reabrir lote de teste</button>`:''}</div></div>`}).join('')||'<div class="empty">Ainda não houve download.</div>'}</div></div>`;
 }
@@ -19562,7 +19631,7 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
     `;
     document.head.appendChild(css);
 
-    window.DASHBOARD_BUILD_VERSION='V10.94';
+    window.DASHBOARD_BUILD_VERSION='V10.95';
     console.log(TAG,'ativo: redraw automático adiado durante uso + scroll preservado');
   }catch(e){console.warn('[V10.81] falhou',e)}
 
@@ -20175,7 +20244,7 @@ function cob_public_summary($state){$items=is_array($state['items']??null)?$stat
     if(cob_day($x['ready_at']??$x['trigger_at']??'')===$today && in_array($st,['pronto','enviado'])){$new++;foreach(($x['titulos']??[]) as $t)$value+=cob_num($t['pendente']??0);}
     if(cob_day($x['sent_at']??$x['last_download_at']??'')===$today && $st==='enviado'){$sent++;$titles+=count($x['titulos']??[]);}
   }
-  return ['version'=>'V10.80','updated_at'=>date(DATE_ATOM),'date'=>$today,'new_cpfs_today'=>$new,'sent_cpfs_today'=>$sent,'sent_titles_today'=>$titles,'new_value_today'=>round($value,2),'hold_count'=>$hold,'error_count'=>$err,'ready_count'=>$ready,'sent_total'=>$sentTotal];
+  $excluded=0;$decisionPending=0;foreach($items as $x){$st=strtolower((string)($x['status']??''));if($st==='excluido_master')$excluded++;if(in_array($st,['override_cob_pendente','reprocessar_pendente'],true))$decisionPending++;}return ['version'=>'V10.95','updated_at'=>date(DATE_ATOM),'date'=>$today,'new_cpfs_today'=>$new,'sent_cpfs_today'=>$sent,'sent_titles_today'=>$titles,'new_value_today'=>round($value,2),'hold_count'=>$hold,'error_count'=>$err,'ready_count'=>$ready,'sent_total'=>$sentTotal,'excluded_master_count'=>$excluded,'decision_pending_count'=>$decisionPending];
 }
 function cob_csv_row($item,$t){
   $p=is_array($item['pessoa']??null)?$item['pessoa']:[];$a=is_array($p['address']??null)?$p['address']:[];$phones=is_array($p['phones']??null)?$p['phones']:[];
@@ -20195,6 +20264,48 @@ function cob_emit_csv($selected,$filename){while(ob_get_level())ob_end_clean();h
 [$authorized,$login]=cob_auth();if(!$authorized){http_response_code(401);header('Content-Type: application/json; charset=UTF-8');echo json_encode(['ok'=>false,'error'=>'nao_autorizado'],JSON_UNESCAPED_UNICODE);exit;}
 $state=cob_read_private($stateFile,['version'=>'V10.80','items'=>[],'batches'=>[]]);if(!isset($state['items'])||!is_array($state['items']))$state['items']=[];if(!isset($state['batches'])||!is_array($state['batches']))$state['batches']=[];
 $action=(string)($_GET['action']??$_POST['action']??'');
+
+if($action==='decide_item'){
+  if(!cob_is_admin_reopen($login)){http_response_code(403);header('Content-Type: application/json; charset=UTF-8');echo json_encode(['ok'=>false,'error'=>'somente_master_diretor'],JSON_UNESCAPED_UNICODE);exit;}
+  $itemId=trim((string)($_POST['item_id']??''));$decision=strtolower(trim((string)($_POST['decision']??'')));$reason=cob_clip(trim((string)($_POST['reason']??'')),500);
+  if($itemId===''||!in_array($decision,['autorizar_cob','excluir','reprocessar','reabrir'],true)){http_response_code(400);header('Content-Type: application/json; charset=UTF-8');echo json_encode(['ok'=>false,'error'=>'decisao_invalida'],JSON_UNESCAPED_UNICODE);exit;}
+  $idx=-1;foreach($state['items'] as $i=>$item){if((string)($item['id']??'')===$itemId){$idx=$i;break;}}
+  if($idx<0){http_response_code(404);header('Content-Type: application/json; charset=UTF-8');echo json_encode(['ok'=>false,'error'=>'cliente_nao_encontrado'],JSON_UNESCAPED_UNICODE);exit;}
+  $oldStatus=strtolower((string)($state['items'][$idx]['status']??''));$now=date(DATE_ATOM);
+  if(!isset($state['items'][$idx]['decision_history'])||!is_array($state['items'][$idx]['decision_history']))$state['items'][$idx]['decision_history']=[];
+  $state['items'][$idx]['decision_history'][]=['at'=>$now,'by'=>$login,'decision'=>$decision,'reason'=>$reason,'old_status'=>$oldStatus];
+  $state['items'][$idx]['master_decision']=$decision;
+  $state['items'][$idx]['master_decision_reason']=$reason;
+  $state['items'][$idx]['master_decision_at']=$now;
+  $state['items'][$idx]['master_decision_by']=$login;
+  $state['items'][$idx]['updated_at']=$now;
+  $runWorker=false;$message='Decisão registrada.';
+  if($decision==='autorizar_cob'){
+    if(!in_array($oldStatus,['bloqueado_marcador','excluido_master'],true)){http_response_code(409);header('Content-Type: application/json; charset=UTF-8');echo json_encode(['ok'=>false,'error'=>'status_nao_permite_autorizar'],JSON_UNESCAPED_UNICODE);exit;}
+    $state['items'][$idx]['status']='override_cob_pendente';
+    $state['items'][$idx]['override_original_marker']=$state['items'][$idx]['marker_info']??'';
+    $runWorker=true;$message='Autorização registrada. O robô vai preservar o marcador atual e acrescentar (COB) no SGI.';
+  }elseif($decision==='excluir'){
+    $state['items'][$idx]['status']='excluido_master';
+    $state['items'][$idx]['excluded_at']=$now;
+    $state['items'][$idx]['excluded_by']=$login;
+    $state['items'][$idx]['excluded_reason']=$reason;
+    $state['items'][$idx]['ready_at']='';
+    $message='Cliente excluído da COB Externa. Histórico preservado; cobrança interna permanece ativa.';
+  }elseif($decision==='reprocessar'){
+    $state['items'][$idx]['status']='reprocessar_pendente';
+    $runWorker=true;$message='Reprocessamento solicitado.';
+  }elseif($decision==='reabrir'){
+    $marker=trim((string)($state['items'][$idx]['override_original_marker']??$state['items'][$idx]['marker_info']??''));
+    $state['items'][$idx]['status']=$marker!==''?'bloqueado_marcador':'reprocessar_pendente';
+    $state['items'][$idx]['excluded_at']='';$state['items'][$idx]['excluded_by']='';$state['items'][$idx]['excluded_reason']='';
+    $runWorker=($marker==='');
+    $message='Decisão reaberta para nova análise.';
+  }
+  $state['updated_at']=$now;
+  cob_write_private($stateFile,$state);cob_write_json($summaryFile,cob_public_summary($state));
+  header('Content-Type: application/json; charset=UTF-8');echo json_encode(['ok'=>true,'item_id'=>$itemId,'decision'=>$decision,'status'=>$state['items'][$idx]['status'],'run_worker'=>$runWorker,'message'=>$message],JSON_UNESCAPED_UNICODE);exit;
+}
 if($action==='redownload_batch'){
   $batchId=trim((string)($_POST['batch_id']??$_GET['batch_id']??''));$batchIdx=-1;$batch=null;foreach($state['batches'] as $i=>$b){if((string)($b['batch_id']??'')===$batchId){$batchIdx=$i;$batch=$b;break;}}
   if($batchIdx<0||!is_array($batch)){http_response_code(404);header('Content-Type: application/json; charset=UTF-8');echo json_encode(['ok'=>false,'error'=>'lote_nao_encontrado'],JSON_UNESCAPED_UNICODE);exit;}
@@ -21546,3 +21657,5 @@ driver.quit()
 # V10.93_COMISSAO_COBRANCA_AUDITADA_UNIFICADA
 
 # V10.94_COB_EXTERNA_PRODUCAO_TELEGRAM
+
+# V10.95_DECISAO_MASTER_COB

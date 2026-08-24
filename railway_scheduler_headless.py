@@ -88,7 +88,7 @@ STATUS_PATH = os.path.join(LOG_DIR, 'monitor_status.json')
 SALES_CMD = [sys.executable, os.path.join(BASE_DIR, 'dashboard_sales_worker_headless.py')]
 COBRANCA_CMD = [sys.executable, os.path.join(BASE_DIR, 'dashboard_railway_main_headless.py')]
 PREVENTIVA_CMD = [sys.executable, os.path.join(BASE_DIR, 'whatsapp_master_preventiva_worker.py')]
-COB_TERCEIRA_CMD = [sys.executable, os.path.join(BASE_DIR, 'cobranca_terceira_worker_v1094.py')]
+COB_TERCEIRA_CMD = [sys.executable, os.path.join(BASE_DIR, 'cobranca_terceira_worker_v1095.py')]
 
 _sales_proc = None
 _cobranca_proc = None
@@ -102,7 +102,7 @@ _force_main_boot = True
 _force_sales_after_main = False
 
 STATE = {
-    'version': 'V10.94_COB_PRODUCAO_TELEGRAM',
+    'version': 'V10.95_DECISAO_MASTER_COB',
     'started_at': None,
     'updated_at': None,
     'scheduler': 'starting',
@@ -560,7 +560,7 @@ def start_http_panel():
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log(f'VERSAO V10.94: COB Externa produção D+91 + continuidade + Telegram | canal={NOTIFICATION_CHANNEL} | manual_only={COB_TERCEIRA_MANUAL_ONLY}')
+log(f'VERSAO V10.95: COB Externa + decisão MASTER de marcadores | canal={NOTIFICATION_CHANNEL} | manual_only={COB_TERCEIRA_MANUAL_ONLY}')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
@@ -627,3 +627,5 @@ while True:
 # V10.92_TELEGRAM_TESTE_EXIBE_DESTINATARIOS
 
 # V10.94_COB_EXTERNA_PRODUCAO
+
+# V10.95_DECISAO_MASTER_COB
