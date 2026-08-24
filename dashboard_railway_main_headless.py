@@ -37,7 +37,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.93"
+DASHBOARD_BUILD_VERSION = "V10.94"
 DASHBOARD_BUILD_TAG = "cobranca_terceira_91_dias_cpf_inteiro"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -11667,8 +11667,10 @@ async function renderCobTerceiraTab(reload=true){
   const pages=Math.max(1,Math.ceil(filtered.length/COB_TERCEIRA_PAGE_SIZE)); if(COB_TERCEIRA_PAGE>pages)COB_TERCEIRA_PAGE=pages; const ini=(COB_TERCEIRA_PAGE-1)*COB_TERCEIRA_PAGE_SIZE, page=filtered.slice(ini,ini+COB_TERCEIRA_PAGE_SIZE);
   const cobPartner=!!usuarioAtual?.is_cob_externa; const canDownload=!showingPreview && (cobPartner || String(usuarioAtual?.tipo||'')==='master' || String(usuarioAtual?.roleLabel||'').toLowerCase().includes('diretor'));
   const rule=COB_TERCEIRA_STATE?.rule||{}; const testMode=!!rule.test_mode; const testLimit=Number(rule.test_limit||0);
-  const simHtml=(!cobPartner&&preview.length)?`<div class="glass panel" style="border-color:rgba(251,191,36,.45)"><strong>🧪 DRY RUN disponível:</strong> ${preview.length} CPF(s) simulados na última execução. ${showingPreview?'A tabela abaixo está mostrando esta prévia; nenhum CPF foi enviado nem teve nome alterado.':'A fila oficial já existe; a prévia permanece apenas para consulta.'}</div>`:'';
+  const simHtml=(!cobPartner&&preview.length&&(!!COB_TERCEIRA_STATE?.dry_run||testMode))?`<div class="glass panel" style="border-color:rgba(251,191,36,.45)"><strong>🧪 DRY RUN disponível:</strong> ${preview.length} CPF(s) simulados na última execução. ${showingPreview?'A tabela abaixo está mostrando esta prévia; nenhum CPF foi enviado nem teve nome alterado.':'A fila oficial já existe; a prévia permanece apenas para consulta.'}</div>`:'';
   const testHtml=(!cobPartner&&testMode)?`<div class="glass panel" style="border-color:rgba(59,130,246,.5)"><strong>🧰 Homologação real controlada:</strong> máximo de <strong>${testLimit||'—'} CPF(s)</strong> externalizados no total enquanto COB_TERCEIRA_TEST_MODE=1. Somente CPFs com SGI confirmado em (COB) entram no bloqueio interno e ficam disponíveis para download.</div>`:'';
+  const prodRule=COB_TERCEIRA_STATE?.rule||{};
+  const prodHtml=(!cobPartner&&!testMode&&!COB_TERCEIRA_STATE?.dry_run)?`<div class="glass panel" style="border-color:rgba(34,197,94,.45)"><strong>✅ COB Externa em produção:</strong> D+${prodRule.dias||91} automático às 06:30. Captura atual: ${esc(prodRule.capture_start||'—')} até ${esc(prodRule.capture_end||'—')} (${esc(prodRule.capture_reason||'janela diária')}). Nova base e lembretes de lote não baixado são enviados ao MASTER pelo Telegram.</div>`:'';
   host.innerHTML=`${simHtml}${testHtml}<div class="kpis" style="margin-bottom:14px"><div class="kpi"><div class="label">Prontos para COB</div><div class="value">${ready.length}</div><div class="subline">${cobTMoney(ready.reduce((a,x)=>a+cobTTotal(x),0))}</div></div><div class="kpi"><div class="label">Já baixados/enviados</div><div class="value">${sent.length}</div></div><div class="kpi"><div class="label">Acordo/promessa ativa</div><div class="value">${hold.length}</div></div><div class="kpi"><div class="label">Pendências SGI/marcador</div><div class="value">${err.length}</div></div></div>
   <div class="glass panel"><div class="section-head"><div><h2>📥 Baixar arquivo para a COB</h2><div class="hint">${showingPreview?'Prévia de simulação: download desabilitado até a externalização real.':'Formato oficial: CSV separado por ponto e vírgula, igual ao modelo de importação enviado pela COB. O arquivo abre normalmente no Excel. Ao baixar, o lote fica registrado como enviado com usuário/data/hora.'}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap">${canDownload?`<button class="btn primary" onclick="cobTDownload('today')">⬇️ Baixar novos de hoje (.CSV)</button><button class="btn soft" onclick="cobTDownload('7d')">⬇️ Baixar últimos 7 dias (.CSV)</button><button class="btn soft" onclick="cobTDownload('pending')">⬇️ Baixar todos pendentes (.CSV)</button>`:''}</div></div>
   <div class="filters" style="margin:10px 0;display:flex"><input id="cobTSearch" value="${esc(q)}" placeholder="Buscar nome, CPF, título..." oninput="window._cobTSearch=this.value;COB_TERCEIRA_PAGE=1;renderCobTerceiraTab(false)"><select id="cobTStatus" onchange="window._cobTStatus=this.value;COB_TERCEIRA_PAGE=1;renderCobTerceiraTab(false)"><option value="">Todos os status</option>${['simulado','pronto','enviado','hold_acordo','erro_sgi','bloqueado_marcador','ja_marcado_cob'].map(s=>`<option value="${s}" ${stf===s?'selected':''}>${cobTStatusLabel(s)}</option>`).join('')}</select></div>
@@ -19560,7 +19562,7 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
     `;
     document.head.appendChild(css);
 
-    window.DASHBOARD_BUILD_VERSION='V10.93';
+    window.DASHBOARD_BUILD_VERSION='V10.94';
     console.log(TAG,'ativo: redraw automático adiado durante uso + scroll preservado');
   }catch(e){console.warn('[V10.81] falhou',e)}
 
@@ -21542,3 +21544,5 @@ driver.quit()
 # V10.92_TELEGRAM_MULTI_GRUPOS_FIX
 
 # V10.93_COMISSAO_COBRANCA_AUDITADA_UNIFICADA
+
+# V10.94_COB_EXTERNA_PRODUCAO_TELEGRAM

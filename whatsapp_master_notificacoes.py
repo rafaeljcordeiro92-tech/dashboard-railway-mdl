@@ -315,18 +315,30 @@ def build_cob_external_base_alert(summary: dict[str, Any]) -> str:
     cpfs = int((summary or {}).get("cpfs") or 0)
     titulos = int((summary or {}).get("titulos") or 0)
     valor = float((summary or {}).get("valor") or 0)
+    pending_total = int((summary or {}).get("pending_total") or 0)
+    reminder = bool((summary or {}).get("reminder"))
     test_mode = bool((summary or {}).get("test_mode"))
     test_limit = int((summary or {}).get("test_limit") or 0)
     dashboard = str((summary or {}).get("dashboard") or PUBLIC_BASE)
     valor_br = f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    titulo = "🧪 *LOTE DE HOMOLOGAÇÃO COB DISPONÍVEL*" if test_mode else "🤝 *NOVA BASE COB DISPONÍVEL*"
+
+    if reminder:
+        titulo = "⏰ *COB EXTERNA — BASE AGUARDANDO DOWNLOAD*"
+        primeira = f"Clientes ainda aguardando envio: {pending_total or cpfs} CPF(s)"
+    elif test_mode:
+        titulo = "🧪 *LOTE DE HOMOLOGAÇÃO COB DISPONÍVEL*"
+        primeira = f"Novos clientes: {cpfs} CPF(s)"
+    else:
+        titulo = "🤝 *NOVA BASE COB DISPONÍVEL*"
+        primeira = f"Novos clientes: {cpfs} CPF(s)"
+
     extra = f"\nModo homologação: limite total {test_limit} CPF(s)." if test_mode and test_limit else ""
     return (
         f"{titulo}\n\n"
-        f"Novos clientes: {cpfs} CPF(s)\n"
+        f"{primeira}\n"
         f"Títulos: {titulos}\n"
-        f"Valor total: R$ {valor_br}{extra}\n\n"
-        "Acesse o Dashboard → COB Externa → Base COB Externa para baixar o lote.\n"
+        f"Valor da seleção: R$ {valor_br}{extra}\n\n"
+        "MASTER: avise a cobradora para acessar o Dashboard → COB Externa e baixar o lote.\n"
         "Por segurança, nenhum CPF, telefone, endereço ou dado pessoal é enviado pelo Telegram.\n"
         f"Portal: {dashboard}"
     )
@@ -341,3 +353,5 @@ __all__ = [
 # V10.88_WHATSAPP_COB_EXTERNA_SEM_PII
 
 # V10.91_WHATSAPP_STANDBY_BUILDERS_COMPARTILHADOS_COM_TELEGRAM
+
+# V10.94_COB_TELEGRAM_NOVA_BASE_E_LEMBRETE
