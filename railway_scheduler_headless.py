@@ -88,7 +88,7 @@ STATUS_PATH = os.path.join(LOG_DIR, 'monitor_status.json')
 SALES_CMD = [sys.executable, os.path.join(BASE_DIR, 'dashboard_sales_worker_headless.py')]
 COBRANCA_CMD = [sys.executable, os.path.join(BASE_DIR, 'dashboard_railway_main_headless.py')]
 PREVENTIVA_CMD = [sys.executable, os.path.join(BASE_DIR, 'whatsapp_master_preventiva_worker.py')]
-COB_TERCEIRA_CMD = [sys.executable, os.path.join(BASE_DIR, 'cobranca_terceira_worker_v1095.py')]
+COB_TERCEIRA_CMD = [sys.executable, os.path.join(BASE_DIR, 'cobranca_terceira_worker_v1096.py')]
 
 _sales_proc = None
 _cobranca_proc = None
@@ -629,3 +629,5 @@ while True:
 # V10.94_COB_EXTERNA_PRODUCAO
 
 # V10.95_DECISAO_MASTER_COB
+
+# V10.96_COB_DECISAO_EM_LOTE

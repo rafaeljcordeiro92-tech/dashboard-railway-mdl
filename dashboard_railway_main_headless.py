@@ -37,7 +37,7 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.95"
+DASHBOARD_BUILD_VERSION = "V10.96"
 DASHBOARD_BUILD_TAG = "cobranca_terceira_91_dias_cpf_inteiro"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -11723,6 +11723,147 @@ function cobTActionsV1095(x){
   return '';
 }
 
+
+const COB_T_BULK_SELECTED_V1096 = new Set();
+
+function cobTBulkEligibleV1096(x){
+  const st=String(x?.status||'').toLowerCase();
+  return ['bloqueado_marcador','erro_sgi'].includes(st);
+}
+
+function cobTBulkToggleV1096(id,checked){
+  id=String(id||'').trim();
+  if(!id)return;
+  if(checked) COB_T_BULK_SELECTED_V1096.add(id);
+  else COB_T_BULK_SELECTED_V1096.delete(id);
+  cobTBulkUpdateBarV1096();
+}
+
+function cobTBulkClearV1096(){
+  COB_T_BULK_SELECTED_V1096.clear();
+  document.querySelectorAll('.cob-bulk-check-v1096').forEach(el=>{ el.checked=false; });
+  cobTBulkUpdateBarV1096();
+}
+
+function cobTBulkSelectAllPendingV1096(){
+  const items=(COB_TERCEIRA_STATE?.items||[]);
+  for(const x of items){
+    if(cobTBulkEligibleV1096(x)) COB_T_BULK_SELECTED_V1096.add(String(x.id||''));
+  }
+  document.querySelectorAll('.cob-bulk-check-v1096').forEach(el=>{
+    el.checked=COB_T_BULK_SELECTED_V1096.has(String(el.dataset.id||''));
+  });
+  cobTBulkUpdateBarV1096();
+  toast(`${COB_T_BULK_SELECTED_V1096.size} pendência(s) selecionada(s).`,'success');
+}
+
+function cobTBulkUpdateBarV1096(){
+  const n=COB_T_BULK_SELECTED_V1096.size;
+  const el=document.getElementById('cobBulkSelectedCountV1096');
+  if(el) el.textContent=String(n);
+  document.querySelectorAll('[data-cob-bulk-action-v1096]').forEach(btn=>{ btn.disabled=n===0; });
+}
+
+function cobTBulkCheckboxV1096(x){
+  if(!cobTCanDecideV1095() || !cobTBulkEligibleV1096(x)) return '';
+  const id=String(x?.id||'');
+  const checked=COB_T_BULK_SELECTED_V1096.has(id)?'checked':'';
+  return `<input class="cob-bulk-check-v1096" data-id="${esc(id)}" type="checkbox" ${checked}
+    onchange="cobTBulkToggleV1096('${esc(id)}',this.checked)"
+    title="Selecionar para decisão em lote"
+    style="width:18px;height:18px;vertical-align:middle;margin-right:7px">`;
+}
+
+async function cobTBulkDecisionV1096(decision){
+  try{
+    if(!cobTCanDecideV1095()) return;
+
+    const ids=[...COB_T_BULK_SELECTED_V1096].filter(Boolean);
+    if(!ids.length){
+      toast('Selecione pelo menos uma pendência.','warn');
+      return;
+    }
+
+    let reason='';
+    let msg='';
+
+    if(decision==='autorizar_cob'){
+      msg=`Autorizar ${ids.length} cliente(s) para COB Externa?\n\nOs marcadores protegidos serão preservados e o robô acrescentará apenas (COB).\n\nA COB Terceira será executada UMA ÚNICA VEZ para todo o lote selecionado.`;
+      reason=prompt('Motivo/observação do lote (opcional):','Autorizado em lote pelo MASTER para COB Externa')||'Autorizado em lote pelo MASTER para COB Externa';
+    }else if(decision==='excluir'){
+      msg=`Excluir ${ids.length} cliente(s) da COB Externa?\n\nEles não irão para o CSV da cobradora, o histórico será preservado e continuarão na cobrança interna.`;
+      reason=prompt('Motivo da exclusão em lote:','Manter na cobrança interna')||'Manter na cobrança interna';
+    }else if(decision==='reprocessar'){
+      msg=`Reprocessar ${ids.length} cliente(s) com erro SGI?\n\nA COB Terceira será executada UMA ÚNICA VEZ para o lote.`;
+      reason=prompt('Observação do reprocessamento em lote (opcional):','Reprocessamento em lote pelo MASTER')||'Reprocessamento em lote pelo MASTER';
+    }else{
+      return;
+    }
+
+    if(!confirm(msg)) return;
+
+    const a=cobTAuth();
+    const fd=new FormData();
+    fd.append('action','decide_items');
+    fd.append('item_ids',JSON.stringify(ids));
+    fd.append('decision',decision);
+    fd.append('reason',reason);
+
+    const r=await fetch(COB_TERCEIRA_API,{
+      method:'POST',
+      body:fd,
+      headers:{
+        'X-MDL-Login':a.login,
+        'X-MDL-Password':a.password
+      }
+    });
+
+    let j={};
+    try{ j=await r.json(); }catch(e){}
+    if(!r.ok || j?.ok===false) throw new Error(j.error||('HTTP '+r.status));
+
+    COB_T_BULK_SELECTED_V1096.clear();
+
+    let workerMsg='';
+    if(j.run_worker){
+      try{
+        const rr=await fetch(WA_MASTER_MONITOR_URL+'/run/cob_terceira',{method:'POST'});
+        let jj={};
+        try{ jj=await rr.json(); }catch(e){}
+        workerMsg=jj.message||'COB Terceira acionada uma única vez para o lote.';
+      }catch(_e){
+        workerMsg='Decisões salvas. Use Rodar COB Terceira uma vez para aplicar o lote no SGI.';
+      }
+    }
+
+    const okN=Number(j.updated||0);
+    const skipN=Number(j.skipped||0);
+    toast(`${okN} decisão(ões) salvas em lote.${skipN?` ${skipN} ignorada(s).`:''} ${workerMsg}`,'success');
+
+    await loadCobTerceiraState();
+    await renderCobTerceiraTab(false);
+  }catch(e){
+    console.warn('[V10.96 decisão COB em lote]',e);
+    toast('Não foi possível aplicar a decisão em lote: '+String(e?.message||e),'warn');
+  }
+}
+
+function cobTBulkBarV1096(){
+  if(!cobTCanDecideV1095()) return '';
+  const n=COB_T_BULK_SELECTED_V1096.size;
+  return `<div id="cobBulkActionsV1096" class="glass panel"
+    style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-color:rgba(59,130,246,.45);margin-bottom:10px">
+      <strong>☑️ Decisão em lote:</strong>
+      <span><strong id="cobBulkSelectedCountV1096">${n}</strong> selecionado(s)</span>
+      <button class="btn soft btn-xs" onclick="cobTBulkSelectAllPendingV1096()">☑️ Selecionar todos os pendentes</button>
+      <button class="btn soft btn-xs" onclick="cobTBulkClearV1096()">🧹 Limpar seleção</button>
+      <button class="btn primary btn-xs" data-cob-bulk-action-v1096 onclick="cobTBulkDecisionV1096('autorizar_cob')" ${n?'':'disabled'}>✅ Autorizar selecionados (COB)</button>
+      <button class="btn soft btn-xs" data-cob-bulk-action-v1096 onclick="cobTBulkDecisionV1096('excluir')" ${n?'':'disabled'}>🚫 Excluir selecionados da COB</button>
+      <button class="btn soft btn-xs" data-cob-bulk-action-v1096 onclick="cobTBulkDecisionV1096('reprocessar')" ${n?'':'disabled'}>🔄 Reprocessar erros selecionados</button>
+      <span class="hint">A autorização em lote grava todas as decisões primeiro e dispara a COB Terceira somente uma vez.</span>
+  </div>`;
+}
+
 function cobTBadge(st){const s=String(st||'').toLowerCase();const cls=s==='enviado'?'ok':(s==='pronto'?'warn':((s.includes('erro')||s.includes('bloqueado'))?'bad':((s.includes('pendente')||s==='excluido_master')?'warn':'')));return `<span class="badge ${cls}">${esc(cobTStatusLabel(st))}</span>`}
 async function renderCobTerceiraTab(reload=true){
   const host=document.getElementById('cobTerceiraSection'); if(!host)return;
@@ -11739,11 +11880,11 @@ async function renderCobTerceiraTab(reload=true){
   const simHtml=(!cobPartner&&preview.length&&(!!COB_TERCEIRA_STATE?.dry_run||testMode))?`<div class="glass panel" style="border-color:rgba(251,191,36,.45)"><strong>🧪 DRY RUN disponível:</strong> ${preview.length} CPF(s) simulados na última execução. ${showingPreview?'A tabela abaixo está mostrando esta prévia; nenhum CPF foi enviado nem teve nome alterado.':'A fila oficial já existe; a prévia permanece apenas para consulta.'}</div>`:'';
   const testHtml=(!cobPartner&&testMode)?`<div class="glass panel" style="border-color:rgba(59,130,246,.5)"><strong>🧰 Homologação real controlada:</strong> máximo de <strong>${testLimit||'—'} CPF(s)</strong> externalizados no total enquanto COB_TERCEIRA_TEST_MODE=1. Somente CPFs com SGI confirmado em (COB) entram no bloqueio interno e ficam disponíveis para download.</div>`:'';
   const prodRule=COB_TERCEIRA_STATE?.rule||{};
-  const prodHtml=(!cobPartner&&!testMode&&!COB_TERCEIRA_STATE?.dry_run)?`<div class="glass panel" style="border-color:rgba(34,197,94,.45)"><strong>✅ COB Externa em produção:</strong> D+${prodRule.dias||91} automático às 06:30. Captura atual: ${esc(prodRule.capture_start||'—')} até ${esc(prodRule.capture_end||'—')} (${esc(prodRule.capture_reason||'janela diária')}). Nova base e lembretes de lote não baixado são enviados ao MASTER pelo Telegram.<div class="hint" style="margin-top:6px"><strong>V10.95:</strong> clientes bloqueados por CURTY/ADV/ADV2/OBT aguardam decisão. MASTER/Diretor pode Autorizar (COB), Excluir da COB ou reprocessar erro SGI diretamente nesta tabela.</div></div>`:'';
+  const prodHtml=(!cobPartner&&!testMode&&!COB_TERCEIRA_STATE?.dry_run)?`<div class="glass panel" style="border-color:rgba(34,197,94,.45)"><strong>✅ COB Externa em produção:</strong> D+${prodRule.dias||91} automático às 06:30. Captura atual: ${esc(prodRule.capture_start||'—')} até ${esc(prodRule.capture_end||'—')} (${esc(prodRule.capture_reason||'janela diária')}). Nova base e lembretes de lote não baixado são enviados ao MASTER pelo Telegram.<div class="hint" style="margin-top:6px"><strong>V10.96:</strong> clientes bloqueados por CURTY/ADV/ADV2/OBT podem ser decididos individualmente ou em lote. Se vários forem autorizados juntos, a COB Terceira roda uma única vez para todo o lote.</div></div>`:'';
   host.innerHTML=`${simHtml}${testHtml}${prodHtml}<div class="kpis" style="margin-bottom:14px"><div class="kpi"><div class="label">Prontos para COB</div><div class="value">${ready.length}</div><div class="subline">${cobTMoney(ready.reduce((a,x)=>a+cobTTotal(x),0))}</div></div><div class="kpi"><div class="label">Já baixados/enviados</div><div class="value">${sent.length}</div></div><div class="kpi"><div class="label">Acordo/promessa ativa</div><div class="value">${hold.length}</div></div><div class="kpi"><div class="label">Pendências SGI/marcador</div><div class="value">${err.length}</div></div><div class="kpi"><div class="label">Excluídos pelo MASTER</div><div class="value">${excluded.length}</div></div></div>
-  <div class="glass panel"><div class="section-head"><div><h2>📥 Baixar arquivo para a COB</h2><div class="hint">${showingPreview?'Prévia de simulação: download desabilitado até a externalização real.':'Formato oficial: CSV separado por ponto e vírgula, igual ao modelo de importação enviado pela COB. O arquivo abre normalmente no Excel. Ao baixar, o lote fica registrado como enviado com usuário/data/hora.'}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap">${canDownload?`<button class="btn primary" onclick="cobTDownload('today')">⬇️ Baixar novos de hoje (.CSV)</button><button class="btn soft" onclick="cobTDownload('7d')">⬇️ Baixar últimos 7 dias (.CSV)</button><button class="btn soft" onclick="cobTDownload('pending')">⬇️ Baixar todos pendentes (.CSV)</button>`:''}</div></div>
+  <div class="glass panel"><div class="section-head"><div>${cobTBulkBarV1096()}<h2>📥 Baixar arquivo para a COB</h2><div class="hint">${showingPreview?'Prévia de simulação: download desabilitado até a externalização real.':'Formato oficial: CSV separado por ponto e vírgula, igual ao modelo de importação enviado pela COB. O arquivo abre normalmente no Excel. Ao baixar, o lote fica registrado como enviado com usuário/data/hora.'}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap">${canDownload?`<button class="btn primary" onclick="cobTDownload('today')">⬇️ Baixar novos de hoje (.CSV)</button><button class="btn soft" onclick="cobTDownload('7d')">⬇️ Baixar últimos 7 dias (.CSV)</button><button class="btn soft" onclick="cobTDownload('pending')">⬇️ Baixar todos pendentes (.CSV)</button>`:''}</div></div>
   <div class="filters" style="margin:10px 0;display:flex"><input id="cobTSearch" value="${esc(q)}" placeholder="Buscar nome, CPF, título..." oninput="window._cobTSearch=this.value;COB_TERCEIRA_PAGE=1;renderCobTerceiraTab(false)"><select id="cobTStatus" onchange="window._cobTStatus=this.value;COB_TERCEIRA_PAGE=1;renderCobTerceiraTab(false)"><option value="">Todos os status</option>${['simulado','pronto','enviado','hold_acordo','erro_sgi','bloqueado_marcador','override_cob_pendente','reprocessar_pendente','excluido_master','ja_marcado_cob'].map(s=>`<option value="${s}" ${stf===s?'selected':''}>${cobTStatusLabel(s)}</option>`).join('')}</select></div>
-  <div class="wa-master-scroll"><table class="wa-master-table"><thead><tr><th>Status</th><th>Cliente / CPF</th><th>Títulos</th><th>Valor</th><th>Gatilho</th><th>SGI / Envio</th></tr></thead><tbody>${page.length?page.map(x=>`<tr><td>${cobTBadge(x.status)}</td><td><strong>${esc(x.cliente||'—')}</strong><div class="small muted">${esc(x.cpf_cnpj||'—')}</div></td><td>${(x.titulos||[]).length}<div class="small muted">${esc((x.titulos||[]).slice(0,3).map(t=>`${t.titulo||''}/${t.parcela||''}`).join(' · '))}</div></td><td><strong>${cobTMoney(cobTTotal(x))}</strong></td><td>D+${Number(x.trigger_dias_max||91)}<div class="small muted">${cobTDate(x.trigger_at)}</div></td><td>${x.sent_at?`Baixado ${cobTDate(x.sent_at)}<div class="small muted">${esc(x.downloaded_by||'')}</div>`:(x.erro_sgi?`<span style="color:var(--red)">${esc(x.erro_sgi)}</span>`:`${esc(x.marker_info||x.ready_at||'—')}`)}${x.master_decision?`<div class="small muted" style="margin-top:5px">Decisão: ${esc(x.master_decision)} · ${esc(x.master_decision_by||'')} · ${cobTDate(x.master_decision_at)}</div>`:''}${cobTActionsV1095(x)}</td></tr>`).join(''):'<tr><td colspan="6"><div class="empty">Nenhum CPF nesta seleção.</div></td></tr>'}</tbody></table></div>
+  <div class="wa-master-scroll"><table class="wa-master-table"><thead><tr><th>Status</th><th>Cliente / CPF</th><th>Títulos</th><th>Valor</th><th>Gatilho</th><th>SGI / Envio</th></tr></thead><tbody>${page.length?page.map(x=>`<tr><td>${cobTBulkCheckboxV1096(x)}${cobTBadge(x.status)}</td><td><strong>${esc(x.cliente||'—')}</strong><div class="small muted">${esc(x.cpf_cnpj||'—')}</div></td><td>${(x.titulos||[]).length}<div class="small muted">${esc((x.titulos||[]).slice(0,3).map(t=>`${t.titulo||''}/${t.parcela||''}`).join(' · '))}</div></td><td><strong>${cobTMoney(cobTTotal(x))}</strong></td><td>D+${Number(x.trigger_dias_max||91)}<div class="small muted">${cobTDate(x.trigger_at)}</div></td><td>${x.sent_at?`Baixado ${cobTDate(x.sent_at)}<div class="small muted">${esc(x.downloaded_by||'')}</div>`:(x.erro_sgi?`<span style="color:var(--red)">${esc(x.erro_sgi)}</span>`:`${esc(x.marker_info||x.ready_at||'—')}`)}${x.master_decision?`<div class="small muted" style="margin-top:5px">Decisão: ${esc(x.master_decision)} · ${esc(x.master_decision_by||'')} · ${cobTDate(x.master_decision_at)}</div>`:''}${cobTActionsV1095(x)}</td></tr>`).join(''):'<tr><td colspan="6"><div class="empty">Nenhum CPF nesta seleção.</div></td></tr>'}</tbody></table></div>
   <div class="log-pager"><div>${filtered.length} CPF(s) · página ${COB_TERCEIRA_PAGE}/${pages}</div><div style="display:flex;gap:8px"><button class="btn soft" ${COB_TERCEIRA_PAGE<=1?'disabled':''} onclick="COB_TERCEIRA_PAGE--;renderCobTerceiraTab(false)">⬅️ Anterior</button><button class="btn soft" ${COB_TERCEIRA_PAGE>=pages?'disabled':''} onclick="COB_TERCEIRA_PAGE++;renderCobTerceiraTab(false)">Próxima ➡️</button></div></div></div>
   <div class="glass panel"><div class="section-head"><div><h2>🗂️ Histórico de downloads</h2><div class="hint">Cada download é um lote auditável. Você pode baixar novamente sem alterar o status. MASTER/Diretor também podem reabrir um lote de teste para que a COB faça o envio oficial depois.</div></div></div><div class="logs-list">${(COB_TERCEIRA_STATE.batches||[]).slice().reverse().slice(0,30).map(b=>{const adminReopen=!usuarioAtual?.is_cob_externa&&(String(usuarioAtual?.tipo||'')==='master'||String(usuarioAtual?.roleLabel||'').toLowerCase().includes('diretor'));const reopened=!!b.reopened_at;return `<div class="log-row"><div><strong>${esc(b.batch_id||'Lote')}</strong><div class="small muted">${cobTDate(b.created_at)} · ${esc(b.downloaded_by||'—')}${reopened?` · <span style="color:var(--orange)">reaberto ${cobTDate(b.reopened_at)} por ${esc(b.reopened_by||'—')}</span>`:''}${Number(b.redownloads||0)>0?` · ${Number(b.redownloads||0)} re-download(s)`:''}</div></div><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end"><span>${Number(b.cpfs||0)} CPF(s) · ${Number(b.titulos||0)} título(s) · ${cobTMoney(b.valor||0)}</span><button class="btn soft" onclick="cobTRedownloadBatch('${esc(b.batch_id||'')}')">⬇️ Baixar novamente</button>${adminReopen&&!reopened?`<button class="btn soft" onclick="cobTReopenBatch('${esc(b.batch_id||'')}')">↩️ Reabrir lote de teste</button>`:''}</div></div>`}).join('')||'<div class="empty">Ainda não houve download.</div>'}</div></div>`;
 }
@@ -19631,7 +19772,7 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
     `;
     document.head.appendChild(css);
 
-    window.DASHBOARD_BUILD_VERSION='V10.95';
+    window.DASHBOARD_BUILD_VERSION='V10.96';
     console.log(TAG,'ativo: redraw automático adiado durante uso + scroll preservado');
   }catch(e){console.warn('[V10.81] falhou',e)}
 
@@ -20264,6 +20405,131 @@ function cob_emit_csv($selected,$filename){while(ob_get_level())ob_end_clean();h
 [$authorized,$login]=cob_auth();if(!$authorized){http_response_code(401);header('Content-Type: application/json; charset=UTF-8');echo json_encode(['ok'=>false,'error'=>'nao_autorizado'],JSON_UNESCAPED_UNICODE);exit;}
 $state=cob_read_private($stateFile,['version'=>'V10.80','items'=>[],'batches'=>[]]);if(!isset($state['items'])||!is_array($state['items']))$state['items']=[];if(!isset($state['batches'])||!is_array($state['batches']))$state['batches']=[];
 $action=(string)($_GET['action']??$_POST['action']??'');
+
+
+if($action==='decide_items'){
+  if(!cob_is_admin_reopen($login)){
+    http_response_code(403);
+    header('Content-Type: application/json; charset=UTF-8');
+    echo json_encode(['ok'=>false,'error'=>'somente_master_diretor'],JSON_UNESCAPED_UNICODE);
+    exit;
+  }
+
+  $ids=json_decode((string)($_POST['item_ids']??'[]'),true);
+  if(!is_array($ids))$ids=[];
+  $ids=array_values(array_unique(array_filter(array_map(fn($v)=>trim((string)$v),$ids))));
+  $decision=strtolower(trim((string)($_POST['decision']??'')));
+  $reason=cob_clip(trim((string)($_POST['reason']??'')),500);
+
+  if(!$ids || count($ids)>1000 || !in_array($decision,['autorizar_cob','excluir','reprocessar'],true)){
+    http_response_code(400);
+    header('Content-Type: application/json; charset=UTF-8');
+    echo json_encode(['ok'=>false,'error'=>'decisao_lote_invalida'],JSON_UNESCAPED_UNICODE);
+    exit;
+  }
+
+  $wanted=array_fill_keys($ids,true);
+  $now=date(DATE_ATOM);
+  $updated=0;
+  $skipped=0;
+  $runWorker=false;
+
+  foreach($state['items'] as $i=>$item){
+    $itemId=(string)($item['id']??'');
+    if(!isset($wanted[$itemId]))continue;
+
+    $oldStatus=strtolower((string)($state['items'][$i]['status']??''));
+    $allowed=false;
+
+    if($decision==='autorizar_cob'){
+      $allowed=in_array($oldStatus,['bloqueado_marcador','excluido_master'],true);
+    }elseif($decision==='excluir'){
+      $allowed=in_array($oldStatus,['bloqueado_marcador','erro_sgi','override_cob_pendente','reprocessar_pendente'],true);
+    }elseif($decision==='reprocessar'){
+      $allowed=in_array($oldStatus,['erro_sgi','reprocessar_pendente'],true);
+    }
+
+    if(!$allowed){
+      $skipped++;
+      unset($wanted[$itemId]);
+      continue;
+    }
+
+    if(!isset($state['items'][$i]['decision_history']) || !is_array($state['items'][$i]['decision_history'])){
+      $state['items'][$i]['decision_history']=[];
+    }
+
+    $state['items'][$i]['decision_history'][]=[
+      'at'=>$now,
+      'by'=>$login,
+      'decision'=>$decision,
+      'reason'=>$reason,
+      'old_status'=>$oldStatus,
+      'bulk'=>true
+    ];
+
+    $state['items'][$i]['master_decision']=$decision;
+    $state['items'][$i]['master_decision_reason']=$reason;
+    $state['items'][$i]['master_decision_at']=$now;
+    $state['items'][$i]['master_decision_by']=$login;
+    $state['items'][$i]['master_decision_bulk']=true;
+    $state['items'][$i]['updated_at']=$now;
+
+    if($decision==='autorizar_cob'){
+      $state['items'][$i]['status']='override_cob_pendente';
+      $state['items'][$i]['override_original_marker']=$state['items'][$i]['marker_info']??'';
+      $runWorker=true;
+    }elseif($decision==='excluir'){
+      $state['items'][$i]['status']='excluido_master';
+      $state['items'][$i]['excluded_at']=$now;
+      $state['items'][$i]['excluded_by']=$login;
+      $state['items'][$i]['excluded_reason']=$reason;
+      $state['items'][$i]['ready_at']='';
+    }elseif($decision==='reprocessar'){
+      $state['items'][$i]['status']='reprocessar_pendente';
+      $runWorker=true;
+    }
+
+    $updated++;
+    unset($wanted[$itemId]);
+  }
+
+  $skipped += count($wanted);
+
+  if(!isset($state['bulk_decision_history']) || !is_array($state['bulk_decision_history'])){
+    $state['bulk_decision_history']=[];
+  }
+
+  $state['bulk_decision_history'][]=[
+    'at'=>$now,
+    'by'=>$login,
+    'decision'=>$decision,
+    'reason'=>$reason,
+    'requested'=>count($ids),
+    'updated'=>$updated,
+    'skipped'=>$skipped
+  ];
+
+  if(count($state['bulk_decision_history'])>200){
+    $state['bulk_decision_history']=array_slice($state['bulk_decision_history'],-200);
+  }
+
+  $state['updated_at']=$now;
+  cob_write_private($stateFile,$state);
+  cob_write_json($summaryFile,cob_public_summary($state));
+
+  header('Content-Type: application/json; charset=UTF-8');
+  echo json_encode([
+    'ok'=>true,
+    'decision'=>$decision,
+    'requested'=>count($ids),
+    'updated'=>$updated,
+    'skipped'=>$skipped,
+    'run_worker'=>$runWorker,
+    'message'=>$updated.' decisão(ões) registrada(s) em lote.'
+  ],JSON_UNESCAPED_UNICODE);
+  exit;
+}
 
 if($action==='decide_item'){
   if(!cob_is_admin_reopen($login)){http_response_code(403);header('Content-Type: application/json; charset=UTF-8');echo json_encode(['ok'=>false,'error'=>'somente_master_diretor'],JSON_UNESCAPED_UNICODE);exit;}
@@ -21659,3 +21925,5 @@ driver.quit()
 # V10.94_COB_EXTERNA_PRODUCAO_TELEGRAM
 
 # V10.95_DECISAO_MASTER_COB
+
+# V10.96_COB_DECISAO_EM_LOTE
