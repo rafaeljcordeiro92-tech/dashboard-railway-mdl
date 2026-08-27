@@ -37,8 +37,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.96"
-DASHBOARD_BUILD_TAG = "cobranca_terceira_91_dias_cpf_inteiro"
+DASHBOARD_BUILD_VERSION = "V10.97"
+DASHBOARD_BUILD_TAG = "v1097_avisos_off_especiais_sem_meta_xls_auditado_pdf_fit"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
 # V10.52: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
@@ -20011,6 +20011,707 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
 
 })();
 </script>
+<script>
+/* ===== V10.97 — AJUSTES URGENTES =====
+   1) remove avisos/alertas dos colaboradores;
+   2) crediarista/cobrança terceiro sem gráfico/meta — somente carteira por faixa + comissão auditada;
+   3) diagnóstico explícito da fila "Para cobrar";
+   4) XLS de cobrança auditada paga no Histórico de Comissões;
+   5) tela congelada ajustada dinamicamente para 1 página A4 landscape.
+*/
+(function(){
+  const TAG='[V10.97 AJUSTES URGENTES]';
+
+  try{
+    // ---------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------
+    const sleep97=(ms)=>new Promise(r=>setTimeout(r,ms));
+    const norm97=(v)=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim();
+    const dig97=(v)=>String(v||'').replace(/\D/g,'');
+    const title97=(v)=>{const d=dig97(v);return d||String(v||'').trim().toUpperCase()};
+    const parts97=(v)=>(String(v||'').match(/\d+/g)||[]).map(Number);
+    const parcel97=(a,b)=>{
+      const x=parts97(a),y=parts97(b);
+      if(!x.length||!y.length)return String(a||'').trim()===String(b||'').trim();
+      if(x[0]!==y[0])return false;
+      if(x.length>1&&y.length>1&&x[1]!==y[1])return false;
+      return true;
+    };
+    const date97=(v)=>{try{return dateOnlyISO(v||'')}catch(e){const s=String(v||'');const m=s.match(/(\d{2})\/(\d{2})\/(\d{4})/);return m?`${m[3]}-${m[2]}-${m[1]}`:s.slice(0,10)}};
+    const approved97=(s)=>['aprovado','aprovado_ia','aprovado_manual'].includes(String(s||'').toLowerCase());
+    const rejected97=(s)=>['recusado','recusado_ia','recusado_manual'].includes(String(s||'').toLowerCase());
+    const moneyNum97=(v)=>Math.round((Number(v||0)+Number.EPSILON)*100)/100;
+
+    function currentMonth97(){
+      try{return typeof mesAtualComissao==='function'?mesAtualComissao():new Date().toISOString().slice(0,7)}
+      catch(e){return new Date().toISOString().slice(0,7)}
+    }
+
+    // ---------------------------------------------------------
+    // 1) AVISOS / ALERTAS DOS COLABORADORES: REMOVIDOS
+    // ---------------------------------------------------------
+    function isAdmin97(){
+      try{
+        const t=String(usuarioAtual?.tipo||'').toLowerCase();
+        const r=String(usuarioAtual?.roleLabel||'').toLowerCase();
+        return t==='master'||t==='diretor'||r.includes('diretor');
+      }catch(e){return false}
+    }
+
+    function applyNoticePolicy97(){
+      try{
+        const collab=!!usuarioAtual && !isAdmin97();
+        document.documentElement.classList.toggle('mdl-v1097-no-collab-notices',collab);
+
+        if(collab){
+          ['bellBtn','goalNotifBtn','bellModal','laranjitoNotify','laranjitoNotifyPanel','topMural'].forEach(id=>{
+            const el=document.getElementById(id);
+            if(el){
+              el.classList.add('hidden');
+              el.style.setProperty('display','none','important');
+              el.classList.remove('show');
+            }
+          });
+        }
+      }catch(e){}
+    }
+
+    try{
+      const st=document.createElement('style');
+      st.id='mdl-v1097-no-notices-css';
+      st.textContent=`
+        html.mdl-v1097-no-collab-notices #bellBtn,
+        html.mdl-v1097-no-collab-notices #goalNotifBtn,
+        html.mdl-v1097-no-collab-notices #bellModal,
+        html.mdl-v1097-no-collab-notices #laranjitoNotify,
+        html.mdl-v1097-no-collab-notices #laranjitoNotifyPanel,
+        html.mdl-v1097-no-collab-notices #topMural,
+        html.mdl-v1097-no-collab-notices .msg-banner,
+        html.mdl-v1097-no-collab-notices .campaign-banner,
+        html.mdl-v1097-no-collab-notices .goal-notification-panel{
+          display:none!important;
+        }
+      `;
+      document.head.appendChild(st);
+    }catch(e){}
+
+    // O banner de "Avisos do Master" deixa de existir nos painéis individuais.
+    try{
+      renderInboxBanner=window.renderInboxBanner=function(){return ''};
+      renderCampaignStrip=window.renderCampaignStrip=function(){return ''};
+    }catch(e){}
+
+    // Desliga a bolinha/painel de alertas do Laranjito sem mexer no mascote de meta.
+    try{
+      renderLaranjitoNotify=window.renderLaranjitoNotify=function(){
+        ['laranjitoNotify','laranjitoNotifyPanel'].forEach(id=>{
+          const el=document.getElementById(id);
+          if(el)el.style.setProperty('display','none','important');
+        });
+      };
+      showLaranjitoOncePerAccess=window.showLaranjitoOncePerAccess=function(){};
+      toggleLaranjitoNotifyPanel=window.toggleLaranjitoNotifyPanel=function(){};
+    }catch(e){}
+
+    setTimeout(applyNoticePolicy97,50);
+    setTimeout(applyNoticePolicy97,700);
+    setInterval(applyNoticePolicy97,30000);
+
+    // ---------------------------------------------------------
+    // 2) CREDIARISTA / COBRANÇA TERCEIRO: SEM META/GRÁFICO
+    // ---------------------------------------------------------
+    function faixaCard97(src,fx,label,color){
+      const arr=Array.isArray(src?.[fx])?src[fx]:[];
+      const total=moneyNum97(arr.reduce((s,r)=>s+Number(r?.pendente||0),0));
+      return `<div class="metric" style="min-height:104px">
+        <div class="k">${esc(label)}</div>
+        <div class="v" style="color:${color};font-size:24px">${R(total)}</div>
+        <div class="small muted">${arr.length} título(s) na carteira</div>
+      </div>`;
+    }
+
+    function specialSummary97(ent){
+      const src=getClientesEnt(ent)||{grave:[],alerta:[],atencao:[]};
+      return `<div class="glass panel">
+        <h3>🧾 Carteira de cobrança por faixa <span class="note">· sem meta de cobrança</span></h3>
+        <div class="metrics-grid">
+          ${faixaCard97(src,'grave','Grave','var(--red)')}
+          ${faixaCard97(src,'alerta','Alerta','var(--orange)')}
+          ${faixaCard97(src,'atencao','Atenção','var(--yellow)')}
+        </div>
+        <div class="small muted" style="margin-top:10px">
+          Para crediarista/cobrança terceiro, comissão só é liberada quando houver evidência aprovada e baixa conciliada do mesmo CPF/título/parcela.
+        </div>
+      </div>`;
+    }
+
+    renderCrediaristaDetail=window.renderCrediaristaDetail=function(ent){
+      detailScreen.innerHTML=`
+        ${renderUpdateStrip()}
+        <div class="back-row">
+          ${renderBackButton()}
+          <div>
+            <h2>${esc(ent.nome)}</h2>
+            <div class="sub">Crediarista · ${esc(ent.filial)} · cobrança e comissão auditada</div>
+          </div>
+          <div class="badge">🧾 Crediarista</div>
+        </div>
+
+        <div class="detail-top">
+          <div>${specialSummary97(ent)}</div>
+          <div>${renderTerceiroCommission(ent)}</div>
+        </div>
+
+        <div class="accordion">
+          <div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span class="acc-hint">clique para abrir</span></div>
+          <div class="acc-body">${renderCobrancasEnt(ent)}</div>
+        </div>
+      `;
+      applyNoticePolicy97();
+    };
+
+    renderTerceiroDetail=window.renderTerceiroDetail=function(ent){
+      detailScreen.innerHTML=`
+        ${renderUpdateStrip()}
+        <div class="back-row">
+          ${renderBackButton()}
+          <div>
+            <h2>${esc(ent.nome)}</h2>
+            <div class="sub">Cobrança interna global · comissão somente por evidência auditada e pagamento conciliado</div>
+          </div>
+          <div class="badge">🤝 Cobrança Interna Global</div>
+        </div>
+
+        <div class="detail-top">
+          <div>${specialSummary97(ent)}</div>
+          <div>${renderTerceiroCommission(ent)}</div>
+        </div>
+
+        <div class="accordion">
+          <div class="acc-head" onclick="toggleAcc(this)">🧾 Relatório de cobranças <span class="acc-hint">clique para abrir</span></div>
+          <div class="acc-body">${renderCobrancasEnt(ent)}</div>
+        </div>
+      `;
+      applyNoticePolicy97();
+    };
+
+    // ---------------------------------------------------------
+    // 3) DIAGNÓSTICO DA FILA "PARA COBRAR"
+    // ---------------------------------------------------------
+    const baseGetClientes97=typeof getClientesEnt==='function'?getClientesEnt:null;
+    if(baseGetClientes97){
+      getClientesEnt=window.getClientesEnt=function(ent){
+        let src=baseGetClientes97.apply(this,arguments)||{grave:[],alerta:[],atencao:[]};
+
+        // Blindagem: vendedor por nome normalizado caso a chave exata tenha mudado.
+        try{
+          const empty=!['grave','alerta','atencao'].some(fx=>(src?.[fx]||[]).length);
+          if(empty && ent?.type==='vendedor'){
+            const alvo=norm97(ent?.nome||'');
+            const key=Object.keys(CLIENTES_VEND||{}).find(k=>norm97(k)===alvo);
+            if(key)src=dedupeCobrancaBuckets(CLIENTES_VEND[key]||src);
+          }
+        }catch(e){}
+
+        return src;
+      };
+    }
+
+    const baseRenderCobrancas97=typeof renderCobrancasEnt==='function'?renderCobrancasEnt:null;
+    if(baseRenderCobrancas97){
+      renderCobrancasEnt=window.renderCobrancasEnt=function(ent){
+        let diag='';
+        try{
+          const src=getClientesEnt(ent)||{grave:[],alerta:[],atencao:[]};
+          const rows=[...(src.grave||[]),...(src.alerta||[]),...(src.atencao||[])];
+          let disponiveis=0,aguardando3=0,pagos=0,semHistorico=0,retorno=0;
+          for(const r of rows){
+            const st=cobStatusTitulo(r,ent)||{};
+            if(st.pago){pagos++;continue}
+            if(!st.last){semHistorico++;disponiveis++;continue}
+            if(st.deve_voltar){retorno++;disponiveis++;continue}
+            if(st.bloqueado)aguardando3++;
+          }
+
+          const zeroMsg=rows.length===0
+            ? `<div class="small" style="margin-top:6px;color:var(--orange)">Carteira detalhada sem títulos neste momento. Isso é diferente da meta/rateio financeiro do usuário.</div>`
+            : (disponiveis===0
+                ? `<div class="small" style="margin-top:6px;color:var(--orange)">Nenhum título disponível agora: os títulos podem estar aguardando a janela de 3 dias ou já terem sido pagos.</div>`
+                : '');
+
+          diag=`<div class="glass panel" style="margin:0 0 12px;border-color:rgba(59,130,246,.30)">
+            <div class="section-head" style="margin:0">
+              <div>
+                <strong>🔎 Diagnóstico da fila</strong>
+                <div class="small muted">Explica por que a aba “Para cobrar” pode estar zerada.</div>
+              </div>
+            </div>
+            <div class="metrics-grid" style="margin-top:10px">
+              <div class="metric"><div class="k">Carteira detalhada</div><div class="v">${rows.length}</div></div>
+              <div class="metric"><div class="k">Disponíveis agora</div><div class="v">${disponiveis}</div></div>
+              <div class="metric"><div class="k">Aguardando 3 dias</div><div class="v">${aguardando3}</div></div>
+              <div class="metric"><div class="k">Retorno liberado</div><div class="v">${retorno}</div></div>
+            </div>
+            ${zeroMsg}
+          </div>`;
+        }catch(e){console.warn(TAG,'diagnóstico fila',e)}
+        return diag+baseRenderCobrancas97.apply(this,arguments);
+      };
+    }
+
+    // ---------------------------------------------------------
+    // 4) DETALHES DA COMISSÃO AUDITADA + EXPORTAÇÃO XLS
+    // ---------------------------------------------------------
+    function aliases97(ent){
+      const set=new Set();
+      const add=v=>{const n=norm97(v);if(n)set.add(n)};
+      add(ent?.login); add(ent?.nome);
+      try{
+        const users=AUTH_STATE?.users||{};
+        for(const [login,u] of Object.entries(users)){
+          if(!u)continue;
+          const sameFil=!ent?.filial||String(u.filial||'').toUpperCase()===String(ent.filial||'').toUpperCase();
+          if(!sameFil)continue;
+          if(norm97(u.nome)===norm97(ent?.nome)||String(login||'').toLowerCase()===String(ent?.login||'').toLowerCase()){
+            add(login);add(u.nome);
+          }
+        }
+      }catch(e){}
+      if(ent?.type==='terceiro'||ent?.is_terceiro){
+        try{add(COBRANCA10_LOGIN);add(COBRANCA10_NOME)}catch(e){}
+      }
+      return set;
+    }
+
+    function auditMatch97(a,ent){
+      if(ent?.type==='filial')return String(a?.filial||'').toUpperCase()===String(ent?.filial||'').toUpperCase();
+      const al=aliases97(ent);
+      return [a?.usuario_login,a?.usuario_nome,a?.usuario,a?.responsavel].map(norm97).filter(Boolean).some(v=>al.has(v));
+    }
+
+    function sameAQ97(a,q){
+      const ad=dig97(a?.cpf_cnpj),qd=dig97(q?.cpf_cnpj_normalizado||q?.cpf_cnpj);
+      if(ad&&qd&&ad!==qd)return false;
+      if(title97(a?.titulo)&&title97(q?.titulo)&&title97(a?.titulo)!==title97(q?.titulo))return false;
+      return parcel97(a?.parcela,q?.parcela);
+    }
+
+    function policyPct97(ent,fx){
+      try{
+        const cfg=commissionCfg(entityConfig(ent));
+        const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista');
+        const isThird=!!(ent?.is_terceiro||ent?.type==='terceiro');
+        let rows=isCred?(cfg.camp_cob_crediarista||[]):isThird?(cfg.camp_cobranca_terceiro||[]):(cfg.camp_cob_usuarios||[]);
+        if(!Array.isArray(rows)||!rows.length){
+          rows=(isCred||isThird)
+            ? [{faixa:'atencao',pct:'1.00'},{faixa:'alerta',pct:'2.00'},{faixa:'grave',pct:'3.00'}]
+            : [{faixa:'atencao',pct:'0.50'},{faixa:'alerta',pct:'1.00'},{faixa:'grave',pct:'2.00'}];
+        }
+        const row=rows.find(r=>String(r?.faixa||'').toLowerCase()===String(fx||'').toLowerCase());
+        return Number(String(row?.pct||0).replace(',','.'))||0;
+      }catch(e){return 0}
+    }
+
+    function collectionBeforePay97(a,q,ent){
+      try{
+        const source=(Array.isArray(window.COB_LOGS_OFICIAIS)&&window.COB_LOGS_OFICIAIS.length)?window.COB_LOGS_OFICIAIS:(COB_LOGS||[]);
+        const pay=date97(q?.pagamento||q?.data_pagamento||'');
+        const al=aliases97(ent);
+        const logs=source.filter(l=>{
+          if(!sameAQ97(a,l))return false;
+          if(ent?.type==='filial')return String(l?.filial||'').toUpperCase()===String(ent?.filial||'').toUpperCase();
+          const vals=[l?.usuario,l?.login,l?.destino_login,l?.destino_nome,l?.responsavel].map(norm97).filter(Boolean);
+          return vals.some(v=>al.has(v));
+        });
+        if(!logs.length)return true;
+        return logs.some(l=>{const ld=date97(l?.server_time||l?.criado_em||l?.data||l?.server_date||'');return !ld||!pay||ld<=pay});
+      }catch(e){return true}
+    }
+
+    function findPaid97(a,ent,month){
+      const cand=(QUITADOS_180||[]).filter(q=>
+        sameAQ97(a,q) &&
+        date97(q?.pagamento||q?.data_pagamento||'').slice(0,7)===month &&
+        collectionBeforePay97(a,q,ent)
+      );
+      return cand.sort((x,y)=>Number(y?.pago||0)-Number(x?.pago||0))[0]||null;
+    }
+
+    function auditRowsForEnt97(ent,month){
+      const audits=(COB_AUDITORIAS||[])
+        .filter(a=>approved97(a?.status)&&auditMatch97(a,ent))
+        .sort((a,b)=>String(a?.server_time||a?.criado_em||'').localeCompare(String(b?.server_time||b?.criado_em||'')));
+
+      const out=[];
+      const used=new Set();
+
+      for(const a of audits){
+        const q=findPaid97(a,ent,month);
+        if(!q)continue;
+
+        const paymentKey=[
+          dig97(q?.cpf_cnpj_normalizado||q?.cpf_cnpj),
+          title97(q?.titulo),
+          parts97(q?.parcela).join('/'),
+          date97(q?.pagamento||q?.data_pagamento||'')
+        ].join('|');
+
+        if(used.has(paymentKey))continue;
+        used.add(paymentKey);
+
+        let fx=String(a?.faixa||q?.faixa||'atencao').toLowerCase();
+        if(!['grave','alerta','atencao'].includes(fx))fx='atencao';
+
+        const recebido=moneyNum97(q?.pago||0);
+        const pctc=policyPct97(ent,fx);
+        const comissao=moneyNum97(recebido*pctc/100);
+
+        out.push({
+          mes:month,
+          tipo:String(ent?.type||''),
+          usuario:String(ent?.nome||''),
+          login:String(ent?.login||''),
+          filial:String(ent?.filial||''),
+          faixa:fx,
+          cliente:String(a?.cliente||q?.cliente||''),
+          cpf_cnpj:String(a?.cpf_cnpj||q?.cpf_cnpj||''),
+          titulo:String(a?.titulo||q?.titulo||''),
+          parcela:String(a?.parcela||q?.parcela||''),
+          vencimento:String(a?.vencimento||q?.vencimento||''),
+          pagamento:String(q?.pagamento||q?.data_pagamento||''),
+          recebido,
+          percentual_comissao:pctc,
+          comissao,
+          auditoria_status:String(a?.status||''),
+          auditoria_data:String(a?.server_time||a?.criado_em||a?.ia_analisado_em||''),
+          auditoria_id:String(a?.id||a?.audit_id||'')
+        });
+      }
+      return out;
+    }
+
+    function auditEntities97(){
+      let ents=[];
+      try{ents.push(...(flattenVendedores()||[]).filter(e=>!e?.is_gerente))}catch(e){}
+      try{ents.push(...(crediaristaEntities()||[]))}catch(e){}
+      try{const t=thirdChargeEntity();if(t)ents.push(t)}catch(e){}
+      const seen=new Set();
+      return ents.filter(e=>{
+        const k=[String(e?.type||''),String(e?.filial||''),norm97(e?.login||e?.nome||'')].join('|');
+        if(seen.has(k))return false;
+        seen.add(k);return true;
+      });
+    }
+
+    async function ensureAuditData97(){
+      try{if(typeof ensureQuitadosV1075==='function')await ensureQuitadosV1075()}catch(e){}
+      try{if(typeof carregarAuditoriasCobranca==='function')await carregarAuditoriasCobranca(true)}catch(e){}
+      try{if(typeof carregarCobrancasOnline==='function')await carregarCobrancasOnline()}catch(e){}
+    }
+
+    function currentAuditRows97(month){
+      const all=[];
+      const used=new Set();
+      for(const ent of auditEntities97()){
+        for(const r of auditRowsForEnt97(ent,month)){
+          const k=[dig97(r.cpf_cnpj),title97(r.titulo),parts97(r.parcela).join('/'),r.pagamento,norm97(r.login||r.usuario)].join('|');
+          if(used.has(k))continue;
+          used.add(k);
+          all.push(r);
+        }
+      }
+      return all;
+    }
+
+    function xlsEsc97(v){
+      return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function downloadXls97(filename,rows){
+      const headers=[
+        ['mes','Mês'],['tipo','Tipo'],['usuario','Usuário'],['login','Login'],['filial','Filial'],
+        ['faixa','Faixa'],['cliente','Cliente'],['cpf_cnpj','CPF/CNPJ'],['titulo','Título'],['parcela','Parcela'],
+        ['vencimento','Vencimento'],['pagamento','Pagamento'],['recebido','Valor recebido'],
+        ['percentual_comissao','% comissão'],['comissao','Comissão'],['auditoria_status','Auditoria'],
+        ['auditoria_data','Data auditoria'],['auditoria_id','ID auditoria']
+      ];
+
+      const trs=[
+        `<tr>${headers.map(([,h])=>`<th>${xlsEsc97(h)}</th>`).join('')}</tr>`,
+        ...(rows||[]).map(r=>`<tr>${headers.map(([k])=>{
+          const v=r?.[k]??'';
+          const numeric=['recebido','percentual_comissao','comissao'].includes(k);
+          return numeric?`<td x:num="${Number(v||0)}">${Number(v||0)}</td>`:`<td>${xlsEsc97(v)}</td>`;
+        }).join('')}</tr>`)
+      ].join('');
+
+      const totalRecebido=moneyNum97((rows||[]).reduce((s,r)=>s+Number(r?.recebido||0),0));
+      const totalComissao=moneyNum97((rows||[]).reduce((s,r)=>s+Number(r?.comissao||0),0));
+
+      const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
+      <head><meta charset="utf-8"><style>
+        table{border-collapse:collapse;font-family:Arial;font-size:10pt}
+        th{background:#1f4e78;color:#fff;font-weight:bold}
+        th,td{border:1px solid #b7c9d6;padding:5px;white-space:nowrap}
+        .sum{font-weight:bold;background:#e2f0d9}
+      </style></head><body>
+        <h2>Comissões de cobrança auditada e paga</h2>
+        <p>Regra: evidência aprovada + mesmo CPF/título/parcela + pagamento conciliado.</p>
+        <table>${trs}</table>
+        <br><table>
+          <tr><th>Registros</th><th>Total recebido auditado</th><th>Total comissão</th></tr>
+          <tr class="sum"><td>${rows.length}</td><td>${totalRecebido}</td><td>${totalComissao}</td></tr>
+        </table>
+      </body></html>`;
+
+      const blob=new Blob(['\ufeff'+html],{type:'application/vnd.ms-excel;charset=utf-8'});
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);
+      a.download=filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1200);
+    }
+
+    window.exportarCobrancaAuditadaXlsV1097=async function(){
+      try{
+        const month=document.getElementById('histComMonth')?.value||currentMonth97();
+        let rows=[];
+
+        if(month===currentMonth97()){
+          try{toast('Carregando auditorias e pagamentos para o XLS...','info')}catch(e){}
+          await ensureAuditData97();
+          rows=currentAuditRows97(month);
+        }else{
+          const snap=HIST_COMISSAO?.months?.[month];
+          const ents=Array.isArray(snap?.entidades)?snap.entidades:[];
+          rows=ents.flatMap(e=>Array.isArray(e?.cobranca_auditada_itens)?e.cobranca_auditada_itens:[]);
+        }
+
+        if(!rows.length){
+          try{toast(month===currentMonth97()?'Nenhuma comissão de cobrança auditada e paga encontrada no mês.':'Este fechamento antigo não possui o detalhamento auditado. A V10.97 passa a gravar nos novos fechamentos.','warn')}catch(e){}
+          return;
+        }
+
+        downloadXls97(`comissoes_cobranca_auditada_${month}.xls`,rows);
+        try{toast(`XLS gerado: ${rows.length} pagamento(s) auditado(s).`,'success')}catch(e){}
+      }catch(e){
+        console.warn(TAG,'XLS auditado',e);
+        try{toast('Não consegui gerar o XLS de cobrança auditada.','warn')}catch(_){}
+      }
+    };
+
+    // Novos fechamentos passam a guardar também o detalhamento auditado.
+    try{
+      const baseSnapshot97=window.snapshotComissaoEntidade||snapshotComissaoEntidade;
+      snapshotComissaoEntidade=window.snapshotComissaoEntidade=function(ent){
+        const row=baseSnapshot97.apply(this,arguments)||{};
+        try{
+          const month=currentMonth97();
+          const itens=auditRowsForEnt97(ent,month);
+          const resumo=typeof window.calcCobrancaAuditadaV1093==='function'?window.calcCobrancaAuditadaV1093(ent):null;
+          row.cobranca_auditada=resumo?{
+            total:Number(resumo.total||0),
+            auditorias_aprovadas:Number(resumo.aprovados||0),
+            pagamentos_conciliados:Number(resumo.pagos||0),
+            aguardando_pagamento:Number(resumo.aguardandoPagamento||0),
+            recebido_atencao:Number(resumo.fx?.atencao?.recebido||0),
+            recebido_alerta:Number(resumo.fx?.alerta?.recebido||0),
+            recebido_grave:Number(resumo.fx?.grave?.recebido||0)
+          }:{};
+          row.cobranca_auditada_itens=itens;
+        }catch(e){row.cobranca_auditada_itens=[]}
+        return row;
+      };
+
+      const baseSave97=window.salvarSnapshotComissionamentoMensal||salvarSnapshotComissionamentoMensal;
+      salvarSnapshotComissionamentoMensal=window.salvarSnapshotComissionamentoMensal=async function(auto=false){
+        await ensureAuditData97();
+        return baseSave97.apply(this,arguments);
+      };
+    }catch(e){console.warn(TAG,'snapshot auditado',e)}
+
+    // Botão XLS na aba Histórico > Comissões.
+    function patchHistXls97(){
+      try{
+        const box=document.getElementById('histComResults');
+        if(!box||document.getElementById('btnXlsCobAudit97'))return;
+        const firstPanel=box.querySelector('.glass.panel');
+        if(!firstPanel)return;
+        const wrap=document.createElement('div');
+        wrap.style.cssText='display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin:10px 0 0';
+        wrap.innerHTML='<button id="btnXlsCobAudit97" class="btn primary" onclick="exportarCobrancaAuditadaXlsV1097()">📥 XLS cobrança auditada paga</button>';
+        firstPanel.appendChild(wrap);
+      }catch(e){}
+    }
+
+    try{
+      const baseHist97=window.renderHistoricoComissaoResults||renderHistoricoComissaoResults;
+      renderHistoricoComissaoResults=window.renderHistoricoComissaoResults=function(){
+        const out=baseHist97.apply(this,arguments);
+        setTimeout(patchHistXls97,30);
+        return out;
+      };
+    }catch(e){}
+    setTimeout(patchHistXls97,1200);
+
+    // ---------------------------------------------------------
+    // 5) TELA CONGELADA: FIT DINÂMICO EM UMA ÚNICA FOLHA
+    // ---------------------------------------------------------
+    function selectedEnt97(){
+      try{
+        const key=document.getElementById('histComCurrentEntity')?.value||'';
+        const ents=(typeof _allComissaoEntitiesNow==='function')?_allComissaoEntitiesNow():[
+          ...(typeof flattenVendedores==='function'?flattenVendedores():[]),
+          ...(typeof flattenFiliais==='function'?flattenFiliais():[]),
+          ...(typeof crediaristaEntities==='function'?crediaristaEntities():[])
+        ];
+        if(!ents.length)return null;
+        if(typeof _comKeyNow==='function')return ents.find(e=>_comKeyNow(e)===key)||ents[0];
+        return ents[0];
+      }catch(e){return null}
+    }
+
+    async function capturePrint97(ent){
+      try{
+        await ensureAuditData97();
+        if(typeof ensureDetailData==='function')await ensureDetailData(ent||{});
+
+        if(ent?.type==='crediarista'||ent?.is_crediarista){
+          renderCrediaristaDetail(ent);
+        }else if(ent?.type==='terceiro'||ent?.is_terceiro){
+          renderTerceiroDetail(ent);
+        }else if(typeof openEntity==='function'){
+          await openEntity(ent);
+          await sleep97(120);
+        }
+
+        let html='';
+        try{html=String(typeof snapshotEntityHTML==='function'?snapshotEntityHTML(ent):'')}catch(e){}
+        if(!html)html=String(document.getElementById('detailScreen')?.innerHTML||'');
+
+        const temp=document.createElement('div');
+        temp.innerHTML=html;
+
+        [
+          '.accordion','.msg-banner','.campaign-banner','.goal-notification-panel',
+          '#laranjitoNotify','#laranjitoNotifyPanel','.proof-input',
+          '.tabs','.cob-pane','.back-row button','.print-toolbar'
+        ].forEach(sel=>temp.querySelectorAll(sel).forEach(x=>x.remove()));
+
+        temp.querySelectorAll('img').forEach(img=>{
+          img.style.maxWidth='52px';
+          img.style.maxHeight='52px';
+          img.style.objectFit='contain';
+        });
+
+        return temp.innerHTML;
+      }catch(e){
+        console.warn(TAG,'capturePrint97',e);
+        try{return String(typeof snapshotEntityHTML==='function'?snapshotEntityHTML(ent):'')}catch(_){return ''}
+      }finally{
+        try{
+          document.getElementById('detailScreen')?.classList.add('hidden');
+          document.getElementById('mainScreen')?.classList.remove('hidden');
+          if(typeof setMainTab==='function')setMainTab('historico');
+          if(window._histMode)window._histMode='comissao';
+          if(typeof renderHistoricoComissaoResults==='function')renderHistoricoComissaoResults();
+        }catch(e){}
+      }
+    }
+
+    function openFitPrint97(title,pages){
+      const w=window.open('about:blank','_blank');
+      if(!w){try{toast('Pop-up bloqueado pelo navegador.','warn')}catch(e){}return}
+
+      const safeTitle=String(title||'Comissionamento').replace(/[<>&]/g,'');
+      const pageHtml=pages.map(html=>`<section class="mdl-print-page"><div class="mdl-fit-inner">${html}</div></section>`).join('');
+
+      w.document.open();
+      w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${safeTitle}</title>
+      <style>
+        *{box-sizing:border-box}
+        body{margin:0;background:#d9dde5;font-family:Inter,Segoe UI,Arial,sans-serif;color:#111}
+        .toolbar{position:sticky;top:0;z-index:20;background:#fff;border-bottom:1px solid #ccd2dc;padding:10px 14px;display:flex;justify-content:space-between;gap:10px;align-items:center}
+        .toolbar button{border:0;border-radius:10px;padding:10px 14px;font-weight:900;cursor:pointer}
+        .mdl-print-page{position:relative;width:287mm;height:198mm;margin:10px auto;background:#fff;overflow:hidden;padding:3mm;box-shadow:0 8px 30px rgba(0,0,0,.16)}
+        .mdl-fit-inner{transform-origin:top left;width:max-content;min-width:100%;color:#111}
+        .mdl-fit-inner .glass,.mdl-fit-inner .panel,.mdl-fit-inner .metric,.mdl-fit-inner .commission-item,.mdl-fit-inner .snap-sheet{box-shadow:none!important}
+        .mdl-fit-inner img{max-width:52px!important;max-height:52px!important;object-fit:contain!important}
+        .mdl-fit-inner .detail-top,.mdl-fit-inner .detail-grid,.mdl-fit-inner .detail-layout{gap:8px!important}
+        .mdl-fit-inner h1,.mdl-fit-inner h2,.mdl-fit-inner h3{margin-top:4px!important;margin-bottom:6px!important}
+        @page{size:A4 landscape;margin:4mm}
+        @media print{
+          body{background:#fff!important}
+          .toolbar{display:none!important}
+          .mdl-print-page{width:289mm;height:202mm;margin:0!important;padding:2mm!important;box-shadow:none!important;page-break-after:always;break-after:page}
+          .mdl-print-page:last-child{page-break-after:auto;break-after:auto}
+        }
+      </style></head>
+      <body>
+        <div class="toolbar"><strong>${safeTitle}</strong><div><button onclick="fitAll();window.print()">🖨️ Salvar PDF / Imprimir</button> <button onclick="window.close()">Fechar</button></div></div>
+        ${pageHtml}
+        <script>
+          function fitOne(page){
+            const inner=page.querySelector('.mdl-fit-inner');
+            if(!inner)return;
+            inner.style.transform='none';
+            inner.style.width='max-content';
+            const pw=Math.max(1,page.clientWidth-24);
+            const ph=Math.max(1,page.clientHeight-24);
+            const rw=Math.max(1,inner.scrollWidth);
+            const rh=Math.max(1,inner.scrollHeight);
+            let s=Math.min(1,pw/rw,ph/rh);
+            s=Math.max(.38,Math.min(.76,s));
+            inner.style.transform='scale('+s+')';
+            inner.style.width=(100/s)+'%';
+            page.dataset.scale=s.toFixed(3);
+          }
+          function fitAll(){document.querySelectorAll('.mdl-print-page').forEach(fitOne)}
+          window.addEventListener('load',()=>{setTimeout(fitAll,80);setTimeout(fitAll,500);setTimeout(fitAll,1200)});
+          window.addEventListener('beforeprint',fitAll);
+        <\/script>
+      </body></html>`);
+      w.document.close();
+    }
+
+    window.abrirTelaComissionamentoAtual=async function(){
+      const ent=selectedEnt97();
+      if(!ent){try{toast('Nenhum usuário/filial encontrado.','warn')}catch(e){}return}
+      try{toast('Montando tela compacta para caber em 1 folha A4...','info')}catch(e){}
+      const html=await capturePrint97(ent);
+      if(!html||html.length<40){try{toast('Não consegui montar a tela congelada.','warn')}catch(e){}return}
+      openFitPrint97('Comissionamento '+String(ent.nome||ent.filial||''),[html]);
+    };
+
+    window.congelarTodasTelasComissionamentoPDF=async function(){
+      let ents=[];
+      try{ents=typeof _allComissaoEntitiesNow==='function'?_allComissaoEntitiesNow():[]}catch(e){}
+      if(!ents.length){try{toast('Nenhuma tela para congelar.','warn')}catch(e){}return}
+
+      const pages=[];
+      for(const ent of ents){
+        const html=await capturePrint97(ent);
+        if(html&&html.length>40)pages.push(html);
+        await sleep97(40);
+      }
+      if(!pages.length){try{toast('Não consegui montar as telas.','warn')}catch(e){}return}
+      openFitPrint97(`Fechamento comissionamento ${currentMonth97()} · ${pages.length} usuário(s)`,pages);
+    };
+
+    // ---------------------------------------------------------
+    // Final
+    // ---------------------------------------------------------
+    window.DASHBOARD_BUILD_VERSION='V10.97';
+    setTimeout(()=>{applyNoticePolicy97();try{patchHistXls97()}catch(e){}},800);
+    console.log(TAG,'ativo: avisos off colaboradores + especiais sem meta + diagnóstico fila + XLS auditado + PDF 1 página');
+  }catch(e){
+    console.warn(TAG,'falhou',e);
+  }
+})();
+</script>
+
 </body>
 </html>
 """
@@ -21927,3 +22628,5 @@ driver.quit()
 # V10.95_DECISAO_MASTER_COB
 
 # V10.96_COB_DECISAO_EM_LOTE
+
+# V10.97_AVISOS_OFF_ESPECIAIS_SEM_META_XLS_AUDITADO_PDF_FIT
