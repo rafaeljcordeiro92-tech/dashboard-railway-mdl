@@ -106,7 +106,7 @@ _force_main_boot = True
 _force_sales_after_main = False
 
 STATE = {
-    'version': 'V10.100_CORRECOES_OPERACIONAIS',
+    'version': 'V10.101_CORRECOES_DADOS_PERFORMANCE',
     'started_at': None,
     'updated_at': None,
     'scheduler': 'starting',
@@ -246,10 +246,10 @@ def finish_if_done(name, proc):
     if key == 'dashboard_completo_cobranca':
         _last_cobranca_end = br_now()
         _display_v10100 = str(STATE['jobs'][key].get('display_name') or '')
-        if code == 0 and STATE.get('deploy_update_active') and 'DEPLOY_V10100' in _display_v10100:
+        if code == 0 and STATE.get('deploy_update_active') and 'DEPLOY_V10101' in _display_v10100:
             STATE['deploy_update_active'] = False
             STATE['deploy_update_completed_at'] = iso_now()
-            log('🔓 DEPLOY V10.100 liberado: primeiro MAIN terminou com Exit 0 após publicação FTP. Próximos MAINs normais NÃO bloquearão acessos.')
+            log('🔓 DEPLOY V10.101 liberado: primeiro MAIN terminou com Exit 0 após publicação FTP. Próximos MAINs normais NÃO bloquearão acessos.')
     if key == 'cobranca_terceira' and code == 0:
         STATE['last_cob_terceira_date'] = br_now().strftime('%Y-%m-%d')
         _save_status()
@@ -614,7 +614,7 @@ def start_http_panel():
     server.serve_forever()
 
 
-DEPLOY_BUILD_VERSION = "V10.100"
+DEPLOY_BUILD_VERSION = "V10.101"
 DEPLOY_STATE_PUBLIC_URL = "https://moveisdolar.com.br/colaborador/dashboard_deploy_state.json"
 
 def _remote_deploy_version_v10100():
@@ -645,7 +645,7 @@ else:
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log(f'VERSAO V10.100: Telegram cobrança robusta + lock apenas primeiro MAIN do deploy | canal={NOTIFICATION_CHANNEL} | manual_only={COB_TERCEIRA_MANUAL_ONLY}')
+log(f'VERSAO V10.101: Telegram LIVE + CSM50/filial + Excel real + prefetch | canal={NOTIFICATION_CHANNEL} | manual_only={COB_TERCEIRA_MANUAL_ONLY}')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
@@ -676,10 +676,10 @@ while True:
         
         # V31: permite forçar clientes sem movimento + aniversariantes no primeiro boot/deploy.
         # Use FORCE_DAILY_LISTS_ON_BOOT=1 somente no primeiro deploy; depois remova/volte para 0 para manter a regra das 07h.
-        _daily = daily_lists_due(now) or FORCE_DAILY_LISTS_ON_BOOT
+        _daily = daily_lists_due(now) or FORCE_DAILY_LISTS_ON_BOOT or bool(STATE.get('deploy_update_active'))
         if _daily:
             STATE['last_daily_lists_date'] = now.strftime('%Y-%m-%d')
-        _boot_name_v10100 = ('dashboard_completo_cobranca_DEPLOY_V10100' if STATE.get('deploy_update_active') else 'dashboard_completo_cobranca_boot_publica_html') + ('_com_listas_pesadas' if _daily else '')
+        _boot_name_v10100 = ('dashboard_completo_cobranca_DEPLOY_V10101' if STATE.get('deploy_update_active') else 'dashboard_completo_cobranca_boot_publica_html') + ('_com_listas_pesadas' if _daily else '')
         _cobranca_proc=start_job(_boot_name_v10100, COBRANCA_CMD, main_job_env(_daily)); cobranca_running=True
     elif cobranca_ok and not sales_running and not cobranca_running and not cob_terceira_running and _last_cobranca_slot != ckey:
         _last_cobranca_slot=ckey
@@ -721,3 +721,5 @@ while True:
 # V10.99_TELEGRAM_COBRANCA_DIARIA_UPDATE_GUARD
 
 # V10.100_TELEGRAM_SYNC_CSM_EXCEL_REGRAS_METRICAS_DEPLOY_LOCK
+
+# V10.101_LIVE_TELEGRAM_EXCEL_REAL_CSM50_FILIAL_PREFETCH

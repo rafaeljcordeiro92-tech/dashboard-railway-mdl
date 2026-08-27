@@ -37,8 +37,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.100"
-DASHBOARD_BUILD_TAG = "v10100_telegram_sync_csm_excel_regras_metricas_deploy_lock"
+DASHBOARD_BUILD_VERSION = "V10.101"
+DASHBOARD_BUILD_TAG = "v10101_live_telegram_excel_real_csm50_filial_prefetch"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
 # V10.52: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
@@ -8745,7 +8745,8 @@ def carregar_clientes_sem_movimento_local():
     csm_fila_path_v1038 = os.path.join(pasta, 'clientes_sem_movimento_fila.json')
     hoje_lote_v1016 = now_brasilia().strftime('%Y-%m-%d')
     max_por_usuario_v1016 = int(os.getenv('CSM_MAX_CLIENTES_USUARIO_DIA', '50') or '50')
-    max_global_dia_v1077 = max(1, int(os.getenv('CSM_MAX_CLIENTES_DIA', '50') or '50'))
+    max_global_dia_v1077 = max(1, int(os.getenv('CSM_MAX_CLIENTES_DIA', '50') or '50'))  # legado
+    max_por_filial_v10101 = max(1, int(os.getenv('CSM_MAX_CLIENTES_FILIAL_DIA', '50') or '50'))
 
     def _js_hash_py_v1016(txt):
         h = 0
@@ -8943,35 +8944,58 @@ def carregar_clientes_sem_movimento_local():
             print(f"⚠️ V10.38 não consegui salvar fila CSM: {e}")
         print(f"🧡 V10.38: lote diário CSM criado com limite {max_por_usuario_v1016}/usuário, rotativo recente→antigo: {len(actionable)} de {len(actionable_sem_limite_v1016)} acionáveis.")
 
-    # ===== V10.77: limite GLOBAL de clientes sem movimento no dashboard =====
-    # A base completa continua arquivada no FTP para histórico, mas nunca é enviada ao navegador.
-    # O lote operacional do dia fica limitado a 50 clientes no total (configurável),
-    # distribuídos em rodízio entre os responsáveis para não concentrar tudo em uma única filial.
-    if len(actionable) > max_global_dia_v1077:
-        _grupos_v1077 = {}
-        for _r in actionable:
-            try:
-                if not _r.get('_owner_key_py'):
-                    _r = _annot_owner_py_v1016(_r)
-                _ok = str(_r.get('_owner_key_py') or 'SEM_OWNER')
-            except Exception:
-                _ok = 'SEM_OWNER'
-            _grupos_v1077.setdefault(_ok, []).append(_r)
-        _keys_v1077 = sorted(_grupos_v1077)
-        _limitado_v1077 = []
-        while len(_limitado_v1077) < max_global_dia_v1077 and _keys_v1077:
-            _restantes_v1077 = []
-            for _ok in _keys_v1077:
-                _arr = _grupos_v1077.get(_ok) or []
-                if _arr and len(_limitado_v1077) < max_global_dia_v1077:
-                    _limitado_v1077.append(_arr.pop(0))
-                if _arr:
-                    _restantes_v1077.append(_ok)
-            _keys_v1077 = _restantes_v1077
-        actionable = _limitado_v1077
-        print(f"🪶 V10.79 CSM: lote global limitado a {len(actionable)}/{max_global_dia_v1077} clientes no dia; base completa permanece somente no FTP.")
-    else:
-        print(f"🪶 V10.79 CSM: lote diário já está dentro do limite global ({len(actionable)}/{max_global_dia_v1077}).")
+    # ===== V10.101: até 50 clientes POR FILIAL, rateados entre usuários da filial =====
+    # A regra V10.77 limitava 50 no total e podia deixar apenas F1 visível.
+    # Agora cada filial recebe no máximo 50 acionáveis/dia e esses 50 são
+    # distribuídos em round-robin entre os responsáveis já calculados pelo rateio.
+    _por_filial_v10101 = {}
+    for _r in actionable:
+        try:
+            if not _r.get('_owner_key_py'):
+                _r = _annot_owner_py_v1016(_r)
+        except Exception:
+            pass
+        _fil_v10101 = str(_r.get('filial') or '?').strip().upper()
+        _owner_v10101 = str(_r.get('_owner_key_py') or 'SEM_OWNER')
+        _por_filial_v10101.setdefault(_fil_v10101, {}).setdefault(_owner_v10101, []).append(_r)
+
+    _limitado_v10101 = []
+    _stats_filial_v10101 = {}
+    for _fil_v10101, _owners_v10101 in sorted(_por_filial_v10101.items()):
+        _keys_v10101 = sorted(_owners_v10101)
+        _branch_rows_v10101 = []
+        _branch_before_v10101 = sum(len(_owners_v10101.get(k) or []) for k in _keys_v10101)
+
+        while len(_branch_rows_v10101) < max_por_filial_v10101 and _keys_v10101:
+            _next_keys_v10101 = []
+            for _ok_v10101 in _keys_v10101:
+                _arr_v10101 = _owners_v10101.get(_ok_v10101) or []
+                if _arr_v10101 and len(_branch_rows_v10101) < max_por_filial_v10101:
+                    _branch_rows_v10101.append(_arr_v10101.pop(0))
+                if _arr_v10101:
+                    _next_keys_v10101.append(_ok_v10101)
+            _keys_v10101 = _next_keys_v10101
+
+        _limitado_v10101.extend(_branch_rows_v10101)
+        _stats_filial_v10101[_fil_v10101] = {
+            'acionaveis_antes_limite': _branch_before_v10101,
+            'publicados': len(_branch_rows_v10101),
+            'responsaveis': len(_owners_v10101),
+        }
+
+    actionable = sorted(
+        _limitado_v10101,
+        key=lambda x: (
+            str(x.get('filial','')),
+            str(x.get('_owner_key_py','')),
+            int(x.get('dias_sem_movimento') or 999999),
+            str(x.get('cliente',''))
+        )
+    )
+    print(
+        "🧡 V10.101 CSM: limite 50 POR FILIAL com rateio entre usuários → "
+        + (" · ".join(f"{f}:{s['publicados']}" for f,s in sorted(_stats_filial_v10101.items())) or "0")
+    )
 
     _por_owner_count_v1016 = {}
     for _r in actionable:
@@ -8982,9 +9006,11 @@ def carregar_clientes_sem_movimento_local():
             'data': hoje_lote_v1016,
             'gerado_em': now_brasilia().isoformat(),
             'versao': DASHBOARD_BUILD_VERSION,
-            'regra': 'max_50_global_dia_rotativo_entre_responsaveis_reenvio_30d',
+            'regra': 'v10101_max_50_por_filial_rateado_entre_responsaveis_reenvio_30d',
             'limite_por_usuario_dia': max_por_usuario_v1016,
-            'limite_global_dia': max_global_dia_v1077,
+            'limite_global_dia': None,
+            'limite_por_filial_dia': max_por_filial_v10101,
+            'por_filial': _stats_filial_v10101,
             'lote_reusado': _lote_reusado_v1016,
             'acionaveis_sem_limite': len(actionable_sem_limite_v1016),
             'publicados_no_dashboard': len(actionable),
@@ -9025,7 +9051,9 @@ def carregar_clientes_sem_movimento_local():
         "aguardando_reenvio_total":aguardando_count,
         "acionaveis_sem_limite_total":len(actionable_sem_limite_v1016) if 'actionable_sem_limite_v1016' in locals() else len(actionable),
         "limite_por_usuario_dia":max_por_usuario_v1016 if 'max_por_usuario_v1016' in locals() else 50,
-        "limite_global_dia":max_global_dia_v1077 if 'max_global_dia_v1077' in locals() else 50,
+        "limite_global_dia":None,
+        "limite_por_filial_dia":max_por_filial_v10101 if 'max_por_filial_v10101' in locals() else 50,
+        "por_filial":_stats_filial_v10101 if '_stats_filial_v10101' in locals() else {},
         "lote_diario_reusado":bool(_lote_reusado_v1016) if '_lote_reusado_v1016' in locals() else False,
         "publicados_no_dashboard":len(actionable),
         "seen_total":len(seen_union),
@@ -17778,20 +17806,20 @@ Preparamos condições especiais para você comemorar com a gente.
         // V10.77: NUNCA baixa clientes_sem_movimento_base.json no dashboard.
         // A base completa fica somente no FTP para histórico/robô; navegador recebe no máximo o lote diário.
         if(Array.isArray(CLIENTES_SEM_MOVIMENTO)){
-          mdlV100SpliceArray(CLIENTES_SEM_MOVIMENTO, actionRows.slice(0,50));
+          mdlV100SpliceArray(CLIENTES_SEM_MOVIMENTO, actionRows);
         }
         try{ mdlV100SpliceArray(CLIENTES_SEM_MOVIMENTO_BASE, []); }catch(e){}
         try{ window.CLIENTES_SEM_MOVIMENTO_BASE = CLIENTES_SEM_MOVIMENTO_BASE; }catch(e){}
         if(typeof CLIENTES_SEM_MOVIMENTO_META==='object'){
-          CLIENTES_SEM_MOVIMENTO_META.acionaveis_total = Math.min(50, Number(CLIENTES_SEM_MOVIMENTO_META.acionaveis_total || actionRows.length || 0));
-          CLIENTES_SEM_MOVIMENTO_META.publicados_no_dashboard = Math.min(50, actionRows.length);
-          CLIENTES_SEM_MOVIMENTO_META.limite_global_dia = 50;
+          CLIENTES_SEM_MOVIMENTO_META.acionaveis_total = Number(CLIENTES_SEM_MOVIMENTO_META.acionaveis_total || actionRows.length || 0);
+          CLIENTES_SEM_MOVIMENTO_META.publicados_no_dashboard = actionRows.length;
+          CLIENTES_SEM_MOVIMENTO_META.limite_global_dia = null; CLIENTES_SEM_MOVIMENTO_META.limite_por_filial_dia = Number(CLIENTES_SEM_MOVIMENTO_META.limite_por_filial_dia||50);
           CLIENTES_SEM_MOVIMENTO_META._loaded_frontend_v1077 = true;
         }
         window._mdlCsmLoadedV96 = true;
         window._mdlCsmLoadingV96 = false;
         window._mdlV100CsmLoadingPromise = null;
-        console.log('[MDL V10.77] clientes sem movimento carregados no acesso individual:', {publicados:Math.min(50,actionRows.length)});
+        console.log('[MDL V10.101] clientes sem movimento carregados:', {publicados:actionRows.length, limite_por_filial:CLIENTES_SEM_MOVIMENTO_META?.limite_por_filial_dia||50});
         return true;
       })().catch(e=>{
         console.warn('[MDL V10.0] falha geral ao carregar reativação',e);
@@ -22385,6 +22413,338 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
 })();
 </script>
 
+<script>
+/* ===== V10.101 — DADOS REAIS + PREFETCH ===== */
+(function(){
+  const TAG='[V10.101]';
+  try{
+    const norm101=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim();
+    const dig101=v=>String(v||'').replace(/\D/g,'');
+    const part101=v=>(String(v||'').match(/\d+/g)||[]).map(Number).join('/');
+    const money101=v=>Math.round((Number(v||0)+Number.EPSILON)*100)/100;
+    const esc101=v=>typeof esc==='function'?esc(v):String(v??'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+
+    // --------------------------------------------------------
+    // 1) PREFETCH: Cobranças + Cobrança Terceiro
+    // --------------------------------------------------------
+    window.MDL_COB_FIRST_PAGE_CACHE_V10101=null;
+    window.MDL_COB_FIRST_PAGE_PROMISE_V10101=null;
+
+    function cobRow101(x){
+      const dt=String(x?.server_time||x?.criado_em||x?.data||x?.server_date||'').replace('T',' ').slice(0,19);
+      const status=String(x?.status||x?.auditoria_status||x?.resultado||'registrada');
+      return `<div class="v1075-cob-row">
+        <div><strong>${esc101(x?.cliente||'Cliente')}</strong><div class="small muted">${esc101(x?.cpf_cnpj||'')} · ${esc101(x?.telefone||'')}</div></div>
+        <div><b>${esc101(x?.filial||'-')}</b><div class="small muted">${esc101(x?.usuario||x?.responsavel||'')}</div></div>
+        <div><b>Título ${esc101(x?.titulo||'-')}</b><div class="small muted">Parcela ${esc101(x?.parcela||'-')} · ${typeof R==='function'?R(x?.valor||x?.pendente||0):''}</div></div>
+        <div><b>${esc101(status)}</b><div class="small muted">${esc101(dt)}</div></div>
+      </div>`;
+    }
+
+    async function prefetchCob101(force=false){
+      if(window.MDL_COB_FIRST_PAGE_PROMISE_V10101&&!force)return window.MDL_COB_FIRST_PAGE_PROMISE_V10101;
+      window.MDL_COB_FIRST_PAGE_PROMISE_V10101=(async()=>{
+        try{
+          const p=new URLSearchParams({_ : String(Date.now()),sort:'desc',limit:'50',offset:'0'});
+          const r=await fetchComTimeout(API_COB+'?'+p.toString(),{cache:'no-store'},6000);
+          const j=await r.json();
+          if(j?.ok&&Array.isArray(j?.data)){
+            window.MDL_COB_FIRST_PAGE_CACHE_V10101={
+              at:Date.now(),rows:j.data,total:Number(j.filtered_count||j.total||j.data.length||0)
+            };
+            return true;
+          }
+        }catch(e){console.warn(TAG,'prefetch cobranças',e)}
+        return false;
+      })();
+      try{return await window.MDL_COB_FIRST_PAGE_PROMISE_V10101}
+      finally{window.MDL_COB_FIRST_PAGE_PROMISE_V10101=null}
+    }
+    window.mdlPrefetchCobV10101=prefetchCob101;
+
+    function filtersBlank101(){
+      return !String(document.getElementById('v1075CobQ')?.value||'') &&
+             !String(document.getElementById('v1075CobDe')?.value||'') &&
+             !String(document.getElementById('v1075CobAte')?.value||'') &&
+             !String(document.getElementById('v1075CobFil')?.value||'') &&
+             !String(document.getElementById('v1075CobUser')?.value||'');
+    }
+
+    try{
+      const originalLoad101=window.v1075LoadCobPage;
+      if(typeof originalLoad101==='function'){
+        window.v1075LoadCobPage=async function(page=0){
+          const pg=Math.max(0,Number(page)||0);
+          const cache=window.MDL_COB_FIRST_PAGE_CACHE_V10101;
+          if(pg===0&&filtersBlank101()&&cache&&Date.now()-cache.at<120000){
+            const host=document.getElementById('v1075CobRows');
+            const pager=document.getElementById('v1075CobPager');
+            if(host)host.innerHTML=cache.rows.length?cache.rows.map(cobRow101).join(''):'<div class="empty">Nenhum registro encontrado.</div>';
+            if(pager){
+              const pages=Math.max(1,Math.ceil(Number(cache.total||0)/50));
+              pager.innerHTML=`<span>${Number(cache.total||0)} registro(s) · página 1/${pages}</span><span><button class="btn soft" disabled>⬅️</button> <button class="btn soft" ${pages<=1?'disabled':''} onclick="v1075LoadCobPage(1)">➡️</button></span>`;
+            }
+            // Atualiza silenciosamente depois, sem apagar a lista já exibida.
+            setTimeout(()=>{try{prefetchCob101(true)}catch(e){}},100);
+            return true;
+          }
+          return originalLoad101.apply(this,arguments);
+        };
+      }
+    }catch(e){console.warn(TAG,'wrap cobranças',e)}
+
+    async function prefetchThird101(){
+      try{
+        const ref={type:'terceiro',filial:'FTER',nome:typeof COBRANCA10_NOME!=='undefined'?COBRANCA10_NOME:'Cobrança10',login:typeof COBRANCA10_LOGIN!=='undefined'?COBRANCA10_LOGIN:'cobranca10'};
+        if(typeof ensureDetailData==='function')await ensureDetailData(ref);
+        if(typeof carregarCobrancasOnline==='function')await carregarCobrancasOnline({ref,force:true});
+        return true;
+      }catch(e){console.warn(TAG,'prefetch terceiro',e);return false}
+    }
+    window.mdlPrefetchThirdV10101=prefetchThird101;
+
+    setTimeout(()=>{try{prefetchCob101(false)}catch(e){}},700);
+    setTimeout(()=>{try{prefetchThird101()}catch(e){}},1100);
+
+    // --------------------------------------------------------
+    // 2) EXCEL COMISSIONAMENTO — usa dados reais globais,
+    // sem depender de helpers locais de IIFEs anteriores.
+    // --------------------------------------------------------
+    function aliasSet101(ent){
+      const s=new Set();
+      const add=v=>{const n=norm101(v);if(n)s.add(n)};
+      add(ent?.nome);add(ent?.login);
+      try{
+        const u=ent?.login?getAuthUser(ent.login):null;
+        add(u?.nome);add(u?.login);
+      }catch(e){}
+      return s;
+    }
+
+    function logMatches101(l,ent){
+      if(ent?.type==='filial')return String(l?.filial||'').toUpperCase()===String(ent?.filial||'').toUpperCase();
+      const a=aliasSet101(ent);
+      const vals=[l?.usuario,l?.login,l?.destino_nome,l?.responsavel].map(norm101).filter(Boolean);
+      if(vals.some(v=>a.has(v)))return true;
+      if(ent?.type==='crediarista'||ent?.is_crediarista){
+        return String(l?.login||'').toLowerCase()===String(ent?.login||'').toLowerCase();
+      }
+      if(ent?.type==='terceiro'||ent?.is_terceiro){
+        return norm101(l?.usuario)===norm101(typeof COBRANCA10_NOME!=='undefined'?COBRANCA10_NOME:'Cobrança10') ||
+               String(l?.usuario||'').toLowerCase()===String(typeof COBRANCA10_LOGIN!=='undefined'?COBRANCA10_LOGIN:'cobranca10').toLowerCase();
+      }
+      return false;
+    }
+
+    function keyCob101(x){
+      try{if(typeof cobrancaRowKey==='function')return cobrancaRowKey(x)}catch(e){}
+      return [dig101(x?.cpf_cnpj_normalizado||x?.cpf_cnpj),String(x?.titulo||''),part101(x?.parcela)].join('|');
+    }
+
+    function isoMonth101(v){
+      try{return dateOnlyISO(v||'').slice(0,7)}catch(e){}
+      const s=String(v||'');const m=s.match(/(\d{4})-(\d{2})/);return m?`${m[1]}-${m[2]}`:'';
+    }
+
+    function cobMonth101(ent,month){
+      const src=(Array.isArray(window.COB_LOGS_OFICIAIS)&&window.COB_LOGS_OFICIAIS.length)?window.COB_LOGS_OFICIAIS:(Array.isArray(COB_LOGS)?COB_LOGS:[]);
+      const seen=new Set();let valor=0,qtd=0;
+      for(const l of src){
+        if(!l||String(l?.acao||'whatsapp').toLowerCase()!=='whatsapp')continue;
+        if(!logMatches101(l,ent))continue;
+        if(isoMonth101(l?.server_time||l?.criado_em||l?.data||l?.server_date||'')!==month)continue;
+        const k=keyCob101(l);if(k&&seen.has(k))continue;if(k)seen.add(k);
+        qtd++;valor+=Number(l?.pendente||0);
+      }
+      return {qtd,valor:money101(valor)};
+    }
+
+    function auditCurrent101(ent){
+      try{
+        if(typeof window.calcCobrancaAuditadaV1093==='function'){
+          const c=window.calcCobrancaAuditadaV1093(ent)||{};
+          return {
+            enviadas:Number(c.aprovados||0)+Number(c.aguardandoIa||0)+Number(c.recusados||0),
+            aprovadas:Number(c.aprovados||0),
+            pendentes:Number(c.aguardandoIa||0),
+            pagamentos:Number(c.pagos||0),
+            aguardando:Number(c.aguardandoPagamento||0),
+            total:Number(c.total||0),
+            atencao:{pct:Number(c.fx?.atencao?.pct||0),recebido:Number(c.fx?.atencao?.recebido||0),comissao:Number(c.fx?.atencao?.comissao||0)},
+            alerta:{pct:Number(c.fx?.alerta?.pct||0),recebido:Number(c.fx?.alerta?.recebido||0),comissao:Number(c.fx?.alerta?.comissao||0)},
+            grave:{pct:Number(c.fx?.grave?.pct||0),recebido:Number(c.fx?.grave?.recebido||0),comissao:Number(c.fx?.grave?.comissao||0)}
+          };
+        }
+      }catch(e){}
+      return {enviadas:0,aprovadas:0,pendentes:0,pagamentos:0,aguardando:0,total:0,atencao:{pct:0,recebido:0,comissao:0},alerta:{pct:0,recebido:0,comissao:0},grave:{pct:0,recebido:0,comissao:0}};
+    }
+
+    function auditSaved101(row){
+      const c=row?.cobranca_auditada||{};
+      const itens=Array.isArray(row?.cobranca_auditada_itens)?row.cobranca_auditada_itens:[];
+      const fx=tipo=>{
+        const arr=itens.filter(x=>String(x?.faixa||'').toLowerCase()===tipo);
+        return {
+          pct:Number(arr[0]?.percentual_comissao||0),
+          recebido:money101(arr.reduce((s,x)=>s+Number(x?.recebido||0),0)),
+          comissao:money101(arr.reduce((s,x)=>s+Number(x?.comissao||0),0))
+        };
+      };
+      return {
+        enviadas:Number(c.auditorias_aprovadas||0),
+        aprovadas:Number(c.auditorias_aprovadas||0),
+        pendentes:0,
+        pagamentos:Number(c.pagamentos_conciliados||itens.length||0),
+        aguardando:Number(c.aguardando_pagamento||0),
+        total:Number(c.total||itens.reduce((s,x)=>s+Number(x?.comissao||0),0)),
+        atencao:fx('atencao'),alerta:fx('alerta'),grave:fx('grave')
+      };
+    }
+
+    function rowExcel101(ent,row,month,current){
+      row=row||{};
+      const aud=current?auditCurrent101(ent):auditSaved101(row);
+      const cob=current?cobMonth101(ent,month):{qtd:Number(row?.cobrancas_mes||0),valor:Number(row?.valor_cobrado_mes||0)};
+      let rules=row?.regras_comissionamento||{};
+      try{if(!Object.keys(rules).length&&typeof mdlCommissionRulesV10100==='function')rules=mdlCommissionRulesV10100(ent)||{}}catch(e){}
+      const baseTotal=Number(row?.total_previsto||0);
+      return {
+        mes:month,
+        tipo:row?.tipo||ent?.type||'',
+        nome:row?.nome||ent?.nome||'',
+        filial:row?.filial||ent?.filial||'',
+        login:row?.login||ent?.login||'',
+        pendente:Number(row?.pendente||0),
+        recebido_operacional:Number(row?.recebido_conciliado??row?.recebido??0),
+        meta_cobranca:Number(row?.meta_geral||0),
+        grave_alvo:Number(row?.grave_alvo||0),
+        grave_recebido:Number(row?.grave_rec||0),
+        alerta_alvo:Number(row?.alerta_alvo||0),
+        alerta_recebido:Number(row?.alerta_rec||0),
+        atencao_alvo:Number(row?.atencao_alvo||0),
+        atencao_recebido:Number(row?.atencao_rec||0),
+        cobrancas_mes:Number(cob.qtd||0),
+        valor_cobrado_mes:Number(cob.valor||0),
+        auditorias_enviadas:Number(aud.enviadas||0),
+        auditorias_aprovadas:Number(aud.aprovadas||0),
+        auditorias_pendentes:Number(aud.pendentes||0),
+        pagamentos_conciliados:Number(aud.pagamentos||0),
+        aguardando_pagamento:Number(aud.aguardando||0),
+        recebido_auditado_atencao:Number(aud.atencao?.recebido||0),
+        recebido_auditado_alerta:Number(aud.alerta?.recebido||0),
+        recebido_auditado_grave:Number(aud.grave?.recebido||0),
+        recebido_auditado_total:Number(aud.atencao?.recebido||0)+Number(aud.alerta?.recebido||0)+Number(aud.grave?.recebido||0),
+        pct_comissao_atencao:Number(aud.atencao?.pct||0),
+        pct_comissao_alerta:Number(aud.alerta?.pct||0),
+        pct_comissao_grave:Number(aud.grave?.pct||0),
+        comissao_cobranca_atencao:Number(aud.atencao?.comissao||0),
+        comissao_cobranca_alerta:Number(aud.alerta?.comissao||0),
+        comissao_cobranca_grave:Number(aud.grave?.comissao||0),
+        comissao_cobranca_total:Number(aud.total||0),
+        venda_mercantil:Number(row?.venda_real||0),
+        servicos:Number(row?.servico_real||0),
+        caminhao:Number(row?.caminhao_real||0),
+        comissao_vendas:Number(row?.comissao_vendas||0),
+        comissao_servicos:Number(row?.comissao_servicos||0),
+        comissao_caminhao:Number(row?.comissao_caminhao||0),
+        bonus_meta:Number(row?.bonus_meta||0),
+        rentab_48:Number(row?.rent48||0),
+        rentab_52_15:Number(row?.rent52||0),
+        rentab_55_50:Number(row?.rent55||0),
+        elegivel_mercantil:row?.elegivel_mercantil===true?'SIM':row?.elegivel_mercantil===false?'NÃO':'',
+        elegivel_servicos:row?.elegivel_servicos===true?'SIM':row?.elegivel_servicos===false?'NÃO':'',
+        total_previsto_dashboard:baseTotal,
+        total_previsto_com_cobranca_auditada:money101(baseTotal+Number(aud.total||0)),
+        regra_min_vendas:rules?.min_vendas||row?.regra_min_vendas||'',
+        regra_min_servicos:rules?.min_servicos||row?.regra_min_servicos||'',
+        regra_min_rentabilidade:rules?.min_rentab||row?.regra_min_rentabilidade||'',
+        regra_faixa_vendas:rules?.faixa_vendas||row?.regra_faixa_vendas||row?.faixa||'',
+        regra_pct_comissao_vendas:Number(rules?.pct_vendas??row?.regra_pct_comissao_vendas??0),
+        regra_pct_servicos:Number(rules?.pct_servicos??row?.regra_pct_servicos??0),
+        regra_pct_caminhao:Number(rules?.pct_caminhao??row?.regra_pct_caminhao??0),
+        regra_bonus:rules?.bonus||row?.regra_bonus||'',
+        regra_rentabilidade:rules?.rentab||row?.regra_rentabilidade||'',
+        regra_cobranca_auditada:rules?.cobranca||row?.regra_cobranca_auditada||''
+      };
+    }
+
+    function downloadExcel101(filename,rows){
+      const cols=[
+        ['mes','Mês'],['tipo','Tipo'],['nome','Usuário / Filial'],['filial','Filial'],['login','Login'],
+        ['pendente','Pendente'],['recebido_operacional','Recebido operacional'],['meta_cobranca','Meta cobrança %'],
+        ['grave_alvo','Grave alvo'],['grave_recebido','Grave recebido'],['alerta_alvo','Alerta alvo'],['alerta_recebido','Alerta recebido'],['atencao_alvo','Atenção alvo'],['atencao_recebido','Atenção recebido'],
+        ['cobrancas_mes','Cobranças feitas mês'],['valor_cobrado_mes','Valor cobrado mês'],
+        ['auditorias_enviadas','Auditorias enviadas'],['auditorias_aprovadas','Auditorias aprovadas'],['auditorias_pendentes','Auditorias pendentes'],['pagamentos_conciliados','Pagamentos conciliados'],['aguardando_pagamento','Aguardando pagamento'],
+        ['recebido_auditado_atencao','Recebido auditado Atenção'],['recebido_auditado_alerta','Recebido auditado Alerta'],['recebido_auditado_grave','Recebido auditado Grave'],['recebido_auditado_total','Recebido auditado total'],
+        ['pct_comissao_atencao','% comissão cobrança Atenção'],['pct_comissao_alerta','% comissão cobrança Alerta'],['pct_comissao_grave','% comissão cobrança Grave'],
+        ['comissao_cobranca_atencao','Comissão cobrança Atenção'],['comissao_cobranca_alerta','Comissão cobrança Alerta'],['comissao_cobranca_grave','Comissão cobrança Grave'],['comissao_cobranca_total','Comissão cobrança auditada total'],
+        ['venda_mercantil','Venda mercantil'],['servicos','Serviços'],['caminhao','Caminhão'],
+        ['comissao_vendas','Comissão vendas'],['comissao_servicos','Comissão serviços'],['comissao_caminhao','Comissão caminhão'],['bonus_meta','Bônus meta'],
+        ['rentab_48','Rentab 48'],['rentab_52_15','Rentab 52,15'],['rentab_55_50','Rentab 55,50'],['elegivel_mercantil','Elegível mercantil'],['elegivel_servicos','Elegível serviços'],
+        ['total_previsto_dashboard','Total previsto dashboard'],['total_previsto_com_cobranca_auditada','Total previsto + cobrança auditada'],
+        ['regra_min_vendas','Regra mínima vendas'],['regra_min_servicos','Regra mínima serviços/caminhão'],['regra_min_rentabilidade','Regra mínima rentabilidade'],['regra_faixa_vendas','Faixa de venda aplicada'],
+        ['regra_pct_comissao_vendas','% comissão mercantil aplicada'],['regra_pct_servicos','% serviços aplicado'],['regra_pct_caminhao','% caminhão aplicado'],
+        ['regra_bonus','Regra bônus'],['regra_rentabilidade','Regra rentabilidade'],['regra_cobranca_auditada','Regra cobrança auditada']
+      ];
+      const textCols=new Set(['mes','tipo','nome','filial','login','elegivel_mercantil','elegivel_servicos','regra_min_vendas','regra_min_servicos','regra_min_rentabilidade','regra_faixa_vendas','regra_bonus','regra_rentabilidade','regra_cobranca_auditada']);
+      const x=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      const trs=[`<tr>${cols.map(([,h])=>`<th>${x(h)}</th>`).join('')}</tr>`,...rows.map(r=>`<tr>${cols.map(([k])=>textCols.has(k)?`<td>${x(r[k]??'')}</td>`:`<td x:num="${Number(r[k]||0)}">${Number(r[k]||0)}</td>`).join('')}</tr>`)].join('');
+      const html=`<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><style>table{border-collapse:collapse;font-family:Arial;font-size:9pt}th{background:#1f4e78;color:#fff}th,td{border:1px solid #c7d0dc;padding:5px;white-space:nowrap}</style></head><body><h2>Comissionamento completo MDL — ${x(rows[0]?.mes||'')}</h2><p>Valores calculados pelas mesmas funções do dashboard; uma linha por usuário/filial.</p><table>${trs}</table></body></html>`;
+      const blob=new Blob(['\ufeff'+html],{type:'application/vnd.ms-excel;charset=utf-8'}),a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);a.download=filename;document.body.appendChild(a);a.click();
+      setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1200);
+    }
+
+    exportarComissaoAtualExcel=window.exportarComissaoAtualExcel=async function(){
+      const month=document.getElementById('histComMonth')?.value||mesAtualComissao();
+      const current=month===mesAtualComissao();
+      try{
+        if(current){
+          if(typeof carregarCobrancasOnline==='function')await carregarCobrancasOnline({full:true,force:true});
+          if(typeof carregarAuditoriasCobranca==='function')await carregarAuditoriasCobranca(true);
+          if(typeof ensureQuitadosV1075==='function')await ensureQuitadosV1075();
+        }
+      }catch(e){console.warn(TAG,'pré-carga Excel',e)}
+
+      let pairs=[];
+      if(current){
+        const ents=typeof _allComissaoEntitiesNow==='function'?_allComissaoEntitiesNow():[
+          ...(typeof flattenVendedores==='function'?flattenVendedores():[]),
+          ...(typeof flattenFiliais==='function'?flattenFiliais():[]),
+          ...(typeof crediaristaEntities==='function'?crediaristaEntities():[])
+        ];
+        pairs=ents.filter(Boolean).map(ent=>({ent,row:snapshotComissaoEntidade(ent)}));
+        try{
+          const third=thirdChargeEntity();if(third)pairs.push({ent:third,row:snapshotComissaoEntidade(third)});
+        }catch(e){}
+      }else{
+        const snap=HIST_COMISSAO?.months?.[month];
+        if(!snap){try{toast('Não existe fechamento salvo para '+month+'.','warn')}catch(e){}return}
+        pairs=(snap.entidades||[]).map(row=>{
+          let ent=null;
+          try{if(typeof findEntityBySnapshotRow==='function')ent=findEntityBySnapshotRow(row)}catch(e){}
+          return {ent:ent||row,row};
+        });
+      }
+
+      const seen=new Set();
+      const rows=[];
+      for(const p of pairs){
+        const k=[p.row?.tipo||p.ent?.type,p.row?.filial||p.ent?.filial,norm101(p.row?.login||p.ent?.login||p.row?.nome||p.ent?.nome)].join('|');
+        if(seen.has(k))continue;seen.add(k);
+        rows.push(rowExcel101(p.ent,p.row,month,current));
+      }
+
+      downloadExcel101(`comissionamento_completo_${month}.xls`,rows);
+      try{toast(`Excel ${month} gerado com ${rows.length} linha(s) e valores reais de meta/comissão/bônus.`,'success')}catch(e){}
+    };
+
+    window.DASHBOARD_BUILD_VERSION='V10.101';
+    console.log(TAG,'ativo: prefetch cobranças/terceiro + Excel real');
+  }catch(e){console.warn(TAG,'falhou',e)}
+})();
+</script>
+
 </body>
 </html>
 """
@@ -24335,3 +24695,5 @@ driver.quit()
 # V10.99_TELEGRAM_COBRANCA_DIARIA_UPDATE_GUARD
 
 # V10.100_TELEGRAM_SYNC_CSM_EXCEL_REGRAS_METRICAS_DEPLOY_LOCK
+
+# V10.101_LIVE_TELEGRAM_EXCEL_REAL_CSM50_FILIAL_PREFETCH

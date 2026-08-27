@@ -34,7 +34,7 @@ def _extract_list_payload(data):
     return []
 
 
-# VERSAO: TELEGRAM_MONITOR_MDL_V10_100_COBRANCA_DIARIA_ROBUSTA
+# VERSAO: TELEGRAM_MONITOR_MDL_V10_101_COBRANCA_DIARIA_LIVE
 import json
 import os
 import re
@@ -1884,3 +1884,266 @@ def send_daily_collection_now_v10100(base_dir, date_str=None):
     return telegram_send(text, alert_type="cobranca_diaria", base_dir=base_dir)
 
 # V10.100_TELEGRAM_COBRANCA_DIARIA_ROBUSTA
+
+
+# ===== V10.101: COBRANÇA DIÁRIA LIVE =====
+def _v10101_fetch_detail(base_dir, entry):
+    if not isinstance(entry, dict):
+        return {"grave":[],"alerta":[],"atencao":[]}
+    file_name = str(entry.get("file") or "").lstrip("/")
+    data = None
+    if file_name:
+        data = _read_json_file(os.path.join(base_dir, file_name.replace("/", os.sep)), None)
+        if data is None:
+            data = _read_url_json(f"{PUBLIC_BASE}/{file_name}?_={int(time.time())}", None, timeout=8)
+    if isinstance(data, dict):
+        payload = data.get("data") if isinstance(data.get("data"), dict) else data
+        if isinstance(payload, dict):
+            return {fx:(payload.get(fx) if isinstance(payload.get(fx), list) else []) for fx in ("grave","alerta","atencao")}
+    return {"grave":[],"alerta":[],"atencao":[]}
+
+def _v10101_manifest(base_dir):
+    data = _read_json_file(os.path.join(base_dir, "clientes_detalhes", "manifest.json"), None)
+    if data is None:
+        data = _read_url_json(f"{PUBLIC_BASE}/clientes_detalhes/manifest.json?_={int(time.time())}", {}, timeout=8)
+    return data if isinstance(data, dict) else {}
+
+def _v10101_entry_for_user(user, manifest):
+    if user.get("is_crediarista"):
+        return (manifest.get("crediaristas") or {}).get(str(user.get("login") or "").lower())
+    if user.get("is_terceiro"):
+        return manifest.get("terceiro")
+    vendors = manifest.get("vendedores") if isinstance(manifest.get("vendedores"), dict) else {}
+    uname = _v1099_norm(user.get("nome"))
+    filial = str(user.get("filial") or "").upper()
+    for name, entry in vendors.items():
+        if _v1099_norm(name) != uname:
+            continue
+        ef = str((entry or {}).get("filial") or "").upper()
+        if not filial or not ef or ef == filial:
+            return entry
+    return None
+
+def _v10101_dt(v):
+    s = str(v or "").strip()
+    if not s:
+        return None
+    try:
+        d = datetime.fromisoformat(s.replace("Z","+00:00"))
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=BR_TZ)
+        return d.astimezone(BR_TZ)
+    except Exception:
+        pass
+    ds = _v1099_date(s)
+    try:
+        return datetime.strptime(ds,"%Y-%m-%d").replace(tzinfo=BR_TZ)
+    except Exception:
+        return None
+
+def _v10101_live_rows(base_dir, date_str):
+    users = [u for u in _load_users(base_dir) if u.get("participa_cobrancas", True) and not u.get("is_gerente")]
+    manifest = _v10101_manifest(base_dir)
+    logs = _load_cobrancas(base_dir)
+    logs = [x for x in logs if isinstance(x, dict) and str(x.get("acao") or "whatsapp").lower() == "whatsapp"]
+    target = datetime.strptime(date_str,"%Y-%m-%d").replace(tzinfo=BR_TZ)
+    out = []
+
+    for user in users:
+        ent = {
+            "tipo":"crediarista" if user.get("is_crediarista") else ("terceiro" if user.get("is_terceiro") else "vendedor"),
+            "login":str(user.get("login") or "").lower(),
+            "nome":str(user.get("nome") or ""),
+            "filial":str(user.get("filial") or "").upper(),
+            "ativo":True,
+        }
+        detail = _v10101_fetch_detail(base_dir, _v10101_entry_for_user(user, manifest))
+        detail_rows = []
+        value_by_key = {}
+        for fx in ("grave","alerta","atencao"):
+            for r in detail.get(fx) or []:
+                if not isinstance(r, dict):
+                    continue
+                rr = dict(r); rr["_faixa_v10101"] = fx
+                k = _v1099_row_key(rr)
+                if k and k not in value_by_key:
+                    value_by_key[k] = _float(rr.get("pendente"),0.0)
+                detail_rows.append(rr)
+
+        ent_logs = [l for l in logs if _v1099_entity_match(l, ent)]
+        by_key = {}
+        today = []
+        today_keys = set()
+        for l in ent_logs:
+            k = _v1099_row_key(l)
+            if not k:
+                continue
+            by_key.setdefault(k,[]).append(l)
+            if _v1099_date(l.get("server_time") or l.get("criado_em") or l.get("data") or l.get("server_date")) == date_str and k not in today_keys:
+                today_keys.add(k); today.append(l)
+        for k in by_key:
+            by_key[k].sort(key=lambda x: str(x.get("server_time") or x.get("criado_em") or x.get("data") or ""))
+
+        actionable = {}
+        for r in detail_rows:
+            k = _v1099_row_key(r)
+            if not k:
+                continue
+            last = (by_key.get(k) or [None])[-1]
+            if last is None:
+                actionable[k] = r
+                continue
+            ldt = _v10101_dt(last.get("server_time") or last.get("criado_em") or last.get("data") or last.get("server_date"))
+            if ldt is None or (target.date() - ldt.date()).days >= 3:
+                actionable[k] = r
+
+        plan = dict(actionable)
+        for l in today:
+            k = _v1099_row_key(l)
+            if k not in plan:
+                ref = next((r for r in detail_rows if _v1099_row_key(r)==k), l)
+                plan[k] = ref
+                if k not in value_by_key:
+                    value_by_key[k] = _float(ref.get("pendente"),0.0)
+
+        not_worked = {k:r for k,r in actionable.items() if k not in today_keys}
+        out.append({
+            **ent,
+            "previstos":len(plan),
+            "valor_previsto":round(sum(value_by_key.get(k,0.0) for k in plan),2),
+            "cobrancas_feitas":len(today_keys),
+            "valor_cobrado":round(sum(_float(value_by_key.get(k,0.0),0.0) for k in today_keys),2),
+            "nao_trabalhados":len(not_worked),
+            "valor_nao_trabalhado":round(sum(value_by_key.get(k,0.0) for k in not_worked),2),
+            "cobrados_keys":sorted(today_keys),
+            "previstos_keys":sorted(plan.keys()),
+            "nao_trabalhados_keys":sorted(not_worked.keys()),
+            "valores_por_key":{k:round(_float(value_by_key.get(k,0.0),0.0),2) for k in plan},
+        })
+    return out
+
+def build_daily_collection_summary(base_dir, date_str=None):
+    """V10.101: calcula fila e cobranças ao vivo no momento do envio."""
+    date_str = date_str or now_br().strftime("%Y-%m-%d")
+    try:
+        entities = _v10101_live_rows(base_dir, date_str)
+    except Exception as e:
+        entities = []
+        print(f"⚠️ V10.101 live daily rows falhou: {e}")
+
+    # Fallback somente se live falhar totalmente.
+    if not entities:
+        snap = _read_json_file(os.path.join(base_dir, "cobranca_diaria_resumo.json"), None)
+        if not isinstance(snap, dict):
+            snap = _read_url_json(f"{PUBLIC_BASE}/cobranca_diaria_resumo.json?_={int(time.time())}", {}, timeout=6)
+        entities = (snap or {}).get("entities") if isinstance((snap or {}).get("entities"), list) else []
+
+    audits = []
+    paid = []
+    try:
+        ajson = _read_url_json(f"{PUBLIC_BASE}/cobranca_auditoria_api.php?_={int(time.time())}", {}, timeout=8)
+        audits = _extract_list_payload(ajson)
+    except Exception:
+        audits = []
+    try:
+        pjson = _read_url_json(f"{PUBLIC_BASE}/quitados_180d_contas_receber.json?_={int(time.time())}", {}, timeout=8)
+        if isinstance(pjson, dict):
+            paid = pjson.get("quitados") or pjson.get("data") or pjson.get("rows") or []
+        elif isinstance(pjson, list):
+            paid = pjson
+    except Exception:
+        paid = []
+    if not isinstance(paid, list):
+        paid = []
+
+    rows = []
+    global_plan = {}
+    global_cob = set()
+
+    for ent in entities:
+        cob_keys = set(str(x) for x in (ent.get("cobrados_keys") or []) if x)
+        global_cob.update(cob_keys)
+        for k,v in (ent.get("valores_por_key") or {}).items():
+            global_plan.setdefault(str(k), _float(v,0.0))
+
+        approved_keys=set();paid_keys=set();received=0.0
+        for a in audits:
+            if not isinstance(a,dict) or not _v1099_approved(a.get("status")) or not _v1099_entity_match(a,ent):
+                continue
+            k=_v1099_row_key(a)
+            if not k or k not in cob_keys:
+                continue
+            approved_keys.add(k)
+            if k in paid_keys:
+                continue
+            matches=[q for q in paid if isinstance(q,dict) and _v1099_same(a,q) and _v1099_date(q.get("pagamento") or q.get("data_pagamento"))>=date_str]
+            if matches:
+                q=sorted(matches,key=lambda x:_v1099_date(x.get("pagamento") or x.get("data_pagamento")))[0]
+                paid_keys.add(k);received+=_float(q.get("pago"),0.0)
+
+        feitos=int(ent.get("cobrancas_feitas") or 0)
+        previstos=int(ent.get("previstos") or 0)
+        rows.append({
+            **ent,
+            "auditorias_aprovadas":len(approved_keys),
+            "pagamentos_conciliados":len(paid_keys),
+            "recebido_conciliado":round(received,2),
+            "taxa_execucao":round((feitos/previstos*100.0) if previstos else 100.0,1),
+            "taxa_auditoria":round((len(approved_keys)/feitos*100.0) if feitos else 0.0,1),
+            "taxa_efetividade":round((len(paid_keys)/feitos*100.0) if feitos else 0.0,1),
+        })
+
+    not_worked_global={k:v for k,v in global_plan.items() if k not in global_cob}
+    with_queue=[r for r in rows if int(r.get("previstos") or 0)>0]
+    no_work=[r for r in with_queue if int(r.get("cobrancas_feitas") or 0)==0]
+    partial=[r for r in with_queue if 0<int(r.get("cobrancas_feitas") or 0)<int(r.get("previstos") or 0)]
+    total_cob=sum(int(r.get("cobrancas_feitas") or 0) for r in rows)
+    total_aud=sum(int(r.get("auditorias_aprovadas") or 0) for r in rows)
+    total_pay=sum(int(r.get("pagamentos_conciliados") or 0) for r in rows)
+    total_rec=sum(_float(r.get("recebido_conciliado"),0) for r in rows)
+    lost=sum(not_worked_global.values())
+
+    try: date_br=datetime.strptime(date_str,"%Y-%m-%d").strftime("%d/%m/%Y")
+    except Exception: date_br=date_str
+
+    lines=[
+        f"📞 COBRANÇA DIÁRIA — {date_br}",
+        "Lojas MDL • dados LIVE no momento do envio",
+        "",
+        f"👥 Usuários com fila: {len(with_queue)}",
+        f"📲 Cobranças feitas: {total_cob}",
+        f"✅ Auditorias aprovadas: {total_aud}",
+        f"💵 Pagamentos conciliados: {total_pay}",
+        f"🏦 Recebido conciliado: {fmt_money(total_rec)}",
+        f"⚠️ Oportunidade não trabalhada: {len(not_worked_global)} título(s) • {fmt_money(lost)}",
+        ""
+    ]
+    if no_work:
+        lines.append(f"🚫 NÃO COBRARAM ({len(no_work)}):")
+        for r in no_work[:12]:
+            lines.append(f"• {r.get('nome') or r.get('login')} · {r.get('filial') or '-'} · fila {r.get('previstos',0)} · {fmt_money(r.get('valor_previsto'))}")
+        if len(no_work)>12:lines.append(f"• +{len(no_work)-12} usuário(s)")
+    else:
+        lines.append("✅ Todos os usuários com fila fizeram ao menos uma cobrança.")
+
+    if partial:
+        lines += ["",f"🟠 PARCIAIS ({len(partial)}):"]
+        for r in sorted(partial,key=lambda x:float(x.get("taxa_execucao") or 0))[:8]:
+            lines.append(f"• {r.get('nome') or r.get('login')}: execução {str(r.get('taxa_execucao',0)).replace('.',',')}%")
+
+    eff=[r for r in rows if int(r.get("cobrancas_feitas") or 0)>0]
+    eff.sort(key=lambda x:(float(x.get("taxa_efetividade") or 0),int(x.get("pagamentos_conciliados") or 0)),reverse=True)
+    if eff:
+        lines += ["","📈 EFETIVIDADE PAGA — destaques:"]
+        for r in eff[:8]:
+            lines.append(f"• {r.get('nome') or r.get('login')}: {str(r.get('taxa_efetividade',0)).replace('.',',')}% ({r.get('pagamentos_conciliados',0)}/{r.get('cobrancas_feitas',0)})")
+
+    lines += ["","ℹ️ Execução = cobranças feitas ÷ previstos. Efetividade paga = pagamentos conciliados ÷ cobranças feitas.","ℹ️ Oportunidade não trabalhada não é recebimento garantido.",f"🕒 Gerado LIVE em {now_br().strftime('%d/%m/%Y %H:%M:%S')}"]
+    return "\n".join(lines)
+
+def send_daily_collection_now_v10100(base_dir, date_str=None):
+    # Mantém o nome importado pelo scheduler, mas agora usa V10.101 LIVE.
+    text = build_daily_collection_summary(base_dir, date_str or now_br().strftime("%Y-%m-%d"))
+    return telegram_send(text, alert_type="cobranca_diaria", base_dir=base_dir)
+
+# V10.101_TELEGRAM_COBRANCA_DIARIA_LIVE
