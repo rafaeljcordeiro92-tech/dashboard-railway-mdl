@@ -37,8 +37,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.102"
-DASHBOARD_BUILD_TAG = "v10102_custom_users_login_delete_persist"
+DASHBOARD_BUILD_VERSION = "V10.104"
+DASHBOARD_BUILD_TAG = "v10104_daily_branches_monthly_collection_history"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
 # V10.52: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
@@ -7540,6 +7540,169 @@ for _ct in _clientes_terceiro_lista:
         "cobranca_key_doc": _ct.get("cobranca_key_doc", ""),
     })
 
+
+# ===== V10.103: RATEIO DO POOL DE COBRANÇA INTERNA ENTRE USUÁRIOS ATIVOS =====
+# A regra anterior já reservou COBRANCA10_RATEIO (normalmente 20%) do universo
+# D+15..D+90 por CLIENTE/CPF e removeu esses CPFs da carteira normal.
+# Agora esse pool é dividido entre os usuários de Cobrança Interna Global.
+#
+# IMPORTANTE:
+# - 20% é o TOTAL do grupo interno, e não 20% para cada usuário;
+# - todos os títulos/parcelas do mesmo CPF/cliente permanecem juntos;
+# - nenhum CPF pode aparecer em dois usuários internos;
+# - usuário inativo/bloqueado ou sem participa_cobrancas sai do rateio.
+def _empty_third_v10103():
+    return {"grave": [], "alerta": [], "atencao": []}
+
+_usuarios_cob_int_v10103 = []
+for _login_ci_v10103, _u_ci_v10103 in sorted((auth_users or {}).items(), key=lambda kv: str(kv[0]).lower()):
+    if not isinstance(_u_ci_v10103, dict):
+        continue
+    if not bool(_u_ci_v10103.get("is_terceiro")):
+        continue
+    if bool(_u_ci_v10103.get("is_cob_externa")):
+        continue
+    if _u_ci_v10103.get("only_cobranca") is False:
+        continue
+    if str(_u_ci_v10103.get("status_operacional") or "ativo").strip().lower() != "ativo":
+        continue
+    if bool(_u_ci_v10103.get("access_disabled")):
+        continue
+    if _u_ci_v10103.get("participa_cobrancas") is False:
+        continue
+    _usuarios_cob_int_v10103.append({
+        "login": str(_login_ci_v10103).strip().lower(),
+        "nome": str(_u_ci_v10103.get("nome") or _login_ci_v10103),
+        "filial": str(_u_ci_v10103.get("filial") or "FTER").strip().upper(),
+    })
+
+# Blindagem operacional: se uma base antiga vier sem flags corretas, mantém Cobrança10.
+if not _usuarios_cob_int_v10103 and COBRANCA10_LOGIN in (auth_users or {}):
+    _u_ci_fallback_v10103 = auth_users.get(COBRANCA10_LOGIN) or {}
+    _usuarios_cob_int_v10103 = [{
+        "login": str(COBRANCA10_LOGIN).lower(),
+        "nome": str(_u_ci_fallback_v10103.get("nome") or COBRANCA10_NOME),
+        "filial": str(_u_ci_fallback_v10103.get("filial") or "FTER").upper(),
+    }]
+
+_usuarios_cob_int_v10103.sort(key=lambda x: x["login"])
+clientes_terceiro_por_login_js = {
+    x["login"]: _empty_third_v10103()
+    for x in _usuarios_cob_int_v10103
+}
+recebimentos_terceiro_por_login_js = {
+    x["login"]: _empty_third_v10103()
+    for x in _usuarios_cob_int_v10103
+}
+_nome_third_v10103 = {x["login"]: x["nome"] for x in _usuarios_cob_int_v10103}
+_owner_third_v10103 = {}
+
+# Reagrupa a fatia global por cliente/CPF. A ordenação por hash é estável.
+_grupos_third_v10103 = {}
+for _fx_ci_v10103 in ("grave", "alerta", "atencao"):
+    for _row_ci_v10103 in (clientes_terceiro_js.get(_fx_ci_v10103, []) or []):
+        _gk_ci_v10103 = cliente_grupo_key_py(_row_ci_v10103)
+        _grupos_third_v10103.setdefault(_gk_ci_v10103, []).append((_fx_ci_v10103, _row_ci_v10103))
+
+_grupos_third_ord_v10103 = sorted(
+    _grupos_third_v10103.items(),
+    key=lambda kv: _hashlib.md5(str(kv[0]).encode("utf-8")).hexdigest()
+)
+
+if _usuarios_cob_int_v10103:
+    # Round-robin por CPF/cliente: diferença máxima de 1 CPF entre usuários.
+    for _idx_ci_v10103, (_gk_ci_v10103, _items_ci_v10103) in enumerate(_grupos_third_ord_v10103):
+        _dest_ci_v10103 = _usuarios_cob_int_v10103[_idx_ci_v10103 % len(_usuarios_cob_int_v10103)]
+        _login_dest_ci_v10103 = _dest_ci_v10103["login"]
+        _owner_third_v10103[_gk_ci_v10103] = _login_dest_ci_v10103
+        for _fx_ci_v10103, _row_ci_v10103 in _items_ci_v10103:
+            _clone_ci_v10103 = dict(_row_ci_v10103)
+            _clone_ci_v10103["vendedor"] = _dest_ci_v10103["nome"]
+            _clone_ci_v10103["responsavel_cobranca_login"] = _login_dest_ci_v10103
+            _clone_ci_v10103["responsavel_cobranca_nome"] = _dest_ci_v10103["nome"]
+            clientes_terceiro_por_login_js[_login_dest_ci_v10103][_fx_ci_v10103].append(_clone_ci_v10103)
+
+    # Recebimentos operacionais acompanham exatamente o dono do CPF.
+    # recebimentos_terceiro_js já foi filtrado pela mesma chave de grupo do pool.
+    for _fx_rec_ci_v10103 in ("grave", "alerta", "atencao"):
+        for _rr_ci_v10103 in (recebimentos_terceiro_js.get(_fx_rec_ci_v10103, []) or []):
+            _gk_rec_ci_v10103 = cliente_grupo_key_py(_rr_ci_v10103)
+            _login_rec_ci_v10103 = _owner_third_v10103.get(_gk_rec_ci_v10103)
+            if not _login_rec_ci_v10103:
+                # Sem dono comprovado, não duplica/não atribui por chute.
+                continue
+            _clone_rec_ci_v10103 = dict(_rr_ci_v10103)
+            _clone_rec_ci_v10103["responsavel_cobranca_login"] = _login_rec_ci_v10103
+            _clone_rec_ci_v10103["responsavel_cobranca_nome"] = _nome_third_v10103.get(
+                _login_rec_ci_v10103, _login_rec_ci_v10103
+            )
+            recebimentos_terceiro_por_login_js[_login_rec_ci_v10103][_fx_rec_ci_v10103].append(_clone_rec_ci_v10103)
+
+# Atualiza os totais embutidos de cada usuário para sua fatia individual.
+for _u_tot_ci_v10103 in _usuarios_cob_int_v10103:
+    _login_tot_ci_v10103 = _u_tot_ci_v10103["login"]
+    _cli_tot_ci_v10103 = clientes_terceiro_por_login_js.get(_login_tot_ci_v10103) or _empty_third_v10103()
+    _rec_tot_ci_v10103 = recebimentos_terceiro_por_login_js.get(_login_tot_ci_v10103) or _empty_third_v10103()
+    _pend_tot_ci_v10103 = sum(
+        float((r or {}).get("pendente") or 0)
+        for fx in ("grave", "alerta", "atencao")
+        for r in (_cli_tot_ci_v10103.get(fx) or [])
+    )
+    _pago_tot_ci_v10103 = sum(
+        float((r or {}).get("pago") or 0)
+        for fx in ("grave", "alerta", "atencao")
+        for r in (_rec_tot_ci_v10103.get(fx) or [])
+    )
+    if _login_tot_ci_v10103 in credenciais:
+        credenciais[_login_tot_ci_v10103]["pendente"] = round(_pend_tot_ci_v10103, 2)
+        credenciais[_login_tot_ci_v10103]["pago"] = round(_pago_tot_ci_v10103, 2)
+        credenciais[_login_tot_ci_v10103]["total"] = round(_pend_tot_ci_v10103 + _pago_tot_ci_v10103, 2)
+
+# Validação: a mesma chave de cliente/CPF não pode pertencer a dois usuários internos.
+_vistos_third_v10103 = {}
+_dups_third_v10103 = []
+for _login_chk_ci_v10103, _bucket_chk_ci_v10103 in clientes_terceiro_por_login_js.items():
+    _keys_chk_ci_v10103 = {
+        cliente_grupo_key_py(r)
+        for fx in ("grave", "alerta", "atencao")
+        for r in (_bucket_chk_ci_v10103.get(fx) or [])
+    }
+    for _key_chk_ci_v10103 in _keys_chk_ci_v10103:
+        _prev_chk_ci_v10103 = _vistos_third_v10103.get(_key_chk_ci_v10103)
+        if _prev_chk_ci_v10103 and _prev_chk_ci_v10103 != _login_chk_ci_v10103:
+            _dups_third_v10103.append((_key_chk_ci_v10103, _prev_chk_ci_v10103, _login_chk_ci_v10103))
+        _vistos_third_v10103[_key_chk_ci_v10103] = _login_chk_ci_v10103
+
+if _dups_third_v10103:
+    raise RuntimeError(
+        "V10.103 CPF/cliente duplicado entre usuários de cobrança interna: "
+        + repr(_dups_third_v10103[:5])
+    )
+
+print(
+    f"🤝 V10.103 rateio cobrança interna: pool={len(_grupos_third_ord_v10103)} CPF/cliente(s) "
+    f"({COBRANCA10_RATEIO*100:.2f}% do todo) | usuários={len(_usuarios_cob_int_v10103)} "
+    f"| duplicados=0 | logins={[x['login'] for x in _usuarios_cob_int_v10103]}"
+)
+for _u_log_ci_v10103 in _usuarios_cob_int_v10103:
+    _login_log_ci_v10103 = _u_log_ci_v10103["login"]
+    _b_log_ci_v10103 = clientes_terceiro_por_login_js.get(_login_log_ci_v10103) or _empty_third_v10103()
+    _cpfs_log_ci_v10103 = {
+        cliente_grupo_key_py(r)
+        for fx in ("grave", "alerta", "atencao")
+        for r in (_b_log_ci_v10103.get(fx) or [])
+    }
+    _tit_log_ci_v10103 = sum(len(_b_log_ci_v10103.get(fx) or []) for fx in ("grave", "alerta", "atencao"))
+    _val_log_ci_v10103 = sum(
+        float((r or {}).get("pendente") or 0)
+        for fx in ("grave", "alerta", "atencao")
+        for r in (_b_log_ci_v10103.get(fx) or [])
+    )
+    print(
+        f"   ↳ {_login_log_ci_v10103}: {len(_cpfs_log_ci_v10103)} CPF/cliente(s), "
+        f"{_tit_log_ci_v10103} título(s), R$ {_val_log_ci_v10103:.2f}"
+    )
+
 for f in ORDEM_FILIAIS:
     clientes_js[f] = {"grave": [], "alerta": [], "atencao": []}
 
@@ -9323,6 +9486,7 @@ js_filiais  = json.dumps(filiais_js_ordered,  ensure_ascii=False)
 # Os cálculos/rateios continuam feitos no Python exatamente como antes.
 js_recebimentos = json.dumps(recebimentos_det_js, ensure_ascii=False)
 js_recebimentos_terceiro = json.dumps(recebimentos_terceiro_js, ensure_ascii=False)
+js_recebimentos_terceiro_por_login = json.dumps(recebimentos_terceiro_por_login_js, ensure_ascii=False)
 js_recebimentos_crediarista = json.dumps(recebimentos_crediarista_js, ensure_ascii=False)
 js_crediaristas_map = json.dumps(CREDIARISTAS_CONFIG, ensure_ascii=False)
 js_destaque = json.dumps(destaque_semana or {}, ensure_ascii=False)
@@ -9343,7 +9507,7 @@ DETALHES_MANIFEST_V1048 = {
     'updated_at_label': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'),
     'mode': 'lazy_per_entity' if DASHBOARD_MODO_LEVE else 'embedded',
     'page_size': 50,
-    'filiais': {}, 'vendedores': {}, 'crediaristas': {}, 'terceiro': None,
+    'filiais': {}, 'vendedores': {}, 'crediaristas': {}, 'terceiros': {}, 'terceiro': None,
 }
 
 def _slug_v1048(value):
@@ -9399,7 +9563,17 @@ if DASHBOARD_MODO_LEVE:
         _entry_c_v1048 = _save_detail_v1048('crediarista', str(_login).lower(), _data)
         _entry_c_v1048['filial'] = _cred_filial_v1048.get(str(_login).lower(), '')
         DETALHES_MANIFEST_V1048['crediaristas'][str(_login).lower()] = _entry_c_v1048
-    DETALHES_MANIFEST_V1048['terceiro'] = _save_detail_v1048('terceiro', 'cobranca10', clientes_terceiro_js or {})
+    for _login_t_v10103, _data_t_v10103 in (clientes_terceiro_por_login_js or {}).items():
+        _entry_t_v10103 = _save_detail_v1048('terceiro', str(_login_t_v10103).lower(), _data_t_v10103)
+        _u_t_v10103 = (auth_users or {}).get(str(_login_t_v10103).lower()) or {}
+        _entry_t_v10103['filial'] = str(_u_t_v10103.get('filial') or 'FTER').upper()
+        _entry_t_v10103['nome'] = str(_u_t_v10103.get('nome') or _login_t_v10103)
+        DETALHES_MANIFEST_V1048['terceiros'][str(_login_t_v10103).lower()] = _entry_t_v10103
+    # Compatibilidade legada: campo terceiro aponta SOMENTE para a fatia do Cobrança10.
+    DETALHES_MANIFEST_V1048['terceiro'] = (
+        DETALHES_MANIFEST_V1048['terceiros'].get(str(COBRANCA10_LOGIN).lower())
+        or next(iter(DETALHES_MANIFEST_V1048['terceiros'].values()), None)
+    )
     _manifest_path_v1048 = os.path.join(DETALHES_DIR_V1048, 'manifest.json')
     with open(_manifest_path_v1048, 'w', encoding='utf-8') as fh:
         json.dump(DETALHES_MANIFEST_V1048, fh, ensure_ascii=False, separators=(',', ':'))
@@ -9407,12 +9581,14 @@ if DASHBOARD_MODO_LEVE:
     js_clientes = '{}'
     js_clientes_vend = '{}'
     js_clientes_terceiro = '{}'
+    js_clientes_terceiro_por_login = '{}'
     js_clientes_crediarista = '{}'
     print(f"🪶 V10.48 modo leve real: {len(DETALHES_FILES_V1048)-1} carteiras separadas; HTML inicial sem os milhares de títulos.")
 else:
     js_clientes = json.dumps(clientes_js, ensure_ascii=False)
     js_clientes_vend = json.dumps(clientes_por_vend_js, ensure_ascii=False)
-    js_clientes_terceiro = json.dumps(clientes_terceiro_js, ensure_ascii=False)
+    js_clientes_terceiro = json.dumps((clientes_terceiro_por_login_js or {}).get(str(COBRANCA10_LOGIN).lower(), _empty_third_v10103()), ensure_ascii=False)
+    js_clientes_terceiro_por_login = json.dumps(clientes_terceiro_por_login_js, ensure_ascii=False)
     js_clientes_crediarista = json.dumps(clientes_crediarista_js, ensure_ascii=False)
 
 js_detalhes_manifest = json.dumps(DETALHES_MANIFEST_V1048, ensure_ascii=False)
@@ -9475,11 +9651,16 @@ except Exception as _e_cob_boot_v1050:
     print(f"⚠️ V10.50 não conseguiu preparar fonte oficial compacta de cobranças: {_e_cob_boot_v1050}")
     js_cobrancas_logs_boot = '[]'
 
-# ===== V10.99: SNAPSHOT SERVER-SIDE DO RELATÓRIO DIÁRIO DE COBRANÇA =====
-# Gera uma base pequena para o Telegram e para auditoria operacional.
-# "valor_nao_trabalhado" é oportunidade ainda disponível sem contato no dia;
-# não significa recebimento garantido.
+# ===== V10.104: RELATÓRIO DIÁRIO + HISTÓRICO MENSAL OPERACIONAL DE COBRANÇA =====
+# Mantém cobranca_diaria_resumo.json para Telegram/operacional e passa a:
+# - incluir FILIAIS consolidadas no relatório diário;
+# - incluir auditorias aprovadas, pagamentos conciliados e recebido;
+# - gravar automaticamente um snapshot por DIA em historico_cobranca_operacional.json;
+# - recalcular o consolidado MENSAL a cada MAIN, sem depender do navegador aberto.
+#
+# O mesmo dia é sobrescrito/atualizado a cada MAIN, portanto não duplica execução.
 COBRANCA_DIARIA_RESUMO_PATH = os.path.join(pasta, "cobranca_diaria_resumo.json")
+HIST_COBRANCA_OPERACIONAL_PATH = os.path.join(pasta, "historico_cobranca_operacional.json")
 
 def _v1099_digits(v):
     return re.sub(r"\D+", "", str(v or ""))
@@ -9524,11 +9705,16 @@ def _v1099_norm(v):
     except Exception:
         return re.sub(r"[^A-Z0-9]+", " ", str(v or "").upper()).strip()
 
+def _v10104_status_aprovado(v):
+    s = str(v or "").strip().lower()
+    return s in {"aprovado", "aprovado_ia", "aprovado_manual", "aprovado_master"} or s.startswith("aprovado_")
+
 def _v1099_log_matches_ent(log, ent):
     if not isinstance(log, dict):
         return False
     filial = str(log.get("filial") or "").upper()
     usuario = str(log.get("usuario") or log.get("login") or "").lower().strip()
+    destino_login = str(log.get("destino_login") or "").lower().strip()
     destino = _v1099_norm(log.get("destino_nome") or log.get("responsavel") or "")
     destino_tipo = str(log.get("destino_tipo") or "").lower().strip()
     tipo = str(ent.get("tipo") or "").lower()
@@ -9536,11 +9722,54 @@ def _v1099_log_matches_ent(log, ent):
     nome = _v1099_norm(ent.get("nome") or "")
     ef = str(ent.get("filial") or "").upper()
 
+    if tipo == "filial":
+        return bool(ef) and filial == ef
     if tipo == "crediarista":
-        return usuario == login or destino == nome or (destino_tipo == "crediarista" and filial == ef)
+        return usuario == login or destino_login == login or destino == nome or (destino_tipo == "crediarista" and filial == ef)
     if tipo == "terceiro":
-        return usuario in {login, COBRANCA10_LOGIN.lower()} or destino == _v1099_norm(COBRANCA10_NOME) or destino_tipo == "terceiro"
-    return usuario == login or destino == nome
+        # V10.104 preserva a segregação V10.103:
+        # Cobrança20 não herda os logs do Cobrança10.
+        aliases_login = {login} if login else set()
+        aliases_nome = {nome} if nome else set()
+        if login == str(COBRANCA10_LOGIN or "cobranca10").lower():
+            aliases_login.add(str(COBRANCA10_LOGIN or "cobranca10").lower())
+            aliases_nome.add(_v1099_norm(COBRANCA10_NOME))
+        return (
+            usuario in aliases_login
+            or destino_login in aliases_login
+            or destino in aliases_nome
+        )
+    return usuario == login or destino_login == login or destino == nome
+
+def _v10104_audit_matches_ent(aud, ent):
+    if not isinstance(aud, dict):
+        return False
+    tipo = str(ent.get("tipo") or "").lower()
+    ef = str(ent.get("filial") or "").upper()
+    af = str(aud.get("filial") or "").upper()
+    if tipo == "filial":
+        return bool(ef) and af == ef
+
+    login = str(ent.get("login") or "").lower().strip()
+    nome = _v1099_norm(ent.get("nome") or "")
+    vals_login = {
+        str(aud.get("usuario_login") or "").lower().strip(),
+        str(aud.get("login") or "").lower().strip(),
+    }
+    vals_nome = {
+        _v1099_norm(aud.get("usuario_nome") or ""),
+        _v1099_norm(aud.get("usuario") or ""),
+        _v1099_norm(aud.get("responsavel") or ""),
+    }
+    if tipo == "terceiro" and login == str(COBRANCA10_LOGIN or "cobranca10").lower():
+        vals_login.add(str(COBRANCA10_LOGIN or "cobranca10").lower())
+        vals_nome.add(_v1099_norm(COBRANCA10_NOME))
+    return (login and login in vals_login) or (nome and nome in vals_nome)
+
+def _v10104_same_key(a, b):
+    ka = _v1099_row_key(a)
+    kb = _v1099_row_key(b)
+    return bool(ka and kb and ka == kb)
 
 def _v1099_active_auth(login, nome, filial):
     try:
@@ -9565,7 +9794,19 @@ def _v1099_active_auth(login, nome, filial):
     except Exception:
         return True
 
-def _v1099_entity_daily(tipo, login, nome, filial, buckets, logs_all, now):
+def _v10104_fetch_auditorias():
+    # Arquivo JSON é a mesma fonte do cobranca_auditoria_api.php.
+    try:
+        data = _remote_json_colaborador_v95("cobranca_auditoria.json", None)
+        if isinstance(data, list):
+            return data, True
+        if isinstance(data, dict) and isinstance(data.get("data"), list):
+            return data.get("data") or [], True
+    except Exception:
+        pass
+    return [], False
+
+def _v1099_entity_daily(tipo, login, nome, filial, buckets, logs_all, audits_all, quitados_all, now):
     rows = []
     seen_rows = set()
     for fx in ("grave","alerta","atencao"):
@@ -9581,7 +9822,12 @@ def _v1099_entity_daily(tipo, login, nome, filial, buckets, logs_all, now):
             rows.append(rr)
 
     ent = {"tipo":tipo,"login":str(login or "").lower(),"nome":str(nome or ""),"filial":str(filial or "").upper()}
-    ent_logs = [l for l in (logs_all or []) if isinstance(l, dict) and str(l.get("acao") or "whatsapp").lower() == "whatsapp" and _v1099_log_matches_ent(l, ent)]
+    ent_logs = [
+        l for l in (logs_all or [])
+        if isinstance(l, dict)
+        and str(l.get("acao") or "whatsapp").lower() == "whatsapp"
+        and _v1099_log_matches_ent(l, ent)
+    ]
     by_key = {}
     for l in ent_logs:
         k = _v1099_row_key(l)
@@ -9589,7 +9835,12 @@ def _v1099_entity_daily(tipo, login, nome, filial, buckets, logs_all, now):
             continue
         by_key.setdefault(k, []).append(l)
     for k in by_key:
-        by_key[k].sort(key=lambda x: (_v1099_dt(x.get("server_time") or x.get("criado_em") or x.get("data") or x.get("server_date")) or datetime(2000,1,1,tzinfo=BR_TZ)))
+        by_key[k].sort(
+            key=lambda x: (
+                _v1099_dt(x.get("server_time") or x.get("criado_em") or x.get("data") or x.get("server_date"))
+                or datetime(2000,1,1,tzinfo=BR_TZ)
+            )
+        )
 
     today = now.strftime("%Y-%m-%d")
     today_logs = []
@@ -9621,7 +9872,6 @@ def _v1099_entity_daily(tipo, login, nome, filial, buckets, logs_all, now):
     for l in today_logs:
         k = _v1099_row_key(l)
         if k and k not in plan:
-            # Usa o registro da carteira quando disponível para recuperar valor/faixa.
             ref = next((x for x in rows if _v1099_row_key(x) == k), None)
             plan[k] = ref or l
 
@@ -9630,28 +9880,179 @@ def _v1099_entity_daily(tipo, login, nome, filial, buckets, logs_all, now):
     valor_cobrado = round(sum(float((l or {}).get("pendente") or 0) for l in today_logs), 2)
     valor_nao = round(sum(float((r or {}).get("pendente") or 0) for r in not_worked), 2)
 
+    # Auditoria/pagamento só é contado sobre cobranças REALIZADAS hoje.
+    ent_audits = [a for a in (audits_all or []) if _v10104_audit_matches_ent(a, ent)]
+    audits_by_key = {}
+    for a in ent_audits:
+        k = _v1099_row_key(a)
+        if k:
+            audits_by_key.setdefault(k, []).append(a)
+
+    evidencias = 0
+    aprovadas = 0
+    pagamentos = 0
+    recebido = 0.0
+    for l in today_logs:
+        k = _v1099_row_key(l)
+        aa = audits_by_key.get(k) or []
+        if aa:
+            evidencias += 1
+        approved = [a for a in aa if _v10104_status_aprovado(a.get("status"))]
+        if not approved:
+            continue
+        approved.sort(
+            key=lambda a: str(a.get("server_time") or a.get("criado_em") or a.get("updated_at") or ""),
+            reverse=True
+        )
+        aprovadas += 1
+        # Um pagamento do mesmo CPF/título/parcela no próprio dia.
+        qmatches = [
+            q for q in (quitados_all or [])
+            if isinstance(q, dict)
+            and _v10104_same_key(l, q)
+            and (_v1099_dt(q.get("pagamento") or q.get("data_pagamento")) or datetime(2000,1,1,tzinfo=BR_TZ)).strftime("%Y-%m-%d") == today
+        ]
+        if qmatches:
+            # evita multiplicar parcelas duplicadas no arquivo quitados
+            qmatches.sort(key=lambda q: float(q.get("pago") or 0), reverse=True)
+            q = qmatches[0]
+            pagamentos += 1
+            recebido += float(q.get("pago") or 0)
+
+    previstos = len(plan)
+    cobrancas = len(today_logs)
+    taxa_execucao = round((cobrancas / previstos * 100.0) if previstos else 100.0, 2)
+    taxa_auditoria = round((aprovadas / cobrancas * 100.0) if cobrancas else 0.0, 2)
+    taxa_efetividade = round((pagamentos / cobrancas * 100.0) if cobrancas else 0.0, 2)
+
     return {
         "tipo": tipo,
         "login": str(login or "").lower(),
         "nome": str(nome or ""),
         "filial": str(filial or "").upper(),
-        "ativo": _v1099_active_auth(login, nome, filial),
-        "previstos": len(plan),
+        "ativo": True if tipo == "filial" else _v1099_active_auth(login, nome, filial),
+        "previstos": previstos,
         "valor_previsto": valor_previsto,
-        "cobrancas_feitas": len(today_logs),
+        "cobrancas_feitas": cobrancas,
         "valor_cobrado": valor_cobrado,
+        "evidencias_enviadas": evidencias,
+        "auditorias_aprovadas": aprovadas,
+        "pagamentos_conciliados": pagamentos,
+        "recebido_conciliado": round(recebido, 2),
         "aguardando_3_dias": len(waiting),
         "nao_trabalhados": len(not_worked),
         "valor_nao_trabalhado": valor_nao,
+        "taxa_execucao": taxa_execucao,
+        "taxa_auditoria": taxa_auditoria,
+        "taxa_efetividade": taxa_efetividade,
         "previstos_keys": sorted(plan.keys()),
         "cobrados_keys": sorted(today_keys),
         "nao_trabalhados_keys": sorted(_v1099_row_key(r) for r in not_worked if _v1099_row_key(r)),
         "valores_por_key": {k: round(float((r or {}).get("pendente") or 0), 2) for k, r in plan.items()},
     }
 
+_V10104_NUM_FIELDS = (
+    "previstos","valor_previsto","cobrancas_feitas","valor_cobrado",
+    "evidencias_enviadas","auditorias_aprovadas","pagamentos_conciliados",
+    "recebido_conciliado","nao_trabalhados","valor_nao_trabalhado"
+)
+
+def _v10104_ent_hist_key(e):
+    tipo = str((e or {}).get("tipo") or "")
+    filial = str((e or {}).get("filial") or "")
+    login = str((e or {}).get("login") or "").lower()
+    nome = _v1099_norm((e or {}).get("nome") or "")
+    return f"{tipo}|{filial}|{login or nome}"
+
+def _v10104_aggregate_entity_days(day_payloads, field_name):
+    acc = {}
+    for d in day_payloads:
+        date = str((d or {}).get("date") or "")
+        for r in ((d or {}).get(field_name) or []):
+            if not isinstance(r, dict):
+                continue
+            k = _v10104_ent_hist_key(r)
+            if not k:
+                continue
+            a = acc.setdefault(k, {
+                "tipo": str(r.get("tipo") or ""),
+                "login": str(r.get("login") or "").lower(),
+                "nome": str(r.get("nome") or ""),
+                "filial": str(r.get("filial") or "").upper(),
+                "dias_registrados": 0,
+                "dias_com_fila": 0,
+                "dias_com_cobranca": 0,
+                **{f: 0.0 for f in _V10104_NUM_FIELDS},
+            })
+            a["dias_registrados"] += 1
+            if int(r.get("previstos") or 0) > 0:
+                a["dias_com_fila"] += 1
+            if int(r.get("cobrancas_feitas") or 0) > 0:
+                a["dias_com_cobranca"] += 1
+            for f in _V10104_NUM_FIELDS:
+                a[f] += float(r.get(f) or 0)
+
+    rows = []
+    for a in acc.values():
+        cob = float(a.get("cobrancas_feitas") or 0)
+        prev = float(a.get("previstos") or 0)
+        aud = float(a.get("auditorias_aprovadas") or 0)
+        pay = float(a.get("pagamentos_conciliados") or 0)
+        for f in ("valor_previsto","valor_cobrado","recebido_conciliado","valor_nao_trabalhado"):
+            a[f] = round(float(a.get(f) or 0), 2)
+        for f in ("previstos","cobrancas_feitas","evidencias_enviadas","auditorias_aprovadas","pagamentos_conciliados","nao_trabalhados"):
+            a[f] = int(round(float(a.get(f) or 0)))
+        a["taxa_execucao"] = round((cob / prev * 100.0) if prev else 100.0, 2)
+        a["taxa_auditoria"] = round((aud / cob * 100.0) if cob else 0.0, 2)
+        a["taxa_efetividade"] = round((pay / cob * 100.0) if cob else 0.0, 2)
+        rows.append(a)
+
+    return sorted(rows, key=lambda x: (str(x.get("filial") or ""), str(x.get("nome") or "")))
+
+def _v10104_rebuild_months(days):
+    months = {}
+    by_month = {}
+    for date, payload in sorted((days or {}).items()):
+        if not isinstance(payload, dict) or not re.match(r"^\d{4}-\d{2}-\d{2}$", str(date)):
+            continue
+        by_month.setdefault(str(date)[:7], []).append(payload)
+
+    for month, day_payloads in by_month.items():
+        entity_rows = _v10104_aggregate_entity_days(day_payloads, "entities")
+        filial_rows = _v10104_aggregate_entity_days(day_payloads, "filiais")
+        total = {
+            "previstos": sum(int(r.get("previstos") or 0) for r in entity_rows),
+            "cobrancas_feitas": sum(int(r.get("cobrancas_feitas") or 0) for r in entity_rows),
+            "evidencias_enviadas": sum(int(r.get("evidencias_enviadas") or 0) for r in entity_rows),
+            "auditorias_aprovadas": sum(int(r.get("auditorias_aprovadas") or 0) for r in entity_rows),
+            "pagamentos_conciliados": sum(int(r.get("pagamentos_conciliados") or 0) for r in entity_rows),
+            "recebido_conciliado": round(sum(float(r.get("recebido_conciliado") or 0) for r in entity_rows), 2),
+            "valor_nao_trabalhado": round(sum(float(r.get("valor_nao_trabalhado") or 0) for r in entity_rows), 2),
+        }
+        cob = total["cobrancas_feitas"]
+        prev = total["previstos"]
+        total["taxa_execucao"] = round((cob / prev * 100.0) if prev else 100.0, 2)
+        total["taxa_auditoria"] = round((total["auditorias_aprovadas"] / cob * 100.0) if cob else 0.0, 2)
+        total["taxa_efetividade"] = round((total["pagamentos_conciliados"] / cob * 100.0) if cob else 0.0, 2)
+
+        src_dates = sorted(str(x.get("date") or "") for x in day_payloads if x.get("date"))
+        months[month] = {
+            "month": month,
+            "version": "V10.104",
+            "dias_registrados": len(src_dates),
+            "primeiro_dia": src_dates[0] if src_dates else "",
+            "ultimo_dia": src_dates[-1] if src_dates else "",
+            "summary": total,
+            "entities": entity_rows,
+            "filiais": filial_rows,
+        }
+    return months
+
 try:
     _now_v1099 = now_brasilia()
     _logs_v1099 = list(_cobrancas_full_v1050 or [])
+    _audits_v10104, _audits_ok_v10104 = _v10104_fetch_auditorias()
+    _quitados_v10104 = list((quitados_180_info.get("dados") or {}).get("quitados", []) or [])
     _entities_v1099 = []
 
     # Vendedores
@@ -9660,27 +10061,68 @@ try:
             _nome_v1099 = str(_v_v1099.get("nome") or "")
             _login_v1099 = str(_v_v1099.get("login") or "").lower()
             _b_v1099 = (clientes_por_vend_js or {}).get(_nome_v1099) or {"grave":[],"alerta":[],"atencao":[]}
-            _entities_v1099.append(_v1099_entity_daily("vendedor", _login_v1099, _nome_v1099, _f_v1099, _b_v1099, _logs_v1099, _now_v1099))
+            _entities_v1099.append(
+                _v1099_entity_daily(
+                    "vendedor", _login_v1099, _nome_v1099, _f_v1099,
+                    _b_v1099, _logs_v1099, _audits_v10104, _quitados_v10104, _now_v1099
+                )
+            )
 
     # Crediaristas
     for _c_v1099 in (CREDIARISTAS_CONFIG or []):
         _lg_v1099 = str(_c_v1099.get("login") or "").lower()
-        _entities_v1099.append(_v1099_entity_daily(
-            "crediarista", _lg_v1099, _c_v1099.get("nome") or _lg_v1099, _c_v1099.get("filial") or "",
-            (clientes_crediarista_js or {}).get(_lg_v1099) or {"grave":[],"alerta":[],"atencao":[]},
-            _logs_v1099, _now_v1099
-        ))
+        _entities_v1099.append(
+            _v1099_entity_daily(
+                "crediarista", _lg_v1099, _c_v1099.get("nome") or _lg_v1099, _c_v1099.get("filial") or "",
+                (clientes_crediarista_js or {}).get(_lg_v1099) or {"grave":[],"alerta":[],"atencao":[]},
+                _logs_v1099, _audits_v10104, _quitados_v10104, _now_v1099
+            )
+        )
 
-    # Cobrança terceiro
-    _entities_v1099.append(_v1099_entity_daily(
-        "terceiro", COBRANCA10_LOGIN, COBRANCA10_NOME, "FTER",
-        clientes_terceiro_js or {"grave":[],"alerta":[],"atencao":[]},
-        _logs_v1099, _now_v1099
-    ))
+    # Cobrança Interna Global — TODOS os usuários ativos V10.103.
+    for _u_ci_v10104 in (_usuarios_cob_int_v10103 or []):
+        _lg_ci_v10104 = str(_u_ci_v10104.get("login") or "").lower()
+        _entities_v1099.append(
+            _v1099_entity_daily(
+                "terceiro",
+                _lg_ci_v10104,
+                _u_ci_v10104.get("nome") or _lg_ci_v10104,
+                _u_ci_v10104.get("filial") or "FTER",
+                (clientes_terceiro_por_login_js or {}).get(_lg_ci_v10104) or {"grave":[],"alerta":[],"atencao":[]},
+                _logs_v1099, _audits_v10104, _quitados_v10104, _now_v1099
+            )
+        )
 
-    _entities_v1099 = [e for e in _entities_v1099 if e.get("ativo") and (int(e.get("previstos") or 0) > 0 or int(e.get("cobrancas_feitas") or 0) > 0)]
+    _entities_v1099 = [
+        e for e in _entities_v1099
+        if e.get("ativo")
+        and (
+            int(e.get("previstos") or 0) > 0
+            or int(e.get("cobrancas_feitas") or 0) > 0
+            or int(e.get("auditorias_aprovadas") or 0) > 0
+            or int(e.get("pagamentos_conciliados") or 0) > 0
+        )
+    ]
 
-    # Total empresa deduplicado: um mesmo título que aparece em vendedor + crediarista conta uma vez.
+    # FILIAIS consolidadas — nova exigência V10.104.
+    _filiais_v10104 = []
+    for _f_v10104 in (ORDEM_FILIAIS or []):
+        if str(_f_v10104).upper() == "F7":
+            continue
+        _bucket_f_v10104 = (clientes_js or {}).get(_f_v10104) or {"grave":[],"alerta":[],"atencao":[]}
+        _ef_v10104 = _v1099_entity_daily(
+            "filial", "", f"Filial {_f_v10104}", _f_v10104,
+            _bucket_f_v10104, _logs_v1099, _audits_v10104, _quitados_v10104, _now_v1099
+        )
+        if (
+            int(_ef_v10104.get("previstos") or 0) > 0
+            or int(_ef_v10104.get("cobrancas_feitas") or 0) > 0
+            or int(_ef_v10104.get("auditorias_aprovadas") or 0) > 0
+            or int(_ef_v10104.get("pagamentos_conciliados") or 0) > 0
+        ):
+            _filiais_v10104.append(_ef_v10104)
+
+    # Resumo da empresa usa apenas entidades operacionais, NÃO soma filiais novamente.
     _all_plan_vals_v1099 = {}
     _all_cob_keys_v1099 = set()
     for _e_v1099 in _entities_v1099:
@@ -9690,31 +10132,108 @@ try:
                 _all_plan_vals_v1099[_k_v1099] = float(_v_v1099 or 0)
     _not_worked_unique_v1099 = {k:v for k,v in _all_plan_vals_v1099.items() if k not in _all_cob_keys_v1099}
 
+    _sum_prev_v10104 = sum(int(e.get("previstos") or 0) for e in _entities_v1099)
+    _sum_cob_v10104 = sum(int(e.get("cobrancas_feitas") or 0) for e in _entities_v1099)
+    _sum_aud_v10104 = sum(int(e.get("auditorias_aprovadas") or 0) for e in _entities_v1099)
+    _sum_pay_v10104 = sum(int(e.get("pagamentos_conciliados") or 0) for e in _entities_v1099)
+
     _payload_daily_v1099 = {
-        "version": "V10.99",
+        "version": "V10.104",
         "date": _now_v1099.strftime("%Y-%m-%d"),
         "generated_at": _now_v1099.isoformat(),
         "updated_at_label": _now_v1099.strftime("%d/%m/%Y %H:%M:%S"),
+        "audit_source_ok": bool(_audits_ok_v10104),
         "entities": _entities_v1099,
+        "filiais": _filiais_v10104,
         "summary": {
             "usuarios_com_fila": sum(1 for e in _entities_v1099 if int(e.get("previstos") or 0) > 0),
             "usuarios_sem_cobrar": sum(1 for e in _entities_v1099 if int(e.get("previstos") or 0) > 0 and int(e.get("cobrancas_feitas") or 0) == 0),
-            "cobrancas_feitas": sum(int(e.get("cobrancas_feitas") or 0) for e in _entities_v1099),
+            "filiais_com_fila": sum(1 for e in _filiais_v10104 if int(e.get("previstos") or 0) > 0),
+            "previstos": _sum_prev_v10104,
+            "cobrancas_feitas": _sum_cob_v10104,
             "valor_cobrado": round(sum(float(e.get("valor_cobrado") or 0) for e in _entities_v1099), 2),
+            "evidencias_enviadas": sum(int(e.get("evidencias_enviadas") or 0) for e in _entities_v1099),
+            "auditorias_aprovadas": _sum_aud_v10104,
+            "pagamentos_conciliados": _sum_pay_v10104,
+            "recebido_conciliado": round(sum(float(e.get("recebido_conciliado") or 0) for e in _entities_v1099), 2),
             "titulos_nao_trabalhados_unicos": len(_not_worked_unique_v1099),
             "valor_nao_trabalhado_unico": round(sum(_not_worked_unique_v1099.values()), 2),
+            "taxa_execucao": round((_sum_cob_v10104 / _sum_prev_v10104 * 100.0) if _sum_prev_v10104 else 100.0, 2),
+            "taxa_auditoria": round((_sum_aud_v10104 / _sum_cob_v10104 * 100.0) if _sum_cob_v10104 else 0.0, 2),
+            "taxa_efetividade": round((_sum_pay_v10104 / _sum_cob_v10104 * 100.0) if _sum_cob_v10104 else 0.0, 2),
         }
     }
+
     with open(COBRANCA_DIARIA_RESUMO_PATH, "w", encoding="utf-8") as _f_v1099:
         json.dump(_payload_daily_v1099, _f_v1099, ensure_ascii=False, indent=2)
+
+    # Histórico persistente: baixa o último JSON público, atualiza o dia e reconstrói meses.
+    _hist_cob_v10104 = _remote_json_colaborador_v95(
+        "historico_cobranca_operacional.json",
+        {"version":"V10.104","days":{},"months":{}}
+    )
+    if not isinstance(_hist_cob_v10104, dict):
+        _hist_cob_v10104 = {"version":"V10.104","days":{},"months":{}}
+    _hist_days_v10104 = _hist_cob_v10104.get("days")
+    if not isinstance(_hist_days_v10104, dict):
+        _hist_days_v10104 = {}
+
+    _today_key_v10104 = _payload_daily_v1099["date"]
+
+    # Se a fonte de auditoria falhar transitoriamente, preserva auditoria/pagamentos
+    # do snapshot anterior do MESMO dia, evitando regressão para zero.
+    if not _audits_ok_v10104 and isinstance(_hist_days_v10104.get(_today_key_v10104), dict):
+        _old_day_v10104 = _hist_days_v10104.get(_today_key_v10104) or {}
+        def _merge_old_audit_v10104(new_rows, old_rows):
+            old_map = {_v10104_ent_hist_key(x): x for x in (old_rows or []) if isinstance(x, dict)}
+            for nr in new_rows or []:
+                old = old_map.get(_v10104_ent_hist_key(nr))
+                if not old:
+                    continue
+                for f in ("evidencias_enviadas","auditorias_aprovadas","pagamentos_conciliados","recebido_conciliado"):
+                    nr[f] = old.get(f, nr.get(f))
+                cob = int(nr.get("cobrancas_feitas") or 0)
+                nr["taxa_auditoria"] = round((int(nr.get("auditorias_aprovadas") or 0)/cob*100.0) if cob else 0.0, 2)
+                nr["taxa_efetividade"] = round((int(nr.get("pagamentos_conciliados") or 0)/cob*100.0) if cob else 0.0, 2)
+        _merge_old_audit_v10104(_payload_daily_v1099.get("entities"), _old_day_v10104.get("entities"))
+        _merge_old_audit_v10104(_payload_daily_v1099.get("filiais"), _old_day_v10104.get("filiais"))
+
+    _hist_days_v10104[_today_key_v10104] = _payload_daily_v1099
+
+    # Retenção de até 730 dias para manter arquivo leve.
+    _valid_day_keys_v10104 = sorted(
+        [k for k in _hist_days_v10104.keys() if re.match(r"^\d{4}-\d{2}-\d{2}$", str(k))]
+    )
+    if len(_valid_day_keys_v10104) > 730:
+        for _drop_v10104 in _valid_day_keys_v10104[:-730]:
+            _hist_days_v10104.pop(_drop_v10104, None)
+
+    _hist_cob_v10104 = {
+        "version": "V10.104",
+        "updated_at": _now_v1099.isoformat(),
+        "updated_at_label": _now_v1099.strftime("%d/%m/%Y %H:%M:%S"),
+        "days": _hist_days_v10104,
+        "months": _v10104_rebuild_months(_hist_days_v10104),
+    }
+
+    with open(HIST_COBRANCA_OPERACIONAL_PATH, "w", encoding="utf-8") as _f_hist_cob_v10104:
+        json.dump(_hist_cob_v10104, _f_hist_cob_v10104, ensure_ascii=False, indent=2)
+
     print(
-        "📞 V10.99 relatório diário server-side: "
+        "📞 V10.104 relatório diário: "
         f"{_payload_daily_v1099['summary']['cobrancas_feitas']} cobrança(s) | "
-        f"{_payload_daily_v1099['summary']['usuarios_sem_cobrar']} usuário(s) sem cobrar | "
-        f"R$ não trabalhado deduplicado={_payload_daily_v1099['summary']['valor_nao_trabalhado_unico']:.2f}"
+        f"{len(_filiais_v10104)} filial(is) | "
+        f"{_payload_daily_v1099['summary']['auditorias_aprovadas']} auditoria(s) aprovada(s) | "
+        f"{_payload_daily_v1099['summary']['pagamentos_conciliados']} pagamento(s) | "
+        f"execução={_payload_daily_v1099['summary']['taxa_execucao']:.2f}% | "
+        f"efetividade={_payload_daily_v1099['summary']['taxa_efetividade']:.2f}%"
+    )
+    print(
+        f"🗂️ V10.104 histórico cobrança: {len(_hist_days_v10104)} dia(s) | "
+        f"{len(_hist_cob_v10104.get('months') or {})} mês(es) consolidado(s)"
     )
 except Exception as _e_daily_v1099:
-    print(f"⚠️ V10.99 não conseguiu gerar cobranca_diaria_resumo.json: {_e_daily_v1099}")
+    print(f"⚠️ V10.104 não conseguiu gerar relatório/histórico de cobrança: {_e_daily_v1099}")
 
 
 js_hist_recebimentos_mensais = json.dumps(HIST_RECEBIMENTOS_MENSAIS, ensure_ascii=False)
@@ -10902,11 +11421,13 @@ const FILIAIS=__JS_FILIAIS__;
 let CLIENTES_FIL=__JS_CLIENTES__;
 let CLIENTES_VEND=__JS_CLIENTES_VEND__;
 let CLIENTES_TERCEIRO=__JS_CLIENTES_TERCEIRO__;
+let CLIENTES_TERCEIRO_POR_LOGIN=__JS_CLIENTES_TERCEIRO_POR_LOGIN__||{};
 let CLIENTES_CREDIARISTA=__JS_CLIENTES_CREDIARISTA__||{};
-const DETALHES_MANIFEST=__JS_DETALHES_MANIFEST__||{mode:'embedded',filiais:{},vendedores:{},crediaristas:{},terceiro:null};
+const DETALHES_MANIFEST=__JS_DETALHES_MANIFEST__||{mode:'embedded',filiais:{},vendedores:{},crediaristas:{},terceiros:{},terceiro:null};
 const DASHBOARD_LAZY_MODE=String(DETALHES_MANIFEST?.mode||'')==='lazy_per_entity';
 const RECEBIMENTOS=__JS_RECEBIMENTOS__;
 const RECEBIMENTOS_TERCEIRO=__JS_RECEBIMENTOS_TERCEIRO__;
+const RECEBIMENTOS_TERCEIRO_POR_LOGIN=__JS_RECEBIMENTOS_TERCEIRO_POR_LOGIN__||{};
 const RECEBIMENTOS_CREDIARISTA=__JS_RECEBIMENTOS_CREDIARISTA__||{};
 let QUITADOS_180=[]; let QUITADOS_180_LOADED=false;
 const HIST_RECEBIMENTOS_MENSAIS=__JS_HIST_RECEBIMENTOS_MENSAIS__||{months:{}};
@@ -10920,21 +11441,31 @@ function _detailManifestEntry(ref){
   const t=String(ref?.type||'').toLowerCase();
   if(t==='filial' || ref?.is_gerente) return DETALHES_MANIFEST?.filiais?.[String(ref?.filial||'').toUpperCase()]||null;
   if(t==='crediarista' || ref?.is_crediarista) return DETALHES_MANIFEST?.crediaristas?.[String(ref?.login||'').toLowerCase()]||null;
-  if(t==='terceiro' || ref?.is_terceiro) return DETALHES_MANIFEST?.terceiro||null;
+  if(t==='terceiro' || ref?.is_terceiro){
+    const login=String(ref?.login||usuarioAtual?.login||COBRANCA10_LOGIN||'cobranca10').toLowerCase();
+    return DETALHES_MANIFEST?.terceiros?.[login] || (login===String(COBRANCA10_LOGIN||'cobranca10').toLowerCase()?DETALHES_MANIFEST?.terceiro:null) || null;
+  }
   return DETALHES_MANIFEST?.vendedores?.[String(ref?.nome||'')]||null;
 }
 function _detailAlreadyLoaded(ref){
   const t=String(ref?.type||'').toLowerCase();
   if(t==='filial' || ref?.is_gerente) return Object.prototype.hasOwnProperty.call(CLIENTES_FIL||{},String(ref?.filial||'').toUpperCase());
   if(t==='crediarista' || ref?.is_crediarista) return Object.prototype.hasOwnProperty.call(CLIENTES_CREDIARISTA||{},String(ref?.login||'').toLowerCase());
-  if(t==='terceiro' || ref?.is_terceiro) return !!(CLIENTES_TERCEIRO && Object.keys(CLIENTES_TERCEIRO).length);
+  if(t==='terceiro' || ref?.is_terceiro){
+    const login=String(ref?.login||usuarioAtual?.login||COBRANCA10_LOGIN||'cobranca10').toLowerCase();
+    return Object.prototype.hasOwnProperty.call(CLIENTES_TERCEIRO_POR_LOGIN||{},login);
+  }
   return Object.prototype.hasOwnProperty.call(CLIENTES_VEND||{},String(ref?.nome||''));
 }
 function _applyDetailData(ref,data){
   const t=String(ref?.type||'').toLowerCase(); const clean=(data&&typeof data==='object')?data:_DETAIL_EMPTY();
   if(t==='filial' || ref?.is_gerente) CLIENTES_FIL[String(ref?.filial||'').toUpperCase()]=clean;
   else if(t==='crediarista' || ref?.is_crediarista) CLIENTES_CREDIARISTA[String(ref?.login||'').toLowerCase()]=clean;
-  else if(t==='terceiro' || ref?.is_terceiro) CLIENTES_TERCEIRO=clean;
+  else if(t==='terceiro' || ref?.is_terceiro){
+    const login=String(ref?.login||usuarioAtual?.login||COBRANCA10_LOGIN||'cobranca10').toLowerCase();
+    CLIENTES_TERCEIRO_POR_LOGIN[login]=clean;
+    CLIENTES_TERCEIRO=clean;
+  }
   else CLIENTES_VEND[String(ref?.nome||'')]=clean;
 }
 async function _fetchDetailEntry(entry){
@@ -10956,7 +11487,14 @@ async function ensureDetailData(ref){
       const login=String(ref?.login||'').toLowerCase(); const filial=String(ref?.filial||'').toUpperCase(); const entry=DETALHES_MANIFEST?.crediaristas?.[login]||DETALHES_MANIFEST?.filiais?.[filial];
       CLIENTES_CREDIARISTA[login]=(await _fetchDetailEntry(entry))||_DETAIL_EMPTY(); return true;
     }
-    if(t==='terceiro' || ref?.is_terceiro){CLIENTES_TERCEIRO=(await _fetchDetailEntry(DETALHES_MANIFEST?.terceiro))||_DETAIL_EMPTY(); return true;}
+    if(t==='terceiro' || ref?.is_terceiro){
+      const login=String(ref?.login||usuarioAtual?.login||COBRANCA10_LOGIN||'cobranca10').toLowerCase();
+      const entry=DETALHES_MANIFEST?.terceiros?.[login] || (login===String(COBRANCA10_LOGIN||'cobranca10').toLowerCase()?DETALHES_MANIFEST?.terceiro:null);
+      const data=(await _fetchDetailEntry(entry))||_DETAIL_EMPTY();
+      CLIENTES_TERCEIRO_POR_LOGIN[login]=data;
+      CLIENTES_TERCEIRO=data;
+      return true;
+    }
     const name=String(ref?.nome||''); CLIENTES_VEND[name]=(await _fetchDetailEntry(DETALHES_MANIFEST?.vendedores?.[name]))||_DETAIL_EMPTY(); return true;
   }catch(e){console.error('V10.48 lazy detail',e); _applyDetailData(ref,_DETAIL_EMPTY()); toast('Não consegui carregar a carteira detalhada. Atualize a página.'); return false;}
 }
@@ -11398,7 +11936,49 @@ function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&l
 function trunc(s,n=18){s=String(s||'');return s.length>n?s.slice(0,n-1)+'…':s}
 function filialLabel(f){return String(f||'').replace(/^F/,'Filial F')}
 function flattenVendedores(){const out=[];Object.entries(TODOS||{}).forEach(([f,arr])=>(arr||[]).forEach(v=>out.push({type:'vendedor',filial:f,...v})));return out}
-function thirdChargeEntity(){const src=CLIENTES_TERCEIRO||{grave:[],alerta:[],atencao:[]}; const rsrc=RECEBIMENTOS_TERCEIRO||{grave:[],alerta:[],atencao:[]}; const sm=DETALHES_MANIFEST?.terceiro||{}; const loaded=!!(CLIENTES_TERCEIRO&&Object.keys(CLIENTES_TERCEIRO).length); const gp=loaded?(src.grave||[]).reduce((a,b)=>a+Number(b.pendente||0),0):Number(sm.grave_pend||0); const ap=loaded?(src.alerta||[]).reduce((a,b)=>a+Number(b.pendente||0),0):Number(sm.alerta_pend||0); const tp=loaded?(src.atencao||[]).reduce((a,b)=>a+Number(b.pendente||0),0):Number(sm.atencao_pend||0); const rec=[...(rsrc.grave||[]),...(rsrc.alerta||[]),...(rsrc.atencao||[])].reduce((a,b)=>a+Number(b.pago||0),0); const pend=gp+ap+tp; return {type:'terceiro',login:COBRANCA10_LOGIN,filial:'FTER',nome:COBRANCA10_NOME,is_terceiro:true,is_gerente:false,pendente:pend,pago:rec,total:pend+rec,perc_filial:100,grave_pend:gp,alerta_pend:ap,atencao_pend:tp,grave_rec:(rsrc.grave||[]).reduce((a,b)=>a+Number(b.pago||0),0),alerta_rec:(rsrc.alerta||[]).reduce((a,b)=>a+Number(b.pago||0),0),atencao_rec:(rsrc.atencao||[]).reduce((a,b)=>a+Number(b.pago||0),0)}}
+function usuariosCobrancaInternaAtivosV10103(){
+  try{
+    const users=AUTH_STATE?.users||{};
+    return Object.entries(users)
+      .map(([login,u])=>({login:String(login||'').toLowerCase(),...(u||{})}))
+      .filter(u=>u.login && u.is_terceiro && !u.is_cob_externa && u.only_cobranca!==false && !u.access_disabled && String(u.status_operacional||'ativo').toLowerCase()==='ativo' && u.participa_cobrancas!==false)
+      .sort((a,b)=>String(a.login).localeCompare(String(b.login)));
+  }catch(e){return []}
+}
+function thirdChargeEntity(login=''){
+  let loginKey=String(login||'').toLowerCase();
+  if(!loginKey && usuarioAtual?.is_terceiro)loginKey=String(usuarioAtual.login||'').toLowerCase();
+  if(!loginKey)loginKey=String(COBRANCA10_LOGIN||'cobranca10').toLowerCase();
+
+  const auth=(AUTH_STATE?.users||{})[loginKey]||{};
+  const legacyLogin=String(COBRANCA10_LOGIN||'cobranca10').toLowerCase();
+  const src=CLIENTES_TERCEIRO_POR_LOGIN?.[loginKey] || (loginKey===legacyLogin?(CLIENTES_TERCEIRO||{grave:[],alerta:[],atencao:[]}):{grave:[],alerta:[],atencao:[]});
+  const rsrc=RECEBIMENTOS_TERCEIRO_POR_LOGIN?.[loginKey] || (loginKey===legacyLogin?(RECEBIMENTOS_TERCEIRO||{grave:[],alerta:[],atencao:[]}):{grave:[],alerta:[],atencao:[]});
+  const sm=DETALHES_MANIFEST?.terceiros?.[loginKey] || (loginKey===legacyLogin?(DETALHES_MANIFEST?.terceiro||{}):{});
+  const loaded=Object.prototype.hasOwnProperty.call(CLIENTES_TERCEIRO_POR_LOGIN||{},loginKey);
+
+  const gp=loaded?(src.grave||[]).reduce((a,b)=>a+Number(b.pendente||0),0):Number(sm.grave_pend||0);
+  const ap=loaded?(src.alerta||[]).reduce((a,b)=>a+Number(b.pendente||0),0):Number(sm.alerta_pend||0);
+  const tp=loaded?(src.atencao||[]).reduce((a,b)=>a+Number(b.pendente||0),0):Number(sm.atencao_pend||0);
+  const gr=(rsrc.grave||[]).reduce((a,b)=>a+Number(b.pago||0),0);
+  const ar=(rsrc.alerta||[]).reduce((a,b)=>a+Number(b.pago||0),0);
+  const tr=(rsrc.atencao||[]).reduce((a,b)=>a+Number(b.pago||0),0);
+  const pend=gp+ap+tp, rec=gr+ar+tr;
+
+  return {
+    type:'terceiro',login:loginKey,
+    filial:String(auth.filial||sm.filial||'FTER').toUpperCase(),
+    nome:String(auth.nome||sm.nome||(loginKey===legacyLogin?COBRANCA10_NOME:loginKey)),
+    is_terceiro:true,is_gerente:false,only_cobranca:true,custom_user:!!auth.custom_user,
+    pendente:pend,pago:rec,total:pend+rec,perc_filial:100,
+    grave_pend:gp,alerta_pend:ap,atencao_pend:tp,
+    grave_rec:gr,alerta_rec:ar,atencao_rec:tr
+  };
+}
+function thirdChargeEntities(){
+  const users=usuariosCobrancaInternaAtivosV10103();
+  return users.length?users.map(u=>thirdChargeEntity(u.login)):[thirdChargeEntity()];
+}
 
 function emptyRec(){return {grave:[],alerta:[],atencao:[]}}
 function recTotal(src){return ['grave','alerta','atencao'].reduce((acc,fx)=>acc+(src?.[fx]||[]).reduce((a,b)=>a+Number(b.pago||0),0),0)}
@@ -12375,8 +12955,8 @@ function setFiltroFilial(f){
   }
   renderList();
 }
-function currentEntities(){let arr=mainTab==='filiais'?flattenFiliais():flattenVendedores(); if(mainTab==='vendedores' && usuarioAtual?.tipo==='master'){const t=thirdChargeEntity(); const hasThird=Number(t.pendente||0)>0 || Number(t.pago||0)>0 || Number(t.grave_pend||0)>0 || Number(t.alerta_pend||0)>0 || Number(t.atencao_pend||0)>0; if(hasThird) arr=[t,...arr]; const creds=crediaristaEntities(); if(creds.length) arr=[...creds,...arr]} return arr.filter(x=>filtroFilial==='TODAS'||x.filial===filtroFilial || x.is_terceiro || x.is_crediarista)}
-function renderEntityCard(ent){const m=calcMeta(ent); const isThird=!!(ent?.is_terceiro || ent?.type==='terceiro'); const isCred=!!(ent?.is_crediarista || ent?.type==='crediarista'); if(isThird || isCred){const credLogin=String(ent.login||crediaristaLoginByFilial(ent.filial)||'').toLowerCase(); const credFilial=String(ent.filial||'').toUpperCase(); const credNome=String(ent.nome||`CREDIARISTA${credFilial}`); const label=isThird?'Cobrança Interna Global':'Crediarista'; const sub=isThird?'Clique para abrir a carteira de cobrança interna global':'Clique para abrir a carteira do crediarista'; const actionAttr=isThird?`data-action="third-card" role="button" tabindex="0"`:`data-action="cred-card" data-login="${esc(credLogin)}" data-filial="${esc(credFilial)}" data-nome="${esc(credNome)}" role="button" tabindex="0"`; return `<div class="glass card ${m.geral>=50?'card-hit':(m.geral<30?'card-low-red':(m.geral<40?'card-low-orange':''))}" style="box-shadow:0 0 0 2px rgba(239,68,68,.12) inset" ${actionAttr}><div class="title">${esc(credNome)}</div><div class="numbers" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="stat-box" style="min-width:0"><div class="mini">Pendente</div><div class="big" style="color:var(--red);font-size:15px;word-break:break-word">${R(ent.pendente||0)}</div></div><div class="stat-box" style="min-width:0"><div class="mini">Recebido</div><div class="big" style="color:var(--green);font-size:15px;word-break:break-word">${R((ent.pago_meta??ent.pago)||0)}</div></div></div><div class="meta-row"><div class="mini-chip">🔴 Grave ${pct(m.grave.perc)}</div><div class="mini-chip">🟠 Alerta ${pct(m.alerta.perc)}</div><div class="mini-chip">🟡 Atenção ${pct(m.atencao.perc)}</div><div class="mini-chip" style="font-size:12px">🔵 Meta geral ${pct(m.geral)}</div></div>${renderMascotStatus(m.geral,label)}<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>${sub}</span></div></div>`} const bonus=getBonus(m.cfg,m.geral);const sales=summarizeSalesCard(ent);const salesPct=sales?.n||0;const salesBorder=salesPct>=100?'box-shadow:0 0 0 2px rgba(242,201,76,.35) inset':salesPct>=80?'box-shadow:0 0 0 2px rgba(34,197,94,.18) inset':salesPct>=50?'box-shadow:0 0 0 2px rgba(249,115,22,.18) inset':'box-shadow:0 0 0 2px rgba(239,68,68,.12) inset';const cls=m.geral>=50?'card-hit':(m.geral<30?'card-low-red':(m.geral<40?'card-low-orange':''));const pulseNote=m.geral>=50?'<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>Meta atingida no mês</span></div>':'';return `<div class="glass card ${cls}" style="${salesBorder}" onclick='openEntity(${JSON.stringify({type:ent.type,filial:ent.filial,nome:ent.nome})})'><div class="title">${esc(ent.nome)} ${ent.type==='vendedor'?`(${ent.filial})`:''}</div><div class="numbers" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="stat-box" style="min-width:0"><div class="mini">Pendente</div><div class="big" style="color:var(--red);font-size:15px;word-break:break-word">${R(ent.pendente||0)}</div></div><div class="stat-box" style="min-width:0"><div class="mini">Recebido</div><div class="big" style="color:var(--green);font-size:15px;word-break:break-word">${R((ent.pago_meta??ent.pago)||0)}</div></div></div><div class="meta-row"><div class="mini-chip">🔴 Grave ${pct(m.grave.perc)}</div><div class="mini-chip">🟠 Alerta ${pct(m.alerta.perc)}</div><div class="mini-chip">🟡 Atenção ${pct(m.atencao.perc)}</div><div class="mini-chip" style="font-size:12px">🔵 Meta geral ${pct(m.geral)}</div></div>${renderSalesCardSummary(ent)}${renderDualMascotStatus(ent)}${bonus?`<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>${esc(bonus.text)}</span></div>`:''}${pulseNote}</div>`}
+function currentEntities(){let arr=mainTab==='filiais'?flattenFiliais():flattenVendedores(); if(mainTab==='vendedores' && usuarioAtual?.tipo==='master'){const thirds=(thirdChargeEntities()||[]).filter(t=>Number(t.pendente||0)>0 || Number(t.pago||0)>0 || Number(t.grave_pend||0)>0 || Number(t.alerta_pend||0)>0 || Number(t.atencao_pend||0)>0); if(thirds.length) arr=[...thirds,...arr]; const creds=crediaristaEntities(); if(creds.length) arr=[...creds,...arr]} return arr.filter(x=>filtroFilial==='TODAS'||x.filial===filtroFilial || x.is_terceiro || x.is_crediarista)}
+function renderEntityCard(ent){const m=calcMeta(ent); const isThird=!!(ent?.is_terceiro || ent?.type==='terceiro'); const isCred=!!(ent?.is_crediarista || ent?.type==='crediarista'); if(isThird || isCred){const credLogin=String(ent.login||crediaristaLoginByFilial(ent.filial)||'').toLowerCase(); const credFilial=String(ent.filial||'').toUpperCase(); const credNome=String(ent.nome||`CREDIARISTA${credFilial}`); const label=isThird?'Cobrança Interna Global':'Crediarista'; const sub=isThird?'Clique para abrir a carteira de cobrança interna global':'Clique para abrir a carteira do crediarista'; const actionAttr=isThird?`data-action="third-card" data-login="${esc(credLogin)}" data-filial="${esc(credFilial)}" data-nome="${esc(credNome)}" role="button" tabindex="0"`:`data-action="cred-card" data-login="${esc(credLogin)}" data-filial="${esc(credFilial)}" data-nome="${esc(credNome)}" role="button" tabindex="0"`; return `<div class="glass card ${m.geral>=50?'card-hit':(m.geral<30?'card-low-red':(m.geral<40?'card-low-orange':''))}" style="box-shadow:0 0 0 2px rgba(239,68,68,.12) inset" ${actionAttr}><div class="title">${esc(credNome)}</div><div class="numbers" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="stat-box" style="min-width:0"><div class="mini">Pendente</div><div class="big" style="color:var(--red);font-size:15px;word-break:break-word">${R(ent.pendente||0)}</div></div><div class="stat-box" style="min-width:0"><div class="mini">Recebido</div><div class="big" style="color:var(--green);font-size:15px;word-break:break-word">${R((ent.pago_meta??ent.pago)||0)}</div></div></div><div class="meta-row"><div class="mini-chip">🔴 Grave ${pct(m.grave.perc)}</div><div class="mini-chip">🟠 Alerta ${pct(m.alerta.perc)}</div><div class="mini-chip">🟡 Atenção ${pct(m.atencao.perc)}</div><div class="mini-chip" style="font-size:12px">🔵 Meta geral ${pct(m.geral)}</div></div>${renderMascotStatus(m.geral,label)}<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>${sub}</span></div></div>`} const bonus=getBonus(m.cfg,m.geral);const sales=summarizeSalesCard(ent);const salesPct=sales?.n||0;const salesBorder=salesPct>=100?'box-shadow:0 0 0 2px rgba(242,201,76,.35) inset':salesPct>=80?'box-shadow:0 0 0 2px rgba(34,197,94,.18) inset':salesPct>=50?'box-shadow:0 0 0 2px rgba(249,115,22,.18) inset':'box-shadow:0 0 0 2px rgba(239,68,68,.12) inset';const cls=m.geral>=50?'card-hit':(m.geral<30?'card-low-red':(m.geral<40?'card-low-orange':''));const pulseNote=m.geral>=50?'<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>Meta atingida no mês</span></div>':'';return `<div class="glass card ${cls}" style="${salesBorder}" onclick='openEntity(${JSON.stringify({type:ent.type,filial:ent.filial,nome:ent.nome})})'><div class="title">${esc(ent.nome)} ${ent.type==='vendedor'?`(${ent.filial})`:''}</div><div class="numbers" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)"><div class="stat-box" style="min-width:0"><div class="mini">Pendente</div><div class="big" style="color:var(--red);font-size:15px;word-break:break-word">${R(ent.pendente||0)}</div></div><div class="stat-box" style="min-width:0"><div class="mini">Recebido</div><div class="big" style="color:var(--green);font-size:15px;word-break:break-word">${R((ent.pago_meta??ent.pago)||0)}</div></div></div><div class="meta-row"><div class="mini-chip">🔴 Grave ${pct(m.grave.perc)}</div><div class="mini-chip">🟠 Alerta ${pct(m.alerta.perc)}</div><div class="mini-chip">🟡 Atenção ${pct(m.atencao.perc)}</div><div class="mini-chip" style="font-size:12px">🔵 Meta geral ${pct(m.geral)}</div></div>${renderSalesCardSummary(ent)}${renderDualMascotStatus(ent)}${bonus?`<div class="legend-inline"><span><i class="dot" style="background:#2f67f6"></i>${esc(bonus.text)}</span></div>`:''}${pulseNote}</div>`}
 function renderGroupBars(entities){if(!entities.length) return `<div class="empty">Nenhum dado para exibir.</div>`; const max=Math.max(1,...entities.map(e=>Math.max(Number(e.grave_pend||0),Number(e.alerta_pend||0),Number(e.atencao_pend||0),Number(e.pago||0)))); return `<div class="glass big-chart-card"><div class="section-head"><div><h2>📊 Panorama por ${mainTab==='filiais'?'filial':'vendedor'}</h2><div class="hint">Barras por faixa: Grave, Alerta, Atenção e Recebido</div></div><div class="legend-inline"><span><i class="dot" style="background:var(--red)"></i>Grave</span><span><i class="dot" style="background:var(--orange)"></i>Alerta</span><span><i class="dot" style="background:var(--yellow)"></i>Atenção</span><span><i class="dot" style="background:var(--green)"></i>Recebido</span></div></div><div class="groupbars">${entities.map(e=>{const vals=[{c:'var(--red)',v:Number(e.grave_pend||0),t:'Grave'},{c:'var(--orange)',v:Number(e.alerta_pend||0),t:'Alerta'},{c:'var(--yellow)',v:Number(e.atencao_pend||0),t:'Atenção'},{c:'var(--green)',v:Number(e.pago||0),t:'Recebido'}]; return `<div class="group"><div class="bars">${vals.map(v=>`<div title="${v.t}: ${R(v.v)}" class="bar" style="height:${Math.max(12,(v.v/max)*240)}px;background:linear-gradient(180deg,${v.c},${v.c})"></div>`).join('')}<span class="wave one"></span><span class="wave two"></span><span class="bubble b1"></span><span class="bubble b2"></span><span class="bubble b3"></span></div><div class="glabel">${esc(trunc(e.nome,16))}</div></div>`}).join('')}</div><div class="axis"><span>Escala relativa automática</span><span>${entities.length} ${mainTab==='filiais'?'filiais':'colaboradores'}</span></div></div>`}
 
 
@@ -12580,12 +13160,12 @@ const topVendaVend=bestLiveSalesEntity(vendedores,'venda_filial_vendedor_meta');
 vendasParts.push(`<div class="glass panel sales-panel" style="margin-bottom:16px;padding:16px 18px"><div class="section-head" style="margin:0 0 10px"><div><h2 style="margin:0;font-size:20px">💲 Vendas do mês</h2><div class="hint">Melhores resultados acumulados de venda e serviço do mês.</div></div></div><div class="legend-inline">${topVendaVend?`<span><i class="dot" style="background:#f97316"></i>Venda vendedor: ${esc(topVendaVend.ent.nome)} ${R(topVendaVend.val||0)}</span>`:''}${topServVend?`<span><i class="dot" style="background:#f59e0b"></i>Serviço vendedor: ${esc(topServVend.ent.nome)} ${R(topServVend.val||0)}</span>`:''}${topVendaFil?`<span><i class="dot" style="background:#fb923c"></i>Venda filial: ${esc(filialLabel(topVendaFil.ent.filial))} ${R(topVendaFil.val||0)}</span>`:''}${topServFil?`<span><i class="dot" style="background:#fdba74"></i>Serviço filial: ${esc(filialLabel(topServFil.ent.filial))} ${R(topServFil.val||0)}</span>`:''}</div></div>`);
 return `<div class="section-head" style="margin-bottom:8px"><div><h2>📌 Mural de cobrança</h2><div class="hint">Notificações e destaques do dia da cobrança.</div></div></div>${cobrarParts.join('')}<div class="section-head" style="margin:20px 0 8px"><div><h2>💲 Mural de vendas</h2><div class="hint">Comparativos de venda e serviço do dia/semana.</div></div></div>${vendasParts.join('')}`}
 
-function bindSpecialCards(){document.querySelectorAll('[data-action="cred-card"]').forEach(el=>{el.style.cursor='pointer';el.onclick=(ev)=>{ev.preventDefault();ev.stopPropagation();const node=ev.currentTarget.closest('[data-action="cred-card"]')||ev.currentTarget;const ds=node.dataset||{};openCrediaristaPanel(ds.login||'',ds.filial||'',ds.nome||'');return false};el.onkeydown=(ev)=>{if(ev.key==='Enter' || ev.key===' '){ev.preventDefault();const node=ev.currentTarget.closest('[data-action="cred-card"]')||ev.currentTarget;const ds=node.dataset||{};openCrediaristaPanel(ds.login||'',ds.filial||'',ds.nome||'')}}});document.querySelectorAll('[data-action="third-card"]').forEach(el=>{el.style.cursor='pointer';el.onclick=(ev)=>{ev.preventDefault();ev.stopPropagation();openThirdChargePanel();return false};el.onkeydown=(ev)=>{if(ev.key==='Enter' || ev.key===' '){ev.preventDefault();openThirdChargePanel()}}})}
-function openEntityFromRowPayload(payload){try{const ref=JSON.parse(decodeURIComponent(payload)); if(ref?.type==='terceiro') return openThirdChargePanel(); if(ref?.type==='crediarista') return openCrediaristaPanel(ref.login||'',ref.filial||'',ref.nome||''); return openEntity(ref);}catch(e){}}
+function bindSpecialCards(){document.querySelectorAll('[data-action="cred-card"]').forEach(el=>{el.style.cursor='pointer';el.onclick=(ev)=>{ev.preventDefault();ev.stopPropagation();const node=ev.currentTarget.closest('[data-action="cred-card"]')||ev.currentTarget;const ds=node.dataset||{};openCrediaristaPanel(ds.login||'',ds.filial||'',ds.nome||'');return false};el.onkeydown=(ev)=>{if(ev.key==='Enter' || ev.key===' '){ev.preventDefault();const node=ev.currentTarget.closest('[data-action="cred-card"]')||ev.currentTarget;const ds=node.dataset||{};openCrediaristaPanel(ds.login||'',ds.filial||'',ds.nome||'')}}});document.querySelectorAll('[data-action="third-card"]').forEach(el=>{el.style.cursor='pointer';el.onclick=(ev)=>{ev.preventDefault();ev.stopPropagation();const ds=el.dataset||{};openThirdChargePanel(ds.login||'',ds.filial||'',ds.nome||'');return false};el.onkeydown=(ev)=>{if(ev.key==='Enter' || ev.key===' '){ev.preventDefault();const ds=el.dataset||{};openThirdChargePanel(ds.login||'',ds.filial||'',ds.nome||'')}}})}
+function openEntityFromRowPayload(payload){try{const ref=JSON.parse(decodeURIComponent(payload)); if(ref?.type==='terceiro') return openThirdChargePanel(ref.login||'',ref.filial||'',ref.nome||''); if(ref?.type==='crediarista') return openCrediaristaPanel(ref.login||'',ref.filial||'',ref.nome||''); return openEntity(ref);}catch(e){}}
 function renderEntityRow(ent){const m=calcMeta(ent); const isThird=!!(ent?.is_terceiro||ent?.type==='terceiro'); const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista'); const ref=isThird?{type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}:isCred?{type:'crediarista',login:String(ent.login||crediaristaLoginByFilial(ent.filial)||'').toLowerCase(),filial:ent.filial,nome:ent.nome}:{type:ent.type,filial:ent.filial,nome:ent.nome}; const payload=encodeURIComponent(JSON.stringify(ref)); const sales=summarizeSalesCard(ent)||{}; const role=isThird?'Cobrança Interna Global':isCred?'Crediarista':(ent.type==='filial'?'Filial':'Colaborador'); return `<div class="entity-row" onclick="openEntityFromRowPayload('${payload}')"><div class="entity-cell"><div class="v">${esc(ent.nome||filialLabel(ent.filial)||'')}</div><div class="small muted">${esc(role)} ${ent.filial?`· ${esc(ent.filial)}`:''}</div></div><div class="entity-cell"><div class="k">Pendente</div><div class="v red">${R(ent.pendente||0)}</div></div><div class="entity-cell"><div class="k">Recebido</div><div class="v green">${R((ent.pago_meta??ent.pago)||0)}</div></div><div class="entity-cell"><div class="k">Grave</div><div class="v red">${pct(m.grave.perc||0)}</div></div><div class="entity-cell"><div class="k">Alerta</div><div class="v orange">${pct(m.alerta.perc||0)}</div></div><div class="entity-cell"><div class="k">Atenção</div><div class="v">${pct(m.atencao.perc||0)}</div></div><div class="entity-cell"><div class="k">Meta geral</div><div class="v blue">${pct(m.geral||0)}</div></div><div class="entity-cell"><div class="k">Vendas/serviços</div><div class="v">${sales.n!=null?pct(sales.n):'—'}</div></div></div>`}
 function renderEntityList(entities){return `<div class="entity-list"><div class="entity-row entity-row-head"><div>Nome / tipo</div><div>Pendente</div><div>Recebido</div><div>Grave</div><div>Alerta</div><div>Atenção</div><div>Meta</div><div>Vendas</div></div>${entities.map(renderEntityRow).join('')}</div>`}
 function renderList(){const entities=currentEntities();const title=mainTab==='filiais'?'🏬 Filiais':'👥 Colaboradores';const hint=`${entities.length} ${mainTab==='filiais'?'filiais':'colaboradores'} exibidos`; const useRows=usuarioAtual?.tipo==='master'; listSection.innerHTML=`${renderCampaignStrip()}<div class="section-head"><div><h2>${title}</h2><div class="hint">Clique em uma linha para abrir a tela individual completa.</div></div><div class="hint">${hint}</div></div>${useRows?renderEntityList(entities):`<div class="grid-cards">${entities.map(renderEntityCard).join('')}</div>`}`; bindSpecialCards()}
-function findEntity(ref){const n=String(ref?.nome||'').toLowerCase(); const f=String(ref?.filial||'').toUpperCase(); const t=String(ref?.type||'').toLowerCase(); if(t==='terceiro' || ref?.is_terceiro || n===String(COBRANCA10_NOME).toLowerCase() || n===String(COBRANCA10_LOGIN).toLowerCase() || f==='FTER'){return thirdChargeEntity()} if(t==='crediarista' || ref?.is_crediarista || n.startsWith('crediarista') || String(ref?.login||'').toLowerCase().startsWith('crediaristaf')){return crediaristaEntityByLogin(ref?.login||ref?.nome||ref?.filial)} if(ref.type==='filial'){return flattenFiliais().find(x=>x.filial===ref.filial)} return flattenVendedores().find(x=>x.filial===ref.filial && x.nome===ref.nome)}
+function findEntity(ref){const n=String(ref?.nome||'').toLowerCase(); const f=String(ref?.filial||'').toUpperCase(); const t=String(ref?.type||'').toLowerCase(); if(t==='terceiro' || ref?.is_terceiro || n===String(COBRANCA10_NOME).toLowerCase() || n===String(COBRANCA10_LOGIN).toLowerCase() || f==='FTER'){return thirdChargeEntity(ref?.login||(usuarioAtual?.is_terceiro?usuarioAtual?.login:''))} if(t==='crediarista' || ref?.is_crediarista || n.startsWith('crediarista') || String(ref?.login||'').toLowerCase().startsWith('crediaristaf')){return crediaristaEntityByLogin(ref?.login||ref?.nome||ref?.filial)} if(ref.type==='filial'){return flattenFiliais().find(x=>x.filial===ref.filial)} return flattenVendedores().find(x=>x.filial===ref.filial && x.nome===ref.nome)}
 function keysFromLogsForCommission(logs){const out=new Set(); (logs||[]).forEach(l=>{out.add(cobrancaRowKey(l)); const alt=[String(l.cliente||'').trim().toUpperCase(),String(l.titulo||'').trim(),String(l.parcela||'').trim()].join('|'); out.add(alt);}); return out}
 function key3Cob(r){return [String(r.cliente||r.nome||'').trim().toUpperCase(),String(r.titulo||'').trim(),String(r.parcela||'').trim()].join('|')}
 function renderTerceiroCommission(ent){const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista'); const baseCfg=isCred?entityConfig({type:'vendedor',nome:ent.nome,filial:ent.filial}):entityConfig({type:'vendedor',nome:COBRANCA10_NOME,filial:'FTER'}); const cfg=commissionCfg(baseCfg); const policy=(isCred?(cfg.camp_cob_crediarista||[]):(cfg.camp_cobranca_terceiro||[])); const policyOk=Array.isArray(policy)&&policy.length?policy:(isCred?defaultCampCrediarista():defaultCampTerceiro()); const byFaixa={atencao:{pct:0,cobrado:0,recebido:0,comissao:0},alerta:{pct:0,cobrado:0,recebido:0,comissao:0},grave:{pct:0,cobrado:0,recebido:0,comissao:0}}; policyOk.forEach(r=>{const fx=String(r.faixa||'').toLowerCase(); if(byFaixa[fx]) byFaixa[fx].pct=Number(String(r.pct||0).replace(',','.'))||0}); const mesAtual=dateOnlyISO(new Date()).slice(0,7); const userKeys=isCred?[String(ent.login||'').toLowerCase(),String(ent.nome||'').toLowerCase()]:[COBRANCA10_NOME.toLowerCase(),COBRANCA10_LOGIN]; const cobrados=(COB_LOGS||[]).filter(x=>userKeys.includes(String(x.usuario||'').toLowerCase()) && dateOnlyISO(x.server_time||x.criado_em||x.data||'').slice(0,7)===mesAtual); const keys=keysFromLogsForCommission(cobrados); const srcCli=isCred?(CLIENTES_CREDIARISTA?.[String(ent.login||'').toLowerCase()]||{grave:[],alerta:[],atencao:[]}):(CLIENTES_TERCEIRO||{grave:[],alerta:[],atencao:[]}); const srcRec=getRecebimentos(ent)||{grave:[],alerta:[],atencao:[]}; ['atencao','alerta','grave'].forEach(fx=>{byFaixa[fx].cobrado=(srcCli?.[fx]||[]).filter(r=>keys.has(cobrancaRowKey(r))||keys.has(key3Cob(r))).length; (srcRec?.[fx]||[]).forEach(r=>{const pagMes=dateOnlyISO(r.pagamento||r.data_pagamento||'').slice(0,7); if((keys.has(cobrancaRowKey(r))||keys.has(key3Cob(r))) && pagMes===mesAtual){byFaixa[fx].recebido+=Number(r.pago||0)}}); byFaixa[fx].comissao=byFaixa[fx].recebido*(byFaixa[fx].pct/100)}); const total=Object.values(byFaixa).reduce((a,b)=>a+b.comissao,0); const item=(t,v,s='')=>`<div class="commission-item unlocked ${s}"><div class="k">${t}</div><div class="v">${v}</div></div>`; return `<div class="glass panel commission-card"><h3>💵 ${isCred?'Comissão crediarista':'Comissão cobrança terceiro'} <span class="note">· só títulos cobrados pelo usuário e pagos no mês</span></h3><div class="commission-grid">${item('Atenção %',String(byFaixa.atencao.pct.toFixed(2)).replace('.',',')+'%')}${item('Alerta %',String(byFaixa.alerta.pct.toFixed(2)).replace('.',',')+'%')}${item('Grave %',String(byFaixa.grave.pct.toFixed(2)).replace('.',',')+'%')}${item('Recebido atenção',R(byFaixa.atencao.recebido||0))}${item('Recebido alerta',R(byFaixa.alerta.recebido||0))}${item('Recebido grave',R(byFaixa.grave.recebido||0))}${item('Comissão atenção',R(byFaixa.atencao.comissao||0))}${item('Comissão alerta',R(byFaixa.alerta.comissao||0))}${item('Comissão grave',R(byFaixa.grave.comissao||0))}${item('Total previsto',R(total||0),'total-final')}</div><div class="commission-note">${esc(CONFIG_META?.comissao_pagamento_texto||'A comissão reinicia a cada mês e o pagamento é previsto para o dia 25 do mês seguinte.')}</div></div>`}
@@ -12621,34 +13201,29 @@ function openCrediaristaPanelCore(login, filial, nome){
   detailScreen.classList.remove('hidden');
   return renderCrediaristaDetail(ent);
 }
-function thirdChargeEntityAtualV10102(){
-  const ent=thirdChargeEntity();
-  if(usuarioAtual?.is_terceiro && String(usuarioAtual?.login||'').toLowerCase()!==COBRANCA10_LOGIN){
-    return {
-      ...ent,
-      login:String(usuarioAtual.login||'').toLowerCase(),
-      nome:String(usuarioAtual.nome||usuarioAtual.login||'Cobrança Interna'),
-      filial:String(usuarioAtual.filial||'FTER').toUpperCase(),
-      custom_user:!!usuarioAtual.custom_user,
-      is_terceiro:true,
-      only_cobranca:true
-    };
-  }
+function thirdChargeEntityAtualV10102(login='',filial='',nome=''){
+  const loginKey=String(login||(usuarioAtual?.is_terceiro?usuarioAtual?.login:'')||COBRANCA10_LOGIN||'cobranca10').toLowerCase();
+  const ent=thirdChargeEntity(loginKey);
+  if(filial)ent.filial=String(filial).toUpperCase();
+  if(nome)ent.nome=String(nome);
   return ent;
 }
-function openThirdChargePanelCore(){const ent=thirdChargeEntityAtualV10102(); currentDetailRef={type:'terceiro',filial:ent.filial||'FTER',nome:ent.nome,login:ent.login}; mascotCongrats(ent); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); renderTerceiroDetail(ent)}
+function openThirdChargePanelCore(login='',filial='',nome=''){const ent=thirdChargeEntityAtualV10102(login,filial,nome); currentDetailRef={type:'terceiro',filial:ent.filial||'FTER',nome:ent.nome,login:ent.login}; mascotCongrats(ent); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); renderTerceiroDetail(ent)}
 
 
 async function openCrediaristaPanel(login,filial,nome){
   const ref={type:'crediarista',login:String(login||'').toLowerCase(),filial:String(filial||'').toUpperCase(),nome:nome||''};
   const st=captureDetailUiState(); if(DASHBOARD_LAZY_MODE&&!_detailAlreadyLoaded(ref))showDetailLoading(ref); await ensureDetailData(ref); const out=openCrediaristaPanelCore(login,filial,nome); restoreDetailUiState(st); return out;
 }
-async function openThirdChargePanel(){
-  const ref={type:'terceiro',filial:'FTER',nome:'Cobrança10'}; const st=captureDetailUiState(); if(DASHBOARD_LAZY_MODE&&!_detailAlreadyLoaded(ref))showDetailLoading(ref); await ensureDetailData(ref); const out=openThirdChargePanelCore(); restoreDetailUiState(st); return out;
+async function openThirdChargePanel(login='',filial='',nome=''){
+  const loginKey=String(login||(usuarioAtual?.is_terceiro?usuarioAtual?.login:'')||COBRANCA10_LOGIN||'cobranca10').toLowerCase();
+  const ent=thirdChargeEntity(loginKey);
+  const ref={type:'terceiro',login:loginKey,filial:String(filial||ent.filial||'FTER').toUpperCase(),nome:nome||ent.nome||loginKey};
+  const st=captureDetailUiState(); if(DASHBOARD_LAZY_MODE&&!_detailAlreadyLoaded(ref))showDetailLoading(ref); await ensureDetailData(ref); const out=openThirdChargePanelCore(ref.login,ref.filial,ref.nome); restoreDetailUiState(st); return out;
 }
 async function openEntity(ref){
   if(ref && (ref.type==='crediarista'||ref.is_crediarista)) return openCrediaristaPanel(ref.login||'',ref.filial||'',ref.nome||'');
-  if(ref && (ref.type==='terceiro'||ref.is_terceiro)) return openThirdChargePanel();
+  if(ref && (ref.type==='terceiro'||ref.is_terceiro)) return openThirdChargePanel(ref.login||'',ref.filial||'',ref.nome||'');
   const st=captureDetailUiState(); if(DASHBOARD_LAZY_MODE&&!_detailAlreadyLoaded(ref))showDetailLoading(ref); await ensureDetailData(ref); const out=openEntityCore(ref); restoreDetailUiState(st); return out;
 }
 
@@ -12665,7 +13240,7 @@ document.addEventListener('click', function(ev){
   if(third){
     ev.preventDefault();
     ev.stopPropagation();
-    openThirdChargePanel();
+    openThirdChargePanel(third.dataset.login||'',third.dataset.filial||'',third.dataset.nome||'');
     return false;
   }
 }, true);
@@ -13428,7 +14003,10 @@ function mergeRecebimentosConciliados(base, ent){
 
 function getRecebimentos(ent){
   let base;
-  if(ent.type==='terceiro' || ent.is_terceiro) base=RECEBIMENTOS_TERCEIRO||{grave:[],alerta:[],atencao:[]};
+  if(ent.type==='terceiro' || ent.is_terceiro){
+    const login=String(ent.login||usuarioAtual?.login||COBRANCA10_LOGIN||'cobranca10').toLowerCase();
+    base=RECEBIMENTOS_TERCEIRO_POR_LOGIN?.[login] || (login===String(COBRANCA10_LOGIN||'cobranca10').toLowerCase()?RECEBIMENTOS_TERCEIRO:null) || {grave:[],alerta:[],atencao:[]};
+  }
   else if(ent.type==='crediarista' || ent.is_crediarista){
     // Crediarista: somente recebimentos conciliados com cobrança feita pelo próprio usuário antes do pagamento.
     base={grave:[],alerta:[],atencao:[]};
@@ -13446,7 +14024,10 @@ function cobrancaRowKey(r){return [String(r.cliente||r.nome||'').trim().toUpperC
 function dedupeCobrancaBuckets(src){const out={grave:[],alerta:[],atencao:[]}; const seen=new Set(); ['grave','alerta','atencao'].forEach(fx=>{(src?.[fx]||[]).forEach(r=>{const k=cobrancaRowKey(r); if(!seen.has(k)){seen.add(k); out[fx].push(r);}})}); return out}
 function vendorAssignedKeysByFilial(filial){const keys=new Set(); const arr=(TODOS?.[filial]||[]); arr.forEach(v=>{const buckets=CLIENTES_VEND?.[v.nome]||{grave:[],alerta:[],atencao:[]}; ['grave','alerta','atencao'].forEach(fx=>(buckets[fx]||[]).forEach(r=>keys.add(cobrancaRowKey(r))))}); return keys}
 function getClientesEnt(ent){
-  if(ent.type==='terceiro' || ent.is_terceiro) return dedupeCobrancaBuckets(CLIENTES_TERCEIRO||{grave:[],alerta:[],atencao:[]});
+  if(ent.type==='terceiro' || ent.is_terceiro){
+    const login=String(ent.login||usuarioAtual?.login||COBRANCA10_LOGIN||'cobranca10').toLowerCase();
+    return dedupeCobrancaBuckets(CLIENTES_TERCEIRO_POR_LOGIN?.[login] || (login===String(COBRANCA10_LOGIN||'cobranca10').toLowerCase()?CLIENTES_TERCEIRO:null) || {grave:[],alerta:[],atencao:[]});
+  }
   if(ent.type==='crediarista' || ent.is_crediarista){ const filialKey=String(ent.filial||'').toUpperCase(); const loginKey=String(ent.login||crediaristaLoginByFilial(filialKey)||'').toLowerCase(); return dedupeCobrancaBuckets(CLIENTES_CREDIARISTA?.[loginKey]||CLIENTES_FIL?.[filialKey]||{grave:[],alerta:[],atencao:[]}); }
   if(ent.type==='vendedor') return dedupeCobrancaBuckets(CLIENTES_VEND[ent.nome]||{grave:[],alerta:[],atencao:[]});
   const src=CLIENTES_FIL[ent.filial]||{grave:[],alerta:[],atencao:[]};
@@ -13458,8 +14039,15 @@ function getClientesEnt(ent){
 function isTodayStr(s){return dateOnlyISO(s)===dateOnlyISO(new Date())}
 function isLogCobrancaReal(x){const t=String(x?.titulo||'').toUpperCase(); const p=String(x?.parcela||'').toUpperCase(); const k=String(x?.cobranca_key||'').toUpperCase(); return !(/^REATIVACAO/.test(t) || /^ANIVERSARIO/.test(t) || /^REATIVACAO/.test(p) || /^ANIVERSARIO/.test(p) || /^REATIVACAO/.test(k) || /^ANIVERSARIO/.test(k));}
 function getCobradosHoje(ent){
-  if(ent.type==='terceiro' || ent.is_terceiro)
-    return (COB_LOGS||[]).filter(x=>isLogCobrancaReal(x) && isTodayStr(x.server_time||x.data||'') && (String(x.usuario||'').toLowerCase()===COBRANCA10_LOGIN || String(x.usuario||'').toLowerCase()===COBRANCA10_NOME.toLowerCase()));
+  if(ent.type==='terceiro' || ent.is_terceiro){
+    const login=String(ent.login||usuarioAtual?.login||COBRANCA10_LOGIN||'cobranca10').toLowerCase();
+    const nome=String(ent.nome||'').toLowerCase();
+    return (COB_LOGS||[]).filter(x=>isLogCobrancaReal(x) && isTodayStr(x.server_time||x.data||'') && (
+      String(x.usuario||'').toLowerCase()===login ||
+      (!!nome && String(x.usuario||'').toLowerCase()===nome) ||
+      String(x.destino_login||'').toLowerCase()===login
+    ));
+  }
   if(ent.type==='crediarista' || ent.is_crediarista){
     const credLogin=String(ent.login||'').toLowerCase();
     const credNome=String(ent.nome||'').toLowerCase();
@@ -14846,7 +15434,7 @@ function snapshotComissaoEntidade(ent){
   };
 }
 function buildSnapshotComissionamentoMensal(month=mesAtualComissao()){
-  const ents=[...flattenVendedores(),...flattenFiliais(),...crediaristaEntities(),thirdChargeEntity()].filter(Boolean);
+  const ents=[...flattenVendedores(),...flattenFiliais(),...crediaristaEntities(),...thirdChargeEntities()].filter(Boolean);
   const entidades=ents.map(snapshotComissaoEntidade);
   const total=entidades.reduce((a,b)=>a+Number(b.total_previsto||0),0);
   return {month, gerado_em:new Date().toISOString(), versao_snapshot:'snapshot_visual_compacto_v2', atualizado_em_br:new Date().toLocaleString('pt-BR'), total_previsto:total, entidades};
@@ -14876,7 +15464,7 @@ function findEntityBySnapshotRow(row){
   try{buckets=[...buckets,...flattenVendedores()]}catch(e){}
   try{buckets=[...buckets,...flattenFiliais()]}catch(e){}
   try{buckets=[...buckets,...crediaristaEntities()]}catch(e){}
-  try{buckets=[...buckets,thirdChargeEntity()]}catch(e){}
+  try{buckets=[...buckets,...thirdChargeEntities()]}catch(e){}
   const getKey=(e)=>{try{return (typeof _comEntKey==='function')?_comEntKey(e):`${e.type||'ent'}::${e.filial||''}::${e.login||e.nome||''}`}catch(_){return ''}};
   return buckets.find(e=>String(getKey(e))===key)
       || buckets.find(e=>normName(e.nome)===normName(nome) && String(e.filial||'')===filial)
@@ -15372,7 +15960,7 @@ function renderSenhasTab(){
   </div>
   <div class="glass panel admin-accounts-line" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">👑 Contas administrativas</h2><div class="hint">Contas administrativas em linha para caber melhor na tela.</div></div></div><div class="senhas-table-wrap"><table class="senhas-table senhas-main-table"><thead><tr><th>Usuário</th><th>WhatsApp</th><th>Login</th><th>Perfil</th><th>Status</th><th>Senha atual</th><th>Nova senha</th><th>Ações</th></tr></thead><tbody>${renderSenhaRow(AUTH_STATE?.director||{login:'diretorcomercial',nome:'Diretor Comercial',must_change_password:true}, true)}</tbody></table></div></div>
   ${renderGerentesFiliaisPanel()}
-  <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">➕ Criar usuário de acesso</h2><div class="hint">Crediarista: vincule depois em Metas > Crediaristas configuráveis. Cobrança Interna Global: usa a carteira interna global e registra cobrança/auditoria pelo próprio login. Usuários avulsos criados aqui podem ser excluídos pelo botão 🗑️ na coluna Ações. A conta da parceira COB Externa é separada e protegida.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Login</label><input id="newUserLogin" placeholder="ex: crediaristaf08 ou cobrancamatriz"></div><div class="input-card"><label>Nome</label><input id="newUserNome" placeholder="ex: COBRANÇA MATRIZ"></div><div class="input-card"><label>Filial</label><input id="newUserFilial" placeholder="ex: F8 ou FTER"></div><div class="input-card"><label>Senha inicial</label><input id="newUserSenha" placeholder="mín. 4 caracteres"></div></div><div class="form-grid bonus" style="margin-top:10px"><div class="input-card"><label>Tipo</label><select id="newUserTipo"><option value="crediarista">Crediarista</option><option value="cobranca">Cobrança Interna Global</option></select></div></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="adminCriarUsuarioCobranca()">💾 Criar usuário</button></div><div id="newUserMsg" class="note" style="margin-top:10px"></div></div>
+  <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">➕ Criar usuário de acesso</h2><div class="hint">Crediarista: vincule depois em Metas > Crediaristas configuráveis. Cobrança Interna Global: participa do pool configurado em Metas; esse pool total é rateado por CPF entre os usuários internos ativos, sem duplicação, e cada cobrança/auditoria fica no próprio login. Usuários avulsos criados aqui podem ser excluídos pelo botão 🗑️ na coluna Ações. A conta da parceira COB Externa é separada e protegida.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Login</label><input id="newUserLogin" placeholder="ex: crediaristaf08 ou cobrancamatriz"></div><div class="input-card"><label>Nome</label><input id="newUserNome" placeholder="ex: COBRANÇA MATRIZ"></div><div class="input-card"><label>Filial</label><input id="newUserFilial" placeholder="ex: F8 ou FTER"></div><div class="input-card"><label>Senha inicial</label><input id="newUserSenha" placeholder="mín. 4 caracteres"></div></div><div class="form-grid bonus" style="margin-top:10px"><div class="input-card"><label>Tipo</label><select id="newUserTipo"><option value="crediarista">Crediarista</option><option value="cobranca">Cobrança Interna Global</option></select></div></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="adminCriarUsuarioCobranca()">💾 Criar usuário</button></div><div id="newUserMsg" class="note" style="margin-top:10px"></div></div>
   ${renderColaboradorStatusPanel(users)}
   <div class="section-head"><div><h2>👥 Usuários do dashboard</h2><div class="hint">Visualização em linha para conferir login, senha ativa, status e alterar rapidamente.</div></div></div>
   <div class="senhas-table-wrap"><table class="senhas-table senhas-main-table"><thead><tr><th>Usuário</th><th>WhatsApp</th><th>Login</th><th>Perfil</th><th>Status</th><th>Senha atual</th><th>Nova senha</th><th>Ações</th></tr></thead><tbody>${users.map(u=>renderSenhaRow(u,false)).join('')}</tbody></table></div>`;
@@ -15921,7 +16509,7 @@ function openGoalNotifications(){
 
 // Histórico comissionamento: sempre permite gerar fechamento atual e abrir tela visual por usuário
 function _allComissaoEntitiesNow(){
-  let ents=[]; try{ents=ents.concat(flattenVendedores())}catch(e){} try{ents=ents.concat(flattenFiliais())}catch(e){} try{ents=ents.concat(crediaristaEntities())}catch(e){} try{ents.push(thirdChargeEntity())}catch(e){}
+  let ents=[]; try{ents=ents.concat(flattenVendedores())}catch(e){} try{ents=ents.concat(flattenFiliais())}catch(e){} try{ents=ents.concat(crediaristaEntities())}catch(e){} try{ents=ents.concat(thirdChargeEntities()||[])}catch(e){}
   return ents.filter(Boolean);
 }
 function _comKeyNow(e){try{return (typeof _comEntKey==='function')?_comEntKey(e):`${e.type||'ent'}::${e.filial||''}::${e.login||e.nome||''}`}catch(_){return `${e.type||'ent'}::${e.filial||''}::${e.login||e.nome||''}`}}
@@ -18394,7 +18982,7 @@ Preparamos condições especiais para você comemorar com a gente.
     try{ents=ents.concat(flattenVendedores())}catch(e){}
     try{ents=ents.concat(flattenFiliais())}catch(e){}
     try{ents=ents.concat(crediaristaEntities())}catch(e){}
-    try{ents.push(thirdChargeEntity())}catch(e){}
+    try{ents=ents.concat(thirdChargeEntities()||[])}catch(e){}
     const seen=new Set();
     return ents.filter(Boolean).filter(e=>{
       const k=(typeof _v48EntKey==='function'?_v48EntKey(e):`${e.type||''}|${e.filial||''}|${e.login||e.nome||''}`);
@@ -18588,7 +19176,7 @@ Preparamos condições especiais para você comemorar com a gente.
 
   function entToFilialIfGer1010(ent){try{ if(ent && isGer1010(ent) && ent.filial) return gerenteFilialEntity1010(ent.filial); }catch(e){} return ent;}
   function allComissaoEntities1010(){
-    let ents=[]; try{ents=ents.concat((flattenVendedores()||[]).filter(v=>!isGer1010(v)))}catch(e){} try{ents=ents.concat(flattenFiliais()||[])}catch(e){} try{ents=ents.concat(crediaristaEntities()||[])}catch(e){} try{const t=thirdChargeEntity(); if(t) ents.push(t)}catch(e){}
+    let ents=[]; try{ents=ents.concat((flattenVendedores()||[]).filter(v=>!isGer1010(v)))}catch(e){} try{ents=ents.concat(flattenFiliais()||[])}catch(e){} try{ents=ents.concat(crediaristaEntities()||[])}catch(e){} try{ents=ents.concat(thirdChargeEntities()||[])}catch(e){}
     const seen=new Set(); return ents.map(entToFilialIfGer1010).filter(Boolean).filter(e=>{const k=(typeof _v48EntKey==='function'?_v48EntKey(e):`${e.type||''}|${e.filial||''}|${e.login||e.nome||''}`); if(seen.has(k)) return false; seen.add(k); return true;});
   }
   window.mdlV109AllComissaoEntities=allComissaoEntities1010; window._v48AllComissaoEntities=allComissaoEntities1010; window._allComissaoEntitiesNow=allComissaoEntities1010;
@@ -18726,7 +19314,7 @@ Preparamos condições especiais para você comemorar com a gente.
     }catch(e){console.warn(TAG,'capture cards',e)}
     try{return cleanCardsOnly1011((typeof snapshotEntityHTML==='function'?snapshotEntityHTML(ent):''));}catch(e){return ''}
   }
-  function allEnts1011(){try{if(typeof mdlV109AllComissaoEntities==='function') return mdlV109AllComissaoEntities()}catch(e){} let ents=[]; try{ents=ents.concat(flattenVendedores()||[])}catch(e){} try{ents=ents.concat(flattenFiliais()||[])}catch(e){} try{ents=ents.concat(crediaristaEntities()||[])}catch(e){} try{const t=thirdChargeEntity(); if(t) ents.push(t)}catch(e){} const seen=new Set(); return ents.filter(Boolean).filter(e=>{const k=`${e.type||''}|${e.filial||''}|${e.login||e.nome||''}`; if(seen.has(k)) return false; seen.add(k); return true;});}
+  function allEnts1011(){try{if(typeof mdlV109AllComissaoEntities==='function') return mdlV109AllComissaoEntities()}catch(e){} let ents=[]; try{ents=ents.concat(flattenVendedores()||[])}catch(e){} try{ents=ents.concat(flattenFiliais()||[])}catch(e){} try{ents=ents.concat(crediaristaEntities()||[])}catch(e){} try{ents=ents.concat(thirdChargeEntities()||[])}catch(e){} const seen=new Set(); return ents.filter(Boolean).filter(e=>{const k=`${e.type||''}|${e.filial||''}|${e.login||e.nome||''}`; if(seen.has(k)) return false; seen.add(k); return true;});}
   function selectedEnt1011(){const sel=document.getElementById('histComCurrentEntity'); const val=sel?.value||''; const ents=allEnts1011(); function k(e){try{return (typeof _v48EntKey==='function')?_v48EntKey(e):`${e.type||''}|${e.filial||''}|${e.login||e.nome||''}`}catch(err){return ''}} return ents.find(e=>k(e)===val)||ents[0]||null;}
   function print1011(title,body){const w=window.open('about:blank','_blank'); if(!w){toast('Pop-up bloqueado pelo navegador.','warn');return;} w.document.open(); w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>body{margin:0;background:#080a0f;color:#f4f6fb;font-family:Inter,Arial,sans-serif;padding:12px}.print-toolbar{position:sticky;top:0;z-index:99;background:#111827;border:1px solid #334155;border-radius:14px;padding:10px;margin:0 0 12px;display:flex;gap:8px;align-items:center;justify-content:space-between}.print-toolbar button{padding:10px 14px;border:0;border-radius:10px;font-weight:900;cursor:pointer}.mdl-freeze-page{page-break-after:always;break-after:page;margin:0 auto 18px;max-width:1280px}.mdl-freeze-page:last-child{page-break-after:auto;break-after:auto}.cards-only-v1011 .accordion,.cards-only-v1011 .logs-list,.cards-only-v1011 .faixa-block,.cards-only-v1011 .reat-tabs{display:none!important}.cards-only-v1011 .detail-top{display:grid!important;grid-template-columns:1fr 1fr!important;gap:18px!important}.cards-only-v1011 .back-row button{display:none!important}.freeze-header-card{margin-bottom:12px}@media print{body{background:#fff!important;color:#111!important;padding:0}.print-toolbar{display:none!important}.mdl-freeze-page{margin:0!important;page-break-after:always;break-after:page}.mdl-freeze-page:last-child{page-break-after:auto;break-after:auto}.glass,.panel,.metric,.accordion,.row-item{box-shadow:none!important}}</style></head><body><div class="print-toolbar"><strong>${esc(title)}</strong><div><button onclick="window.print()">🖨️ Salvar PDF / Imprimir</button><button onclick="window.close()">Fechar</button></div></div>${body}</body></html>`); w.document.close();}
   function restoreHist1011(){try{document.getElementById('detailScreen')?.classList.add('hidden'); document.getElementById('mainScreen')?.classList.remove('hidden'); if(typeof setMainTab==='function') setMainTab('historico'); if(window._histMode) window._histMode='comissao'; if(typeof renderHistoricoComissaoResults==='function') renderHistoricoComissaoResults();}catch(e){}}
@@ -18782,7 +19370,7 @@ Preparamos condições especiais para você comemorar com a gente.
 
   function allEnts(){
     try{if(typeof window.mdlV109AllComissaoEntities==='function') return window.mdlV109AllComissaoEntities()}catch(e){}
-    let ents=[]; try{ents=ents.concat(flattenVendedores()||[])}catch(e){} try{ents=ents.concat(flattenFiliais()||[])}catch(e){} try{ents=ents.concat(crediaristaEntities()||[])}catch(e){} try{const t=thirdChargeEntity(); if(t) ents.push(t)}catch(e){}
+    let ents=[]; try{ents=ents.concat(flattenVendedores()||[])}catch(e){} try{ents=ents.concat(flattenFiliais()||[])}catch(e){} try{ents=ents.concat(crediaristaEntities()||[])}catch(e){} try{ents=ents.concat(thirdChargeEntities()||[])}catch(e){}
     const seen=new Set(); return ents.filter(Boolean).filter(e=>{const k=`${e.type||''}|${e.filial||''}|${e.login||e.nome||''}`; if(seen.has(k)) return false; seen.add(k); return true;});
   }
   function entKey(e){try{return (typeof _v48EntKey==='function')?_v48EntKey(e):`${e.type||''}|${e.filial||''}|${e.login||e.nome||''}`}catch(err){return `${e.type||''}|${e.filial||''}|${e.login||e.nome||''}`}}
@@ -18891,7 +19479,7 @@ Preparamos condições especiais para você comemorar com a gente.
   setTimeout(patchEnviadosCards,700); setInterval(patchEnviadosCards,300000);
 
   // Impressão: uma entidade por página. Força paisagem e escala para caber em 1 folha.
-  function allEnts(){try{if(typeof window.mdlV109AllComissaoEntities==='function') return window.mdlV109AllComissaoEntities()}catch(e){} let ents=[]; try{ents=ents.concat(flattenVendedores()||[])}catch(e){} try{ents=ents.concat(flattenFiliais()||[])}catch(e){} try{ents=ents.concat(crediaristaEntities()||[])}catch(e){} try{const t=thirdChargeEntity(); if(t) ents.push(t)}catch(e){} const seen=new Set(); return ents.filter(Boolean).filter(e=>{const k=`${e.type||''}|${e.filial||''}|${e.login||e.nome||''}`; if(seen.has(k)) return false; seen.add(k); return true;});}
+  function allEnts(){try{if(typeof window.mdlV109AllComissaoEntities==='function') return window.mdlV109AllComissaoEntities()}catch(e){} let ents=[]; try{ents=ents.concat(flattenVendedores()||[])}catch(e){} try{ents=ents.concat(flattenFiliais()||[])}catch(e){} try{ents=ents.concat(crediaristaEntities()||[])}catch(e){} try{ents=ents.concat(thirdChargeEntities()||[])}catch(e){} const seen=new Set(); return ents.filter(Boolean).filter(e=>{const k=`${e.type||''}|${e.filial||''}|${e.login||e.nome||''}`; if(seen.has(k)) return false; seen.add(k); return true;});}
   function entKey(e){try{return (typeof _v48EntKey==='function')?_v48EntKey(e):`${e.type||''}|${e.filial||''}|${e.login||e.nome||''}`}catch(err){return `${e.type||''}|${e.filial||''}|${e.login||e.nome||''}`}}
   function selectedEnt(){const val=document.getElementById('histComCurrentEntity')?.value||''; const ents=allEnts(); return ents.find(e=>entKey(e)===val)||ents[0]||null}
   function appStyles(){let css=''; try{css+=Array.from(document.querySelectorAll('style')).map(s=>s.innerHTML||'').join('\n')}catch(e){} css+=`\nbody{margin:0;background:#080a0f;color:#f4f6fb;font-family:Inter,Segoe UI,Arial,sans-serif;padding:14px}.print-toolbar{position:sticky;top:0;z-index:99;background:#111827;border:1px solid #334155;border-radius:14px;padding:10px;margin:0 0 12px;display:flex;gap:8px;align-items:center;justify-content:space-between}.print-toolbar button{padding:10px 14px;border:0;border-radius:10px;font-weight:900;cursor:pointer}.mdl-freeze-page{page-break-after:always;break-after:page;margin:0 auto 18px;max-width:1320px}.mdl-freeze-page:last-child{page-break-after:auto;break-after:auto}.cards-only-v1013 .accordion,.cards-only-v1013 .logs-list,.cards-only-v1013 .faixa-block,.cards-only-v1013 .reat-tabs,.cards-only-v1013 .export-actions,.cards-only-v1013 [id*="reat"],.cards-only-v1013 [id*="aniv"]{display:none!important}.cards-only-v1013 .detail-top{display:grid!important;grid-template-columns:1fr 1fr!important;gap:16px!important}.cards-only-v1013 .back-row button,.cards-only-v1013 .toast,.cards-only-v1013 .modal,.cards-only-v1013 .phone-modal{display:none!important}.cards-only-v1013 img{max-width:100%!important;height:auto}.freeze-header-card{margin-bottom:10px}@page{size:A4 landscape;margin:5mm}@media print{html,body{width:287mm!important;height:200mm!important;overflow:hidden!important;background:#fff!important;color:#111!important;padding:0!important}.print-toolbar{display:none!important}.mdl-freeze-page{width:287mm!important;height:200mm!important;max-width:none!important;margin:0!important;padding:0!important;overflow:hidden!important;page-break-after:always;break-after:page;position:relative}.mdl-freeze-page:last-child{page-break-after:auto;break-after:auto}.mdl-freeze-page>.snap-sheet{transform:scale(.62)!important;transform-origin:top left!important;width:161.3%!important;max-width:none!important}.cards-only-v1013 .detail-top{gap:10px!important}.cards-only-v1013 .glass,.cards-only-v1013 .panel,.cards-only-v1013 .metric{box-shadow:none!important}.cards-only-v1013 *{animation:none!important;transition:none!important}.cards-only-v1013 .metric,.cards-only-v1013 .glass.panel{break-inside:avoid!important;page-break-inside:avoid!important}}`; return css;}
@@ -19047,7 +19635,7 @@ Preparamos condições especiais para você comemorar com a gente.
   },true);
 
   // Impressão: sobrescreve as funções V10.14 com escala maior e uma folha A4 paisagem.
-  function allEnts(){try{if(typeof window.mdlV109AllComissaoEntities==='function') return window.mdlV109AllComissaoEntities()}catch(e){} let ents=[]; try{ents=ents.concat(flattenVendedores()||[])}catch(e){} try{ents=ents.concat(flattenFiliais()||[])}catch(e){} try{ents=ents.concat(crediaristaEntities()||[])}catch(e){} try{const t=thirdChargeEntity&&thirdChargeEntity(); if(t) ents.push(t)}catch(e){} const seen=new Set(); return ents.filter(Boolean).filter(e=>{const k=(e.type||'')+'|'+(e.filial||'')+'|'+(e.login||e.nome||''); if(seen.has(k)) return false; seen.add(k); return true;})}
+  function allEnts(){try{if(typeof window.mdlV109AllComissaoEntities==='function') return window.mdlV109AllComissaoEntities()}catch(e){} let ents=[]; try{ents=ents.concat(flattenVendedores()||[])}catch(e){} try{ents=ents.concat(flattenFiliais()||[])}catch(e){} try{ents=ents.concat(crediaristaEntities()||[])}catch(e){} try{ents=ents.concat((typeof thirdChargeEntities==='function'?thirdChargeEntities():[thirdChargeEntity()])||[])}catch(e){} const seen=new Set(); return ents.filter(Boolean).filter(e=>{const k=(e.type||'')+'|'+(e.filial||'')+'|'+(e.login||e.nome||''); if(seen.has(k)) return false; seen.add(k); return true;})}
   function entKey(e){try{return (typeof _v48EntKey==='function')?_v48EntKey(e):`${e.type||''}|${e.filial||''}|${e.login||e.nome||''}`}catch(err){return `${e.type||''}|${e.filial||''}|${e.login||e.nome||''}`}}
   function selectedEnt(){const val=document.getElementById('histComCurrentEntity')?.value||''; const ents=allEnts(); return ents.find(e=>entKey(e)===val)||ents[0]||null}
   function clean(raw){const tmp=document.createElement('div'); tmp.innerHTML=String(raw||''); tmp.querySelectorAll('.back-row button,.toast,.modal,.phone-modal,script,style,.accordion,.logs-list,.faixa-block,.reat-tabs,.log-pager,.export-actions').forEach(e=>e.remove()); tmp.querySelectorAll('.glass.panel,.accordion').forEach(sec=>{const t=(sec.textContent||'').toLowerCase(); if(t.includes('relatório de cobranças')||t.includes('relatorio de cobranças')||t.includes('recebimentos por faixa')||t.includes('clientes sem movimento')||t.includes('aniversariantes')) sec.remove();}); const top=tmp.querySelector('.detail-top')||tmp.querySelector('.detail-grid')||tmp.querySelector('.detail-layout')||tmp; return `<div class="snap-sheet cards-only-v1015">${top.outerHTML||tmp.innerHTML}</div>`}
@@ -20344,7 +20932,14 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
           }
         });
       }catch(e){}
-      if(ent?.type==='terceiro'||ent?.is_terceiro){add(typeof COBRANCA10_LOGIN!=='undefined'?COBRANCA10_LOGIN:'cobranca10');add(typeof COBRANCA10_NOME!=='undefined'?COBRANCA10_NOME:'Cobrança10')}
+      if(ent?.type==='terceiro'||ent?.is_terceiro){
+        const el=String(ent?.login||'').toLowerCase();
+        const legacy=String(typeof COBRANCA10_LOGIN!=='undefined'?COBRANCA10_LOGIN:'cobranca10').toLowerCase();
+        if(!el || el===legacy){
+          add(typeof COBRANCA10_LOGIN!=='undefined'?COBRANCA10_LOGIN:'cobranca10');
+          add(typeof COBRANCA10_NOME!=='undefined'?COBRANCA10_NOME:'Cobrança10');
+        }
+      }
       return aliases;
     }
     function auditMatchesEnt93(a,ent){
@@ -20514,16 +21109,18 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
     }
     const baseThirdOpen93=window.openThirdChargePanel;
     if(typeof baseThirdOpen93==='function'){
-      openThirdChargePanel=window.openThirdChargePanel=async function(){
-        const ref={type:'terceiro',login:String(COBRANCA10_LOGIN||'cobranca10'),filial:'FTER',nome:String(COBRANCA10_NOME||'Cobrança10')};
-        await ensureCommissionData93(ref);return baseThirdOpen93.apply(this,arguments);
+      openThirdChargePanel=window.openThirdChargePanel=async function(login='',filial='',nome=''){
+        const loginKey=String(login||(usuarioAtual?.is_terceiro?usuarioAtual?.login:'')||COBRANCA10_LOGIN||'cobranca10').toLowerCase();
+        const ent=thirdChargeEntity(loginKey);
+        const ref={type:'terceiro',login:loginKey,filial:String(filial||ent.filial||'FTER').toUpperCase(),nome:nome||ent.nome||loginKey};
+        await ensureCommissionData93(ref);return baseThirdOpen93.apply(this,[ref.login,ref.filial,ref.nome]);
       };
     }
     const baseOpen93=window.openEntity;
     if(typeof baseOpen93==='function'){
       openEntity=window.openEntity=async function(ref){
         if(ref?.type==='crediarista'||ref?.is_crediarista)return openCrediaristaPanel(ref.login||'',ref.filial||'',ref.nome||'');
-        if(ref?.type==='terceiro'||ref?.is_terceiro)return openThirdChargePanel();
+        if(ref?.type==='terceiro'||ref?.is_terceiro)return openThirdChargePanel(ref.login||'',ref.filial||'',ref.nome||'');
         await ensureCommissionData93(ref||{});return baseOpen93.apply(this,arguments);
       };
     }
@@ -20918,7 +21515,7 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
       let ents=[];
       try{ents.push(...(flattenVendedores()||[]).filter(e=>!e?.is_gerente))}catch(e){}
       try{ents.push(...(crediaristaEntities()||[]))}catch(e){}
-      try{const t=thirdChargeEntity();if(t)ents.push(t)}catch(e){}
+      try{ents=ents.concat(thirdChargeEntities()||[])}catch(e){}
       const seen=new Set();
       return ents.filter(e=>{
         const k=[String(e?.type||''),String(e?.filial||''),norm97(e?.login||e?.nome||'')].join('|');
@@ -21784,7 +22381,7 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
       let ents=[];
       try{ents.push(...(flattenVendedores()||[]).filter(e=>!e?.is_gerente))}catch(e){}
       try{ents.push(...(crediaristaEntities()||[]))}catch(e){}
-      try{const t=thirdChargeEntity();if(t)ents.push(t)}catch(e){}
+      try{ents=ents.concat(thirdChargeEntities()||[])}catch(e){}
       const seen=new Set();
       return ents.filter(e=>{
         try{
@@ -21796,6 +22393,20 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
         const k=[String(e?.type||''),String(e?.filial||''),n98(e?.login||e?.nome||'')].join('|');
         if(seen.has(k))return false;seen.add(k);return true;
       });
+    }
+
+    function activeCollectionFiliais104(){
+      const seen=new Set(),out=[];
+      try{
+        for(const f0 of (flattenFiliais()||[])){
+          if(!f0)continue;
+          const f=String(f0.filial||'').toUpperCase();
+          if(!f||f==='F7'||seen.has(f))continue;
+          seen.add(f);
+          out.push({...f0,type:'filial',is_gerente:true,login:'',nome:String(f0.nome||filialLabel(f)||('Filial '+f)),filial:f});
+        }
+      }catch(e){}
+      return out;
     }
 
     function allRowsEnt98(ent){
@@ -21901,13 +22512,18 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
       const date=today98();
       if(DAILY_COB_REPORT_98&&!force&&DAILY_COB_REPORT_98.date===date)return DAILY_COB_REPORT_98;
       const ents=activeCollectionEntities98();
-      await ensureOperational98(true,ents);
-      const rows=ents.map(e=>dailyEntity98(e,date)).sort((a,b)=>{
+      const filiais=activeCollectionFiliais104();
+      await ensureOperational98(true,[...ents,...filiais]);
+      const sorter=(a,b)=>{
         const sa=a.status==='NÃO COBROU'?0:a.status==='PARCIAL'?1:2;
         const sb=b.status==='NÃO COBROU'?0:b.status==='PARCIAL'?1:2;
         return sa-sb||String(a.filial).localeCompare(String(b.filial))||String(a.usuario).localeCompare(String(b.usuario),'pt-BR');
-      });
-      DAILY_COB_REPORT_98={date,rows,generated_at:new Date().toLocaleString('pt-BR')};
+      };
+      const rows=ents.map(e=>dailyEntity98(e,date)).sort(sorter);
+      const filial_rows=filiais.map(e=>dailyEntity98(e,date)).sort((a,b)=>String(a.filial).localeCompare(String(b.filial)));
+      // KPIs/resumo continuam usando SOMENTE rows para não somar filial + usuário em duplicidade.
+      DAILY_COB_REPORT_98={date,rows,filial_rows,generated_at:new Date().toLocaleString('pt-BR')};
+      window.DAILY_COB_REPORT_98=DAILY_COB_REPORT_98;
       return DAILY_COB_REPORT_98;
     }
 
@@ -21954,7 +22570,8 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
         ['nao_trabalhados','Títulos não trabalhados'],['valor_nao_trabalhado','R$ não trabalhado'],['taxa_execucao','Taxa execução %'],['taxa_auditoria','Taxa auditoria %'],['taxa_efetividade','Taxa efetividade %'],['status','Status']
       ];
       const numeric=new Set(cols.map(([k])=>k).filter(k=>!['usuario','login','filial','tipo','status'].includes(k)));
-      const trs=[`<tr>${cols.map(([,h])=>`<th>${xesc98(h)}</th>`).join('')}</tr>`,...rep.rows.map(r=>`<tr>${cols.map(([k])=>numeric.has(k)?`<td x:num="${Number(r[k]||0)}">${Number(r[k]||0)}</td>`:`<td>${xesc98(r[k]||'')}</td>`).join('')}</tr>`)].join('');
+      const allRows=[...(rep.filial_rows||[]),...(rep.rows||[])];
+      const trs=[`<tr>${cols.map(([,h])=>`<th>${xesc98(h)}</th>`).join('')}</tr>`,...allRows.map(r=>`<tr>${cols.map(([k])=>numeric.has(k)?`<td x:num="${Number(r[k]||0)}">${Number(r[k]||0)}</td>`:`<td>${xesc98(r[k]||'')}</td>`).join('')}</tr>`)].join('');
       const html=`<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><style>table{border-collapse:collapse;font-family:Arial;font-size:9pt}th{background:#7c2d12;color:#fff}th,td{border:1px solid #d1d5db;padding:5px;white-space:nowrap}</style></head><body><h2>Relatório diário de cobranças ${rep.date}</h2><p>R$ não trabalhado = valor ainda disponível na fila sem cobrança no dia; não significa perda garantida.</p><table>${trs}</table></body></html>`;
       const blob=new Blob(['\ufeff'+html],{type:'application/vnd.ms-excel;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`relatorio_diario_cobrancas_${rep.date}.xls`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
     }
@@ -21970,9 +22587,14 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
       w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Relatório diário cobrança ${rep.date}</title><style>
         body{font-family:Arial;margin:16px;color:#111}h1{font-size:18px}.sum{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}.box{border:1px solid #bbb;padding:9px}.box b{display:block;font-size:17px;margin-top:4px}table{width:100%;border-collapse:collapse;font-size:9px}th,td{border:1px solid #bbb;padding:4px;text-align:left}th{background:#eee}@page{size:A4 landscape;margin:7mm}@media print{body{margin:0}}
       </style></head><body><h1>Relatório diário de cobranças — ${rep.date}</h1><div class="sum"><div class="box">Cobranças feitas<b>${s.cob}</b></div><div class="box">Auditorias aprovadas<b>${s.aud}</b></div><div class="box">Recebido conciliado<b>${R(s.rec)}</b></div><div class="box">R$ não trabalhado<b>${R(s.lost)}</b></div></div>
+      <h2 style="font-size:14px;margin:12px 0 6px">🏬 Filiais consolidadas</h2>
+      <table><thead><tr><th>Filial</th><th>Previstos</th><th>Feitas</th><th>Auditadas</th><th>Pagamentos</th><th>Recebido</th><th>Não trabalhado</th><th>Execução</th><th>Efetividade</th><th>Status</th></tr></thead><tbody>
+      ${(rep.filial_rows||[]).map(r=>`<tr><td>${xesc98(r.usuario||r.filial)}</td><td>${r.previstos}</td><td>${r.cobrancas_feitas}</td><td>${r.auditorias_aprovadas}</td><td>${r.pagamentos_conciliados}</td><td>${R(r.recebido_conciliado)}</td><td>${R(r.valor_nao_trabalhado)}</td><td>${r.taxa_execucao}%</td><td>${r.taxa_efetividade}%</td><td>${xesc98(r.status)}</td></tr>`).join('')}
+      </tbody></table>
+      <h2 style="font-size:14px;margin:14px 0 6px">👥 Usuários / carteiras</h2>
       <table><thead><tr><th>Usuário</th><th>Filial</th><th>Previstos</th><th>Feitas</th><th>Auditadas</th><th>Pagamentos</th><th>Recebido</th><th>Não trabalhado</th><th>Execução</th><th>Efetividade</th><th>Status</th></tr></thead><tbody>
-      ${rep.rows.map(r=>`<tr><td>${xesc98(r.usuario)}</td><td>${xesc98(r.filial)}</td><td>${r.previstos}</td><td>${r.cobrancas_feitas}</td><td>${r.auditorias_aprovadas}</td><td>${r.pagamentos_conciliados}</td><td>${R(r.recebido_conciliado)}</td><td>${R(r.valor_nao_trabalhado)}</td><td>${r.taxa_execucao}%</td><td>${r.taxa_efetividade}%</td><td>${xesc98(r.status)}</td></tr>`).join('')}
-      </tbody></table><p style="font-size:9px">R$ não trabalhado representa o valor dos títulos que permaneceram disponíveis na fila sem contato no dia. É oportunidade não trabalhada, não garantia de recebimento.</p><script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body></html>`);w.document.close();
+      ${(rep.rows||[]).map(r=>`<tr><td>${xesc98(r.usuario)}</td><td>${xesc98(r.filial)}</td><td>${r.previstos}</td><td>${r.cobrancas_feitas}</td><td>${r.auditorias_aprovadas}</td><td>${r.pagamentos_conciliados}</td><td>${R(r.recebido_conciliado)}</td><td>${R(r.valor_nao_trabalhado)}</td><td>${r.taxa_execucao}%</td><td>${r.taxa_efetividade}%</td><td>${xesc98(r.status)}</td></tr>`).join('')}
+      </tbody></table><p style="font-size:9px">Os KPIs do topo usam usuários/carteiras e não somam as filiais novamente. R$ não trabalhado representa o valor dos títulos que permaneceram disponíveis na fila sem contato no dia; não é garantia de recebimento.</p><script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body></html>`);w.document.close();
     };
 
     window.renderCobrancaDiaria98=async function(force=false){
@@ -21982,7 +22604,7 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
         const rep=await buildDailyReport98(force);
         const s=dailySummary98(rep.rows);
         box.innerHTML=`<div class="glass panel" style="margin-bottom:14px;border-color:rgba(249,115,22,.32)">
-          <div class="section-head"><div><h2>📞 Relatório diário de cobranças — ${esc(rep.date)}</h2><div class="hint">Mostra execução, auditoria e resultado por usuário. “R$ não trabalhado” é o valor que permaneceu disponível sem cobrança; não é garantia de que seria recebido.</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn soft" onclick="renderCobrancaDiaria98(true)">🔄 Atualizar</button><button class="btn soft" onclick="exportDailyCob98()">📊 Excel</button><button class="btn primary" onclick="printDailyCob98()">📄 PDF / Imprimir</button></div></div>
+          <div class="section-head"><div><h2>📞 Relatório diário de cobranças — ${esc(rep.date)}</h2><div class="hint">Mostra execução, auditoria e resultado por filial consolidada e por usuário/carteira. Os KPIs do topo não duplicam filial + usuário. “R$ não trabalhado” é o valor que permaneceu disponível sem cobrança; não é garantia de recebimento.</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn soft" onclick="renderCobrancaDiaria98(true)">🔄 Atualizar</button><button class="btn soft" onclick="exportDailyCob98()">📊 Excel</button><button class="btn primary" onclick="printDailyCob98()">📄 PDF / Imprimir</button></div></div>
         </div>
         <div class="kpis">
           ${makeKpi('Usuários com fila',String(s.withQueue),'var(--blue)')}
@@ -21995,7 +22617,14 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
           ${makeKpi('Taxa execução',String(pct98num(s.exec)).replace('.',',')+'%','var(--orange)')}
           ${makeKpi('Efetividade',String(pct98num(s.eff)).replace('.',',')+'%','var(--green)')}
         </div>
-        <div class="glass panel">${dailyTable98(rep.rows)}</div>`;
+        <div class="glass panel" style="margin-bottom:14px;border-color:rgba(96,165,250,.25)">
+          <div class="section-head" style="margin:0 0 10px"><div><h2 style="font-size:18px">🏬 Filiais consolidadas</h2><div class="hint">Visão da loja inteira. Estes valores não são somados novamente nos KPIs acima.</div></div></div>
+          ${dailyTable98(rep.filial_rows||[])}
+        </div>
+        <div class="glass panel">
+          <div class="section-head" style="margin:0 0 10px"><div><h2 style="font-size:18px">👥 Usuários / carteiras</h2><div class="hint">Vendedores, crediaristas e cobrança interna conforme suas carteiras próprias.</div></div></div>
+          ${dailyTable98(rep.rows||[])}
+        </div>`;
       }catch(e){
         console.warn(TAG,'daily',e);
         box.innerHTML='<div class="empty">Não consegui montar o relatório diário. Atualize e tente novamente.</div>';
@@ -22984,6 +23613,192 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
 })();
 </script>
 
+
+<script>
+/* ===== V10.104 — FILIAIS NO DIÁRIO + HISTÓRICO MENSAL DE COBRANÇA ===== */
+(function(){
+  const TAG='V10.104';
+  let HIST_COB_OP_104={version:'V10.104',days:{},months:{}};
+  let HIST_COB_OP_LOADED_104=false;
+
+  function num104(v){const n=Number(v||0);return Number.isFinite(n)?n:0}
+  function esc104(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+  function pct104(v){return num104(v).toFixed(2).replace('.',',')+'%'}
+  function money104(v){try{return R(num104(v))}catch(e){return 'R$ '+num104(v).toFixed(2).replace('.',',')}}
+
+  async function loadHistCob104(force=false){
+    if(HIST_COB_OP_LOADED_104&&!force)return HIST_COB_OP_104;
+    try{
+      const r=await fetch('historico_cobranca_operacional.json?_='+Date.now(),{cache:'no-store'});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const j=await r.json();
+      if(j&&typeof j==='object'){
+        HIST_COB_OP_104=j;
+        HIST_COB_OP_LOADED_104=true;
+      }
+    }catch(e){
+      console.warn(TAG,'histórico cobrança',e);
+    }
+    return HIST_COB_OP_104;
+  }
+  window.carregarHistoricoCobrancaOperacional104=loadHistCob104;
+
+  function months104(){
+    return Object.keys(HIST_COB_OP_104?.months||{}).sort().reverse();
+  }
+
+  function rowTable104(rows,title){
+    if(!Array.isArray(rows)||!rows.length)return `<div class="glass panel"><h3>${esc104(title)}</h3><div class="empty">Nenhum registro neste mês.</div></div>`;
+    return `<div class="glass panel" style="margin-top:14px">
+      <div class="section-head" style="margin:0 0 10px"><div><h2 style="font-size:18px">${esc104(title)}</h2></div></div>
+      <div class="senhas-table-wrap" style="overflow:auto"><table class="senhas-table" style="min-width:1500px">
+        <thead><tr>
+          <th>Entidade</th><th>Filial</th><th>Dias c/ fila</th><th>Previstos</th><th>Cobranças</th><th>Evidências</th><th>Auditorias aprov.</th><th>Pagamentos</th><th>Recebido</th><th>Execução</th><th>Taxa auditoria</th><th>Efetividade</th>
+        </tr></thead>
+        <tbody>${rows.map(r=>`<tr>
+          <td><strong>${esc104(r.nome||r.login||'')}</strong><div class="small muted">${esc104(r.tipo||'')} · ${esc104(r.login||'')}</div></td>
+          <td>${esc104(r.filial||'')}</td>
+          <td>${Math.round(num104(r.dias_com_fila))}</td>
+          <td>${Math.round(num104(r.previstos))}<div class="small muted">${money104(r.valor_previsto)}</div></td>
+          <td><strong>${Math.round(num104(r.cobrancas_feitas))}</strong><div class="small muted">${money104(r.valor_cobrado)}</div></td>
+          <td>${Math.round(num104(r.evidencias_enviadas))}</td>
+          <td>${Math.round(num104(r.auditorias_aprovadas))}</td>
+          <td>${Math.round(num104(r.pagamentos_conciliados))}</td>
+          <td style="color:var(--green);font-weight:900">${money104(r.recebido_conciliado)}</td>
+          <td><strong>${pct104(r.taxa_execucao)}</strong></td>
+          <td>${pct104(r.taxa_auditoria)}</td>
+          <td><strong>${pct104(r.taxa_efetividade)}</strong></td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+    </div>`;
+  }
+
+  function monthlyCols104(){
+    return [
+      ['tipo','Tipo'],['nome','Entidade'],['login','Login'],['filial','Filial'],
+      ['dias_registrados','Dias registrados'],['dias_com_fila','Dias com fila'],['dias_com_cobranca','Dias com cobrança'],
+      ['previstos','Títulos previstos acumulados'],['valor_previsto','Valor previsto acumulado'],
+      ['cobrancas_feitas','Cobranças feitas'],['valor_cobrado','Valor cobrado'],
+      ['evidencias_enviadas','Evidências enviadas'],['auditorias_aprovadas','Auditorias aprovadas'],
+      ['pagamentos_conciliados','Pagamentos conciliados'],['recebido_conciliado','Recebido conciliado'],
+      ['nao_trabalhados','Não trabalhados acumulados'],['valor_nao_trabalhado','R$ não trabalhado acumulado'],
+      ['taxa_execucao','Execução %'],['taxa_auditoria','Taxa auditoria %'],['taxa_efetividade','Efetividade %']
+    ];
+  }
+
+  window.exportHistCobMensal104=function(){
+    const month=document.getElementById('histCobMonth104')?.value||months104()[0]||'';
+    const d=HIST_COB_OP_104?.months?.[month];
+    if(!d){try{toast('Nenhum histórico mensal de cobrança neste mês.','warn')}catch(e){}return}
+    const rows=[
+      ...(d.filiais||[]).map(x=>({...x,tipo:'filial'})),
+      ...(d.entities||[])
+    ];
+    const cols=monthlyCols104();
+    const strings=new Set(['tipo','nome','login','filial']);
+    const trs=[
+      `<tr>${cols.map(([,h])=>`<th>${esc104(h)}</th>`).join('')}</tr>`,
+      ...rows.map(r=>`<tr>${cols.map(([k])=>strings.has(k)?`<td>${esc104(r[k]||'')}</td>`:`<td x:num="${num104(r[k])}">${num104(r[k])}</td>`).join('')}</tr>`)
+    ].join('');
+    const html=`<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><style>table{border-collapse:collapse;font-family:Arial;font-size:9pt}th{background:#1f4e78;color:#fff}th,td{border:1px solid #ccc;padding:5px;white-space:nowrap}</style></head><body><h2>Histórico mensal de cobrança ${esc104(month)}</h2><p>Filiais consolidadas e usuários/carteiras. As filiais não são somadas de novo ao resumo da empresa.</p><table>${trs}</table></body></html>`;
+    const blob=new Blob(['\ufeff'+html],{type:'application/vnd.ms-excel;charset=utf-8'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`historico_cobranca_mensal_${month}.xls`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  };
+
+  async function renderHistCobMonthly104(force=false){
+    const box=document.getElementById('histCobMonthlyResults104');if(!box)return;
+    box.innerHTML='<div class="lazy-loading"><div class="spin">⏳</div><div>Carregando histórico mensal de cobrança...</div></div>';
+    await loadHistCob104(force);
+    const ms=months104();
+    if(!ms.length){
+      box.innerHTML='<div class="empty">O histórico mensal começará a ser gravado automaticamente pelo Cobrança/Main a partir da V10.104. Nenhuma competência foi registrada ainda.</div>';
+      return;
+    }
+
+    let month=document.getElementById('histCobMonth104')?.value||ms[0];
+    if(!HIST_COB_OP_104?.months?.[month])month=ms[0];
+    const d=HIST_COB_OP_104.months[month];
+    const s=d?.summary||{};
+
+    box.innerHTML=`
+      <div class="glass panel" style="margin-bottom:14px;border-color:rgba(96,165,250,.30)">
+        <div class="section-head" style="margin:0">
+          <div><h2 style="font-size:18px">📈 Histórico mensal de cobrança</h2><div class="hint">Cada MAIN atualiza o snapshot do dia. O mesmo dia é substituído, nunca duplicado. Execução mensal = cobranças ÷ títulos previstos acumulados dos dias registrados; efetividade = pagamentos conciliados ÷ cobranças.</div></div>
+          <div style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">
+            <div class="input-card" style="padding:8px 10px"><label>Mês</label><select id="histCobMonth104" onchange="renderHistCobMonthly104(false)">${ms.map(m=>`<option value="${esc104(m)}" ${m===month?'selected':''}>${esc104(m)}</option>`).join('')}</select></div>
+            <button class="btn soft" onclick="renderHistCobMonthly104(true)">🔄 Atualizar</button>
+            <button class="btn primary" onclick="exportHistCobMensal104()">📊 Excel</button>
+          </div>
+        </div>
+        <div class="small muted" style="margin-top:8px">Período registrado: ${esc104(d.primeiro_dia||'')} até ${esc104(d.ultimo_dia||'')} · ${Math.round(num104(d.dias_registrados))} dia(s). O histórico de execução não inventa dias anteriores à V10.104.</div>
+      </div>
+      <div class="kpis">
+        ${makeKpi('Dias registrados',String(Math.round(num104(d.dias_registrados))),'var(--blue)')}
+        ${makeKpi('Cobranças feitas',String(Math.round(num104(s.cobrancas_feitas))),'var(--orange)')}
+        ${makeKpi('Auditorias aprovadas',String(Math.round(num104(s.auditorias_aprovadas))),'var(--blue)')}
+        ${makeKpi('Pagamentos conciliados',String(Math.round(num104(s.pagamentos_conciliados))),'var(--green)')}
+        ${makeKpi('Recebido conciliado',money104(s.recebido_conciliado),'var(--green)')}
+        ${makeKpi('Execução da fila',pct104(s.taxa_execucao),'var(--orange)')}
+        ${makeKpi('Taxa de auditoria',pct104(s.taxa_auditoria),'var(--blue)')}
+        ${makeKpi('Efetividade paga',pct104(s.taxa_efetividade),'var(--green)')}
+      </div>
+      ${rowTable104(d.filiais||[],'🏬 Filiais consolidadas — mês')}
+      ${rowTable104(d.entities||[],'👥 Usuários / carteiras — mês')}
+    `;
+  }
+  window.renderHistCobMonthly104=renderHistCobMonthly104;
+
+  const baseSetHist104=window.setHistMode;
+  window.setHistMode=function(mode){
+    if(mode==='cobranca_mensal'){
+      window._histMode=mode;
+      ['histDailyPane','histMonthPane','histSalesPane','histThirdPane','histComPane','histCobDailyPane98'].forEach(id=>document.getElementById(id)?.classList.add('hidden'));
+      document.getElementById('histCobMonthlyPane104')?.classList.remove('hidden');
+      ['histTabDaily','histTabMonthly','histTabSales','histTabThird','histTabCom','histTabCobDaily98'].forEach(id=>document.getElementById(id)?.classList.remove('active'));
+      document.getElementById('histTabCobMonthly104')?.classList.add('active');
+      renderHistCobMonthly104(false);
+      return;
+    }
+    const ret=typeof baseSetHist104==='function'?baseSetHist104.apply(this,arguments):undefined;
+    document.getElementById('histCobMonthlyPane104')?.classList.add('hidden');
+    document.getElementById('histTabCobMonthly104')?.classList.remove('active');
+    return ret;
+  };
+
+  const baseRenderHist104=window.renderHistoricoTab;
+  if(typeof baseRenderHist104==='function'){
+    window.renderHistoricoTab=function(){
+      const mode=window._histMode||'daily';
+      const ret=baseRenderHist104.apply(this,arguments);
+      try{
+        const tabs=histSection.querySelector('.tabs');
+        if(tabs&&!document.getElementById('histTabCobMonthly104')){
+          const btn=document.createElement('button');
+          btn.id='histTabCobMonthly104';
+          btn.className='tab';
+          btn.textContent='📈 Cobrança mensal';
+          btn.setAttribute('onclick',"setHistMode('cobranca_mensal')");
+          const com=document.getElementById('histTabCom');
+          tabs.insertBefore(btn,com||null);
+        }
+        if(!document.getElementById('histCobMonthlyPane104')){
+          const pane=document.createElement('div');
+          pane.id='histCobMonthlyPane104';
+          pane.className='hidden';
+          pane.innerHTML='<div id="histCobMonthlyResults104"></div>';
+          histSection.appendChild(pane);
+        }
+        if(mode==='cobranca_mensal')setTimeout(()=>setHistMode('cobranca_mensal'),0);
+      }catch(e){console.warn(TAG,'hist tab mensal',e)}
+      return ret;
+    };
+  }
+
+  window.DASHBOARD_BUILD_VERSION='V10.104';
+  console.log(TAG,'ativo: filiais no diário + histórico mensal automático de cobrança');
+})();
+</script>
+
 </body>
 </html>
 """
@@ -23270,10 +24085,12 @@ repls = {
     '__JS_CLIENTES__': js_clientes,
     '__JS_CLIENTES_VEND__': js_clientes_vend,
     '__JS_CLIENTES_TERCEIRO__': js_clientes_terceiro,
+    '__JS_CLIENTES_TERCEIRO_POR_LOGIN__': js_clientes_terceiro_por_login,
     '__JS_CLIENTES_CREDIARISTA__': js_clientes_crediarista,
     '__JS_DETALHES_MANIFEST__': js_detalhes_manifest,
     '__JS_RECEBIMENTOS__': js_recebimentos,
     '__JS_RECEBIMENTOS_TERCEIRO__': js_recebimentos_terceiro,
+    '__JS_RECEBIMENTOS_TERCEIRO_POR_LOGIN__': js_recebimentos_terceiro_por_login,
     '__JS_RECEBIMENTOS_CREDIARISTA__': js_recebimentos_crediarista,
     '__JS_CREDIARISTAS_MAP__': js_crediaristas_map,
     '__JS_METAS_VENDAS__': js_metas_vendas,
@@ -24806,12 +25623,14 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
     except Exception as e_q_ftp:
         print(f'⚠️ Erro ao enviar quitados 180d ao FTP: {e_q_ftp}')
 
-    # V10.99: snapshot pequeno usado pelo relatório diário/Telegram.
+    # V10.104: snapshot diário + histórico mensal operacional.
     try:
         if 'COBRANCA_DIARIA_RESUMO_PATH' in globals() and os.path.exists(COBRANCA_DIARIA_RESUMO_PATH):
             _ftp_upload_file_v1019(COBRANCA_DIARIA_RESUMO_PATH, 'cobranca_diaria_resumo.json', atomic=True, label='cobranca_diaria_resumo.json')
+        if 'HIST_COBRANCA_OPERACIONAL_PATH' in globals() and os.path.exists(HIST_COBRANCA_OPERACIONAL_PATH):
+            _ftp_upload_file_v1019(HIST_COBRANCA_OPERACIONAL_PATH, 'historico_cobranca_operacional.json', atomic=True, label='historico_cobranca_operacional.json')
     except Exception as _e_daily_ftp_v1099:
-        print(f'⚠️ V10.99 erro enviando cobranca_diaria_resumo.json: {_e_daily_ftp_v1099}')
+        print(f'⚠️ V10.104 erro enviando relatório/histórico de cobrança: {_e_daily_ftp_v1099}')
 
 
     # V10.20: publica também o relatório principal do Contas a Receber e cópias datadas.
@@ -24853,6 +25672,7 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
             (_hist_dash_path, 'historico_dashboard', 'historico_dashboard'),
             (COMISSAO_HIST_PATH, 'historico_comissao_cobranca', 'historico_comissao_cobranca'),
             (_fechamento_path, 'fechamentos_mensais', 'fechamentos_mensais'),
+            (HIST_COBRANCA_OPERACIONAL_PATH if 'HIST_COBRANCA_OPERACIONAL_PATH' in globals() else None, 'historico_cobranca_operacional', 'historico_cobranca_operacional'),
         ]
         for _p_hist, _prefix_hist, _kind_hist in _hist_paths_v1020:
             if _p_hist and os.path.exists(_p_hist):
@@ -24979,3 +25799,7 @@ driver.quit()
 # V10.101_LIVE_TELEGRAM_EXCEL_REAL_CSM50_FILIAL_PREFETCH
 
 # V10.102_CUSTOM_USERS_LOGIN_DELETE_PERSIST
+
+# V10.103_INTERNAL_CHARGE_POOL_PARTITION_NO_DUPLICATE
+
+# V10.104_FILIAIS_DIARIO_HISTORICO_COBRANCA_MENSAL
