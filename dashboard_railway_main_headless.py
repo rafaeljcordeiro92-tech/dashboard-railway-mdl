@@ -37,8 +37,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.99"
-DASHBOARD_BUILD_TAG = "v1099_telegram_cobranca_diaria_update_guard"
+DASHBOARD_BUILD_VERSION = "V10.100"
+DASHBOARD_BUILD_TAG = "v10100_telegram_sync_csm_excel_regras_metricas_deploy_lock"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
 # V10.52: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
@@ -21916,6 +21916,475 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
 })();
 </script>
 
+<script>
+/* ===== V10.100 — CORREÇÕES OPERACIONAIS ===== */
+(function(){
+  const TAG='[V10.100]';
+  try{
+    const norm100=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim();
+    const money100=v=>Math.round((Number(v||0)+Number.EPSILON)*100)/100;
+    const pctTxt100=v=>Number(v||0).toFixed(2).replace('.',',')+'%';
+    const esc100=v=>typeof esc==='function'?esc(v):String(v??'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+
+    // ---------------------------------------------------------
+    // 1) CLIENTES SEM MOVIMENTO:
+    // aguarda o lazy-load antes de abrir a página separada.
+    // ---------------------------------------------------------
+    function csmRows100(){
+      try{
+        if(typeof reativacaoRowsPermitidas==='function') return reativacaoRowsPermitidas()||[];
+      }catch(e){}
+      try{return Array.isArray(CLIENTES_SEM_MOVIMENTO)?CLIENTES_SEM_MOVIMENTO:[]}catch(e){return []}
+    }
+
+    function csmSent100(r){
+      try{return typeof isReativacaoEnviadaHoje==='function'?isReativacaoEnviadaHoje(r):false}catch(e){return false}
+    }
+
+    function csmFmtTel100(t){
+      try{return typeof fmtTelBR==='function'?fmtTelBR(t):String(t||'')}catch(e){return String(t||'')}
+    }
+
+    function csmOpenWhats100(idx,t){
+      try{
+        if(typeof abrirWhatsReativacao==='function'){
+          abrirWhatsReativacao(idx,t);
+          return;
+        }
+      }catch(e){}
+      window.open('https://wa.me/'+String(t||'').replace(/\D/g,''),'_blank');
+    }
+
+    function csmBuildWindow100(rows){
+      const w=window.open('about:blank','_blank');
+      if(!w){
+        try{toast('Pop-up bloqueado. Libere pop-ups para abrir clientes sem movimento.','warn')}catch(e){}
+        return;
+      }
+      rows=(rows||[]).map((r,i)=>({
+        ...r,
+        _idx:Number.isInteger(r?._idx)?r._idx:i,
+        _owner:r?._owner||(typeof reativacaoOwnerInfo==='function'?reativacaoOwnerInfo(r):{})
+      }));
+      const data=rows.map((r,i)=>({
+        idx:r._idx??i,
+        cliente:r.cliente||'',
+        filial:String(r.filial||'').toUpperCase(),
+        cidade:r.cidade||'',
+        bairro:r.bairro||'',
+        dias:Number(r.dias_sem_movimento||0),
+        ultimo:r.ultimo_movimento||'',
+        owner:r._owner?.label||r._owner?.nome||r._owner_nome_py||'',
+        telefones:r.telefones||[],
+        sent:csmSent100(r),
+        motivo:r._reat_motivo||'',
+        qtd:Number(r._reat_qtd_envios||0),
+        ultimo_envio:r._reat_ultimo_envio||''
+      }));
+      const filiais=[...new Set(data.map(r=>r.filial).filter(Boolean))].sort();
+      const j=JSON.stringify(data).replace(/<\//g,'<\\/');
+      w.document.open();
+      w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Clientes sem movimento · MDL</title><style>
+        :root{--bg:#080a0f;--card:#121720;--line:#2b3443;--txt:#f5f7fb;--mut:#aab4c5;--orange:#f59e0b;--green:#22c55e}
+        *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font-family:Inter,Segoe UI,Arial,sans-serif;padding:18px}
+        .top{position:sticky;top:0;z-index:10;background:#111722;border:1px solid var(--line);border-radius:18px;padding:14px;margin-bottom:14px}
+        h1{margin:0 0 4px}.hint,.small{color:var(--mut);font-size:12px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0}
+        .kpi,.row{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:12px}.kpi b{display:block;font-size:23px;margin-top:4px}
+        .tools{display:grid;grid-template-columns:1fr 180px 180px;gap:8px}input,select{width:100%;padding:11px;border-radius:10px;border:1px solid var(--line);background:#05070b;color:#fff}
+        .row{display:grid;grid-template-columns:1.45fr .75fr .65fr auto;gap:10px;align-items:center;margin:7px 0}.row.sent{opacity:.58}
+        .name{font-weight:900}.wa{background:#15803d;color:#fff;border:0;border-radius:999px;padding:8px 11px;font-weight:900;cursor:pointer;margin:2px}.empty{padding:22px;text-align:center;color:var(--mut)}
+        @media(max-width:900px){.grid,.tools,.row{grid-template-columns:1fr}.top{position:static}}
+      </style></head><body>
+      <div class="top"><h1>🧡 Clientes sem movimento · página leve</h1>
+        <div class="hint">A V10.100 aguarda o arquivo do FTP carregar antes de abrir esta página.</div>
+        <div class="grid"><div class="kpi">Para acionar<b id="kTotal">0</b></div><div class="kpi">Enviados hoje<b id="kSent">0</b></div><div class="kpi">Base do usuário<b>${data.length}</b></div></div>
+        <div class="tools"><input id="q" placeholder="Buscar cliente, cidade, responsável, telefone" oninput="render()"><select id="fil" onchange="render()"><option value="">Todas as filiais</option>${filiais.map(f=>`<option>${esc100(f)}</option>`).join('')}</select><select id="st" onchange="render()"><option value="">Todos</option><option value="pend">Pendentes</option><option value="sent">Enviados hoje</option></select></div>
+      </div><div id="list"></div>
+      <script>
+        const rows=${j};
+        function e(s){return String(s??'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]))}
+        function openWA(idx,t){try{window.opener&&window.opener.abrirWhatsReativacao&&window.opener.abrirWhatsReativacao(idx,t)}catch(_e){window.open('https://wa.me/'+String(t||'').replace(/\\D/g,''),'_blank')}}
+        function render(){
+          const q=(document.getElementById('q').value||'').toLowerCase(),fil=document.getElementById('fil').value,st=document.getElementById('st').value;
+          let arr=rows.filter(r=>(!fil||r.filial===fil)&&(!st||(st==='sent'?r.sent:!r.sent))&&(!q||JSON.stringify(r).toLowerCase().includes(q)));
+          document.getElementById('kTotal').textContent=arr.length;document.getElementById('kSent').textContent=arr.filter(r=>r.sent).length;
+          document.getElementById('list').innerHTML=arr.length?arr.slice(0,350).map(r=>'<div class="row '+(r.sent?'sent':'')+'"><div><div class="name">'+e(r.cliente)+'</div><div class="small">'+e(r.filial)+' · '+e(r.cidade)+' · '+e(r.dias)+' dias · último '+e(r.ultimo)+'</div></div><div><b>'+e(r.owner||'-')+'</b><div class="small">Responsável</div></div><div><b>'+(r.sent?'✅ Enviado':'📋 Pendente')+'</b><div class="small">'+e(r.ultimo_envio||'')+'</div></div><div>'+(r.telefones||[]).map(t=>'<button class="wa" onclick="openWA('+r.idx+',\\''+String(t).replace(/\\D/g,'')+'\\')">Whats '+e(t)+'</button>').join('')+'</div></div>').join(''):'<div class="empty">Nenhum cliente para este filtro.</div>';
+        }render();
+      <\/script></body></html>`);
+      w.document.close();
+    }
+
+    window.abrirClientesSemMovimentoStandalone=async function(){
+      let ok=true;
+      try{
+        const vazio=!(Array.isArray(CLIENTES_SEM_MOVIMENTO)&&CLIENTES_SEM_MOVIMENTO.length);
+        if(vazio){
+          try{toast('Carregando clientes sem movimento do FTP...','info')}catch(e){}
+          if(typeof mdlV100LoadClientesSemMovimento==='function'){
+            ok=await mdlV100LoadClientesSemMovimento(true);
+          }else if(typeof mdlV96LoadClientesSemMovimento==='function'){
+            ok=await mdlV96LoadClientesSemMovimento(true);
+          }
+        }
+      }catch(e){ok=false;console.warn(TAG,'CSM load',e)}
+      const rows=csmRows100();
+      if(!rows.length){
+        try{toast(ok?'A base foi carregada, mas não há clientes destinados a este usuário hoje.':'Não consegui carregar clientes sem movimento do FTP.','warn')}catch(e){}
+      }
+      csmBuildWindow100(rows);
+    };
+
+    // ---------------------------------------------------------
+    // 2) COMISSIONAMENTO: regras dinâmicas do painel Metas.
+    // ---------------------------------------------------------
+    function ruleData100(ent){
+      let cfg={}; try{cfg=entityConfig(ent)||{}}catch(e){}
+      let c={}; try{c=(ent?.type==='vendedor'||ent?.type==='filial')?(calcCommissionSummary(ent)||{}):{}}catch(e){}
+      const special=!!(ent?.type==='crediarista'||ent?.is_crediarista||ent?.type==='terceiro'||ent?.is_terceiro);
+      if(special){
+        let rows=[];
+        try{
+          const cc=commissionCfg(cfg);
+          rows=(ent?.type==='crediarista'||ent?.is_crediarista)?(cc.camp_cob_crediarista||[]):(cc.camp_cobranca_terceiro||[]);
+        }catch(e){}
+        const by={};
+        rows.forEach(r=>by[String(r?.faixa||'').toLowerCase()]=Number(String(r?.pct||0).replace(',','.'))||0);
+        return {
+          special:true,
+          min_vendas:'',
+          min_servicos:'',
+          min_rentab:'',
+          faixa_vendas:'Não se aplica',
+          pct_vendas:0,
+          pct_servicos:0,
+          pct_caminhao:0,
+          bonus:'Não se aplica',
+          rentab:'Não se aplica',
+          cobranca:`Comissão somente após evidência aprovada + mesmo CPF/título/parcela pago. Atenção ${pctTxt100(by.atencao||0)} · Alerta ${pctTxt100(by.alerta||0)} · Grave ${pctTxt100(by.grave||0)}`
+        };
+      }
+      const isFil=ent?.type==='filial';
+      const minV=Number(isFil?cfg.gerente_vendas_min_pct:cfg.vendas_min_pct)||80;
+      const minS=Number(isFil?cfg.gerente_servicos_min_pct:cfg.servicos_min_pct)||80;
+      const minR=Number(isFil?cfg.gerente_rentab_min_mercantil_pct:cfg.vendedor_rentab_min_mercantil_pct)||80;
+      const bonus=isFil
+        ? `Bônus da loja é liberado quando o atingimento mercantil chega a ${minV}%; valor depende da faixa de venda realizada.`
+        : `Bônus vendedor por atingimento mercantil: faixas de 90%, 100% e 120%, com valor definido pela faixa de venda realizada.`;
+      const rent=`Rentabilidade só desbloqueia se Meta Geral da cobrança ≥ 50% E atingimento mercantil ≥ ${minR}%. Depois paga somente a maior faixa atingida: 48%, 52,15% ou 55,50% (não acumulativo).`;
+      return {
+        special:false,
+        min_vendas:`Mercantil: mínimo ${minV}% para elegibilidade.`,
+        min_servicos:`Serviços/caminhão: mínimo configurado ${minS}% no atingimento mercantil para liberar a comissão.`,
+        min_rentab:`Rentabilidade: cobrança ≥ 50% + mercantil ≥ ${minR}%.`,
+        faixa_vendas:String(c.faixaTxt||'-'),
+        pct_vendas:Number(c.comPerc||0),
+        pct_servicos:Number(c.servPct||0),
+        pct_caminhao:Number(c.camPct||0),
+        bonus,
+        rentab:rent,
+        cobranca:'Cobrança auditada é separada: só gera comissão após evidência aprovada e pagamento conciliado do mesmo CPF/título/parcela.'
+      };
+    }
+    window.mdlCommissionRulesV10100=ruleData100;
+
+    // Snapshot mensal passa a guardar as regras aplicadas naquele momento.
+    try{
+      const baseSnap100=window.snapshotComissaoEntidade||snapshotComissaoEntidade;
+      snapshotComissaoEntidade=window.snapshotComissaoEntidade=function(ent){
+        const row=baseSnap100.apply(this,arguments)||{};
+        const rr=ruleData100(ent);
+        row.regras_comissionamento=rr;
+        row.regra_min_vendas=rr.min_vendas;
+        row.regra_min_servicos=rr.min_servicos;
+        row.regra_min_rentabilidade=rr.min_rentab;
+        row.regra_faixa_vendas=rr.faixa_vendas;
+        row.regra_pct_comissao_vendas=rr.pct_vendas;
+        row.regra_pct_servicos=rr.pct_servicos;
+        row.regra_pct_caminhao=rr.pct_caminhao;
+        row.regra_bonus=rr.bonus;
+        row.regra_rentabilidade=rr.rentab;
+        row.regra_cobranca_auditada=rr.cobranca;
+        return row;
+      };
+    }catch(e){console.warn(TAG,'snapshot regras',e)}
+
+    // Sempre deixa o mês atual disponível como PRÉVIA, mesmo antes de salvar.
+    try{
+      _histComMeses=window._histComMeses=function(){
+        const s=new Set(Object.keys(HIST_COMISSAO?.months||{}));
+        try{s.add(mesAtualComissao())}catch(e){}
+        return [...s].sort().reverse();
+      };
+    }catch(e){}
+
+    // Mensagem mais clara no salvamento: o mesmo mês é ATUALIZADO, não duplicado.
+    try{
+      const baseSave100=window.salvarSnapshotComissionamentoMensal||salvarSnapshotComissionamentoMensal;
+      salvarSnapshotComissionamentoMensal=window.salvarSnapshotComissionamentoMensal=async function(auto=false){
+        const month=document.getElementById('histComMonthSave')?.value||mesAtualComissao();
+        const existed=!!HIST_COMISSAO?.months?.[month];
+        const ret=await baseSave100.apply(this,arguments);
+        if(!auto){
+          try{toast(existed?`✅ Fechamento ${month} atualizado. Você pode salvar novamente até o fechamento final.`:`✅ Prévia/fechamento ${month} salvo. Salvar novamente atualiza o mesmo mês.`,'success')}catch(e){}
+        }
+        return ret;
+      };
+    }catch(e){}
+
+    function rulesText100(rr){
+      if(!rr)return '';
+      const arr=rr.special
+        ? [rr.cobranca]
+        : [rr.min_vendas,rr.min_servicos,rr.min_rentab,`Faixa de venda usada: ${rr.faixa_vendas} · comissão mercantil ${pctTxt100(rr.pct_vendas)} · serviços ${pctTxt100(rr.pct_servicos)} · caminhão ${pctTxt100(rr.pct_caminhao)}.`,rr.bonus,rr.rentab,rr.cobranca];
+      return arr.filter(Boolean);
+    }
+
+    function pLine100(k,v,hi=false){
+      return `<div class="pl100 ${hi?'hi100':''}"><span>${esc100(k)}</span><strong>${esc100(v)}</strong></div>`;
+    }
+
+    function printPage100(ent){
+      const r=snapshotComissaoEntidade(ent)||{};
+      const rr=r.regras_comissionamento||ruleData100(ent);
+      let aud={recebido:0,comissao:0,pagamentos:0,aprovadas:0,by:{atencao:{recebido:0},alerta:{recebido:0},grave:{recebido:0}}};
+      try{if(typeof auditSummaryMonth98==='function')aud=auditSummaryMonth98(ent,mesAtualComissao())||aud}catch(e){}
+      try{
+        if(typeof mdlAuditPaidRowsV1098==='function'){
+          const rows=mdlAuditPaidRowsV1098(ent,mesAtualComissao())||[];
+          aud.recebido=money100(rows.reduce((s,x)=>s+Number(x.recebido||0),0));
+          aud.comissao=money100(rows.reduce((s,x)=>s+Number(x.comissao||0),0));
+          aud.pagamentos=rows.length;
+        }
+      }catch(e){}
+      const special=rr.special;
+      const rules=rulesText100(rr);
+
+      return `<section class="page100">
+        <header><div><h1>${esc100(ent?.nome||r.nome||ent?.filial||'')}</h1><p>${esc100(ent?.type||r.tipo||'')} · ${esc100(ent?.filial||r.filial||'')} · ${esc100(mesAtualComissao())}</p></div><b>Dashboard MDL V10.100</b></header>
+        <div class="box100"><h2>💰 Cobrança</h2>
+          ${pLine100('Pendente',R(r.pendente||0))}
+          ${special?'':pLine100('Meta Geral da cobrança',pctTxt100(r.meta_geral||0))}
+          ${pLine100('Recebido operacional',R(r.recebido_conciliado??r.recebido??0))}
+          ${pLine100('Recebido auditado/conciliado',R(aud.recebido||0))}
+          ${pLine100('Comissão de cobrança auditada',R(aud.comissao||0),true)}
+        </div>
+        ${special?'':`<div class="box100"><h2>🛒 Vendas / Serviços / Prêmios</h2>
+          ${pLine100('Venda mercantil',R(r.venda_real||0))}
+          ${pLine100('Serviços',R(r.servico_real||0))}
+          ${pLine100('Caminhão',R(r.caminhao_real||0))}
+          ${pLine100('Comissão vendas',R(r.comissao_vendas||0))}
+          ${pLine100('Comissão serviços',R(r.comissao_servicos||0))}
+          ${pLine100('Comissão caminhão',R(r.comissao_caminhao||0))}
+          ${pLine100('Bônus meta',R(r.bonus_meta||0))}
+          ${pLine100('Prêmio rentabilidade',R(Number(r.rent48||0)+Number(r.rent52||0)+Number(r.rent55||0)))}
+        </div>`}
+        <div class="box100 rules100"><h2>📋 Regras de comissionamento aplicadas</h2>${rules.map(x=>`<div>• ${esc100(x)}</div>`).join('')}</div>
+        <div class="box100 total100"><h2>🧾 Fechamento</h2>
+          ${pLine100('Total previsto dashboard',R(r.total_previsto||0))}
+          ${pLine100('Comissão cobrança auditada',R(aud.comissao||0))}
+          ${pLine100('Total previsto incluindo cobrança auditada',R(Number(r.total_previsto||0)+Number(aud.comissao||0)),true)}
+        </div>
+        <footer>As regras acima são lidas da configuração de Metas vigente no momento da geração.</footer>
+      </section>`;
+    }
+
+    function openPrint100(title,pages){
+      const w=window.open('about:blank','_blank');if(!w){try{toast('Pop-up bloqueado.','warn')}catch(e){}return}
+      w.document.open();
+      w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc100(title)}</title><style>
+        *{box-sizing:border-box}body{margin:0;background:#d9dde5;font-family:Arial,Helvetica,sans-serif;color:#111}
+        .toolbar{position:sticky;top:0;z-index:9;background:#fff;padding:9px 14px;border-bottom:1px solid #ccc;display:flex;justify-content:space-between}
+        .toolbar button{border:0;border-radius:8px;padding:9px 13px;font-weight:800;cursor:pointer}
+        .page100{width:198mm;min-height:281mm;margin:8px auto;background:#fff;padding:7mm 9mm;box-shadow:0 8px 26px #0003;page-break-after:always}
+        .page100:last-of-type{page-break-after:auto}.page100 header{display:flex;justify-content:space-between;border-bottom:2px solid #e88a0b;padding-bottom:4mm;margin-bottom:3mm}
+        .page100 h1{font-size:17pt;margin:0 0 1mm}.page100 header p{margin:0;color:#555;font-size:9.5pt}.box100{border:1px solid #d7dce5;border-radius:8px;margin-bottom:3mm;overflow:hidden}
+        .box100 h2{margin:0;padding:2mm 3mm;background:#f3f5f8;font-size:10.5pt}.pl100{display:flex;justify-content:space-between;gap:8mm;padding:1.45mm 3mm;border-top:1px solid #edf0f4;font-size:9.7pt}
+        .pl100 strong{text-align:right}.pl100.hi100 strong{font-size:11.5pt;color:#a14d00}.rules100{padding-bottom:1.5mm}.rules100>div{padding:1.15mm 3mm;font-size:9pt;line-height:1.25}
+        .total100{border-color:#e8b76d}.total100 h2{background:#fff6e8}footer{font-size:8pt;color:#666;border-top:1px solid #ddd;padding-top:2mm}
+        @page{size:A4 portrait;margin:5mm}@media print{body{background:#fff}.toolbar{display:none}.page100{width:100%;min-height:auto;margin:0;padding:4mm 5mm;box-shadow:none}}
+      </style></head><body><div class="toolbar"><strong>${esc100(title)}</strong><div><button onclick="window.print()">🖨️ Salvar PDF / Imprimir</button> <button onclick="window.close()">Fechar</button></div></div>${pages.join('')}</body></html>`);
+      w.document.close();
+    }
+
+    function selectedEnt100(){
+      const all=typeof _allComissaoEntitiesNow==='function'?_allComissaoEntitiesNow():[];
+      const key=document.getElementById('histComCurrentEntity')?.value||'';
+      if(typeof _comKeyNow==='function')return all.find(e=>_comKeyNow(e)===key)||all[0]||null;
+      return all[0]||null;
+    }
+
+    abrirTelaComissionamentoAtual=window.abrirTelaComissionamentoAtual=async function(){
+      const ent=selectedEnt100();if(!ent)return;
+      try{if(typeof ensureOperational98==='function')await ensureOperational98(false,[ent])}catch(e){}
+      openPrint100('Comissionamento '+String(ent.nome||ent.filial||''),[printPage100(ent)]);
+    };
+    congelarTodasTelasComissionamentoPDF=window.congelarTodasTelasComissionamentoPDF=async function(){
+      const ents=typeof _allComissaoEntitiesNow==='function'?_allComissaoEntitiesNow():[];
+      if(!ents.length)return;
+      try{if(typeof ensureOperational98==='function')await ensureOperational98(false,ents)}catch(e){}
+      openPrint100(`Fechamento comissionamento ${mesAtualComissao()}`,ents.map(printPage100));
+    };
+
+    // Excel único: acrescenta regras vigentes e deixa explícito o mês exportado.
+    function excelRows100(month){
+      const selectedCurrent=month===mesAtualComissao();
+      let pairs=[];
+      if(selectedCurrent){
+        const ents=typeof _allComissaoEntitiesNow==='function'?_allComissaoEntitiesNow():[];
+        pairs=ents.map(e=>({ent:e,row:snapshotComissaoEntidade(e)}));
+      }else{
+        const snap=HIST_COMISSAO?.months?.[month];
+        pairs=(snap?.entidades||[]).map(r=>({ent:(typeof entityForSnap98==='function'?entityForSnap98(r):null)||r,row:r}));
+      }
+      return pairs.map(({ent,row})=>{
+        let rr=row?.regras_comissionamento||ruleData100(ent);
+        let base={};
+        try{
+          if(typeof excelRow98==='function')base=excelRow98(ent,row,month)||{};
+          else base={mes:month,tipo:row.tipo,nome:row.nome,filial:row.filial,login:row.login,pendente:row.pendente,recebido_operacional:row.recebido,total_previsto_dashboard:row.total_previsto};
+        }catch(e){base={mes:month,tipo:row.tipo,nome:row.nome,filial:row.filial,login:row.login}}
+        return {
+          ...base,
+          regra_min_vendas:rr.min_vendas||'',
+          regra_min_servicos:rr.min_servicos||'',
+          regra_min_rentabilidade:rr.min_rentab||'',
+          regra_faixa_vendas:rr.faixa_vendas||'',
+          regra_pct_comissao_vendas:Number(rr.pct_vendas||0),
+          regra_pct_servicos:Number(rr.pct_servicos||0),
+          regra_pct_caminhao:Number(rr.pct_caminhao||0),
+          regra_bonus:rr.bonus||'',
+          regra_rentabilidade:rr.rentab||'',
+          regra_cobranca_auditada:rr.cobranca||''
+        };
+      });
+    }
+
+    function downloadExcel100(filename,rows){
+      const cols=[
+        ['mes','Mês'],['tipo','Tipo'],['nome','Usuário / Filial'],['filial','Filial'],['login','Login'],
+        ['pendente','Pendente'],['recebido_operacional','Recebido operacional'],['meta_cobranca','Meta cobrança %'],
+        ['grave_alvo','Grave alvo'],['grave_recebido','Grave recebido'],['alerta_alvo','Alerta alvo'],['alerta_recebido','Alerta recebido'],['atencao_alvo','Atenção alvo'],['atencao_recebido','Atenção recebido'],
+        ['cobrancas_mes','Cobranças feitas mês'],['valor_cobrado_mes','Valor cobrado mês'],['auditorias_enviadas','Auditorias enviadas'],['auditorias_aprovadas','Auditorias aprovadas'],['auditorias_pendentes','Auditorias pendentes'],['pagamentos_conciliados','Pagamentos conciliados'],
+        ['recebido_auditado_atencao','Recebido auditado Atenção'],['recebido_auditado_alerta','Recebido auditado Alerta'],['recebido_auditado_grave','Recebido auditado Grave'],['recebido_auditado_total','Recebido auditado total'],
+        ['pct_comissao_atencao','% comissão cobrança Atenção'],['pct_comissao_alerta','% comissão cobrança Alerta'],['pct_comissao_grave','% comissão cobrança Grave'],
+        ['comissao_cobranca_atencao','Comissão cobrança Atenção'],['comissao_cobranca_alerta','Comissão cobrança Alerta'],['comissao_cobranca_grave','Comissão cobrança Grave'],['comissao_cobranca_total','Comissão cobrança auditada total'],
+        ['venda_mercantil','Venda mercantil'],['servicos','Serviços'],['caminhao','Caminhão'],['comissao_vendas','Comissão vendas'],['comissao_servicos','Comissão serviços'],['comissao_caminhao','Comissão caminhão'],['bonus_meta','Bônus meta'],
+        ['rentab_48','Rentab 48'],['rentab_52_15','Rentab 52,15'],['rentab_55_50','Rentab 55,50'],['total_previsto_dashboard','Total previsto dashboard'],['total_previsto_com_cobranca_auditada','Total previsto + cobrança auditada'],
+        ['regra_min_vendas','Regra mínima vendas'],['regra_min_servicos','Regra mínima serviços/caminhão'],['regra_min_rentabilidade','Regra mínima rentabilidade'],['regra_faixa_vendas','Faixa de venda aplicada'],
+        ['regra_pct_comissao_vendas','% comissão mercantil aplicada'],['regra_pct_servicos','% serviços aplicado'],['regra_pct_caminhao','% caminhão aplicado'],
+        ['regra_bonus','Regra bônus'],['regra_rentabilidade','Regra rentabilidade'],['regra_cobranca_auditada','Regra cobrança auditada']
+      ];
+      const numeric=new Set(cols.map(([k])=>k).filter(k=>!['mes','tipo','nome','filial','login','regra_min_vendas','regra_min_servicos','regra_min_rentabilidade','regra_faixa_vendas','regra_bonus','regra_rentabilidade','regra_cobranca_auditada'].includes(k)));
+      const x=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      const trs=[`<tr>${cols.map(([,h])=>`<th>${x(h)}</th>`).join('')}</tr>`,...rows.map(r=>`<tr>${cols.map(([k])=>numeric.has(k)?`<td x:num="${Number(r[k]||0)}">${Number(r[k]||0)}</td>`:`<td>${x(r[k]||'')}</td>`).join('')}</tr>`)].join('');
+      const html=`<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><style>table{border-collapse:collapse;font-family:Arial;font-size:9pt}th{background:#1f4e78;color:#fff}th,td{border:1px solid #c7d0dc;padding:5px;white-space:nowrap}</style></head><body><h2>Comissionamento completo MDL — ${x(rows[0]?.mes||'')}</h2><p>Uma linha por usuário/filial, incluindo regras de comissionamento vigentes.</p><table>${trs}</table></body></html>`;
+      const blob=new Blob(['\ufeff'+html],{type:'application/vnd.ms-excel;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    }
+
+    exportarComissaoAtualExcel=window.exportarComissaoAtualExcel=async function(){
+      const month=document.getElementById('histComMonth')?.value||mesAtualComissao();
+      try{if(month===mesAtualComissao()&&typeof ensureOperational98==='function')await ensureOperational98(true,[])}catch(e){}
+      const rows=excelRows100(month);
+      if(!rows.length){try{toast('Nenhum dado de comissionamento para este mês.','warn')}catch(e){}return}
+      downloadExcel100(`comissionamento_completo_${month}.xls`,rows);
+      try{toast(`Excel completo ${month}: ${rows.length} linha(s).`,'success')}catch(e){}
+    };
+
+    // ---------------------------------------------------------
+    // 3) COBRANÇA DIÁRIA: nomes/fórmulas explícitos.
+    // ---------------------------------------------------------
+    function patchDailyLabels100(){
+      try{
+        const box=document.getElementById('histCobDailyResults98');if(!box)return;
+        box.querySelectorAll('.kpi,.metric').forEach(card=>{
+          const txt=(card.textContent||'').trim();
+          if(txt.includes('TAXA EXECUÇÃO')||txt.includes('Taxa execução')){
+            const k=card.querySelector('.k,.kpi-label,.title')||card;
+            if(k!==card)k.textContent='Execução da fila';
+            else card.innerHTML=card.innerHTML.replace(/TAXA EXECUÇÃO|Taxa execução/g,'Execução da fila');
+            card.title='Cobranças feitas ÷ títulos previstos para trabalhar no dia.';
+          }
+          if(txt.includes('EFETIVIDADE')){
+            const k=card.querySelector('.k,.kpi-label,.title')||card;
+            if(k!==card)k.textContent='Efetividade paga';
+            else card.innerHTML=card.innerHTML.replace(/EFETIVIDADE|Efetividade/g,'Efetividade paga');
+            card.title='Pagamentos conciliados ÷ cobranças feitas no dia.';
+          }
+        });
+
+        const panel=box.querySelector('.glass.panel');
+        if(panel&&!document.getElementById('dailyFormulaInfo100')){
+          const info=document.createElement('div');info.id='dailyFormulaInfo100';info.className='glass panel';info.style.cssText='margin:12px 0;border-color:rgba(96,165,250,.3)';
+          let report=window.DAILY_COB_REPORT_98||null;
+          info.innerHTML=`<strong>📐 Como ler as taxas</strong><div class="small muted" style="margin-top:6px">Execução da fila = cobranças feitas ÷ títulos previstos. Taxa de auditoria = auditorias aprovadas ÷ cobranças feitas. Efetividade paga = pagamentos conciliados ÷ cobranças feitas. Auditoria aprovada sem pagamento ainda não conta como efetividade paga.</div>`;
+          panel.parentNode.insertBefore(info,panel);
+        }
+      }catch(e){}
+    }
+
+    try{
+      const baseDailyRender100=window.renderCobrancaDiaria98;
+      if(typeof baseDailyRender100==='function'){
+        renderCobrancaDiaria98=window.renderCobrancaDiaria98=async function(force=false){
+          const ret=await baseDailyRender100.apply(this,arguments);
+          setTimeout(patchDailyLabels100,40);
+          return ret;
+        };
+      }
+    }catch(e){}
+    setTimeout(patchDailyLabels100,900);
+
+    // ---------------------------------------------------------
+    // 4) DEPLOY LOCK V10.100:
+    // só bloqueia quando scheduler sinaliza deploy_update_active.
+    // MAIN normal a cada 2h NÃO bloqueia.
+    // ---------------------------------------------------------
+    (function(){
+      const MON='https://dashbboardcobvendasmdl.up.railway.app';
+      let wasDeploy=false,poll=false;
+      function overlay(){
+        let el=document.getElementById('mdlDeployGuard100');
+        if(el)return el;
+        el=document.createElement('div');el.id='mdlDeployGuard100';
+        el.style.cssText='display:none;position:fixed;inset:0;z-index:100001;background:rgba(4,7,13,.95);align-items:center;justify-content:center;text-align:center;padding:24px';
+        el.innerHTML='<div style="max-width:520px;padding:28px;border:1px solid rgba(245,158,11,.4);border-radius:22px;background:#151922"><div style="font-size:44px">🔄</div><h2 style="color:#f59e0b;margin:8px 0">Atualizando, aguarde</h2><div style="color:#dbe4ff;font-weight:800;line-height:1.5">Uma nova versão do Dashboard está sendo publicada.</div><div style="color:#94a3b8;margin-top:8px;font-size:13px">O acesso será liberado automaticamente após o primeiro Cobrança/Main do deploy finalizar e concluir o FTP.</div></div>';
+        document.body.appendChild(el);return el;
+      }
+      function set(on){
+        overlay().style.display=on?'flex':'none';
+        const b=document.getElementById('loginBtn'),u=document.getElementById('loginUser'),p=document.getElementById('loginPass'),m=document.getElementById('loginMsg');
+        if(b)b.disabled=!!on;if(u)u.disabled=!!on;if(p)p.disabled=!!on;
+        if(m&&on){m.textContent='🔄 Atualizando, aguarde. O acesso será liberado quando a nova versão terminar de publicar.';m.style.color='#f59e0b';m.style.fontWeight='900'}
+      }
+      async function check(){
+        if(poll)return;poll=true;
+        try{
+          const r=await fetch(MON+'/api/status?_='+Date.now(),{cache:'no-store'});if(!r.ok)return;
+          const s=await r.json();
+          const active=!!s?.deploy_update_active;
+          if(active){wasDeploy=true;set(true);return}
+          set(false);
+          if(wasDeploy){
+            wasDeploy=false;
+            try{if(typeof clearSession==='function')clearSession()}catch(e){}
+            try{localStorage.removeItem('mdl_dashboard_session_v1')}catch(e){}
+            location.replace('/colaborador/?dashboard_atualizado=1&_='+Date.now());
+          }
+        }catch(e){
+          // falha de monitor nunca deve bloquear o acesso indefinidamente
+          set(false);
+        }finally{poll=false}
+      }
+      window.mdlDeployCheckV10100=check;
+      setTimeout(check,500);setInterval(check,12000);
+    })();
+
+    window.DASHBOARD_BUILD_VERSION='V10.100';
+    console.log(TAG,'ativo: CSM await-load + regras comissão + métricas diárias + lock somente deploy');
+  }catch(e){console.warn(TAG,'falhou',e)}
+})();
+</script>
+
 </body>
 </html>
 """
@@ -23787,6 +24256,25 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
         for _nome_fail, _erro_fail in _ftp_fail_v1019[:8]:
             print(f'   - {_nome_fail}: {_erro_fail}')
     else:
+        # V10.100: marcador de deploy PRONTO é publicado apenas após todos os uploads
+        # essenciais terminarem sem falha. O scheduler usa este arquivo para distinguir
+        # "primeiro MAIN de um novo deploy" de um MAIN normal agendado.
+        try:
+            _deploy_ready_v10100 = {
+                'version': DASHBOARD_BUILD_VERSION,
+                'status': 'ready',
+                'completed_at': now_brasilia().isoformat(),
+                'completed_at_label': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'),
+                'scope': 'deploy_first_main_complete'
+            }
+            _ftp_upload_bytes_v1019(
+                'dashboard_deploy_state.json',
+                json.dumps(_deploy_ready_v10100, ensure_ascii=False, indent=2).encode('utf-8'),
+                label='dashboard_deploy_state.json'
+            )
+            print(f"🔓 V10.100 deploy liberado após MAIN/FTP: {DASHBOARD_BUILD_VERSION}")
+        except Exception as _e_deploy_state_v10100:
+            print(f"⚠️ V10.100 falha publicando dashboard_deploy_state.json: {_e_deploy_state_v10100}")
         print('✅ Upload FTP V10.20 concluído sem falhas → https://moveisdolar.com.br/colaborador/')
 else:
     print('\nℹ️ FTP não configurado. Envie manualmente:')
@@ -23845,3 +24333,5 @@ driver.quit()
 # V10.98_RECEB_AUDIT_EXCEL_UNICO_PDF_LEGIVEL_RELATORIO_DIARIO
 
 # V10.99_TELEGRAM_COBRANCA_DIARIA_UPDATE_GUARD
+
+# V10.100_TELEGRAM_SYNC_CSM_EXCEL_REGRAS_METRICAS_DEPLOY_LOCK

@@ -34,7 +34,7 @@ def _extract_list_payload(data):
     return []
 
 
-# VERSAO: TELEGRAM_MONITOR_MDL_V10_99_COBRANCA_DIARIA
+# VERSAO: TELEGRAM_MONITOR_MDL_V10_100_COBRANCA_DIARIA_ROBUSTA
 import json
 import os
 import re
@@ -1748,3 +1748,139 @@ def build_daily_summary(base_dir, date_str=None):
 # V10.92_TELEGRAM_MULTI_GRUPOS_REMOTE_FIRST
 
 # V10.99_TELEGRAM_COBRANCA_DIARIA
+
+
+# ===== V10.100: COBRANÇA DIÁRIA TELEGRAM ROBUSTA =====
+def build_daily_collection_summary(base_dir, date_str=None):
+    """
+    V10.100:
+    - sempre consegue montar ao menos o resumo operacional do snapshot local;
+    - enriquecimento de auditoria/pagamento usa timeout curto e nunca impede o envio;
+    - evita o clique manual retornar "enfileirado" e depois falhar silenciosamente.
+    """
+    date_str = date_str or now_br().strftime("%Y-%m-%d")
+    snap = _read_json_file(os.path.join(base_dir, "cobranca_diaria_resumo.json"), None)
+    if not isinstance(snap, dict):
+        snap = _read_url_json(f"{PUBLIC_BASE}/cobranca_diaria_resumo.json?_={int(time.time())}", {}, timeout=6)
+    if not isinstance(snap, dict):
+        snap = {}
+
+    entities = snap.get("entities") if isinstance(snap.get("entities"), list) else []
+    entities = [e for e in entities if isinstance(e, dict) and e.get("ativo", True)]
+    summary = snap.get("summary") if isinstance(snap.get("summary"), dict) else {}
+
+    # Enriquecimento best-effort. Se falhar, a mensagem operacional continua.
+    audits = []
+    paid = []
+    try:
+        ajson = _read_url_json(f"{PUBLIC_BASE}/cobranca_auditoria_api.php?_={int(time.time())}", {}, timeout=6)
+        audits = _extract_list_payload(ajson)
+    except Exception:
+        audits = []
+    try:
+        pjson = _read_json_file(os.path.join(base_dir, "quitados_180d_contas_receber.json"), None)
+        if pjson is None:
+            pjson = _read_url_json(f"{PUBLIC_BASE}/quitados_180d_contas_receber.json?_={int(time.time())}", {}, timeout=6)
+        if isinstance(pjson, dict):
+            paid = pjson.get("quitados") or pjson.get("data") or pjson.get("rows") or []
+        elif isinstance(pjson, list):
+            paid = pjson
+    except Exception:
+        paid = []
+    if not isinstance(paid, list):
+        paid = []
+
+    rows = []
+    for ent in entities:
+        cob_keys = set(str(x) for x in (ent.get("cobrados_keys") or []) if x)
+        approved_keys = set()
+        paid_keys = set()
+        rec = 0.0
+
+        for a in audits:
+            if not isinstance(a, dict) or not _v1099_approved(a.get("status")):
+                continue
+            if not _v1099_entity_match(a, ent):
+                continue
+            k = _v1099_row_key(a)
+            if not k or k not in cob_keys:
+                continue
+            approved_keys.add(k)
+            if k in paid_keys:
+                continue
+            matches = [q for q in paid if isinstance(q, dict) and _v1099_same(a,q) and _v1099_date(q.get("pagamento") or q.get("data_pagamento")) >= date_str]
+            if matches:
+                q = sorted(matches, key=lambda x: _v1099_date(x.get("pagamento") or x.get("data_pagamento")))[0]
+                paid_keys.add(k)
+                rec += _float(q.get("pago"), 0.0)
+
+        feitos = int(ent.get("cobrancas_feitas") or 0)
+        previstos = int(ent.get("previstos") or 0)
+        rows.append({
+            **ent,
+            "auditorias_aprovadas": len(approved_keys),
+            "pagamentos_conciliados": len(paid_keys),
+            "recebido_conciliado": round(rec,2),
+            "taxa_execucao": round((feitos/previstos*100.0) if previstos else 100.0,1),
+            "taxa_auditoria": round((len(approved_keys)/feitos*100.0) if feitos else 0.0,1),
+            "taxa_efetividade": round((len(paid_keys)/feitos*100.0) if feitos else 0.0,1),
+        })
+
+    with_queue=[r for r in rows if int(r.get("previstos") or 0)>0]
+    no_work=[r for r in with_queue if int(r.get("cobrancas_feitas") or 0)==0]
+    partial=[r for r in with_queue if 0<int(r.get("cobrancas_feitas") or 0)<int(r.get("previstos") or 0)]
+    total_cob=sum(int(r.get("cobrancas_feitas") or 0) for r in rows)
+    total_aud=sum(int(r.get("auditorias_aprovadas") or 0) for r in rows)
+    total_pay=sum(int(r.get("pagamentos_conciliados") or 0) for r in rows)
+    total_rec=sum(_float(r.get("recebido_conciliado"),0) for r in rows)
+    lost=_float(summary.get("valor_nao_trabalhado_unico"),0)
+    lost_q=int(summary.get("titulos_nao_trabalhados_unicos") or 0)
+
+    try:
+        date_br=datetime.strptime(date_str,"%Y-%m-%d").strftime("%d/%m/%Y")
+    except Exception:
+        date_br=date_str
+
+    lines=[
+        f"📞 COBRANÇA DIÁRIA — {date_br}",
+        "Lojas MDL • resumo operacional",
+        "",
+        f"👥 Usuários com fila: {len(with_queue)}",
+        f"📲 Cobranças feitas: {total_cob}",
+        f"✅ Auditorias aprovadas: {total_aud}",
+        f"💵 Pagamentos conciliados: {total_pay}",
+        f"🏦 Recebido conciliado: {fmt_money(total_rec)}",
+        f"⚠️ Oportunidade não trabalhada: {lost_q} título(s) • {fmt_money(lost)}",
+        ""
+    ]
+    if no_work:
+        lines.append(f"🚫 NÃO COBRARAM ({len(no_work)}):")
+        for r in no_work[:12]:
+            lines.append(f"• {r.get('nome') or r.get('login')} · {r.get('filial') or '-'} · fila {r.get('previstos',0)} · {fmt_money(r.get('valor_previsto'))}")
+        if len(no_work)>12:
+            lines.append(f"• +{len(no_work)-12} usuário(s)")
+    else:
+        lines.append("✅ Todos os usuários com fila fizeram ao menos uma cobrança.")
+
+    if partial:
+        lines.append("")
+        lines.append(f"🟠 PARCIAIS ({len(partial)}):")
+        for r in sorted(partial,key=lambda x:float(x.get("taxa_execucao") or 0))[:8]:
+            lines.append(f"• {r.get('nome') or r.get('login')}: execução {str(r.get('taxa_execucao',0)).replace('.',',')}%")
+
+    eff=[r for r in rows if int(r.get("cobrancas_feitas") or 0)>0]
+    eff.sort(key=lambda x:(float(x.get("taxa_efetividade") or 0),int(x.get("pagamentos_conciliados") or 0)),reverse=True)
+    if eff:
+        lines += ["","📈 EFETIVIDADE PAGA — destaques:"]
+        for r in eff[:8]:
+            lines.append(f"• {r.get('nome') or r.get('login')}: {str(r.get('taxa_efetividade',0)).replace('.',',')}% ({r.get('pagamentos_conciliados',0)}/{r.get('cobrancas_feitas',0)})")
+
+    lines += ["","ℹ️ Execução = cobranças feitas ÷ previstos. Efetividade paga = pagamentos conciliados ÷ cobranças feitas.","ℹ️ Oportunidade não trabalhada não é recebimento garantido.",f"🕒 Gerado em {now_br().strftime('%d/%m/%Y %H:%M:%S')}"]
+    return "\n".join(lines)
+
+
+def send_daily_collection_now_v10100(base_dir, date_str=None):
+    text = build_daily_collection_summary(base_dir, date_str or now_br().strftime("%Y-%m-%d"))
+    return telegram_send(text, alert_type="cobranca_diaria", base_dir=base_dir)
+
+# V10.100_TELEGRAM_COBRANCA_DIARIA_ROBUSTA

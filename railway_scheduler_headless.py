@@ -7,6 +7,7 @@ import sys
 import time
 import subprocess
 import threading
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -30,7 +31,7 @@ try:
         load_meta_mercantil_100, build_meta_mercantil_100_alert,
         load_auditorias_master, build_audit_master_alert,
     )
-    from telegram_monitor_mdl import telegram_send, build_daily_collection_summary
+    from telegram_monitor_mdl import telegram_send, build_daily_collection_summary, send_daily_collection_now_v10100
 except Exception as e:
     def whatsapp_send(text, *a, **k): return (False, f"whatsapp notificações import erro: {e}")
     def build_whatsapp_daily_summary(base_dir, date_str=None): return f"Resumo indisponível: {e}"
@@ -49,6 +50,7 @@ except Exception as e:
     def build_audit_master_alert(item, base_dir=None): return 'Auditoria pendente no Dashboard'
     def telegram_send(text, *a, **k): return (False, f'telegram notificações import erro: {e}')
     def build_daily_collection_summary(base_dir, date_str=None): return f'Relatório diário de cobrança indisponível: {e}'
+    def send_daily_collection_now_v10100(base_dir, date_str=None): return (False, f'Relatório diário indisponível: {e}')
 
 BR_TZ = ZoneInfo(os.getenv('APP_TZ', 'America/Sao_Paulo'))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -104,10 +106,14 @@ _force_main_boot = True
 _force_sales_after_main = False
 
 STATE = {
-    'version': 'V10.99_TELEGRAM_COBRANCA_DIARIA_UPDATE_GUARD',
+    'version': 'V10.100_CORRECOES_OPERACIONAIS',
     'started_at': None,
     'updated_at': None,
     'scheduler': 'starting',
+    'deploy_update_active': False,
+    'deploy_update_version': 'V10.100',
+    'deploy_update_started_at': None,
+    'deploy_update_completed_at': None,
     'notification_channel': NOTIFICATION_CHANNEL,
     'telegram_notificacoes_enabled': TELEGRAM_ENABLED,
     'whatsapp_notificacoes_enabled': WHATSAPP_ENABLED,
@@ -237,7 +243,13 @@ def finish_if_done(name, proc):
         return proc, False
     STATE['jobs'][key].update({'running': False, 'last_end': iso_now(), 'last_exit': code})
     log(f'■ Fim job: {name} | exit={code}')
-    if key == 'dashboard_completo_cobranca': _last_cobranca_end = br_now()
+    if key == 'dashboard_completo_cobranca':
+        _last_cobranca_end = br_now()
+        _display_v10100 = str(STATE['jobs'][key].get('display_name') or '')
+        if code == 0 and STATE.get('deploy_update_active') and 'DEPLOY_V10100' in _display_v10100:
+            STATE['deploy_update_active'] = False
+            STATE['deploy_update_completed_at'] = iso_now()
+            log('🔓 DEPLOY V10.100 liberado: primeiro MAIN terminou com Exit 0 após publicação FTP. Próximos MAINs normais NÃO bloquearão acessos.')
     if key == 'cobranca_terceira' and code == 0:
         STATE['last_cob_terceira_date'] = br_now().strftime('%Y-%m-%d')
         _save_status()
@@ -351,8 +363,7 @@ def maybe_send_daily_collection_report(now):
     if _last_cobranca_diaria_date == day or STATE.get('last_cobranca_diaria_date') == day:
         return
     try:
-        text = build_daily_collection_summary(BASE_DIR, day)
-        ok, resp = telegram_send(text, alert_type='cobranca_diaria', base_dir=BASE_DIR)
+        ok, resp = send_daily_collection_now_v10100(BASE_DIR, day)
         if ok:
             _last_cobranca_diaria_date = day
             STATE['last_cobranca_diaria_date'] = day
@@ -364,19 +375,19 @@ def maybe_send_daily_collection_report(now):
         log(f'⚠️ Falha relatório diário de cobrança Telegram: {e}')
 
 
-def _force_daily_collection_worker():
+def force_daily_collection_now():
+    """V10.100: envio manual é síncrono para a tela mostrar sucesso/falha REAL."""
     try:
         day = br_now().strftime('%Y-%m-%d')
-        text = build_daily_collection_summary(BASE_DIR, day)
-        ok, resp = telegram_send(text, alert_type='cobranca_diaria', base_dir=BASE_DIR)
-        log('📞 Relatório diário de cobrança Telegram manual enviado' if ok else f'⚠️ Falha relatório diário cobrança manual: {resp}')
+        ok, resp = send_daily_collection_now_v10100(BASE_DIR, day)
+        if ok:
+            log(f'📞 Relatório diário de cobrança Telegram manual enviado: {resp}')
+            return True, 'Cobrança diária enviada agora. ' + str(resp)
+        log(f'⚠️ Falha relatório diário cobrança manual: {resp}')
+        return False, 'Falha no envio da cobrança diária: ' + str(resp)
     except Exception as e:
         log(f'⚠️ Erro montando relatório diário cobrança manual: {e}')
-
-
-def force_daily_collection_now():
-    threading.Thread(target=_force_daily_collection_worker, daemon=True).start()
-    return True, 'Relatório diário de cobrança Telegram enfileirado. Será enviado somente aos Chat IDs marcados em Cobrança diária.'
+        return False, f'Erro montando/enviando cobrança diária: {e}'
 
 
 def maybe_send_general_message_alerts(now):
@@ -602,10 +613,39 @@ def start_http_panel():
     log(f'🌐 Painel monitor iniciado na porta {port}')
     server.serve_forever()
 
+
+DEPLOY_BUILD_VERSION = "V10.100"
+DEPLOY_STATE_PUBLIC_URL = "https://moveisdolar.com.br/colaborador/dashboard_deploy_state.json"
+
+def _remote_deploy_version_v10100():
+    try:
+        req = urllib.request.Request(
+            DEPLOY_STATE_PUBLIC_URL + "?_=" + str(int(time.time())),
+            headers={"User-Agent":"MDL-Railway-Scheduler/10.100","Cache-Control":"no-cache"},
+        )
+        with urllib.request.urlopen(req, timeout=7) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="ignore"))
+        if isinstance(data, dict):
+            return str(data.get("version") or "").strip()
+    except Exception as e:
+        log(f"ℹ️ V10.100 marcador de deploy remoto indisponível: {e}")
+    return ""
+
+_remote_deploy_v10100 = _remote_deploy_version_v10100()
+_deploy_update_active_v10100 = (_remote_deploy_v10100 != DEPLOY_BUILD_VERSION)
+STATE["deploy_update_active"] = bool(_deploy_update_active_v10100)
+STATE["deploy_update_version"] = DEPLOY_BUILD_VERSION
+STATE["deploy_update_started_at"] = iso_now() if _deploy_update_active_v10100 else None
+if _deploy_update_active_v10100:
+    log(f"🔒 NOVO DEPLOY detectado: público={_remote_deploy_v10100 or 'sem marcador'} -> código={DEPLOY_BUILD_VERSION}. Acesso ficará bloqueado somente até o primeiro MAIN finalizar.")
+else:
+    log(f"✅ Reinício sem mudança de versão: {DEPLOY_BUILD_VERSION}. Não haverá bloqueio de acesso.")
+
+
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log(f'VERSAO V10.99: Telegram cobrança diária + guarda de atualização | canal={NOTIFICATION_CHANNEL} | manual_only={COB_TERCEIRA_MANUAL_ONLY}')
+log(f'VERSAO V10.100: Telegram cobrança robusta + lock apenas primeiro MAIN do deploy | canal={NOTIFICATION_CHANNEL} | manual_only={COB_TERCEIRA_MANUAL_ONLY}')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
@@ -639,7 +679,8 @@ while True:
         _daily = daily_lists_due(now) or FORCE_DAILY_LISTS_ON_BOOT
         if _daily:
             STATE['last_daily_lists_date'] = now.strftime('%Y-%m-%d')
-        _cobranca_proc=start_job('dashboard_completo_cobranca_boot_publica_html' + ('_com_listas_pesadas' if _daily else ''), COBRANCA_CMD, main_job_env(_daily)); cobranca_running=True
+        _boot_name_v10100 = ('dashboard_completo_cobranca_DEPLOY_V10100' if STATE.get('deploy_update_active') else 'dashboard_completo_cobranca_boot_publica_html') + ('_com_listas_pesadas' if _daily else '')
+        _cobranca_proc=start_job(_boot_name_v10100, COBRANCA_CMD, main_job_env(_daily)); cobranca_running=True
     elif cobranca_ok and not sales_running and not cobranca_running and not cob_terceira_running and _last_cobranca_slot != ckey:
         _last_cobranca_slot=ckey
         
@@ -678,3 +719,5 @@ while True:
 # V10.96_COB_DECISAO_EM_LOTE
 
 # V10.99_TELEGRAM_COBRANCA_DIARIA_UPDATE_GUARD
+
+# V10.100_TELEGRAM_SYNC_CSM_EXCEL_REGRAS_METRICAS_DEPLOY_LOCK
