@@ -30,7 +30,7 @@ try:
         load_meta_mercantil_100, build_meta_mercantil_100_alert,
         load_auditorias_master, build_audit_master_alert,
     )
-    from telegram_monitor_mdl import telegram_send
+    from telegram_monitor_mdl import telegram_send, build_daily_collection_summary
 except Exception as e:
     def whatsapp_send(text, *a, **k): return (False, f"whatsapp notificações import erro: {e}")
     def build_whatsapp_daily_summary(base_dir, date_str=None): return f"Resumo indisponível: {e}"
@@ -48,6 +48,7 @@ except Exception as e:
     def load_auditorias_master(base_dir): return []
     def build_audit_master_alert(item, base_dir=None): return 'Auditoria pendente no Dashboard'
     def telegram_send(text, *a, **k): return (False, f'telegram notificações import erro: {e}')
+    def build_daily_collection_summary(base_dir, date_str=None): return f'Relatório diário de cobrança indisponível: {e}'
 
 BR_TZ = ZoneInfo(os.getenv('APP_TZ', 'America/Sao_Paulo'))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -98,11 +99,12 @@ _last_sales_slot = None
 _last_cobranca_slot = None
 _last_cobranca_end = None
 _last_summary_date = None
+_last_cobranca_diaria_date = None
 _force_main_boot = True
 _force_sales_after_main = False
 
 STATE = {
-    'version': 'V10.95_DECISAO_MASTER_COB',
+    'version': 'V10.99_TELEGRAM_COBRANCA_DIARIA_UPDATE_GUARD',
     'started_at': None,
     'updated_at': None,
     'scheduler': 'starting',
@@ -110,6 +112,7 @@ STATE = {
     'telegram_notificacoes_enabled': TELEGRAM_ENABLED,
     'whatsapp_notificacoes_enabled': WHATSAPP_ENABLED,
     'last_summary_date': None,
+    'last_cobranca_diaria_date': None,
     'last_daily_lists_date': None,
     'last_cob_terceira_date': None,
     'last_cob_terceira_attempt_at': None,
@@ -135,7 +138,7 @@ try:
     if os.path.exists(STATUS_PATH):
         with open(STATUS_PATH, 'r', encoding='utf-8') as _f:
             _old_state = json.load(_f)
-        for _k in ['last_summary_date','last_daily_lists_date','last_cob_terceira_date','last_cob_terceira_attempt_at','whatsapp_sent_message_ids','whatsapp_sent_meta_keys','whatsapp_sent_meta100_keys','whatsapp_sent_audit_ids','whatsapp_audit_watcher_initialized']:
+        for _k in ['last_summary_date','last_cobranca_diaria_date','last_daily_lists_date','last_cob_terceira_date','last_cob_terceira_attempt_at','whatsapp_sent_message_ids','whatsapp_sent_meta_keys','whatsapp_sent_meta100_keys','whatsapp_sent_audit_ids','whatsapp_audit_watcher_initialized']:
             if _k in _old_state:
                 STATE[_k] = _old_state.get(_k)
 except Exception:
@@ -336,6 +339,46 @@ def maybe_send_daily_summary(now):
     except Exception as e:
         notify(f'⚠️ Falha ao montar resumo diário COB+VENDAS para Telegram: {e}', 'erros')
 
+
+def maybe_send_daily_collection_report(now):
+    """V10.99: relatório separado de cobrança diária, roteado pelo checkbox 'Cobrança diária' de cada Chat ID."""
+    global _last_cobranca_diaria_date
+    if not TELEGRAM_ENABLED:
+        return
+    if not (now.hour == DAILY_SUMMARY_HOUR and 0 <= now.minute <= DAILY_SUMMARY_MINUTE_MAX):
+        return
+    day = now.strftime('%Y-%m-%d')
+    if _last_cobranca_diaria_date == day or STATE.get('last_cobranca_diaria_date') == day:
+        return
+    try:
+        text = build_daily_collection_summary(BASE_DIR, day)
+        ok, resp = telegram_send(text, alert_type='cobranca_diaria', base_dir=BASE_DIR)
+        if ok:
+            _last_cobranca_diaria_date = day
+            STATE['last_cobranca_diaria_date'] = day
+            _save_status()
+            log(f'📞 Relatório diário de cobrança Telegram enviado: {resp}')
+        else:
+            log(f'ℹ️ Relatório diário de cobrança não enviado: {resp}')
+    except Exception as e:
+        log(f'⚠️ Falha relatório diário de cobrança Telegram: {e}')
+
+
+def _force_daily_collection_worker():
+    try:
+        day = br_now().strftime('%Y-%m-%d')
+        text = build_daily_collection_summary(BASE_DIR, day)
+        ok, resp = telegram_send(text, alert_type='cobranca_diaria', base_dir=BASE_DIR)
+        log('📞 Relatório diário de cobrança Telegram manual enviado' if ok else f'⚠️ Falha relatório diário cobrança manual: {resp}')
+    except Exception as e:
+        log(f'⚠️ Erro montando relatório diário cobrança manual: {e}')
+
+
+def force_daily_collection_now():
+    threading.Thread(target=_force_daily_collection_worker, daemon=True).start()
+    return True, 'Relatório diário de cobrança Telegram enfileirado. Será enviado somente aos Chat IDs marcados em Cobrança diária.'
+
+
 def maybe_send_general_message_alerts(now):
     if NOTIFICATION_CHANNEL == 'telegram' and not TELEGRAM_ENABLED: return
     if NOTIFICATION_CHANNEL == 'whatsapp' and not (WHATSAPP_ENABLED and WHATSAPP_ALERTAS_ENABLED): return
@@ -502,7 +545,7 @@ def force_run(kind):
         return True, 'Vendas iniciado manualmente.'
     return False, 'Tipo inválido.'
 
-HTML = '<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>COB+VENDAS Monitor Railway</title><style>:root{--bg:#070a10;--card:#111827;--line:#263244;--txt:#eef2ff;--mut:#94a3b8;--ok:#22c55e;--bad:#ef4444;--warn:#f59e0b}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#111827,#070a10 55%);font-family:Inter,Segoe UI,Arial,sans-serif;color:var(--txt);padding:24px}.wrap{max-width:1180px;margin:auto}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.brand h1{margin:0;font-size:28px}.brand p{margin:6px 0 0;color:var(--mut)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:20px 0}.card{background:rgba(17,24,39,.86);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 18px 55px rgba(0,0,0,.25)}.k{font-size:12px;color:var(--mut);font-weight:900;text-transform:uppercase;letter-spacing:.08em}.v{font-size:24px;font-weight:900;margin-top:8px}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}button{border:0;border-radius:12px;padding:12px 16px;font-weight:900;cursor:pointer;color:#111827;background:#f59e0b}button.soft{background:#1f2937;color:var(--txt);border:1px solid var(--line)}button.blue{background:#2563eb;color:white}button.active{outline:2px solid #f59e0b}.jobs{display:grid;grid-template-columns:1fr 1fr;gap:14px}.row{display:grid;grid-template-columns:160px 1fr;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)}pre{white-space:pre-wrap;background:#030712;border:1px solid var(--line);border-radius:14px;padding:14px;color:#d1d5db;max-height:430px;overflow:auto}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.logbox{height:560px;max-height:70vh;font-family:Consolas,monospace;font-size:12px;line-height:1.35}.mut{color:var(--mut)}@media(max-width:850px){.grid,.jobs{grid-template-columns:1fr}.row{grid-template-columns:1fr}.logbox{height:420px}}</style></head><body><div class="wrap"><div class="top"><div class="brand"><h1>🚦 COB+VENDAS Monitor Railway</h1><p>Ordem: Cobrança Terceira D+91 roda 1x/dia às 06:30; cobrança/recebimentos a cada 2h; vendas a cada 20min; listas pesadas às 07h.</p></div><div class="actions"><button onclick="run(\'main\')">Rodar cobrança agora</button><button class="blue" onclick="run(\'sales\')">Rodar vendas agora</button><button class="soft" onclick="sendSummary()">Enviar resumo Telegram</button><button class="soft" onclick="testTelegram()">Teste Telegram</button><button class="soft" onclick="run(\'preventiva\')">WhatsApp Master · standby</button><button class="soft" onclick="run(\'cob_terceira\')">Rodar COB Terceira</button></div></div><div id="app">Carregando...</div><div class="card" id="logsCard" style="margin-top:14px"><h2>Logs</h2><div class="actions"><button class="soft" data-log="scheduler" onclick="loadLog(\'scheduler\')">Scheduler</button><button class="soft" data-log="main" onclick="loadLog(\'main\')">Cobrança/Main</button><button class="soft" data-log="sales" onclick="loadLog(\'sales\')">Vendas</button><button class="soft" data-log="preventiva" onclick="loadLog(\'preventiva\')">WhatsApp Master</button><button class="soft" data-log="cob_terceira" onclick="loadLog(\'cob_terceira\')">COB Terceira</button><button class="soft" onclick="togglePause()" id="pauseBtn">Pausar atualização</button></div><div class="mut" id="logStatus">Clique em um log. A tela não será mais recriada quando você estiver lendo.</div><pre id="logbox" class="logbox">Clique em um log.</pre></div></div><script>const R=v=>v==null?\'-\':String(v).replace(\'T\',\' \').slice(0,19);let selectedLog=\'\';let paused=false;let refreshing=false;async function api(p,o){const r=await fetch(p,o);return await r.json()}function esc(s){return String(s??\'\').replace(/[&<>]/g,m=>({\'&\':\'&amp;\',\'<\':\'&lt;\',\'>\':\'&gt;\'}[m]))}async function refresh(){if(paused||refreshing)return;refreshing=true;try{const s=await api(\'/api/status\');const j=s.jobs||{};const ev=(s.recent_events||[]).slice(-18).reverse().join(\'\\n\');document.getElementById(\'app\').innerHTML=`<div class="grid"><div class="card"><div class="k">Scheduler</div><div class="v ok">${s.scheduler||\'-\'}</div></div><div class="card"><div class="k">Próxima vendas</div><div class="v warn">${s.next_sales_label||\'-\'}</div></div><div class="card"><div class="k">Próxima cobrança</div><div class="v warn">${s.next_cobranca_label||\'-\'}</div></div><div class="card"><div class="k">Próxima COB Terceira</div><div class="v warn">${s.next_cob_terceira_label||\'-\'}</div></div><div class="card"><div class="k">Listas 07h</div><div class="v warn">${s.next_daily_lists_label||\'-\'}</div></div><div class="card"><div class="k">Atualizado</div><div class="v" style="font-size:17px">${R(s.updated_at)}</div></div></div><div class="jobs">${Object.entries(j).map(([name,x])=>`<div class="card"><h2>${name}</h2><div class="row"><b>Status</b><span class="${x.running?\'warn\':\'ok\'}">${x.running?\'Rodando\':\'Parado\'}</span></div><div class="row"><b>Início</b><span>${R(x.last_start)}</span></div><div class="row"><b>Fim</b><span>${R(x.last_end)}</span></div><div class="row"><b>Exit</b><span class="${x.last_exit===0?\'ok\':(x.last_exit?\'bad\':\'\')}">${x.last_exit??\'-\'}</span></div>${x.last_error?`<h3 class="bad">Último erro</h3><pre>${esc(x.last_error)}</pre>`:\'\'}</div>`).join(\'\')}</div><div class="card" style="margin-top:14px"><h2>Eventos recentes</h2><pre>${esc(ev)}</pre></div>`; if(selectedLog) await loadLog(selectedLog,true);}finally{refreshing=false}}async function loadLog(f,keepScroll=false){selectedLog=f;document.querySelectorAll(\'[data-log]\').forEach(b=>b.classList.toggle(\'active\',b.dataset.log===f));const box=document.getElementById(\'logbox\');const status=document.getElementById(\'logStatus\');const nearBottom=box && (box.scrollHeight-box.scrollTop-box.clientHeight<80);const oldTop=box?box.scrollTop:0;const r=await fetch(\'/api/logs?file=\'+encodeURIComponent(f)+\'&_=\'+Date.now());const txt=await r.text();if(box){box.textContent=txt||\'Sem log ainda.\'; if(keepScroll&&!nearBottom) box.scrollTop=oldTop; else box.scrollTop=box.scrollHeight;}if(status)status.textContent=\'Exibindo: \'+f+\' • atualizado \'+new Date().toLocaleTimeString(\'pt-BR\')+\'.\'}function togglePause(){paused=!paused;document.getElementById(\'pauseBtn\').textContent=paused?\'Retomar atualização\':\'Pausar atualização\';}async function run(k){const r=await api(\'/run/\'+k,{method:\'POST\'});alert(r.message||JSON.stringify(r));refresh()}async function sendSummary(){const r=await api(\'/telegram/summary\',{method:\'POST\'});alert(r.message||JSON.stringify(r))}async function testTelegram(){const r=await api(\'/telegram/test\',{method:\'POST\'});alert(r.message||JSON.stringify(r))}setInterval(refresh,7000);refresh();</script></body></html>'
+HTML = '<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>COB+VENDAS Monitor Railway</title><style>:root{--bg:#070a10;--card:#111827;--line:#263244;--txt:#eef2ff;--mut:#94a3b8;--ok:#22c55e;--bad:#ef4444;--warn:#f59e0b}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#111827,#070a10 55%);font-family:Inter,Segoe UI,Arial,sans-serif;color:var(--txt);padding:24px}.wrap{max-width:1180px;margin:auto}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.brand h1{margin:0;font-size:28px}.brand p{margin:6px 0 0;color:var(--mut)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:20px 0}.card{background:rgba(17,24,39,.86);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 18px 55px rgba(0,0,0,.25)}.k{font-size:12px;color:var(--mut);font-weight:900;text-transform:uppercase;letter-spacing:.08em}.v{font-size:24px;font-weight:900;margin-top:8px}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}button{border:0;border-radius:12px;padding:12px 16px;font-weight:900;cursor:pointer;color:#111827;background:#f59e0b}button.soft{background:#1f2937;color:var(--txt);border:1px solid var(--line)}button.blue{background:#2563eb;color:white}button.active{outline:2px solid #f59e0b}.jobs{display:grid;grid-template-columns:1fr 1fr;gap:14px}.row{display:grid;grid-template-columns:160px 1fr;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)}pre{white-space:pre-wrap;background:#030712;border:1px solid var(--line);border-radius:14px;padding:14px;color:#d1d5db;max-height:430px;overflow:auto}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.logbox{height:560px;max-height:70vh;font-family:Consolas,monospace;font-size:12px;line-height:1.35}.mut{color:var(--mut)}@media(max-width:850px){.grid,.jobs{grid-template-columns:1fr}.row{grid-template-columns:1fr}.logbox{height:420px}}</style></head><body><div class="wrap"><div class="top"><div class="brand"><h1>🚦 COB+VENDAS Monitor Railway</h1><p>Ordem: Cobrança Terceira D+91 roda 1x/dia às 06:30; cobrança/recebimentos a cada 2h; vendas a cada 20min; listas pesadas às 07h.</p></div><div class="actions"><button onclick="run(\'main\')">Rodar cobrança agora</button><button class="blue" onclick="run(\'sales\')">Rodar vendas agora</button><button class="soft" onclick="sendSummary()">Enviar resumo Telegram</button><button class="soft" onclick="sendCobDaily()">Cobrança diária Telegram</button><button class="soft" onclick="testTelegram()">Teste Telegram</button><button class="soft" onclick="run(\'preventiva\')">WhatsApp Master · standby</button><button class="soft" onclick="run(\'cob_terceira\')">Rodar COB Terceira</button></div></div><div id="app">Carregando...</div><div class="card" id="logsCard" style="margin-top:14px"><h2>Logs</h2><div class="actions"><button class="soft" data-log="scheduler" onclick="loadLog(\'scheduler\')">Scheduler</button><button class="soft" data-log="main" onclick="loadLog(\'main\')">Cobrança/Main</button><button class="soft" data-log="sales" onclick="loadLog(\'sales\')">Vendas</button><button class="soft" data-log="preventiva" onclick="loadLog(\'preventiva\')">WhatsApp Master</button><button class="soft" data-log="cob_terceira" onclick="loadLog(\'cob_terceira\')">COB Terceira</button><button class="soft" onclick="togglePause()" id="pauseBtn">Pausar atualização</button></div><div class="mut" id="logStatus">Clique em um log. A tela não será mais recriada quando você estiver lendo.</div><pre id="logbox" class="logbox">Clique em um log.</pre></div></div><script>const R=v=>v==null?\'-\':String(v).replace(\'T\',\' \').slice(0,19);let selectedLog=\'\';let paused=false;let refreshing=false;async function api(p,o){const r=await fetch(p,o);return await r.json()}function esc(s){return String(s??\'\').replace(/[&<>]/g,m=>({\'&\':\'&amp;\',\'<\':\'&lt;\',\'>\':\'&gt;\'}[m]))}async function refresh(){if(paused||refreshing)return;refreshing=true;try{const s=await api(\'/api/status\');const j=s.jobs||{};const ev=(s.recent_events||[]).slice(-18).reverse().join(\'\\n\');document.getElementById(\'app\').innerHTML=`<div class="grid"><div class="card"><div class="k">Scheduler</div><div class="v ok">${s.scheduler||\'-\'}</div></div><div class="card"><div class="k">Próxima vendas</div><div class="v warn">${s.next_sales_label||\'-\'}</div></div><div class="card"><div class="k">Próxima cobrança</div><div class="v warn">${s.next_cobranca_label||\'-\'}</div></div><div class="card"><div class="k">Próxima COB Terceira</div><div class="v warn">${s.next_cob_terceira_label||\'-\'}</div></div><div class="card"><div class="k">Listas 07h</div><div class="v warn">${s.next_daily_lists_label||\'-\'}</div></div><div class="card"><div class="k">Atualizado</div><div class="v" style="font-size:17px">${R(s.updated_at)}</div></div></div><div class="jobs">${Object.entries(j).map(([name,x])=>`<div class="card"><h2>${name}</h2><div class="row"><b>Status</b><span class="${x.running?\'warn\':\'ok\'}">${x.running?\'Rodando\':\'Parado\'}</span></div><div class="row"><b>Início</b><span>${R(x.last_start)}</span></div><div class="row"><b>Fim</b><span>${R(x.last_end)}</span></div><div class="row"><b>Exit</b><span class="${x.last_exit===0?\'ok\':(x.last_exit?\'bad\':\'\')}">${x.last_exit??\'-\'}</span></div>${x.last_error?`<h3 class="bad">Último erro</h3><pre>${esc(x.last_error)}</pre>`:\'\'}</div>`).join(\'\')}</div><div class="card" style="margin-top:14px"><h2>Eventos recentes</h2><pre>${esc(ev)}</pre></div>`; if(selectedLog) await loadLog(selectedLog,true);}finally{refreshing=false}}async function loadLog(f,keepScroll=false){selectedLog=f;document.querySelectorAll(\'[data-log]\').forEach(b=>b.classList.toggle(\'active\',b.dataset.log===f));const box=document.getElementById(\'logbox\');const status=document.getElementById(\'logStatus\');const nearBottom=box && (box.scrollHeight-box.scrollTop-box.clientHeight<80);const oldTop=box?box.scrollTop:0;const r=await fetch(\'/api/logs?file=\'+encodeURIComponent(f)+\'&_=\'+Date.now());const txt=await r.text();if(box){box.textContent=txt||\'Sem log ainda.\'; if(keepScroll&&!nearBottom) box.scrollTop=oldTop; else box.scrollTop=box.scrollHeight;}if(status)status.textContent=\'Exibindo: \'+f+\' • atualizado \'+new Date().toLocaleTimeString(\'pt-BR\')+\'.\'}function togglePause(){paused=!paused;document.getElementById(\'pauseBtn\').textContent=paused?\'Retomar atualização\':\'Pausar atualização\';}async function run(k){const r=await api(\'/run/\'+k,{method:\'POST\'});alert(r.message||JSON.stringify(r));refresh()}async function sendSummary(){const r=await api(\'/telegram/summary\',{method:\'POST\'});alert(r.message||JSON.stringify(r))}async function testTelegram(){const r=await api(\'/telegram/test\',{method:\'POST\'});alert(r.message||JSON.stringify(r))}setInterval(refresh,7000);refresh();</script></body></html>'
 
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code=200, body='', ctype='text/html; charset=utf-8'):
@@ -546,6 +589,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, {'ok':ok,'message':('Teste Telegram: '+str(resp)) if ok else str(resp)})
         elif self.path.startswith('/telegram/summary'):
             ok,resp=force_summary_now(); self._send(200, {'ok':ok,'message':resp})
+        elif self.path.startswith('/telegram/cobranca-diaria'):
+            ok,resp=force_daily_collection_now(); self._send(200, {'ok':ok,'message':resp})
         elif self.path.startswith('/whatsapp/test') or self.path.startswith('/whatsapp/summary'):
             self._send(503, {'ok':False,'message':'WhatsApp Master temporariamente em standby. Canal ativo: Telegram.'})
         else: self._send(404, {'ok':False,'message':'not found'})
@@ -560,7 +605,7 @@ def start_http_panel():
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log(f'VERSAO V10.95: COB Externa + decisão MASTER de marcadores | canal={NOTIFICATION_CHANNEL} | manual_only={COB_TERCEIRA_MANUAL_ONLY}')
+log(f'VERSAO V10.99: Telegram cobrança diária + guarda de atualização | canal={NOTIFICATION_CHANNEL} | manual_only={COB_TERCEIRA_MANUAL_ONLY}')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
@@ -570,7 +615,7 @@ while True:
     _cob_terceira_proc, cob_terceira_finished = finish_if_done('cobranca_terceira', _cob_terceira_proc)
     if cobranca_finished: _force_sales_after_main = True
 
-    now = br_now(); maybe_send_daily_summary(now); maybe_send_general_message_alerts(now); maybe_send_meta_diaria_alerts(now); maybe_send_meta_mercantil_100_alerts(now); maybe_send_audit_master_alerts(now)
+    now = br_now(); maybe_send_daily_summary(now); maybe_send_daily_collection_report(now); maybe_send_general_message_alerts(now); maybe_send_meta_diaria_alerts(now); maybe_send_meta_mercantil_100_alerts(now); maybe_send_audit_master_alerts(now)
     STATE['next_daily_lists_label'] = fmt_delta(next_daily_lists_time(now))
     STATE['next_sales_label'] = fmt_delta(next_sales_time(now))
     STATE['next_cobranca_label'] = fmt_delta(next_cobranca_time(now))
@@ -631,3 +676,5 @@ while True:
 # V10.95_DECISAO_MASTER_COB
 
 # V10.96_COB_DECISAO_EM_LOTE
+
+# V10.99_TELEGRAM_COBRANCA_DIARIA_UPDATE_GUARD

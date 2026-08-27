@@ -37,8 +37,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.97"
-DASHBOARD_BUILD_TAG = "v1097_avisos_off_especiais_sem_meta_xls_auditado_pdf_fit"
+DASHBOARD_BUILD_VERSION = "V10.99"
+DASHBOARD_BUILD_TAG = "v1099_telegram_cobranca_diaria_update_guard"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
 # V10.52: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
@@ -5021,7 +5021,7 @@ _config_meta_default_global = {
     "cob_cred_rateio_cred_pct": 50.0,
     "cobranca_global_rateio_pct": 20.0,
     "comissao_pagamento_texto": "A comissão reinicia a cada mês e o pagamento é previsto para o dia 25 do mês seguinte.",
-    "telegram_contacts": [{"id":"tg_diretoria","nome":"Grupo Diretoria MDL","chat_id":"-5292146961","ativo":True,"erros":True,"meta_diaria":True,"meta_mensal":True,"avisos":True,"resumo":True,"auditoria":True,"cob_externa":True}],
+    "telegram_contacts": [{"id":"tg_diretoria","nome":"Grupo Diretoria MDL","chat_id":"-5292146961","ativo":True,"erros":True,"meta_diaria":True,"meta_mensal":True,"avisos":True,"resumo":True,"auditoria":True,"cob_externa":True,"cobranca_diaria":False}],
     "telegram_templates": {},
     "whatsapp_master_contacts": [],
     "whatsapp_master_templates": {},
@@ -9292,6 +9292,249 @@ try:
 except Exception as _e_cob_boot_v1050:
     print(f"⚠️ V10.50 não conseguiu preparar fonte oficial compacta de cobranças: {_e_cob_boot_v1050}")
     js_cobrancas_logs_boot = '[]'
+
+# ===== V10.99: SNAPSHOT SERVER-SIDE DO RELATÓRIO DIÁRIO DE COBRANÇA =====
+# Gera uma base pequena para o Telegram e para auditoria operacional.
+# "valor_nao_trabalhado" é oportunidade ainda disponível sem contato no dia;
+# não significa recebimento garantido.
+COBRANCA_DIARIA_RESUMO_PATH = os.path.join(pasta, "cobranca_diaria_resumo.json")
+
+def _v1099_digits(v):
+    return re.sub(r"\D+", "", str(v or ""))
+
+def _v1099_part(v):
+    nums = re.findall(r"\d+", str(v or ""))
+    return "/".join(str(int(x)) for x in nums[:2]) if nums else str(v or "").strip().upper()
+
+def _v1099_row_key(r):
+    doc = _v1099_digits((r or {}).get("cpf_cnpj_normalizado") or (r or {}).get("cpf_cnpj"))
+    tit = _v1099_digits((r or {}).get("titulo")) or str((r or {}).get("titulo") or "").strip().upper()
+    par = _v1099_part((r or {}).get("parcela"))
+    if doc or tit or par:
+        return f"{doc}|{tit}|{par}"
+    try:
+        return cobranca_row_key_py(r)
+    except Exception:
+        return ""
+
+def _v1099_dt(v):
+    s = str(v or "").strip()
+    if not s:
+        return None
+    try:
+        d = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=BR_TZ)
+        return d.astimezone(BR_TZ)
+    except Exception:
+        pass
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%Y-%m-%d"):
+        try:
+            d = datetime.strptime(s[:19], fmt)
+            return d.replace(tzinfo=BR_TZ)
+        except Exception:
+            continue
+    return None
+
+def _v1099_norm(v):
+    try:
+        return normalizar_texto_match(v)
+    except Exception:
+        return re.sub(r"[^A-Z0-9]+", " ", str(v or "").upper()).strip()
+
+def _v1099_log_matches_ent(log, ent):
+    if not isinstance(log, dict):
+        return False
+    filial = str(log.get("filial") or "").upper()
+    usuario = str(log.get("usuario") or log.get("login") or "").lower().strip()
+    destino = _v1099_norm(log.get("destino_nome") or log.get("responsavel") or "")
+    destino_tipo = str(log.get("destino_tipo") or "").lower().strip()
+    tipo = str(ent.get("tipo") or "").lower()
+    login = str(ent.get("login") or "").lower().strip()
+    nome = _v1099_norm(ent.get("nome") or "")
+    ef = str(ent.get("filial") or "").upper()
+
+    if tipo == "crediarista":
+        return usuario == login or destino == nome or (destino_tipo == "crediarista" and filial == ef)
+    if tipo == "terceiro":
+        return usuario in {login, COBRANCA10_LOGIN.lower()} or destino == _v1099_norm(COBRANCA10_NOME) or destino_tipo == "terceiro"
+    return usuario == login or destino == nome
+
+def _v1099_active_auth(login, nome, filial):
+    try:
+        u = (auth_users or {}).get(str(login or "").lower())
+        if not isinstance(u, dict):
+            for lg, ux in (auth_users or {}).items():
+                if not isinstance(ux, dict):
+                    continue
+                if str(ux.get("filial") or "").upper() != str(filial or "").upper():
+                    continue
+                if _v1099_norm(ux.get("nome")) == _v1099_norm(nome):
+                    u = ux
+                    break
+        if not isinstance(u, dict):
+            return True
+        if bool(u.get("access_disabled")):
+            return False
+        st = str(u.get("status_operacional") or "ativo").lower().strip()
+        if st in {"inativo","bloqueado","desligado"}:
+            return False
+        return bool(u.get("participa_cobrancas", True))
+    except Exception:
+        return True
+
+def _v1099_entity_daily(tipo, login, nome, filial, buckets, logs_all, now):
+    rows = []
+    seen_rows = set()
+    for fx in ("grave","alerta","atencao"):
+        for r in ((buckets or {}).get(fx) or []):
+            if not isinstance(r, dict):
+                continue
+            k = _v1099_row_key(r)
+            if not k or k in seen_rows:
+                continue
+            seen_rows.add(k)
+            rr = dict(r)
+            rr["_faixa_v1099"] = fx
+            rows.append(rr)
+
+    ent = {"tipo":tipo,"login":str(login or "").lower(),"nome":str(nome or ""),"filial":str(filial or "").upper()}
+    ent_logs = [l for l in (logs_all or []) if isinstance(l, dict) and str(l.get("acao") or "whatsapp").lower() == "whatsapp" and _v1099_log_matches_ent(l, ent)]
+    by_key = {}
+    for l in ent_logs:
+        k = _v1099_row_key(l)
+        if not k:
+            continue
+        by_key.setdefault(k, []).append(l)
+    for k in by_key:
+        by_key[k].sort(key=lambda x: (_v1099_dt(x.get("server_time") or x.get("criado_em") or x.get("data") or x.get("server_date")) or datetime(2000,1,1,tzinfo=BR_TZ)))
+
+    today = now.strftime("%Y-%m-%d")
+    today_logs = []
+    today_keys = set()
+    for l in ent_logs:
+        dt = _v1099_dt(l.get("server_time") or l.get("criado_em") or l.get("data") or l.get("server_date"))
+        if dt and dt.strftime("%Y-%m-%d") == today:
+            k = _v1099_row_key(l)
+            if k and k not in today_keys:
+                today_keys.add(k)
+                today_logs.append(l)
+
+    actionable = []
+    waiting = []
+    for r in rows:
+        k = _v1099_row_key(r)
+        logs_k = by_key.get(k) or []
+        last = logs_k[-1] if logs_k else None
+        last_dt = _v1099_dt((last or {}).get("server_time") or (last or {}).get("criado_em") or (last or {}).get("data") or (last or {}).get("server_date"))
+        days = 9999 if not last_dt else max(0, int((now - last_dt).total_seconds() // 86400))
+        if not last or days >= 3:
+            actionable.append(r)
+        else:
+            waiting.append(r)
+
+    plan = {}
+    for r in actionable:
+        plan[_v1099_row_key(r)] = r
+    for l in today_logs:
+        k = _v1099_row_key(l)
+        if k and k not in plan:
+            # Usa o registro da carteira quando disponível para recuperar valor/faixa.
+            ref = next((x for x in rows if _v1099_row_key(x) == k), None)
+            plan[k] = ref or l
+
+    not_worked = [r for r in actionable if _v1099_row_key(r) not in today_keys]
+    valor_previsto = round(sum(float((r or {}).get("pendente") or 0) for r in plan.values()), 2)
+    valor_cobrado = round(sum(float((l or {}).get("pendente") or 0) for l in today_logs), 2)
+    valor_nao = round(sum(float((r or {}).get("pendente") or 0) for r in not_worked), 2)
+
+    return {
+        "tipo": tipo,
+        "login": str(login or "").lower(),
+        "nome": str(nome or ""),
+        "filial": str(filial or "").upper(),
+        "ativo": _v1099_active_auth(login, nome, filial),
+        "previstos": len(plan),
+        "valor_previsto": valor_previsto,
+        "cobrancas_feitas": len(today_logs),
+        "valor_cobrado": valor_cobrado,
+        "aguardando_3_dias": len(waiting),
+        "nao_trabalhados": len(not_worked),
+        "valor_nao_trabalhado": valor_nao,
+        "previstos_keys": sorted(plan.keys()),
+        "cobrados_keys": sorted(today_keys),
+        "nao_trabalhados_keys": sorted(_v1099_row_key(r) for r in not_worked if _v1099_row_key(r)),
+        "valores_por_key": {k: round(float((r or {}).get("pendente") or 0), 2) for k, r in plan.items()},
+    }
+
+try:
+    _now_v1099 = now_brasilia()
+    _logs_v1099 = list(_cobrancas_full_v1050 or [])
+    _entities_v1099 = []
+
+    # Vendedores
+    for _f_v1099, _vs_v1099 in (todos_js or {}).items():
+        for _v_v1099 in (_vs_v1099 or []):
+            _nome_v1099 = str(_v_v1099.get("nome") or "")
+            _login_v1099 = str(_v_v1099.get("login") or "").lower()
+            _b_v1099 = (clientes_por_vend_js or {}).get(_nome_v1099) or {"grave":[],"alerta":[],"atencao":[]}
+            _entities_v1099.append(_v1099_entity_daily("vendedor", _login_v1099, _nome_v1099, _f_v1099, _b_v1099, _logs_v1099, _now_v1099))
+
+    # Crediaristas
+    for _c_v1099 in (CREDIARISTAS_CONFIG or []):
+        _lg_v1099 = str(_c_v1099.get("login") or "").lower()
+        _entities_v1099.append(_v1099_entity_daily(
+            "crediarista", _lg_v1099, _c_v1099.get("nome") or _lg_v1099, _c_v1099.get("filial") or "",
+            (clientes_crediarista_js or {}).get(_lg_v1099) or {"grave":[],"alerta":[],"atencao":[]},
+            _logs_v1099, _now_v1099
+        ))
+
+    # Cobrança terceiro
+    _entities_v1099.append(_v1099_entity_daily(
+        "terceiro", COBRANCA10_LOGIN, COBRANCA10_NOME, "FTER",
+        clientes_terceiro_js or {"grave":[],"alerta":[],"atencao":[]},
+        _logs_v1099, _now_v1099
+    ))
+
+    _entities_v1099 = [e for e in _entities_v1099 if e.get("ativo") and (int(e.get("previstos") or 0) > 0 or int(e.get("cobrancas_feitas") or 0) > 0)]
+
+    # Total empresa deduplicado: um mesmo título que aparece em vendedor + crediarista conta uma vez.
+    _all_plan_vals_v1099 = {}
+    _all_cob_keys_v1099 = set()
+    for _e_v1099 in _entities_v1099:
+        _all_cob_keys_v1099.update(_e_v1099.get("cobrados_keys") or [])
+        for _k_v1099, _v_v1099 in (_e_v1099.get("valores_por_key") or {}).items():
+            if _k_v1099 not in _all_plan_vals_v1099:
+                _all_plan_vals_v1099[_k_v1099] = float(_v_v1099 or 0)
+    _not_worked_unique_v1099 = {k:v for k,v in _all_plan_vals_v1099.items() if k not in _all_cob_keys_v1099}
+
+    _payload_daily_v1099 = {
+        "version": "V10.99",
+        "date": _now_v1099.strftime("%Y-%m-%d"),
+        "generated_at": _now_v1099.isoformat(),
+        "updated_at_label": _now_v1099.strftime("%d/%m/%Y %H:%M:%S"),
+        "entities": _entities_v1099,
+        "summary": {
+            "usuarios_com_fila": sum(1 for e in _entities_v1099 if int(e.get("previstos") or 0) > 0),
+            "usuarios_sem_cobrar": sum(1 for e in _entities_v1099 if int(e.get("previstos") or 0) > 0 and int(e.get("cobrancas_feitas") or 0) == 0),
+            "cobrancas_feitas": sum(int(e.get("cobrancas_feitas") or 0) for e in _entities_v1099),
+            "valor_cobrado": round(sum(float(e.get("valor_cobrado") or 0) for e in _entities_v1099), 2),
+            "titulos_nao_trabalhados_unicos": len(_not_worked_unique_v1099),
+            "valor_nao_trabalhado_unico": round(sum(_not_worked_unique_v1099.values()), 2),
+        }
+    }
+    with open(COBRANCA_DIARIA_RESUMO_PATH, "w", encoding="utf-8") as _f_v1099:
+        json.dump(_payload_daily_v1099, _f_v1099, ensure_ascii=False, indent=2)
+    print(
+        "📞 V10.99 relatório diário server-side: "
+        f"{_payload_daily_v1099['summary']['cobrancas_feitas']} cobrança(s) | "
+        f"{_payload_daily_v1099['summary']['usuarios_sem_cobrar']} usuário(s) sem cobrar | "
+        f"R$ não trabalhado deduplicado={_payload_daily_v1099['summary']['valor_nao_trabalhado_unico']:.2f}"
+    )
+except Exception as _e_daily_v1099:
+    print(f"⚠️ V10.99 não conseguiu gerar cobranca_diaria_resumo.json: {_e_daily_v1099}")
+
+
 js_hist_recebimentos_mensais = json.dumps(HIST_RECEBIMENTOS_MENSAIS, ensure_ascii=False)
 js_clientes_sem_movimento = json.dumps(clientes_sem_movimento_js, ensure_ascii=False)
 js_clientes_sem_movimento_meta = json.dumps(clientes_sem_movimento_meta_py, ensure_ascii=False)
@@ -13923,15 +14166,28 @@ async function sendWhatsAppSummaryNow(){
 // O nome legado é preservado para não quebrar os atalhos antigos do dashboard.
 // ===== V10.91 TELEGRAM RESUMOS / CANAL PRINCIPAL =====
 function tgBool(v){return v===true||v==='1'||v===1||['true','sim','yes','on'].includes(String(v||'').toLowerCase())}
-function telegramContacts(){const rows=Array.isArray(CONFIG_META?.telegram_contacts)?CONFIG_META.telegram_contacts:[];return rows.length?rows:[{id:'tg_diretoria',nome:'Grupo Diretoria MDL',chat_id:'-5292146961',ativo:true,erros:true,meta_diaria:true,meta_mensal:true,avisos:true,resumo:true,auditoria:true,cob_externa:true}]}
-function tgNovoContato(){CONFIG_META.telegram_contacts=[...telegramContacts(),{id:'tg_'+Date.now(),nome:'',chat_id:'',ativo:true,erros:true,meta_diaria:true,meta_mensal:true,avisos:true,resumo:true,auditoria:true,cob_externa:false}];renderTelegramTab()}
+function telegramContacts(){const rows=Array.isArray(CONFIG_META?.telegram_contacts)?CONFIG_META.telegram_contacts:[];return rows.length?rows:[{id:'tg_diretoria',nome:'Grupo Diretoria MDL',chat_id:'-5292146961',ativo:true,erros:true,meta_diaria:true,meta_mensal:true,avisos:true,resumo:true,auditoria:true,cob_externa:true,cobranca_diaria:false}]}
+function tgNovoContato(){CONFIG_META.telegram_contacts=[...telegramContacts(),{id:'tg_'+Date.now(),nome:'',chat_id:'',ativo:true,erros:true,meta_diaria:true,meta_mensal:true,avisos:true,resumo:true,auditoria:true,cob_externa:false,cobranca_diaria:false}];renderTelegramTab()}
 function tgRemoverContato(id){CONFIG_META.telegram_contacts=telegramContacts().filter(x=>String(x.id)!==String(id));renderTelegramTab()}
-function tgReadRows(){return [...document.querySelectorAll('.tg-row')].map((row,idx)=>({id:row.dataset.id||('tg_'+Date.now()+'_'+idx),nome:row.querySelector('[data-k="nome"]')?.value?.trim()||'',chat_id:row.querySelector('[data-k="chat_id"]')?.value?.trim()||'',ativo:!!row.querySelector('[data-k="ativo"]')?.checked,auditoria:!!row.querySelector('[data-k="auditoria"]')?.checked,cob_externa:!!row.querySelector('[data-k="cob_externa"]')?.checked,resumo:!!row.querySelector('[data-k="resumo"]')?.checked,meta_diaria:!!row.querySelector('[data-k="meta_diaria"]')?.checked,meta_mensal:!!row.querySelector('[data-k="meta_mensal"]')?.checked,avisos:!!row.querySelector('[data-k="avisos"]')?.checked,erros:!!row.querySelector('[data-k="erros"]')?.checked})).filter(x=>x.nome||x.chat_id)}
-function tgRowHtml(c){const id=esc(c.id||('tg_'+Math.random().toString(16).slice(2))),ck=k=>tgBool(c[k])?'checked':'';return `<div class="row-item tg-row" data-id="${id}" style="margin-bottom:9px"><div style="display:grid;grid-template-columns:minmax(170px,1.1fr) minmax(170px,1fr);gap:10px;margin-bottom:10px"><div class="input-card" style="padding:9px"><label>Nome / grupo</label><input data-k="nome" value="${esc(c.nome||'')}" placeholder="Ex: Diretoria MDL"></div><div class="input-card" style="padding:9px"><label>Chat ID</label><input data-k="chat_id" value="${esc(c.chat_id||'')}" placeholder="-5292146961"></div></div><div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center"><label class="pill"><input data-k="ativo" type="checkbox" ${ck('ativo')}> Ativo</label><label class="pill"><input data-k="auditoria" type="checkbox" ${ck('auditoria')}> Auditoria MASTER</label><label class="pill"><input data-k="cob_externa" type="checkbox" ${ck('cob_externa')}> COB externa</label><label class="pill"><input data-k="resumo" type="checkbox" ${ck('resumo')}> Resumo diário</label><label class="pill"><input data-k="meta_diaria" type="checkbox" ${ck('meta_diaria')}> Meta diária</label><label class="pill"><input data-k="meta_mensal" type="checkbox" ${ck('meta_mensal')}> Meta mensal</label><label class="pill"><input data-k="avisos" type="checkbox" ${ck('avisos')}> Avisos</label><label class="pill"><input data-k="erros" type="checkbox" ${ck('erros')}> Erros Railway</label><button class="btn soft btn-xs" onclick="tgRemoverContato('${id}')">Remover</button></div></div>`}
+function tgReadRows(){return [...document.querySelectorAll('.tg-row')].map((row,idx)=>({id:row.dataset.id||('tg_'+Date.now()+'_'+idx),nome:row.querySelector('[data-k="nome"]')?.value?.trim()||'',chat_id:row.querySelector('[data-k="chat_id"]')?.value?.trim()||'',ativo:!!row.querySelector('[data-k="ativo"]')?.checked,auditoria:!!row.querySelector('[data-k="auditoria"]')?.checked,cob_externa:!!row.querySelector('[data-k="cob_externa"]')?.checked,cobranca_diaria:!!row.querySelector('[data-k="cobranca_diaria"]')?.checked,resumo:!!row.querySelector('[data-k="resumo"]')?.checked,meta_diaria:!!row.querySelector('[data-k="meta_diaria"]')?.checked,meta_mensal:!!row.querySelector('[data-k="meta_mensal"]')?.checked,avisos:!!row.querySelector('[data-k="avisos"]')?.checked,erros:!!row.querySelector('[data-k="erros"]')?.checked})).filter(x=>x.nome||x.chat_id)}
+function tgRowHtml(c){const id=esc(c.id||('tg_'+Math.random().toString(16).slice(2))),ck=k=>tgBool(c[k])?'checked':'';return `<div class="row-item tg-row" data-id="${id}" style="margin-bottom:9px"><div style="display:grid;grid-template-columns:minmax(170px,1.1fr) minmax(170px,1fr);gap:10px;margin-bottom:10px"><div class="input-card" style="padding:9px"><label>Nome / grupo</label><input data-k="nome" value="${esc(c.nome||'')}" placeholder="Ex: Diretoria MDL"></div><div class="input-card" style="padding:9px"><label>Chat ID</label><input data-k="chat_id" value="${esc(c.chat_id||'')}" placeholder="-5292146961"></div></div><div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center"><label class="pill"><input data-k="ativo" type="checkbox" ${ck('ativo')}> Ativo</label><label class="pill"><input data-k="auditoria" type="checkbox" ${ck('auditoria')}> Auditoria MASTER</label><label class="pill"><input data-k="cob_externa" type="checkbox" ${ck('cob_externa')}> COB externa</label><label class="pill"><input data-k="cobranca_diaria" type="checkbox" ${ck('cobranca_diaria')}> 📞 Cobrança diária</label><label class="pill"><input data-k="resumo" type="checkbox" ${ck('resumo')}> Resumo diário</label><label class="pill"><input data-k="meta_diaria" type="checkbox" ${ck('meta_diaria')}> Meta diária</label><label class="pill"><input data-k="meta_mensal" type="checkbox" ${ck('meta_mensal')}> Meta mensal</label><label class="pill"><input data-k="avisos" type="checkbox" ${ck('avisos')}> Avisos</label><label class="pill"><input data-k="erros" type="checkbox" ${ck('erros')}> Erros Railway</label><button class="btn soft btn-xs" onclick="tgRemoverContato('${id}')">Remover</button></div></div>`}
 async function salvarTelegramConfig(){CONFIG_META.telegram_contacts=tgReadRows();CONFIG_META.telegram_templates={meta_diaria:document.getElementById('tgTplMetaDiaria')?.value||'',meta_mensal:document.getElementById('tgTplMetaMensal')?.value||'',auditoria_master:document.getElementById('tgTplAuditoria')?.value||''};const msg=document.getElementById('tgSaveMsg');try{const resp=await fetch(API_CFG,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({global:CONFIG_META,individual:CONFIG_META_IND})});const j=await resp.json();if(msg)msg.textContent=j.ok?'Configuração Telegram salva.':'Não consegui salvar a configuração.';toast(j.ok?'Telegram configurado.':'Falha ao salvar Telegram.',j.ok?'success':'warn');if(j.ok)await carregarConfigOnline()}catch(e){if(msg)msg.textContent='Não confirmou no servidor.';toast('Falha ao salvar Telegram.','warn')}}
 async function testTelegramNotify(){const status=document.getElementById('tgNotifyTestStatus');if(status)status.textContent='Enviando teste...';try{const r=await fetch(WA_MASTER_MONITOR_URL+'/telegram/test',{method:'POST'});const j=await r.json();if(status)status.textContent=j.message||'';toast(j.message||'Teste solicitado.',j.ok?'success':'warn')}catch(e){if(status)status.textContent='Falha ao chamar o monitor.';toast('Não consegui enviar o teste Telegram.','warn')}}
 async function sendTelegramSummaryNow(){const status=document.getElementById('tgNotifyTestStatus');if(status)status.textContent='Montando resumo...';try{const r=await fetch(WA_MASTER_MONITOR_URL+'/telegram/summary',{method:'POST'});const j=await r.json();if(status)status.textContent=j.message||'';toast(j.message||'Resumo solicitado.',j.ok?'success':'warn')}catch(e){if(status)status.textContent='Falha ao chamar o monitor.';toast('Não consegui solicitar o resumo Telegram.','warn')}}
-function renderTelegramTab(){if(!telegramSection)return;const rows=telegramContacts(),tpl=CONFIG_META.telegram_templates||{};const defDiaria='🎯🚀 PARABÉNS! META DIÁRIA BATIDA\n\n👏 Destaque: {nome}\n📈 Meta atingida: {atingido}\n🛒 Tipo: Venda mercantil\n📅 Data: {data}\n\n🔥 Excelente resultado no Controle de Meta do Sólidus!\n💪 MISSÃO DADA! MISSÃO CUMPRIDA!';const defMensal='🏆🚀 PARABÉNS! META MENSAL BATIDA\n\n👏 Destaque: {nome}\n📈 Meta atingida: {atingido}\n🛒 Tipo: Venda mercantil / {tipo}\n🗓️ Competência: {competencia}\n\n🔥 Excelente resultado no Controle de Meta do Sólidus!\n💪 Resultado de time forte!';const defAudit='🧑‍⚖️ NOVA EVIDÊNCIA PARA DECISÃO DO MASTER\n\nCliente: {cliente}\nCPF/CNPJ: {cpf}\nTítulo: {titulo} · Parcela: {parcela}\nColaborador: {usuario} · {filial}\nFaixa: {faixa}\nParecer da IA: {motivo}\n\nAbra o Dashboard → Cobranças → Auditoria IA / MASTER.';telegramSection.innerHTML=`<div class="section-head"><div><h2>📲 Telegram · Resumos e notificações</h2><div class="hint">Canal principal temporário enquanto o WhatsApp Master está em standby. A V10.92 lê sempre a configuração online mais recente, permitindo múltiplos grupos simultâneos.</div></div></div><div class="glass panel" style="border-color:rgba(96,165,250,.35);margin-bottom:14px"><strong style="color:#93c5fd">✅ Canal ativo: Telegram</strong><div class="hint" style="margin-top:5px">WhatsApp Master preservado no projeto, mas os disparos automáticos ficam pausados até você reativar as variáveis.</div></div><div class="glass panel"><div class="section-head" style="margin:0 0 12px"><div><h2 style="font-size:18px">Destinatários Telegram</h2><div class="hint">Chat principal atual: <b>-5292146961</b>. Você pode adicionar outros grupos e escolher individualmente os alertas.</div></div><button class="btn primary" onclick="tgNovoContato()">+ Adicionar grupo/chat</button></div><div class="tableish">${rows.map(tgRowHtml).join('')}</div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="salvarTelegramConfig()">💾 Salvar Telegram</button><button class="btn soft" onclick="testTelegramNotify()">🧪 Enviar teste</button><button class="btn soft" onclick="sendTelegramSummaryNow()">📊 Enviar resumo agora</button></div><div id="tgSaveMsg" class="note" style="margin-top:10px"></div><div id="tgNotifyTestStatus" class="note" style="margin-top:5px"></div></div><div class="glass panel" style="margin-top:14px"><div class="section-head" style="margin:0 0 12px"><div><h2 style="font-size:18px">✏️ Mensagens automáticas do Telegram</h2><div class="hint">Metas continuam sem valores em R$ por segurança. Auditoria avisa o MASTER quando houver caso que precise de decisão.</div></div></div><div class="search-row" style="grid-template-columns:1fr 1fr;align-items:stretch"><div class="input-card"><label>META DIÁRIA BATIDA</label><textarea id="tgTplMetaDiaria" rows="8" style="min-height:190px;width:100%;resize:vertical">${esc(tpl.meta_diaria||defDiaria)}</textarea></div><div class="input-card"><label>META MENSAL BATIDA</label><textarea id="tgTplMetaMensal" rows="8" style="min-height:190px;width:100%;resize:vertical">${esc(tpl.meta_mensal||defMensal)}</textarea></div></div><div class="input-card" style="margin-top:10px"><label>ALERTA AUDITORIA / MASTER</label><textarea id="tgTplAuditoria" rows="8" style="min-height:170px;width:100%;resize:vertical">${esc(tpl.auditoria_master||defAudit)}</textarea></div></div><div class="glass panel" style="margin-top:14px"><h3>📋 O que volta para o Telegram</h3><div class="hint">Resumo diário • cobranças e respostas • aprovações IA/MASTER • pendências MASTER • recebimentos por faixa • vendas/metas/projeções • aniversariantes • clientes sem movimento • avisos • erros Railway • nova base COB Externa.</div></div>`}
+async function sendTelegramCobrancaDiariaNow(){
+  const status=document.getElementById('tgNotifyTestStatus');
+  if(status)status.textContent='Montando relatório diário de cobranças...';
+  try{
+    const r=await fetch(WA_MASTER_MONITOR_URL+'/telegram/cobranca-diaria',{method:'POST'});
+    const j=await r.json();
+    if(status)status.textContent=j.message||'';
+    toast(j.message||'Relatório de cobrança solicitado.',j.ok?'success':'warn');
+  }catch(e){
+    if(status)status.textContent='Falha ao chamar o monitor.';
+    toast('Não consegui solicitar o relatório diário de cobrança.','warn');
+  }
+}
+function renderTelegramTab(){if(!telegramSection)return;const rows=telegramContacts(),tpl=CONFIG_META.telegram_templates||{};const defDiaria='🎯🚀 PARABÉNS! META DIÁRIA BATIDA\n\n👏 Destaque: {nome}\n📈 Meta atingida: {atingido}\n🛒 Tipo: Venda mercantil\n📅 Data: {data}\n\n🔥 Excelente resultado no Controle de Meta do Sólidus!\n💪 MISSÃO DADA! MISSÃO CUMPRIDA!';const defMensal='🏆🚀 PARABÉNS! META MENSAL BATIDA\n\n👏 Destaque: {nome}\n📈 Meta atingida: {atingido}\n🛒 Tipo: Venda mercantil / {tipo}\n🗓️ Competência: {competencia}\n\n🔥 Excelente resultado no Controle de Meta do Sólidus!\n💪 Resultado de time forte!';const defAudit='🧑‍⚖️ NOVA EVIDÊNCIA PARA DECISÃO DO MASTER\n\nCliente: {cliente}\nCPF/CNPJ: {cpf}\nTítulo: {titulo} · Parcela: {parcela}\nColaborador: {usuario} · {filial}\nFaixa: {faixa}\nParecer da IA: {motivo}\n\nAbra o Dashboard → Cobranças → Auditoria IA / MASTER.';telegramSection.innerHTML=`<div class="section-head"><div><h2>📲 Telegram · Resumos e notificações</h2><div class="hint">Canal principal temporário enquanto o WhatsApp Master está em standby. A V10.92 lê sempre a configuração online mais recente, permitindo múltiplos grupos simultâneos.</div></div></div><div class="glass panel" style="border-color:rgba(96,165,250,.35);margin-bottom:14px"><strong style="color:#93c5fd">✅ Canal ativo: Telegram</strong><div class="hint" style="margin-top:5px">WhatsApp Master preservado no projeto, mas os disparos automáticos ficam pausados até você reativar as variáveis.</div></div><div class="glass panel"><div class="section-head" style="margin:0 0 12px"><div><h2 style="font-size:18px">Destinatários Telegram</h2><div class="hint">Chat principal atual: <b>-5292146961</b>. Você pode adicionar outros grupos e escolher individualmente os alertas.</div></div><button class="btn primary" onclick="tgNovoContato()">+ Adicionar grupo/chat</button></div><div class="tableish">${rows.map(tgRowHtml).join('')}</div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="salvarTelegramConfig()">💾 Salvar Telegram</button><button class="btn soft" onclick="testTelegramNotify()">🧪 Enviar teste</button><button class="btn soft" onclick="sendTelegramSummaryNow()">📊 Enviar resumo agora</button><button class="btn soft" onclick="sendTelegramCobrancaDiariaNow()">📞 Enviar cobrança diária agora</button></div><div id="tgSaveMsg" class="note" style="margin-top:10px"></div><div id="tgNotifyTestStatus" class="note" style="margin-top:5px"></div></div><div class="glass panel" style="margin-top:14px"><div class="section-head" style="margin:0 0 12px"><div><h2 style="font-size:18px">✏️ Mensagens automáticas do Telegram</h2><div class="hint">Metas continuam sem valores em R$ por segurança. Auditoria avisa o MASTER quando houver caso que precise de decisão.</div></div></div><div class="search-row" style="grid-template-columns:1fr 1fr;align-items:stretch"><div class="input-card"><label>META DIÁRIA BATIDA</label><textarea id="tgTplMetaDiaria" rows="8" style="min-height:190px;width:100%;resize:vertical">${esc(tpl.meta_diaria||defDiaria)}</textarea></div><div class="input-card"><label>META MENSAL BATIDA</label><textarea id="tgTplMetaMensal" rows="8" style="min-height:190px;width:100%;resize:vertical">${esc(tpl.meta_mensal||defMensal)}</textarea></div></div><div class="input-card" style="margin-top:10px"><label>ALERTA AUDITORIA / MASTER</label><textarea id="tgTplAuditoria" rows="8" style="min-height:170px;width:100%;resize:vertical">${esc(tpl.auditoria_master||defAudit)}</textarea></div></div><div class="glass panel" style="margin-top:14px"><h3>📋 O que volta para o Telegram</h3><div class="hint">Resumo diário • relatório separado de Cobrança diária • cobranças e respostas • aprovações IA/MASTER • pendências MASTER • recebimentos por faixa • vendas/metas/projeções • aniversariantes • clientes sem movimento • avisos • erros Railway • nova base COB Externa.</div></div>`}
 
 function auditStatusLabel(st){
   st=String(st||'aguardando_ia').toLowerCase();
@@ -20712,6 +20968,954 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
 })();
 </script>
 
+<script>
+/* ===== V10.98 — RELATÓRIOS DE COBRANÇA / EXCEL ÚNICO / PDF LEGÍVEL ===== */
+(function(){
+  const TAG='[V10.98 RELATORIOS COBRANCA]';
+
+  try{
+    // --------------------------------------------------------
+    // Helpers
+    // --------------------------------------------------------
+    const n98=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim();
+    const d98=v=>String(v||'').replace(/\D/g,'');
+    const t98=v=>{const x=d98(v);return x||String(v||'').trim().toUpperCase()};
+    const pp98=v=>(String(v||'').match(/\d+/g)||[]).map(Number);
+    const par98=(a,b)=>{const x=pp98(a),y=pp98(b);if(!x.length||!y.length)return String(a||'').trim()===String(b||'').trim();if(x[0]!==y[0])return false;if(x.length>1&&y.length>1&&x[1]!==y[1])return false;return true};
+    const iso98=v=>{
+      try{if(typeof dateOnlyISO==='function')return dateOnlyISO(v||'')}
+      catch(e){}
+      const s=String(v||'').trim();
+      let m=s.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+      if(m)return `${m[3]}-${m[2]}-${m[1]}`;
+      m=s.match(/(\d{4})-(\d{2})-(\d{2})/);
+      return m?`${m[1]}-${m[2]}-${m[3]}`:s.slice(0,10);
+    };
+    const br98=v=>{const s=iso98(v);const m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);return m?`${m[3]}/${m[2]}/${m[1]}`:String(v||'')};
+    const money98=v=>Math.round((Number(v||0)+Number.EPSILON)*100)/100;
+    const pct98num=v=>Math.round((Number(v||0)+Number.EPSILON)*100)/100;
+    const approved98=s=>['aprovado','aprovado_ia','aprovado_manual'].includes(String(s||'').toLowerCase());
+    const rejected98=s=>['recusado','recusado_ia','recusado_manual'].includes(String(s||'').toLowerCase());
+
+    function today98(){
+      try{
+        return new Intl.DateTimeFormat('en-CA',{
+          timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'
+        }).format(new Date());
+      }catch(e){return new Date().toISOString().slice(0,10)}
+    }
+    function month98(){try{return typeof mesAtualComissao==='function'?mesAtualComissao():today98().slice(0,7)}catch(e){return today98().slice(0,7)}}
+    function key98(r){return [d98(r?.cpf_cnpj_normalizado||r?.cpf_cnpj),t98(r?.titulo),pp98(r?.parcela).join('/')].join('|')}
+
+    function aliases98(ent){
+      const set=new Set();
+      const add=v=>{const n=n98(v);if(n)set.add(n)};
+      add(ent?.login);add(ent?.nome);
+      try{
+        const users=AUTH_STATE?.users||{};
+        for(const [login,u] of Object.entries(users)){
+          const sameF=!ent?.filial||String(u?.filial||'').toUpperCase()===String(ent?.filial||'').toUpperCase();
+          if(!sameF)continue;
+          if(n98(u?.nome)===n98(ent?.nome)||String(login||'').toLowerCase()===String(ent?.login||'').toLowerCase()){
+            add(login);add(u?.nome);
+          }
+        }
+      }catch(e){}
+      if(ent?.type==='terceiro'||ent?.is_terceiro){
+        try{add(COBRANCA10_LOGIN);add(COBRANCA10_NOME)}catch(e){}
+      }
+      return set;
+    }
+
+    function auditEnt98(a,ent){
+      try{
+        if(typeof cobrancaAuditEntMatch==='function')return !!cobrancaAuditEntMatch(a,ent);
+      }catch(e){}
+      if(ent?.type==='filial')return String(a?.filial||'').toUpperCase()===String(ent?.filial||'').toUpperCase();
+      const al=aliases98(ent);
+      return [a?.usuario_login,a?.usuario_nome,a?.usuario,a?.responsavel].map(n98).filter(Boolean).some(v=>al.has(v));
+    }
+
+    function logEnt98(l,ent){
+      if(ent?.type==='filial')return String(l?.filial||'').toUpperCase()===String(ent?.filial||'').toUpperCase();
+      const al=aliases98(ent);
+      const vals=[l?.usuario,l?.login,l?.destino_login,l?.destino_nome,l?.responsavel,l?.owner_key].map(n98).filter(Boolean);
+      return vals.some(v=>al.has(v));
+    }
+
+    function same98(a,q){
+      const ad=d98(a?.cpf_cnpj_normalizado||a?.cpf_cnpj),qd=d98(q?.cpf_cnpj_normalizado||q?.cpf_cnpj);
+      if(ad&&qd&&ad!==qd)return false;
+      if(t98(a?.titulo)&&t98(q?.titulo)&&t98(a?.titulo)!==t98(q?.titulo))return false;
+      return par98(a?.parcela,q?.parcela);
+    }
+
+    function policyPct98(ent,fx){
+      try{
+        const cfg=commissionCfg(entityConfig(ent));
+        const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista');
+        const isThird=!!(ent?.is_terceiro||ent?.type==='terceiro');
+        let rows=isCred?(cfg.camp_cob_crediarista||[]):isThird?(cfg.camp_cobranca_terceiro||[]):(cfg.camp_cob_usuarios||[]);
+        if(!Array.isArray(rows)||!rows.length){
+          rows=(isCred||isThird)
+            ?[{faixa:'atencao',pct:'1.00'},{faixa:'alerta',pct:'2.00'},{faixa:'grave',pct:'3.00'}]
+            :[{faixa:'atencao',pct:'0.50'},{faixa:'alerta',pct:'1.00'},{faixa:'grave',pct:'2.00'}];
+        }
+        const row=rows.find(r=>String(r?.faixa||'').toLowerCase()===String(fx||'').toLowerCase());
+        return Number(String(row?.pct||0).replace(',','.'))||0;
+      }catch(e){return 0}
+    }
+
+    async function ensureOperational98(fullLogs=false,entities=[]){
+      const jobs=[];
+      try{if(typeof ensureQuitadosV1075==='function')jobs.push(ensureQuitadosV1075())}catch(e){}
+      try{if(typeof carregarAuditoriasCobranca==='function')jobs.push(carregarAuditoriasCobranca(true))}catch(e){}
+      try{
+        if(typeof carregarCobrancasOnline==='function'){
+          jobs.push(carregarCobrancasOnline(fullLogs?{full:true,force:true}:{full:false,force:true}));
+        }
+      }catch(e){}
+      try{
+        for(const ent of entities||[]){
+          if(typeof ensureDetailData==='function')jobs.push(ensureDetailData(ent));
+        }
+      }catch(e){}
+      await Promise.allSettled(jobs);
+    }
+
+    // --------------------------------------------------------
+    // Recebimentos auditados / conciliados
+    // --------------------------------------------------------
+    function auditPaidRows98(ent,month=month98()){
+      const audits=(COB_AUDITORIAS||[]).filter(a=>approved98(a?.status)&&auditEnt98(a,ent));
+      const out=[],used=new Set();
+
+      for(const a of audits){
+        const cand=(QUITADOS_180||[])
+          .filter(q=>same98(a,q)&&iso98(q?.pagamento||q?.data_pagamento||'').slice(0,7)===month)
+          .sort((x,y)=>Number(y?.pago||0)-Number(x?.pago||0));
+        const q=cand[0];
+        if(!q)continue;
+
+        const uk=[key98(q),iso98(q?.pagamento||q?.data_pagamento||'')].join('|');
+        if(used.has(uk))continue;
+        used.add(uk);
+
+        let fx=String(a?.faixa||q?.faixa||'atencao').toLowerCase();
+        if(!['grave','alerta','atencao'].includes(fx))fx='atencao';
+        const recebido=money98(q?.pago||0);
+        const pp=policyPct98(ent,fx);
+
+        out.push({
+          key:uk,
+          cliente:String(a?.cliente||q?.cliente||''),
+          cpf_cnpj:String(a?.cpf_cnpj||q?.cpf_cnpj||''),
+          titulo:String(a?.titulo||q?.titulo||''),
+          parcela:String(a?.parcela||q?.parcela||''),
+          faixa:fx,
+          vencimento:String(a?.vencimento||q?.vencimento||''),
+          pagamento:String(q?.pagamento||q?.data_pagamento||''),
+          recebido,
+          pct:pp,
+          comissao:money98(recebido*pp/100),
+          audit_id:String(a?.id||a?.audit_id||''),
+          audit_data:String(a?.server_time||a?.criado_em||a?.ia_analisado_em||'')
+        });
+      }
+      return out.sort((a,b)=>iso98(b.pagamento).localeCompare(iso98(a.pagamento)));
+    }
+    window.mdlAuditPaidRowsV1098=auditPaidRows98;
+
+    function auditSummaryMonth98(ent,month=month98()){
+      const all=(COB_AUDITORIAS||[]).filter(a=>auditEnt98(a,ent));
+      const inMonth=all.filter(a=>iso98(a?.server_time||a?.criado_em||a?.data||'').slice(0,7)===month);
+      const paid=auditPaidRows98(ent,month);
+      const by={atencao:{recebido:0,comissao:0,pct:policyPct98(ent,'atencao')},
+                alerta:{recebido:0,comissao:0,pct:policyPct98(ent,'alerta')},
+                grave:{recebido:0,comissao:0,pct:policyPct98(ent,'grave')}};
+      paid.forEach(r=>{by[r.faixa].recebido+=r.recebido;by[r.faixa].comissao+=r.comissao});
+      Object.values(by).forEach(x=>{x.recebido=money98(x.recebido);x.comissao=money98(x.comissao)});
+      return {
+        auditorias_enviadas:inMonth.length,
+        aprovadas:inMonth.filter(a=>approved98(a?.status)).length,
+        recusadas:inMonth.filter(a=>rejected98(a?.status)).length,
+        pendentes:inMonth.filter(a=>!approved98(a?.status)&&!rejected98(a?.status)).length,
+        pagamentos:paid.length,
+        recebido:money98(paid.reduce((s,r)=>s+r.recebido,0)),
+        comissao:money98(paid.reduce((s,r)=>s+r.comissao,0)),
+        by,paid
+      };
+    }
+
+    function renderAuditReceipts98(ent){
+      const rows=auditPaidRows98(ent,month98());
+      const total=money98(rows.reduce((s,r)=>s+r.recebido,0));
+      const com=money98(rows.reduce((s,r)=>s+r.comissao,0));
+
+      const body=rows.length
+        ? `<div class="tableish">${rows.map(r=>`<div class="row-item">
+            <div class="row-top" style="grid-template-columns:1.4fr .65fr .65fr .65fr .75fr .75fr">
+              <div><div class="name">${esc(r.cliente||'')}</div><div class="small muted">${esc(r.cpf_cnpj||'')} · ${esc(r.faixa||'')}</div></div>
+              <div><strong>${esc(r.titulo||'')}</strong><div class="small muted">Título</div></div>
+              <div><strong>${esc(r.parcela||'')}</strong><div class="small muted">Parcela</div></div>
+              <div><strong>${br98(r.pagamento)}</strong><div class="small muted">Pagamento</div></div>
+              <div><strong style="color:var(--green)">${R(r.recebido)}</strong><div class="small muted">Recebido</div></div>
+              <div><strong style="color:var(--amber-300)">${R(r.comissao)}</strong><div class="small muted">Comissão ${String(r.pct).replace('.',',')}%</div></div>
+            </div>
+          </div>`).join('')}</div>`
+        : `<div class="empty">Nenhum recebimento deste usuário conciliou com uma auditoria aprovada no mês atual. Por isso o recebido/comissão auditada permanece R$ 0,00.</div>`;
+
+      return `<div class="accordion">
+        <div class="acc-head" onclick="toggleAcc(this)">💰 Recebimentos auditados e conciliados <span class="acc-hint">${rows.length} pagamento(s) · ${R(total)}</span></div>
+        <div class="acc-body">
+          <div class="glass panel" style="margin-bottom:10px">
+            <div class="metrics-grid">
+              <div class="metric"><div class="k">Pagamentos conciliados</div><div class="v">${rows.length}</div></div>
+              <div class="metric"><div class="k">Recebido auditado</div><div class="v" style="color:var(--green)">${R(total)}</div></div>
+              <div class="metric"><div class="k">Comissão gerada</div><div class="v" style="color:var(--amber-300)">${R(com)}</div></div>
+            </div>
+          </div>
+          ${body}
+        </div>
+      </div>`;
+    }
+
+    // Card especial: deixa explícito que "Recebido" é apenas auditado/conciliado.
+    renderTerceiroCommission=window.renderTerceiroCommission=function(ent){
+      const c=(typeof calcCobrancaAuditadaV1093==='function')?calcCobrancaAuditadaV1093(ent):{fx:{atencao:{pct:0,recebido:0,comissao:0},alerta:{pct:0,recebido:0,comissao:0},grave:{pct:0,recebido:0,comissao:0}},total:0,aguardandoIa:0,aprovados:0,aguardandoPagamento:0,pagos:0};
+      const f=c.fx||{};
+      const item=(k,v,cl='')=>`<div class="commission-item unlocked ${cl}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+      const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista');
+      return `<div class="glass panel commission-card">
+        <h3>📲 ${isCred?'Comissão crediarista auditada':'Comissão cobrança interna auditada'} <span class="note">· somente evidência aprovada + baixa exata</span></h3>
+        <div class="commission-grid">
+          ${item('Atenção %',String(Number(f.atencao?.pct||0).toFixed(2)).replace('.',',')+'%')}
+          ${item('Alerta %',String(Number(f.alerta?.pct||0).toFixed(2)).replace('.',',')+'%')}
+          ${item('Grave %',String(Number(f.grave?.pct||0).toFixed(2)).replace('.',',')+'%')}
+          ${item('Recebido atenção',R(f.atencao?.recebido||0))}
+          ${item('Recebido alerta',R(f.alerta?.recebido||0))}
+          ${item('Recebido grave',R(f.grave?.recebido||0))}
+          ${item('Comissão atenção',R(f.atencao?.comissao||0))}
+          ${item('Comissão alerta',R(f.alerta?.comissao||0))}
+          ${item('Comissão grave',R(f.grave?.comissao||0))}
+          ${item('Total previsto',R(c.total||0),'total-final')}
+          ${item('Prints aguardando IA',String(c.aguardandoIa||0))}
+          ${item('Auditorias aprovadas',String(c.aprovados||0))}
+          ${item('Aguardando pagamento',String(c.aguardandoPagamento||0))}
+          ${item('Pagamentos conciliados',String(c.pagos||0))}
+        </div>
+        <div class="commission-note">O campo Recebido acima NÃO espelha a filial. Ele só soma pagamentos que tenham auditoria aprovada e conciliação do mesmo CPF/título/parcela.</div>
+      </div>`;
+    };
+
+    // Acrescenta relatório detalhado nos painéis especiais.
+    const baseCredDetail98=window.renderCrediaristaDetail;
+    if(typeof baseCredDetail98==='function'){
+      renderCrediaristaDetail=window.renderCrediaristaDetail=function(ent){
+        const ret=baseCredDetail98.apply(this,arguments);
+        try{
+          const first=detailScreen.querySelector('.accordion');
+          if(first)first.insertAdjacentHTML('beforebegin',renderAuditReceipts98(ent));
+        }catch(e){console.warn(TAG,'recebimentos crediarista',e)}
+        return ret;
+      };
+    }
+    const baseThirdDetail98=window.renderTerceiroDetail;
+    if(typeof baseThirdDetail98==='function'){
+      renderTerceiroDetail=window.renderTerceiroDetail=function(ent){
+        const ret=baseThirdDetail98.apply(this,arguments);
+        try{
+          const first=detailScreen.querySelector('.accordion');
+          if(first)first.insertAdjacentHTML('beforebegin',renderAuditReceipts98(ent));
+        }catch(e){console.warn(TAG,'recebimentos terceiro',e)}
+        return ret;
+      };
+    }
+
+    // --------------------------------------------------------
+    // Excel completo: UM arquivo, UMA linha por entidade
+    // --------------------------------------------------------
+    function xesc98(v){return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+
+    function logMonthSummary98(ent,month){
+      const logs=(Array.isArray(window.COB_LOGS_OFICIAIS)&&window.COB_LOGS_OFICIAIS.length)?window.COB_LOGS_OFICIAIS:(COB_LOGS||[]);
+      const arr=logs.filter(l=>logEnt98(l,ent)&&iso98(l?.server_time||l?.criado_em||l?.data||l?.server_date||'').slice(0,7)===month);
+      const seen=new Set();let valor=0;
+      for(const l of arr){
+        const k=key98(l);
+        if(seen.has(k))continue;
+        seen.add(k);valor+=Number(l?.pendente||0);
+      }
+      return {qtd:seen.size,valor:money98(valor)};
+    }
+
+    function entityForSnap98(r){
+      const all=(typeof _allComissaoEntitiesNow==='function')?_allComissaoEntitiesNow():[];
+      const key=String(r?.key||'');
+      if(key&&typeof _comKeyNow==='function'){
+        const e=all.find(x=>_comKeyNow(x)===key);if(e)return e;
+      }
+      return all.find(x=>String(x?.type||'')===String(r?.tipo||'')&&String(x?.filial||'')===String(r?.filial||'')&&n98(x?.nome)===n98(r?.nome))||null;
+    }
+
+    function excelRow98(ent,r,month){
+      const a=auditSummaryMonth98(ent||r,month);
+      const logs=logMonthSummary98(ent||r,month);
+      const baseTotal=Number(r?.total_previsto||0);
+      const totalComCob=money98(baseTotal+a.comissao);
+      return {
+        mes:month,
+        tipo:r?.tipo||ent?.type||'',
+        nome:r?.nome||ent?.nome||'',
+        filial:r?.filial||ent?.filial||'',
+        login:r?.login||ent?.login||'',
+        pendente:Number(r?.pendente||ent?.pendente||0),
+        recebido_operacional:Number(r?.recebido_conciliado??r?.recebido??ent?.pago??0),
+        meta_cobranca:Number(r?.meta_geral||0),
+        grave_alvo:Number(r?.grave_alvo||0),
+        grave_recebido:Number(r?.grave_rec||0),
+        alerta_alvo:Number(r?.alerta_alvo||0),
+        alerta_recebido:Number(r?.alerta_rec||0),
+        atencao_alvo:Number(r?.atencao_alvo||0),
+        atencao_recebido:Number(r?.atencao_rec||0),
+        cobrancas_mes:logs.qtd,
+        valor_cobrado_mes:logs.valor,
+        auditorias_enviadas:a.auditorias_enviadas,
+        auditorias_aprovadas:a.aprovadas,
+        auditorias_pendentes:a.pendentes,
+        pagamentos_conciliados:a.pagamentos,
+        recebido_auditado_atencao:a.by.atencao.recebido,
+        recebido_auditado_alerta:a.by.alerta.recebido,
+        recebido_auditado_grave:a.by.grave.recebido,
+        recebido_auditado_total:a.recebido,
+        pct_comissao_atencao:a.by.atencao.pct,
+        pct_comissao_alerta:a.by.alerta.pct,
+        pct_comissao_grave:a.by.grave.pct,
+        comissao_cobranca_atencao:a.by.atencao.comissao,
+        comissao_cobranca_alerta:a.by.alerta.comissao,
+        comissao_cobranca_grave:a.by.grave.comissao,
+        comissao_cobranca_total:a.comissao,
+        venda_mercantil:Number(r?.venda_real||0),
+        servicos:Number(r?.servico_real||0),
+        caminhao:Number(r?.caminhao_real||0),
+        comissao_vendas:Number(r?.comissao_vendas||0),
+        comissao_servicos:Number(r?.comissao_servicos||0),
+        comissao_caminhao:Number(r?.comissao_caminhao||0),
+        bonus_meta:Number(r?.bonus_meta||0),
+        rentab_48:Number(r?.rent48||0),
+        rentab_52_15:Number(r?.rent52||0),
+        rentab_55_50:Number(r?.rent55||0),
+        total_previsto_dashboard:baseTotal,
+        total_previsto_com_cobranca_auditada:totalComCob
+      };
+    }
+
+    function downloadCompleteXls98(filename,rows){
+      const cols=[
+        ['mes','Mês'],['tipo','Tipo'],['nome','Usuário / Filial'],['filial','Filial'],['login','Login'],
+        ['pendente','Pendente'],['recebido_operacional','Recebido operacional'],['meta_cobranca','Meta cobrança %'],
+        ['grave_alvo','Grave alvo'],['grave_recebido','Grave recebido'],['alerta_alvo','Alerta alvo'],['alerta_recebido','Alerta recebido'],['atencao_alvo','Atenção alvo'],['atencao_recebido','Atenção recebido'],
+        ['cobrancas_mes','Cobranças feitas mês'],['valor_cobrado_mes','Valor cobrado mês'],
+        ['auditorias_enviadas','Auditorias enviadas'],['auditorias_aprovadas','Auditorias aprovadas'],['auditorias_pendentes','Auditorias pendentes'],['pagamentos_conciliados','Pagamentos conciliados'],
+        ['recebido_auditado_atencao','Recebido auditado Atenção'],['recebido_auditado_alerta','Recebido auditado Alerta'],['recebido_auditado_grave','Recebido auditado Grave'],['recebido_auditado_total','Recebido auditado total'],
+        ['pct_comissao_atencao','% comissão Atenção'],['pct_comissao_alerta','% comissão Alerta'],['pct_comissao_grave','% comissão Grave'],
+        ['comissao_cobranca_atencao','Comissão cobrança Atenção'],['comissao_cobranca_alerta','Comissão cobrança Alerta'],['comissao_cobranca_grave','Comissão cobrança Grave'],['comissao_cobranca_total','Comissão cobrança auditada total'],
+        ['venda_mercantil','Venda mercantil'],['servicos','Serviços'],['caminhao','Caminhão'],
+        ['comissao_vendas','Comissão vendas'],['comissao_servicos','Comissão serviços'],['comissao_caminhao','Comissão caminhão'],['bonus_meta','Bônus meta'],
+        ['rentab_48','Rentab 48'],['rentab_52_15','Rentab 52,15'],['rentab_55_50','Rentab 55,50'],
+        ['total_previsto_dashboard','Total previsto dashboard'],['total_previsto_com_cobranca_auditada','Total previsto + cobrança auditada']
+      ];
+      const numeric=new Set(cols.map(([k])=>k).filter(k=>!['mes','tipo','nome','filial','login'].includes(k)));
+      const trs=[
+        `<tr>${cols.map(([,h])=>`<th>${xesc98(h)}</th>`).join('')}</tr>`,
+        ...rows.map(r=>`<tr>${cols.map(([k])=>numeric.has(k)?`<td x:num="${Number(r[k]||0)}">${Number(r[k]||0)}</td>`:`<td>${xesc98(r[k]||'')}</td>`).join('')}</tr>`)
+      ].join('');
+      const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><style>
+        table{border-collapse:collapse;font-family:Arial;font-size:9pt}th{background:#1f4e78;color:#fff;font-weight:bold}th,td{border:1px solid #b7c9d6;padding:5px;white-space:nowrap}
+      </style></head><body><h2>Comissionamento completo MDL</h2><p>Uma linha por usuário/filial. Inclui metas, cobranças, recebimentos e comissão auditada.</p><table>${trs}</table></body></html>`;
+      const blob=new Blob(['\ufeff'+html],{type:'application/vnd.ms-excel;charset=utf-8'});
+      const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;document.body.appendChild(a);a.click();
+      setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1200);
+    }
+
+    exportarComissaoAtualExcel=window.exportarComissaoAtualExcel=async function(){
+      try{
+        const selected=document.getElementById('histComMonth')?.value||month98();
+        const month=selected||month98();
+        try{toast('Montando Excel completo com cobranças auditadas...','info')}catch(e){}
+        await ensureOperational98(true,[]);
+
+        let baseRows=[];
+        if(month===month98()){
+          const ents=(typeof _allComissaoEntitiesNow==='function')?_allComissaoEntitiesNow():[];
+          baseRows=ents.map(e=>({ent:e,row:snapshotComissaoEntidade(e)}));
+        }else{
+          const snap=HIST_COMISSAO?.months?.[month];
+          if(!snap){
+            try{toast('Não há fechamento salvo para este mês.','warn')}catch(e){}
+            return;
+          }
+          baseRows=(snap.entidades||[]).map(r=>({ent:entityForSnap98(r)||r,row:r}));
+        }
+
+        const rows=baseRows.map(({ent,row})=>excelRow98(ent,row,month));
+        downloadCompleteXls98(`comissionamento_completo_${month}.xls`,rows);
+        try{toast(`Excel completo gerado: ${rows.length} linha(s).`,'success')}catch(e){}
+      }catch(e){
+        console.warn(TAG,'excel completo',e);
+        try{toast('Não consegui gerar o Excel completo.','warn')}catch(_){}
+      }
+    };
+
+    // Remove o XLS separado da V10.97: agora tudo está no Excel completo.
+    function cleanupExcelUi98(){
+      try{
+        document.getElementById('btnXlsCobAudit97')?.remove();
+        document.querySelectorAll('button').forEach(b=>{
+          if((b.textContent||'').includes('XLS cobrança auditada paga'))b.remove();
+          if((b.textContent||'').trim()==='Exportar Excel completo'||(b.textContent||'').trim()==='Exportar Excel'){
+            b.textContent='📊 Exportar Excel completo';
+            b.setAttribute('onclick','exportarComissaoAtualExcel()');
+          }
+        });
+      }catch(e){}
+    }
+    const baseRenderHistCom98=window.renderHistoricoComissaoResults;
+    if(typeof baseRenderHistCom98==='function'){
+      renderHistoricoComissaoResults=window.renderHistoricoComissaoResults=function(){
+        const ret=baseRenderHistCom98.apply(this,arguments);
+        setTimeout(cleanupExcelUi98,50);
+        setTimeout(cleanupExcelUi98,250);
+        return ret;
+      };
+    }
+
+    // --------------------------------------------------------
+    // Tela congelada: resumo vertical A4, SEM reduzir para ilegível
+    // --------------------------------------------------------
+    function line98(k,v,cl=''){
+      return `<div class="pl98 ${cl}"><span>${xesc98(k)}</span><strong>${xesc98(v)}</strong></div>`;
+    }
+
+    function printData98(ent){
+      const r=snapshotComissaoEntidade(ent)||{};
+      const a=auditSummaryMonth98(ent,month98());
+      const totalComCob=money98(Number(r.total_previsto||0)+Number(a.comissao||0));
+      return {r,a,totalComCob};
+    }
+
+    function printPage98(ent){
+      const {r,a,totalComCob}=printData98(ent);
+      const special=ent?.type==='crediarista'||ent?.is_crediarista||ent?.type==='terceiro'||ent?.is_terceiro;
+
+      let body='';
+      body+=`<div class="ps98"><h2>💰 Cobrança / Meta</h2>`;
+      body+=line98('Pendente',R(r.pendente||0));
+      body+=line98('Recebido operacional',R(r.recebido_conciliado??r.recebido??0));
+      if(!special){
+        body+=line98('Meta cobrança',`${Number(r.meta_geral||0).toFixed(1).replace('.',',')}%`);
+        body+=line98('Grave — alvo / recebido',`${R(r.grave_alvo||0)} / ${R(r.grave_rec||0)}`);
+        body+=line98('Alerta — alvo / recebido',`${R(r.alerta_alvo||0)} / ${R(r.alerta_rec||0)}`);
+        body+=line98('Atenção — alvo / recebido',`${R(r.atencao_alvo||0)} / ${R(r.atencao_rec||0)}`);
+      }
+      body+=`</div>`;
+
+      body+=`<div class="ps98"><h2>📲 Cobrança auditada</h2>`;
+      body+=line98('Auditorias enviadas no mês',a.auditorias_enviadas);
+      body+=line98('Auditorias aprovadas',a.aprovadas);
+      body+=line98('Pagamentos conciliados',a.pagamentos);
+      body+=line98('Recebido auditado — Atenção',R(a.by.atencao.recebido));
+      body+=line98('Recebido auditado — Alerta',R(a.by.alerta.recebido));
+      body+=line98('Recebido auditado — Grave',R(a.by.grave.recebido));
+      body+=line98('Comissão cobrança auditada',R(a.comissao),'hi98');
+      body+=`</div>`;
+
+      if(!special){
+        body+=`<div class="ps98"><h2>🛒 Vendas / Serviços / Comissão</h2>`;
+        body+=line98('Venda mercantil',R(r.venda_real||0));
+        body+=line98('Serviços',R(r.servico_real||0));
+        body+=line98('Caminhão',R(r.caminhao_real||0));
+        body+=line98('Comissão vendas',R(r.comissao_vendas||0));
+        body+=line98('Comissão serviços',R(r.comissao_servicos||0));
+        body+=line98('Comissão caminhão',R(r.comissao_caminhao||0));
+        body+=line98('Bônus meta',R(r.bonus_meta||0));
+        body+=line98('Rentabilidade 48%',R(r.rent48||0));
+        body+=line98('Rentabilidade 52,15%',R(r.rent52||0));
+        body+=line98('Rentabilidade 55,50%',R(r.rent55||0));
+        body+=`</div>`;
+      }
+
+      body+=`<div class="ps98 total98"><h2>🧾 Fechamento</h2>`;
+      body+=line98('Total previsto dashboard',R(r.total_previsto||0));
+      body+=line98('Comissão cobrança auditada',R(a.comissao||0));
+      body+=line98('Total previsto com cobrança auditada',R(totalComCob),'hi98');
+      body+=`</div>`;
+
+      return `<section class="page98">
+        <header><div><h1>${xesc98(ent?.nome||r.nome||ent?.filial||'')}</h1><p>${xesc98(ent?.type||r.tipo||'')} · ${xesc98(ent?.filial||r.filial||'')} · ${month98()}</p></div><div class="ver98">Dashboard MDL V10.98</div></header>
+        ${body}
+        <footer>Regra cobrança: evidência aprovada + mesmo CPF/título/parcela + pagamento conciliado.</footer>
+      </section>`;
+    }
+
+    function openPrint98(title,pages){
+      const w=window.open('about:blank','_blank');
+      if(!w){try{toast('Pop-up bloqueado.','warn')}catch(e){}return}
+      w.document.open();
+      w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${xesc98(title)}</title><style>
+        *{box-sizing:border-box}
+        body{margin:0;background:#d9dde5;color:#111;font-family:Arial,Helvetica,sans-serif}
+        .toolbar{position:sticky;top:0;z-index:10;background:#fff;border-bottom:1px solid #ccc;padding:9px 14px;display:flex;justify-content:space-between;align-items:center}
+        .toolbar button{border:0;border-radius:8px;padding:9px 13px;font-weight:700;cursor:pointer}
+        .page98{width:198mm;min-height:281mm;margin:8px auto;background:#fff;padding:8mm 9mm 7mm;box-shadow:0 8px 26px rgba(0,0,0,.18);page-break-after:always;break-after:page}
+        .page98:last-of-type{page-break-after:auto;break-after:auto}
+        .page98 header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;border-bottom:2px solid #e88a0b;padding-bottom:5mm;margin-bottom:4mm}
+        .page98 h1{font-size:17pt;margin:0 0 2mm}.page98 header p{margin:0;font-size:9.5pt;color:#555}.ver98{font-size:9pt;font-weight:bold;color:#8b5c00}
+        .ps98{border:1px solid #d7dce5;border-radius:8px;margin-bottom:3.2mm;overflow:hidden}
+        .ps98 h2{margin:0;padding:2.2mm 3mm;background:#f3f5f8;border-bottom:1px solid #d7dce5;font-size:10.5pt}
+        .pl98{display:flex;justify-content:space-between;gap:10mm;align-items:center;padding:1.55mm 3mm;border-bottom:1px solid #edf0f4;font-size:9.8pt;line-height:1.2}
+        .pl98:last-child{border-bottom:0}.pl98 span{color:#444}.pl98 strong{text-align:right;font-size:10.2pt}
+        .pl98.hi98 strong{font-size:12pt;color:#a14d00}
+        .total98{border-color:#e8b76d}.total98 h2{background:#fff6e8}
+        footer{font-size:8.2pt;color:#666;margin-top:2mm;border-top:1px solid #ddd;padding-top:2mm}
+        @page{size:A4 portrait;margin:5mm}
+        @media print{body{background:#fff}.toolbar{display:none}.page98{width:100%;min-height:auto;margin:0;padding:4mm 5mm;box-shadow:none}}
+      </style></head><body>
+        <div class="toolbar"><strong>${xesc98(title)}</strong><div><button onclick="window.print()">🖨️ Salvar PDF / Imprimir</button> <button onclick="window.close()">Fechar</button></div></div>
+        ${pages.join('')}
+      </body></html>`);
+      w.document.close();
+    }
+
+    function selectedEnt98(){
+      const all=(typeof _allComissaoEntitiesNow==='function')?_allComissaoEntitiesNow():[];
+      const key=document.getElementById('histComCurrentEntity')?.value||'';
+      if(typeof _comKeyNow==='function')return all.find(e=>_comKeyNow(e)===key)||all[0]||null;
+      return all[0]||null;
+    }
+
+    abrirTelaComissionamentoAtual=window.abrirTelaComissionamentoAtual=async function(){
+      const ent=selectedEnt98();
+      if(!ent){try{toast('Nenhum usuário/filial selecionado.','warn')}catch(e){}return}
+      try{toast('Montando versão A4 legível...','info')}catch(e){}
+      await ensureOperational98(false,[ent]);
+      openPrint98('Comissionamento '+String(ent.nome||ent.filial||''),[printPage98(ent)]);
+    };
+
+    congelarTodasTelasComissionamentoPDF=window.congelarTodasTelasComissionamentoPDF=async function(){
+      const ents=(typeof _allComissaoEntitiesNow==='function')?_allComissaoEntitiesNow():[];
+      if(!ents.length){try{toast('Nenhuma entidade encontrada.','warn')}catch(e){}return}
+      try{toast(`Montando ${ents.length} folha(s) A4 legíveis...`,'info')}catch(e){}
+      await ensureOperational98(false,ents);
+      openPrint98(`Fechamento comissionamento ${month98()}`,ents.map(printPage98));
+    };
+
+    // --------------------------------------------------------
+    // Relatório diário de cobranças
+    // --------------------------------------------------------
+    function activeCollectionEntities98(){
+      let ents=[];
+      try{ents.push(...(flattenVendedores()||[]).filter(e=>!e?.is_gerente))}catch(e){}
+      try{ents.push(...(crediaristaEntities()||[]))}catch(e){}
+      try{const t=thirdChargeEntity();if(t)ents.push(t)}catch(e){}
+      const seen=new Set();
+      return ents.filter(e=>{
+        try{
+          if(e?.type==='filial')return false;
+          const auth=e?.login?getAuthUser(e.login):null;
+          const st=String(auth?.status_operacional||'ativo').toLowerCase();
+          if(auth&&(auth.access_disabled||['inativo','bloqueado','desligado'].includes(st)))return false;
+        }catch(_){}
+        const k=[String(e?.type||''),String(e?.filial||''),n98(e?.login||e?.nome||'')].join('|');
+        if(seen.has(k))return false;seen.add(k);return true;
+      });
+    }
+
+    function allRowsEnt98(ent){
+      try{
+        const src=getClientesEnt(ent)||{};
+        return ['grave','alerta','atencao'].flatMap(fx=>(src?.[fx]||[]).map(r=>({...r,_faixa98:fx})));
+      }catch(e){return []}
+    }
+
+    function todayLogs98(ent,date){
+      const src=(Array.isArray(window.COB_LOGS_OFICIAIS)&&window.COB_LOGS_OFICIAIS.length)?window.COB_LOGS_OFICIAIS:(COB_LOGS||[]);
+      return src.filter(l=>logEnt98(l,ent)&&iso98(l?.server_time||l?.criado_em||l?.data||l?.server_date||'')===date);
+    }
+
+    function distinct98(arr){
+      const out=[],seen=new Set();
+      for(const r of arr){const k=key98(r);if(!k||seen.has(k))continue;seen.add(k);out.push(r)}
+      return out;
+    }
+
+    function approvedAuditForKey98(ent,k){
+      return (COB_AUDITORIAS||[]).filter(a=>auditEnt98(a,ent)&&key98(a)===k&&approved98(a?.status)).sort((a,b)=>String(b?.server_time||'').localeCompare(String(a?.server_time||'')))[0]||null;
+    }
+
+    function anyAuditForKey98(ent,k){
+      return (COB_AUDITORIAS||[]).filter(a=>auditEnt98(a,ent)&&key98(a)===k).sort((a,b)=>String(b?.server_time||'').localeCompare(String(a?.server_time||'')))[0]||null;
+    }
+
+    function paidAfterDate98(a,date){
+      const cand=(QUITADOS_180||[]).filter(q=>same98(a,q)&&iso98(q?.pagamento||q?.data_pagamento||'')>=date).sort((x,y)=>iso98(x?.pagamento||'').localeCompare(iso98(y?.pagamento||'')));
+      return cand[0]||null;
+    }
+
+    function dailyEntity98(ent,date){
+      const rows=allRowsEnt98(ent);
+      const logs=distinct98(todayLogs98(ent,date));
+      const loggedKeys=new Set(logs.map(key98));
+
+      const actionable=[];
+      for(const r of rows){
+        try{
+          const st=cobStatusTitulo(r,ent)||{};
+          if(st.pago)continue;
+          if(!st.last||st.deve_voltar)actionable.push(r);
+        }catch(e){actionable.push(r)}
+      }
+      const actionDistinct=distinct98(actionable);
+      const planMap=new Map();
+      for(const r of [...actionDistinct,...logs]){
+        const k=key98(r);if(!k)continue;
+        if(!planMap.has(k))planMap.set(k,r);
+      }
+
+      const valorPrevisto=money98([...planMap.values()].reduce((s,r)=>s+Number(r?.pendente||0),0));
+      const valorCobrado=money98(logs.reduce((s,r)=>s+Number(r?.pendente||0),0));
+      const naoTrabalhados=actionDistinct.filter(r=>!loggedKeys.has(key98(r)));
+      const valorNaoTrabalhado=money98(naoTrabalhados.reduce((s,r)=>s+Number(r?.pendente||0),0));
+
+      let evidencias=0,aprovadas=0,pagos=0,recebido=0;
+      for(const l of logs){
+        const k=key98(l);
+        const any=anyAuditForKey98(ent,k);
+        if(any)evidencias++;
+        const ap=approvedAuditForKey98(ent,k);
+        if(ap){
+          aprovadas++;
+          const q=paidAfterDate98(ap,date);
+          if(q){pagos++;recebido+=Number(q?.pago||0)}
+        }
+      }
+
+      const previstos=planMap.size;
+      const cobrados=logs.length;
+      const taxaExec=previstos>0?cobrados/previstos*100:100;
+      const taxaEfet=cobrados>0?pagos/cobrados*100:0;
+      const taxaAud=cobrados>0?aprovadas/cobrados*100:0;
+
+      return {
+        tipo:String(ent?.type||''),
+        usuario:String(ent?.nome||''),
+        login:String(ent?.login||''),
+        filial:String(ent?.filial||''),
+        previstos,
+        valor_previsto:valorPrevisto,
+        cobrancas_feitas:cobrados,
+        valor_cobrado:valorCobrado,
+        evidencias_enviadas:evidencias,
+        auditorias_aprovadas:aprovadas,
+        pagamentos_conciliados:pagos,
+        recebido_conciliado:money98(recebido),
+        nao_trabalhados:naoTrabalhados.length,
+        valor_nao_trabalhado:valorNaoTrabalhado,
+        taxa_execucao:pct98num(taxaExec),
+        taxa_auditoria:pct98num(taxaAud),
+        taxa_efetividade:pct98num(taxaEfet),
+        status:previstos===0?'SEM FILA':cobrados===0?'NÃO COBROU':cobrados>=previstos?'CONCLUÍDO':'PARCIAL'
+      };
+    }
+
+    let DAILY_COB_REPORT_98=null;
+
+    async function buildDailyReport98(force=false){
+      const date=today98();
+      if(DAILY_COB_REPORT_98&&!force&&DAILY_COB_REPORT_98.date===date)return DAILY_COB_REPORT_98;
+      const ents=activeCollectionEntities98();
+      await ensureOperational98(true,ents);
+      const rows=ents.map(e=>dailyEntity98(e,date)).sort((a,b)=>{
+        const sa=a.status==='NÃO COBROU'?0:a.status==='PARCIAL'?1:2;
+        const sb=b.status==='NÃO COBROU'?0:b.status==='PARCIAL'?1:2;
+        return sa-sb||String(a.filial).localeCompare(String(b.filial))||String(a.usuario).localeCompare(String(b.usuario),'pt-BR');
+      });
+      DAILY_COB_REPORT_98={date,rows,generated_at:new Date().toLocaleString('pt-BR')};
+      return DAILY_COB_REPORT_98;
+    }
+
+    function dailySummary98(rows){
+      const withQueue=rows.filter(r=>r.previstos>0);
+      const noCob=rows.filter(r=>r.previstos>0&&r.cobrancas_feitas===0);
+      const cob=rows.reduce((s,r)=>s+r.cobrancas_feitas,0);
+      const aud=rows.reduce((s,r)=>s+r.auditorias_aprovadas,0);
+      const pay=rows.reduce((s,r)=>s+r.pagamentos_conciliados,0);
+      const rec=money98(rows.reduce((s,r)=>s+r.recebido_conciliado,0));
+      const lost=money98(rows.reduce((s,r)=>s+r.valor_nao_trabalhado,0));
+      const plan=rows.reduce((s,r)=>s+r.previstos,0);
+      return {withQueue:withQueue.length,noCob:noCob.length,cob,aud,pay,rec,lost,exec:plan?cob/plan*100:100,eff:cob?pay/cob*100:0};
+    }
+
+    function dailyTable98(rows){
+      if(!rows.length)return '<div class="empty">Nenhum usuário de cobrança encontrado.</div>';
+      return `<div class="senhas-table-wrap" style="overflow:auto"><table class="senhas-table" style="min-width:1450px">
+        <thead><tr>
+          <th>Usuário</th><th>Filial</th><th>Previstos</th><th>Cobranças feitas</th><th>Evidências</th><th>Auditorias aprovadas</th><th>Pagamentos</th><th>Recebido</th><th>R$ não trabalhado</th><th>Execução</th><th>Efetividade</th><th>Status</th>
+        </tr></thead>
+        <tbody>${rows.map(r=>`<tr>
+          <td><strong>${esc(r.usuario)}</strong><div class="small muted">${esc(r.tipo)} · ${esc(r.login)}</div></td>
+          <td>${esc(r.filial)}</td>
+          <td>${r.previstos}<div class="small muted">${R(r.valor_previsto)}</div></td>
+          <td><strong>${r.cobrancas_feitas}</strong><div class="small muted">${R(r.valor_cobrado)}</div></td>
+          <td>${r.evidencias_enviadas}</td>
+          <td>${r.auditorias_aprovadas}<div class="small muted">${String(r.taxa_auditoria).replace('.',',')}%</div></td>
+          <td>${r.pagamentos_conciliados}</td>
+          <td style="color:var(--green);font-weight:900">${R(r.recebido_conciliado)}</td>
+          <td style="color:${r.valor_nao_trabalhado>0?'var(--red)':'var(--green)'};font-weight:900">${R(r.valor_nao_trabalhado)}</td>
+          <td><strong>${String(r.taxa_execucao).replace('.',',')}%</strong></td>
+          <td><strong>${String(r.taxa_efetividade).replace('.',',')}%</strong></td>
+          <td><span class="mini-chip" style="${r.status==='NÃO COBROU'?'background:#450a0a;color:#fecaca;border-color:#991b1b':r.status==='CONCLUÍDO'?'background:#052e16;color:#bbf7d0;border-color:#166534':''}">${esc(r.status)}</span></td>
+        </tr>`).join('')}</tbody>
+      </table></div>`;
+    }
+
+    function downloadDailyXls98(rep){
+      const cols=[
+        ['usuario','Usuário'],['login','Login'],['filial','Filial'],['tipo','Tipo'],
+        ['previstos','Títulos previstos'],['valor_previsto','Valor previsto'],['cobrancas_feitas','Cobranças feitas'],['valor_cobrado','Valor cobrado'],
+        ['evidencias_enviadas','Evidências enviadas'],['auditorias_aprovadas','Auditorias aprovadas'],['pagamentos_conciliados','Pagamentos conciliados'],['recebido_conciliado','Recebido conciliado'],
+        ['nao_trabalhados','Títulos não trabalhados'],['valor_nao_trabalhado','R$ não trabalhado'],['taxa_execucao','Taxa execução %'],['taxa_auditoria','Taxa auditoria %'],['taxa_efetividade','Taxa efetividade %'],['status','Status']
+      ];
+      const numeric=new Set(cols.map(([k])=>k).filter(k=>!['usuario','login','filial','tipo','status'].includes(k)));
+      const trs=[`<tr>${cols.map(([,h])=>`<th>${xesc98(h)}</th>`).join('')}</tr>`,...rep.rows.map(r=>`<tr>${cols.map(([k])=>numeric.has(k)?`<td x:num="${Number(r[k]||0)}">${Number(r[k]||0)}</td>`:`<td>${xesc98(r[k]||'')}</td>`).join('')}</tr>`)].join('');
+      const html=`<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"><style>table{border-collapse:collapse;font-family:Arial;font-size:9pt}th{background:#7c2d12;color:#fff}th,td{border:1px solid #d1d5db;padding:5px;white-space:nowrap}</style></head><body><h2>Relatório diário de cobranças ${rep.date}</h2><p>R$ não trabalhado = valor ainda disponível na fila sem cobrança no dia; não significa perda garantida.</p><table>${trs}</table></body></html>`;
+      const blob=new Blob(['\ufeff'+html],{type:'application/vnd.ms-excel;charset=utf-8'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`relatorio_diario_cobrancas_${rep.date}.xls`;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    }
+
+    window.exportDailyCob98=async function(){
+      const rep=await buildDailyReport98(false);downloadDailyXls98(rep);
+    };
+
+    window.printDailyCob98=async function(){
+      const rep=await buildDailyReport98(false);
+      const s=dailySummary98(rep.rows);
+      const w=window.open('about:blank','_blank');if(!w)return;
+      w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Relatório diário cobrança ${rep.date}</title><style>
+        body{font-family:Arial;margin:16px;color:#111}h1{font-size:18px}.sum{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}.box{border:1px solid #bbb;padding:9px}.box b{display:block;font-size:17px;margin-top:4px}table{width:100%;border-collapse:collapse;font-size:9px}th,td{border:1px solid #bbb;padding:4px;text-align:left}th{background:#eee}@page{size:A4 landscape;margin:7mm}@media print{body{margin:0}}
+      </style></head><body><h1>Relatório diário de cobranças — ${rep.date}</h1><div class="sum"><div class="box">Cobranças feitas<b>${s.cob}</b></div><div class="box">Auditorias aprovadas<b>${s.aud}</b></div><div class="box">Recebido conciliado<b>${R(s.rec)}</b></div><div class="box">R$ não trabalhado<b>${R(s.lost)}</b></div></div>
+      <table><thead><tr><th>Usuário</th><th>Filial</th><th>Previstos</th><th>Feitas</th><th>Auditadas</th><th>Pagamentos</th><th>Recebido</th><th>Não trabalhado</th><th>Execução</th><th>Efetividade</th><th>Status</th></tr></thead><tbody>
+      ${rep.rows.map(r=>`<tr><td>${xesc98(r.usuario)}</td><td>${xesc98(r.filial)}</td><td>${r.previstos}</td><td>${r.cobrancas_feitas}</td><td>${r.auditorias_aprovadas}</td><td>${r.pagamentos_conciliados}</td><td>${R(r.recebido_conciliado)}</td><td>${R(r.valor_nao_trabalhado)}</td><td>${r.taxa_execucao}%</td><td>${r.taxa_efetividade}%</td><td>${xesc98(r.status)}</td></tr>`).join('')}
+      </tbody></table><p style="font-size:9px">R$ não trabalhado representa o valor dos títulos que permaneceram disponíveis na fila sem contato no dia. É oportunidade não trabalhada, não garantia de recebimento.</p><script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body></html>`);w.document.close();
+    };
+
+    window.renderCobrancaDiaria98=async function(force=false){
+      const box=document.getElementById('histCobDailyResults98');if(!box)return;
+      box.innerHTML='<div class="lazy-loading"><div class="spin">⏳</div><div>Carregando cobranças, auditorias e pagamentos do dia...</div></div>';
+      try{
+        const rep=await buildDailyReport98(force);
+        const s=dailySummary98(rep.rows);
+        box.innerHTML=`<div class="glass panel" style="margin-bottom:14px;border-color:rgba(249,115,22,.32)">
+          <div class="section-head"><div><h2>📞 Relatório diário de cobranças — ${esc(rep.date)}</h2><div class="hint">Mostra execução, auditoria e resultado por usuário. “R$ não trabalhado” é o valor que permaneceu disponível sem cobrança; não é garantia de que seria recebido.</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn soft" onclick="renderCobrancaDiaria98(true)">🔄 Atualizar</button><button class="btn soft" onclick="exportDailyCob98()">📊 Excel</button><button class="btn primary" onclick="printDailyCob98()">📄 PDF / Imprimir</button></div></div>
+        </div>
+        <div class="kpis">
+          ${makeKpi('Usuários com fila',String(s.withQueue),'var(--blue)')}
+          ${makeKpi('Não cobraram',String(s.noCob),'var(--red)')}
+          ${makeKpi('Cobranças feitas',String(s.cob),'var(--orange)')}
+          ${makeKpi('Auditorias aprovadas',String(s.aud),'var(--blue)')}
+          ${makeKpi('Pagamentos conciliados',String(s.pay),'var(--green)')}
+          ${makeKpi('Recebido conciliado',R(s.rec),'var(--green)')}
+          ${makeKpi('R$ não trabalhado',R(s.lost),'var(--red)')}
+          ${makeKpi('Taxa execução',String(pct98num(s.exec)).replace('.',',')+'%','var(--orange)')}
+          ${makeKpi('Efetividade',String(pct98num(s.eff)).replace('.',',')+'%','var(--green)')}
+        </div>
+        <div class="glass panel">${dailyTable98(rep.rows)}</div>`;
+      }catch(e){
+        console.warn(TAG,'daily',e);
+        box.innerHTML='<div class="empty">Não consegui montar o relatório diário. Atualize e tente novamente.</div>';
+      }
+    };
+
+    // Nova subaba dentro de Histórico.
+    const baseSetHist98=window.setHistMode;
+    setHistMode=window.setHistMode=function(mode){
+      if(mode==='cobranca_diaria'){
+        window._histMode=mode;
+        ['histDailyPane','histMonthPane','histSalesPane','histThirdPane','histComPane'].forEach(id=>document.getElementById(id)?.classList.add('hidden'));
+        document.getElementById('histCobDailyPane98')?.classList.remove('hidden');
+        ['histTabDaily','histTabMonthly','histTabSales','histTabThird','histTabCom'].forEach(id=>document.getElementById(id)?.classList.remove('active'));
+        document.getElementById('histTabCobDaily98')?.classList.add('active');
+        renderCobrancaDiaria98(false);
+        return;
+      }
+      const ret=typeof baseSetHist98==='function'?baseSetHist98.apply(this,arguments):undefined;
+      document.getElementById('histCobDailyPane98')?.classList.add('hidden');
+      document.getElementById('histTabCobDaily98')?.classList.remove('active');
+      return ret;
+    };
+
+    const baseRenderHistTab98=window.renderHistoricoTab;
+    if(typeof baseRenderHistTab98==='function'){
+      renderHistoricoTab=window.renderHistoricoTab=function(){
+        const mode=window._histMode||'daily';
+        const ret=baseRenderHistTab98.apply(this,arguments);
+        try{
+          const tabs=histSection.querySelector('.tabs');
+          if(tabs&&!document.getElementById('histTabCobDaily98')){
+            const btn=document.createElement('button');
+            btn.id='histTabCobDaily98';btn.className='tab';btn.textContent='📞 Cobrança diária';btn.setAttribute('onclick',"setHistMode('cobranca_diaria')");
+            const com=document.getElementById('histTabCom');tabs.insertBefore(btn,com||null);
+          }
+          if(!document.getElementById('histCobDailyPane98')){
+            const pane=document.createElement('div');pane.id='histCobDailyPane98';pane.className='hidden';pane.innerHTML='<div id="histCobDailyResults98"></div>';
+            histSection.appendChild(pane);
+          }
+          if(mode==='cobranca_diaria')setTimeout(()=>setHistMode('cobranca_diaria'),0);
+        }catch(e){console.warn(TAG,'hist tab',e)}
+        setTimeout(cleanupExcelUi98,80);
+        return ret;
+      };
+    }
+
+    window.DASHBOARD_BUILD_VERSION='V10.98';
+    console.log(TAG,'ativo: recebimentos auditados detalhados + Excel único + PDF vertical + relatório diário');
+  }catch(e){
+    console.warn(TAG,'falhou',e);
+  }
+})();
+</script>
+
+<script>
+/* ===== V10.99 — GUARDA DE ATUALIZAÇÃO =====
+   Enquanto dashboard_completo_cobranca está rodando:
+   - bloqueia novo login e mostra "Em atualização, aguarde";
+   - usuários já logados veem overlay de manutenção.
+   Quando o MAIN termina com Exit 0 (após FTP):
+   - limpa sessão local;
+   - recarrega a página automaticamente;
+   - exige novo login.
+   O worker de vendas de 20 min NÃO força logout.
+*/
+(function(){
+  const KEY='mdl_v1099_last_main_publish';
+  const MON='https://dashbboardcobvendasmdl.up.railway.app';
+  let pollBusy=false;
+  let first=true;
+
+  function ensureOverlay(){
+    let el=document.getElementById('mdlUpdateGuardV1099');
+    if(el)return el;
+    el=document.createElement('div');
+    el.id='mdlUpdateGuardV1099';
+    el.style.cssText='display:none;position:fixed;inset:0;z-index:100000;background:rgba(4,7,13,.94);align-items:center;justify-content:center;padding:24px;text-align:center';
+    el.innerHTML=`<div style="width:min(520px,94vw);padding:28px;border-radius:24px;background:#151922;border:1px solid rgba(249,168,50,.35);box-shadow:0 25px 80px rgba(0,0,0,.6)">
+      <div style="font-size:42px;margin-bottom:10px">🔄</div>
+      <h2 style="margin:0;color:#f9a832">Dashboard em atualização</h2>
+      <div style="margin-top:10px;color:#dbe4ff;font-weight:700;line-height:1.5">Aguarde a atualização terminar e os arquivos serem publicados.</div>
+      <div style="margin-top:8px;color:#94a3b8;font-size:13px">Ao concluir, esta página será atualizada automaticamente e será necessário fazer login novamente.</div>
+    </div>`;
+    document.body.appendChild(el);
+    return el;
+  }
+
+  function setUpdating(on){
+    const overlay=ensureOverlay();
+    const logged=!!window.usuarioAtual;
+    if(logged){
+      overlay.style.display=on?'flex':'none';
+    }else{
+      overlay.style.display='none';
+    }
+
+    const btn=document.getElementById('loginBtn');
+    const user=document.getElementById('loginUser');
+    const pass=document.getElementById('loginPass');
+    if(btn){btn.disabled=!!on;btn.style.opacity=on?'.55':'1';btn.style.cursor=on?'wait':'pointer'}
+    if(user)user.disabled=!!on;
+    if(pass)pass.disabled=!!on;
+
+    const msg=document.getElementById('loginMsg');
+    if(msg&&on){
+      msg.textContent='🔄 Em atualização, aguarde. O login será liberado automaticamente quando terminar.';
+      msg.style.color='#f59e0b';
+      msg.style.fontWeight='900';
+    }
+  }
+
+  function showCompletedMessage(){
+    try{
+      const u=new URL(location.href);
+      if(u.searchParams.has('dashboard_atualizado')){
+        const msg=document.getElementById('loginMsg');
+        if(msg){
+          msg.textContent='✅ Atualização concluída. Faça login novamente.';
+          msg.style.color='#16a34a';
+          msg.style.fontWeight='900';
+        }
+        u.searchParams.delete('dashboard_atualizado');
+        history.replaceState({},'',u.pathname+(u.searchParams.toString()?'?'+u.searchParams.toString():'')+u.hash);
+      }
+    }catch(e){}
+  }
+
+  function forceFreshLogin(lastEnd){
+    try{localStorage.setItem(KEY,String(lastEnd||''))}catch(e){}
+    try{if(typeof clearSession==='function')clearSession()}catch(e){}
+    try{window.usuarioAtual=null}catch(e){}
+    const target='/colaborador/?dashboard_atualizado=1&_='+Date.now();
+    location.replace(target);
+  }
+
+  async function check(){
+    if(pollBusy)return;
+    pollBusy=true;
+    try{
+      const r=await fetch(MON+'/api/status?_='+Date.now(),{cache:'no-store'});
+      if(!r.ok)return;
+      const s=await r.json();
+      const job=s?.jobs?.dashboard_completo_cobranca||{};
+      const running=!!job.running;
+      const lastEnd=String(job.last_end||'');
+      const exit=job.last_exit;
+
+      setUpdating(running);
+
+      let seen='';
+      try{seen=String(localStorage.getItem(KEY)||'')}catch(e){}
+
+      if(first){
+        first=false;
+        // Primeira execução da V10.99 neste navegador: adota a publicação atual como baseline.
+        if(!seen&&lastEnd){
+          try{localStorage.setItem(KEY,lastEnd)}catch(e){}
+          seen=lastEnd;
+        }
+      }
+
+      // Detecta publicação nova mesmo se a aba ficou fechada durante a atualização.
+      if(!running && lastEnd && exit===0 && seen && lastEnd!==seen){
+        forceFreshLogin(lastEnd);
+        return;
+      }
+
+      // Mantém a baseline sincronizada se não há sessão/logado.
+      if(!running && lastEnd && !window.usuarioAtual && !seen){
+        try{localStorage.setItem(KEY,lastEnd)}catch(e){}
+      }
+    }catch(e){
+      // Em falha de rede não bloqueia login nem derruba usuário.
+      setUpdating(false);
+    }finally{
+      pollBusy=false;
+    }
+  }
+
+  window.mdlCheckDashboardUpdateV1099=check;
+  setTimeout(showCompletedMessage,100);
+  setTimeout(check,600);
+  setInterval(check,20000);
+})();
+</script>
+
 </body>
 </html>
 """
@@ -22493,6 +23697,13 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
     except Exception as e_q_ftp:
         print(f'⚠️ Erro ao enviar quitados 180d ao FTP: {e_q_ftp}')
 
+    # V10.99: snapshot pequeno usado pelo relatório diário/Telegram.
+    try:
+        if 'COBRANCA_DIARIA_RESUMO_PATH' in globals() and os.path.exists(COBRANCA_DIARIA_RESUMO_PATH):
+            _ftp_upload_file_v1019(COBRANCA_DIARIA_RESUMO_PATH, 'cobranca_diaria_resumo.json', atomic=True, label='cobranca_diaria_resumo.json')
+    except Exception as _e_daily_ftp_v1099:
+        print(f'⚠️ V10.99 erro enviando cobranca_diaria_resumo.json: {_e_daily_ftp_v1099}')
+
 
     # V10.20: publica também o relatório principal do Contas a Receber e cópias datadas.
     try:
@@ -22630,3 +23841,7 @@ driver.quit()
 # V10.96_COB_DECISAO_EM_LOTE
 
 # V10.97_AVISOS_OFF_ESPECIAIS_SEM_META_XLS_AUDITADO_PDF_FIT
+
+# V10.98_RECEB_AUDIT_EXCEL_UNICO_PDF_LEGIVEL_RELATORIO_DIARIO
+
+# V10.99_TELEGRAM_COBRANCA_DIARIA_UPDATE_GUARD

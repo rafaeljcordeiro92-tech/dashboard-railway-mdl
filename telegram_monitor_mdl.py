@@ -34,7 +34,7 @@ def _extract_list_payload(data):
     return []
 
 
-# VERSAO: TELEGRAM_MONITOR_MDL_V10_92_MULTI_GRUPOS_REMOTE_FIRST
+# VERSAO: TELEGRAM_MONITOR_MDL_V10_99_COBRANCA_DIARIA
 import json
 import os
 import re
@@ -250,12 +250,13 @@ def _load_telegram_contacts_from_config(base_dir=None):
                 'resumo': b('resumo', True),
                 'auditoria': b('auditoria', True),
                 'cob_externa': b('cob_externa', True),
+                'cobranca_diaria': b('cobranca_diaria', False),
                 'teste': True,
             })
     if not out:
         env_chat = os.getenv('TELEGRAM_CHAT_ID', '').strip()
         if env_chat:
-            out.append({'nome':'TELEGRAM_CHAT_ID','chat_id':env_chat,'ativo':True,'erros':True,'meta_diaria':True,'meta_mensal':True,'avisos':True,'resumo':True,'auditoria':True,'cob_externa':True,'teste':True})
+            out.append({'nome':'TELEGRAM_CHAT_ID','chat_id':env_chat,'ativo':True,'erros':True,'meta_diaria':True,'meta_mensal':True,'avisos':True,'resumo':True,'auditoria':True,'cob_externa':True,'cobranca_diaria':True,'teste':True})
     return out
 
 
@@ -269,6 +270,7 @@ def _telegram_contacts_for_alert(alert_type='geral', base_dir=None):
         'resumo': 'resumo', 'daily_summary': 'resumo',
         'auditoria': 'auditoria', 'audit': 'auditoria',
         'cob_externa': 'cob_externa', 'cob': 'cob_externa',
+        'cobranca_diaria': 'cobranca_diaria', 'daily_collection': 'cobranca_diaria',
         'teste': None, 'test': None,
     }
     flag = key_map.get(alert_type, None)
@@ -1375,6 +1377,198 @@ def load_projecao_mercantil_filiais(base_dir):
         })
     return out
 
+
+# ===== V10.99 RELATÓRIO DIÁRIO DE COBRANÇA PARA TELEGRAM =====
+def _v1099_row_key(row):
+    if not isinstance(row, dict):
+        return ""
+    doc = re.sub(r"\D+", "", str(row.get("cpf_cnpj_normalizado") or row.get("cpf_cnpj") or ""))
+    tit_raw = str(row.get("titulo") or "").strip()
+    tit = re.sub(r"\D+", "", tit_raw) or tit_raw.upper()
+    nums = re.findall(r"\d+", str(row.get("parcela") or ""))
+    par = "/".join(str(int(x)) for x in nums[:2]) if nums else str(row.get("parcela") or "").strip().upper()
+    return f"{doc}|{tit}|{par}"
+
+def _v1099_norm(v):
+    import unicodedata
+    s = unicodedata.normalize("NFD", str(v or "")).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^A-Z0-9]+", " ", s.upper()).strip()
+
+def _v1099_date(v):
+    s = str(v or "").strip()
+    if not s:
+        return ""
+    m = re.search(r"(\d{4})-(\d{2})-(\d{2})", s)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    m = re.search(r"(\d{2})/(\d{2})/(\d{4})", s)
+    if m:
+        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+    return s[:10]
+
+def _load_daily_collection_snapshot_v1099(base_dir):
+    data = load_json_local_or_remote(base_dir, "cobranca_diaria_resumo.json", "cobranca_diaria_resumo.json", {})
+    return data if isinstance(data, dict) else {}
+
+def _load_audits_v1099(base_dir):
+    candidates = []
+    for url in (
+        f"{PUBLIC_BASE}/cobranca_auditoria.json",
+        f"{PUBLIC_BASE}/cobranca_auditoria_api.php?full=1",
+        f"{PUBLIC_BASE}/cobranca_auditoria_api.php",
+    ):
+        candidates += _extract_list_payload(_read_url_json(url, [], timeout=35))
+    candidates += _extract_list_payload(_read_json_file(os.path.join(base_dir, "cobranca_auditoria.json"), []))
+    return _dedup_dicts_by_id(candidates)
+
+def _load_paid_v1099(base_dir):
+    data = load_json_local_or_remote(base_dir, "quitados_180d_contas_receber.json", "quitados_180d_contas_receber.json", {})
+    if isinstance(data, dict):
+        rows = data.get("quitados") or data.get("data") or data.get("rows") or []
+    else:
+        rows = data
+    return rows if isinstance(rows, list) else []
+
+def _v1099_approved(status):
+    return str(status or "").lower().strip() in {"aprovado","aprovado_ia","aprovado_manual"}
+
+def _v1099_entity_match(row, ent):
+    if not isinstance(row, dict) or not isinstance(ent, dict):
+        return False
+    login = str(ent.get("login") or "").lower().strip()
+    nome = _v1099_norm(ent.get("nome"))
+    filial = str(ent.get("filial") or "").upper().strip()
+    vals = [
+        str(row.get("usuario_login") or "").lower().strip(),
+        str(row.get("usuario") or "").lower().strip(),
+        str(row.get("login") or "").lower().strip(),
+    ]
+    if login and login in vals:
+        return True
+    names = [_v1099_norm(row.get("usuario_nome")), _v1099_norm(row.get("destino_nome")), _v1099_norm(row.get("responsavel"))]
+    if nome and nome in names:
+        rf = str(row.get("filial") or "").upper().strip()
+        return not filial or not rf or rf == filial
+    return False
+
+def _v1099_same(a, b):
+    return bool(_v1099_row_key(a)) and _v1099_row_key(a) == _v1099_row_key(b)
+
+def build_daily_collection_summary(base_dir, date_str=None):
+    """Resumo curto, separado, roteável por Chat ID usando alert_type=cobranca_diaria."""
+    date_str = date_str or now_br().strftime("%Y-%m-%d")
+    snap = _load_daily_collection_snapshot_v1099(base_dir)
+    entities = snap.get("entities") if isinstance(snap.get("entities"), list) else []
+    entities = [e for e in entities if isinstance(e, dict) and e.get("ativo", True)]
+    audits = _load_audits_v1099(base_dir)
+    paid = _load_paid_v1099(base_dir)
+
+    rows = []
+    for ent in entities:
+        cob_keys = set(str(x) for x in (ent.get("cobrados_keys") or []) if x)
+        approved_keys = set()
+        paid_keys = set()
+        received = 0.0
+
+        for a in audits:
+            if not _v1099_approved(a.get("status")):
+                continue
+            if not _v1099_entity_match(a, ent):
+                continue
+            k = _v1099_row_key(a)
+            if not k or k not in cob_keys:
+                continue
+            approved_keys.add(k)
+
+            matches = [
+                q for q in paid
+                if _v1099_same(a, q)
+                and _v1099_date(q.get("pagamento") or q.get("data_pagamento")) >= date_str
+            ]
+            if matches and k not in paid_keys:
+                q = sorted(matches, key=lambda x: _v1099_date(x.get("pagamento") or x.get("data_pagamento")))[0]
+                paid_keys.add(k)
+                received += _float(q.get("pago"), 0.0)
+
+        feitos = int(ent.get("cobrancas_feitas") or 0)
+        previstos = int(ent.get("previstos") or 0)
+        nao = int(ent.get("nao_trabalhados") or 0)
+        valor_nao = _float(ent.get("valor_nao_trabalhado"), 0.0)
+        eff = (len(paid_keys) / feitos * 100.0) if feitos else 0.0
+        exec_pct = (feitos / previstos * 100.0) if previstos else 100.0
+
+        rows.append({
+            **ent,
+            "auditorias_aprovadas": len(approved_keys),
+            "pagamentos_conciliados": len(paid_keys),
+            "recebido_conciliado": round(received, 2),
+            "taxa_efetividade": round(eff, 1),
+            "taxa_execucao": round(exec_pct, 1),
+            "nao_trabalhados": nao,
+            "valor_nao_trabalhado": round(valor_nao, 2),
+        })
+
+    users_queue = [r for r in rows if int(r.get("previstos") or 0) > 0]
+    no_work = [r for r in users_queue if int(r.get("cobrancas_feitas") or 0) == 0]
+    partial = [r for r in users_queue if 0 < int(r.get("cobrancas_feitas") or 0) < int(r.get("previstos") or 0)]
+    total_cob = sum(int(r.get("cobrancas_feitas") or 0) for r in rows)
+    total_aud = sum(int(r.get("auditorias_aprovadas") or 0) for r in rows)
+    total_pay = sum(int(r.get("pagamentos_conciliados") or 0) for r in rows)
+    total_rec = sum(_float(r.get("recebido_conciliado"), 0.0) for r in rows)
+
+    ssum = snap.get("summary") if isinstance(snap.get("summary"), dict) else {}
+    lost_unique = _float(ssum.get("valor_nao_trabalhado_unico"), 0.0)
+    lost_titles = int(ssum.get("titulos_nao_trabalhados_unicos") or 0)
+
+    date_br = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y") if re.match(r"^\d{4}-\d{2}-\d{2}$", date_str) else date_str
+    lines = [
+        f"📞 COBRANÇA DIÁRIA — {date_br}",
+        "Lojas MDL • resumo operacional",
+        "",
+        f"👥 Usuários com fila: {len(users_queue)}",
+        f"📲 Cobranças feitas: {total_cob}",
+        f"✅ Auditorias aprovadas: {total_aud}",
+        f"💵 Pagamentos conciliados: {total_pay}",
+        f"🏦 Recebido conciliado: {fmt_money(total_rec)}",
+        f"⚠️ Oportunidade não trabalhada: {lost_titles} título(s) • {fmt_money(lost_unique)}",
+        "",
+    ]
+
+    if no_work:
+        lines.append(f"🚫 NÃO COBRARAM ({len(no_work)}):")
+        for r in no_work[:12]:
+            lines.append(f"• {r.get('nome') or r.get('login')} · {r.get('filial') or '-'} · fila {r.get('previstos',0)} · {fmt_money(r.get('valor_previsto'))}")
+        if len(no_work) > 12:
+            lines.append(f"• +{len(no_work)-12} usuário(s)")
+    else:
+        lines.append("✅ Todos os usuários com fila fizeram ao menos uma cobrança.")
+
+    if partial:
+        lines.append("")
+        lines.append(f"🟠 PARCIAIS ({len(partial)}):")
+        for r in sorted(partial, key=lambda x: float(x.get("taxa_execucao") or 0))[:8]:
+            lines.append(f"• {r.get('nome') or r.get('login')}: execução {str(r.get('taxa_execucao',0)).replace('.',',')}%")
+
+    top_eff = [r for r in rows if int(r.get("cobrancas_feitas") or 0) > 0]
+    top_eff.sort(key=lambda x: (float(x.get("taxa_efetividade") or 0), int(x.get("pagamentos_conciliados") or 0)), reverse=True)
+    if top_eff:
+        lines.append("")
+        lines.append("📈 EFETIVIDADE — destaques:")
+        for r in top_eff[:8]:
+            lines.append(
+                f"• {r.get('nome') or r.get('login')}: "
+                f"{str(r.get('taxa_efetividade',0)).replace('.',',')}% "
+                f"({r.get('pagamentos_conciliados',0)}/{r.get('cobrancas_feitas',0)})"
+            )
+
+    lines += [
+        "",
+        "ℹ️ “Oportunidade não trabalhada” é o valor deduplicado dos títulos que permaneceram disponíveis sem cobrança no dia; não é recebimento garantido.",
+        f"🕒 Gerado em {now_br().strftime('%d/%m/%Y %H:%M:%S')}",
+    ]
+    return "\n".join(lines)
+
+
 def build_daily_summary(base_dir, date_str=None):
     """Resumo final das 19h.
 
@@ -1552,3 +1746,5 @@ def build_daily_summary(base_dir, date_str=None):
 # V10.91_TELEGRAM_CANAL_PRINCIPAL_AUDITORIA_COB_EXTERNA
 
 # V10.92_TELEGRAM_MULTI_GRUPOS_REMOTE_FIRST
+
+# V10.99_TELEGRAM_COBRANCA_DIARIA
