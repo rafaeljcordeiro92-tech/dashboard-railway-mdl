@@ -37,8 +37,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.101"
-DASHBOARD_BUILD_TAG = "v10101_live_telegram_excel_real_csm50_filial_prefetch"
+DASHBOARD_BUILD_VERSION = "V10.102"
+DASHBOARD_BUILD_TAG = "v10102_custom_users_login_delete_persist"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
 # V10.52: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
@@ -4479,6 +4479,160 @@ auth_users[LOGIN_PAINEL] = {
     "email_recuperacao": EMAIL_RECUPERACAO,
 }
 linhas_txt.append(f"{LOGIN_PAINEL} | Painel | {_senha_painel} | --- | VISUALIZAÇÃO")
+
+# ===== V10.102: preservar usuários avulsos criados pelo Master =====
+# Até V10.101, admin_create_user gravava o usuário em credenciais_dashboard.json,
+# porém o próximo MAIN reconstruía auth_users apenas a partir de vendedores,
+# gerentes, Cobrança10, COB externa e crediaristas configurados. Isso fazia:
+#   1) usuário avulso aparecer na aba Senhas, mas falhar no login porque não existia em CREDS;
+#   2) usuário avulso poder desaparecer no próximo MAIN.
+#
+# V10.102 preserva contas only_cobranca que não fazem parte dos usuários gerados
+# automaticamente. Elas compartilham a base operacional correspondente:
+#   - is_terceiro => mesma carteira Cobrança Interna Global, com log/comissão por login;
+#   - is_crediarista => acesso é preservado; a carteira vem da configuração em Metas.
+_deleted_custom_users_v10102 = {
+    str(x or "").strip().lower()
+    for x in (cred_state.get("deleted_custom_users", []) or [])
+    if str(x or "").strip()
+}
+
+# Se uma conta custom foi excluída, a exclusão vence até mesmo uma configuração antiga.
+for _login_del_v10102 in list(_deleted_custom_users_v10102):
+    if _login_del_v10102 in auth_users:
+        _u_del_v10102 = auth_users.get(_login_del_v10102) or {}
+        # Nunca apaga contas estruturais fixas por tombstone acidental.
+        if (
+            _login_del_v10102 not in {COBRANCA10_LOGIN, COB_EXTERNA_LOGIN, LOGIN_PAINEL}
+            and not _u_del_v10102.get("is_gerente")
+            and not _u_del_v10102.get("is_cob_externa")
+            and (
+                _u_del_v10102.get("custom_user")
+                or _login_del_v10102 not in {str(x.get("login") or "").lower() for x in CREDIARISTAS_CONFIG}
+            )
+        ):
+            auth_users.pop(_login_del_v10102, None)
+            credenciais.pop(_login_del_v10102, None)
+
+for _login_old_v10102, _u_old_v10102 in list((cred_state.get("users", {}) or {}).items()):
+    if not isinstance(_u_old_v10102, dict):
+        continue
+    _login_custom_v10102 = str(_u_old_v10102.get("login") or _login_old_v10102 or "").strip().lower()
+    if not _login_custom_v10102:
+        continue
+    if _login_custom_v10102 in auth_users:
+        # Se já veio por uma fonte oficial, preserva apenas a marca custom quando existir.
+        if _u_old_v10102.get("custom_user"):
+            auth_users[_login_custom_v10102]["custom_user"] = True
+            if _login_custom_v10102 in credenciais:
+                credenciais[_login_custom_v10102]["custom_user"] = True
+        continue
+    if _login_custom_v10102 in _deleted_custom_users_v10102:
+        continue
+    if not bool(_u_old_v10102.get("only_cobranca")):
+        continue
+    if bool(_u_old_v10102.get("is_cob_externa")):
+        continue
+
+    _custom_v10102 = dict(_u_old_v10102)
+    _custom_v10102["login"] = _login_custom_v10102
+    _custom_v10102["nome"] = str(_custom_v10102.get("nome") or _login_custom_v10102)
+    _custom_v10102["filial"] = str(_custom_v10102.get("filial") or ("FTER" if _custom_v10102.get("is_terceiro") else "")).upper()
+    _custom_v10102["only_cobranca"] = True
+    _custom_v10102["custom_user"] = True
+    _custom_v10102["is_gerente"] = False
+    _custom_v10102["is_cob_externa"] = False
+    _custom_v10102["email_recuperacao"] = _custom_v10102.get("email_recuperacao") or EMAIL_RECUPERACAO
+    _custom_v10102["status_operacional"] = str(_custom_v10102.get("status_operacional") or "ativo").lower()
+    _custom_v10102["access_disabled"] = bool(
+        _custom_v10102.get("access_disabled")
+        or _custom_v10102["status_operacional"] in ("inativo", "bloqueado", "desligado")
+    )
+
+    if _custom_v10102.get("is_terceiro"):
+        _custom_v10102["is_crediarista"] = False
+        _pend_custom_v10102 = float(_terceiro_pendente or 0)
+        _cred_custom_v10102 = {
+            "senha": _custom_v10102.get("password") or "",
+            "senha_inicial": _custom_v10102.get("initial_password") or _custom_v10102.get("password") or "",
+            "nome": _custom_v10102["nome"],
+            "filial": _custom_v10102["filial"],
+            "is_gerente": False,
+            "is_terceiro": True,
+            "is_crediarista": False,
+            "only_cobranca": True,
+            "custom_user": True,
+            "pendente": round(_pend_custom_v10102, 2),
+            "pago": 0.0,
+            "total": round(_pend_custom_v10102, 2),
+            "perc_filial": 100.0,
+            "status_operacional": _custom_v10102["status_operacional"],
+            "access_disabled": _custom_v10102["access_disabled"],
+        }
+    elif _custom_v10102.get("is_crediarista"):
+        _cli_custom_v10102 = clientes_crediarista_js.get(_login_custom_v10102, {}) if isinstance(clientes_crediarista_js, dict) else {}
+        _rec_custom_v10102 = recebimentos_crediarista_js.get(_login_custom_v10102, {}) if isinstance(recebimentos_crediarista_js, dict) else {}
+        _pend_custom_v10102 = sum(
+            float(x.get("pendente", 0) or 0)
+            for _fx_v10102 in ("grave", "alerta", "atencao")
+            for x in (_cli_custom_v10102.get(_fx_v10102, []) or [])
+        )
+        _pago_custom_v10102 = sum(
+            float(x.get("pago", 0) or 0)
+            for _fx_v10102 in ("grave", "alerta", "atencao")
+            for x in (_rec_custom_v10102.get(_fx_v10102, []) or [])
+        )
+        _cred_custom_v10102 = {
+            "senha": _custom_v10102.get("password") or "",
+            "senha_inicial": _custom_v10102.get("initial_password") or _custom_v10102.get("password") or "",
+            "nome": _custom_v10102["nome"],
+            "filial": _custom_v10102["filial"],
+            "is_gerente": False,
+            "is_terceiro": False,
+            "is_crediarista": True,
+            "only_cobranca": True,
+            "custom_user": True,
+            "pendente": round(_pend_custom_v10102, 2),
+            "pago": round(_pago_custom_v10102, 2),
+            "total": round(_pend_custom_v10102 + _pago_custom_v10102, 2),
+            "perc_filial": 100.0,
+            "status_operacional": _custom_v10102["status_operacional"],
+            "access_disabled": _custom_v10102["access_disabled"],
+        }
+    else:
+        # Conta avulsa antiga sem flag clara: trata como cobrança interna global.
+        _custom_v10102["is_terceiro"] = True
+        _custom_v10102["is_crediarista"] = False
+        _pend_custom_v10102 = float(_terceiro_pendente or 0)
+        _cred_custom_v10102 = {
+            "senha": _custom_v10102.get("password") or "",
+            "senha_inicial": _custom_v10102.get("initial_password") or _custom_v10102.get("password") or "",
+            "nome": _custom_v10102["nome"],
+            "filial": _custom_v10102["filial"] or "FTER",
+            "is_gerente": False,
+            "is_terceiro": True,
+            "is_crediarista": False,
+            "only_cobranca": True,
+            "custom_user": True,
+            "pendente": round(_pend_custom_v10102, 2),
+            "pago": 0.0,
+            "total": round(_pend_custom_v10102, 2),
+            "perc_filial": 100.0,
+            "status_operacional": _custom_v10102["status_operacional"],
+            "access_disabled": _custom_v10102["access_disabled"],
+        }
+
+    auth_users[_login_custom_v10102] = _custom_v10102
+    credenciais[_login_custom_v10102] = _cred_custom_v10102
+    linhas_txt.append(
+        f"{_login_custom_v10102} | {_custom_v10102['nome']} | "
+        f"{_custom_v10102.get('password','')} | {_custom_v10102['filial']} | "
+        f"{'COBRANÇA INTERNA GLOBAL' if _custom_v10102.get('is_terceiro') else 'CREDIARISTA'} CUSTOM"
+    )
+    print(
+        f"✅ V10.102 usuário avulso preservado: {_login_custom_v10102} "
+        f"({_custom_v10102['nome']})"
+    )
 
 # V5.6: preserva e publica a camada administrativa de status/participação.
 _status_map_final = {}
@@ -12467,7 +12621,22 @@ function openCrediaristaPanelCore(login, filial, nome){
   detailScreen.classList.remove('hidden');
   return renderCrediaristaDetail(ent);
 }
-function openThirdChargePanelCore(){const ent=thirdChargeEntity(); currentDetailRef={type:'terceiro',filial:'FTER',nome:ent.nome}; mascotCongrats(ent); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); renderTerceiroDetail(ent)}
+function thirdChargeEntityAtualV10102(){
+  const ent=thirdChargeEntity();
+  if(usuarioAtual?.is_terceiro && String(usuarioAtual?.login||'').toLowerCase()!==COBRANCA10_LOGIN){
+    return {
+      ...ent,
+      login:String(usuarioAtual.login||'').toLowerCase(),
+      nome:String(usuarioAtual.nome||usuarioAtual.login||'Cobrança Interna'),
+      filial:String(usuarioAtual.filial||'FTER').toUpperCase(),
+      custom_user:!!usuarioAtual.custom_user,
+      is_terceiro:true,
+      only_cobranca:true
+    };
+  }
+  return ent;
+}
+function openThirdChargePanelCore(){const ent=thirdChargeEntityAtualV10102(); currentDetailRef={type:'terceiro',filial:ent.filial||'FTER',nome:ent.nome,login:ent.login}; mascotCongrats(ent); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); renderTerceiroDetail(ent)}
 
 
 async function openCrediaristaPanel(login,filial,nome){
@@ -14513,7 +14682,7 @@ function renderSenhaRow(u, isDirector=false){
     <td class="senha-col-status"><span class="status-dot"><i style="background:${u.must_change_password?'#f59e0b':'#22c55e'}"></i>${u.must_change_password?'Trocar':'Ativa'}</span></td>
     <td class="senha-col-atual"><div class="senha-inline senha-atual"><input id="senha_atual_${dom}" type="password" readonly value="${esc(senhaAtual)}"><button class="senha-icon-btn" type="button" title="Ver senha" onclick="toggleSenhaAtual('senha_atual_${dom}')">👁️</button><button class="senha-icon-btn" type="button" title="Copiar senha" onclick="copiarSenhaAtual('senha_atual_${dom}')">📋</button></div></td>
     <td class="senha-col-nova"><div class="senha-inline"><input id="pwd_${key}" placeholder="Nova senha"><button class="senha-icon-btn senha-save" type="button" title="Salvar nova senha" onclick='adminSalvarSenha(${keyJs})'>💾</button></div><div id="pwd_msg_${key}" class="senha-msg"></div></td>
-    <td class="senha-col-acoes"><button class="senha-action-btn" type="button" onclick='adminMarcarTroca(${keyJs})'>🔁 Troca</button>${pend?`<button class="senha-action-btn" type="button" onclick='adminResolverReset(${keyJs})'>✅ Resolver</button>`:''}</td>
+    <td class="senha-col-acoes"><button class="senha-action-btn" type="button" onclick='adminMarcarTroca(${keyJs})'>🔁 Troca</button>${pend?`<button class="senha-action-btn" type="button" onclick='adminResolverReset(${keyJs})'>✅ Resolver</button>`:''}${(!isDirector&&u.custom_user)?`<button class="senha-action-btn" style="color:#fecaca;border-color:rgba(239,68,68,.45);background:rgba(127,29,29,.20)" type="button" onclick='adminExcluirUsuario(${keyJs})'>🗑️ Excluir</button>`:''}</td>
   </tr>`;
 }
 
@@ -15203,7 +15372,7 @@ function renderSenhasTab(){
   </div>
   <div class="glass panel admin-accounts-line" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">👑 Contas administrativas</h2><div class="hint">Contas administrativas em linha para caber melhor na tela.</div></div></div><div class="senhas-table-wrap"><table class="senhas-table senhas-main-table"><thead><tr><th>Usuário</th><th>WhatsApp</th><th>Login</th><th>Perfil</th><th>Status</th><th>Senha atual</th><th>Nova senha</th><th>Ações</th></tr></thead><tbody>${renderSenhaRow(AUTH_STATE?.director||{login:'diretorcomercial',nome:'Diretor Comercial',must_change_password:true}, true)}</tbody></table></div></div>
   ${renderGerentesFiliaisPanel()}
-  <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">➕ Criar usuário de acesso</h2><div class="hint">Crediarista: vincule depois em Metas > Crediaristas configuráveis. Cobrança Interna Global: participa do rateio interno configurado em Metas. A conta da parceira COB Externa é separada e não usa este cadastro.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Login</label><input id="newUserLogin" placeholder="ex: crediaristaf08 ou cobrancamatriz"></div><div class="input-card"><label>Nome</label><input id="newUserNome" placeholder="ex: COBRANÇA MATRIZ"></div><div class="input-card"><label>Filial</label><input id="newUserFilial" placeholder="ex: F8 ou FTER"></div><div class="input-card"><label>Senha inicial</label><input id="newUserSenha" placeholder="mín. 4 caracteres"></div></div><div class="form-grid bonus" style="margin-top:10px"><div class="input-card"><label>Tipo</label><select id="newUserTipo"><option value="crediarista">Crediarista</option><option value="cobranca">Cobrança Interna Global</option></select></div></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="adminCriarUsuarioCobranca()">💾 Criar usuário</button></div><div id="newUserMsg" class="note" style="margin-top:10px"></div></div>
+  <div class="glass panel" style="margin-bottom:14px"><div class="section-head" style="margin:0 0 8px"><div><h2 style="font-size:18px">➕ Criar usuário de acesso</h2><div class="hint">Crediarista: vincule depois em Metas > Crediaristas configuráveis. Cobrança Interna Global: usa a carteira interna global e registra cobrança/auditoria pelo próprio login. Usuários avulsos criados aqui podem ser excluídos pelo botão 🗑️ na coluna Ações. A conta da parceira COB Externa é separada e protegida.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Login</label><input id="newUserLogin" placeholder="ex: crediaristaf08 ou cobrancamatriz"></div><div class="input-card"><label>Nome</label><input id="newUserNome" placeholder="ex: COBRANÇA MATRIZ"></div><div class="input-card"><label>Filial</label><input id="newUserFilial" placeholder="ex: F8 ou FTER"></div><div class="input-card"><label>Senha inicial</label><input id="newUserSenha" placeholder="mín. 4 caracteres"></div></div><div class="form-grid bonus" style="margin-top:10px"><div class="input-card"><label>Tipo</label><select id="newUserTipo"><option value="crediarista">Crediarista</option><option value="cobranca">Cobrança Interna Global</option></select></div></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn primary" onclick="adminCriarUsuarioCobranca()">💾 Criar usuário</button></div><div id="newUserMsg" class="note" style="margin-top:10px"></div></div>
   ${renderColaboradorStatusPanel(users)}
   <div class="section-head"><div><h2>👥 Usuários do dashboard</h2><div class="hint">Visualização em linha para conferir login, senha ativa, status e alterar rapidamente.</div></div></div>
   <div class="senhas-table-wrap"><table class="senhas-table senhas-main-table"><thead><tr><th>Usuário</th><th>WhatsApp</th><th>Login</th><th>Perfil</th><th>Status</th><th>Senha atual</th><th>Nova senha</th><th>Ações</th></tr></thead><tbody>${users.map(u=>renderSenhaRow(u,false)).join('')}</tbody></table></div>`;
@@ -15248,6 +15417,48 @@ async function adminMarcarTroca(login){const box=document.getElementById(`pwd_ms
 async function adminResolverReset(login){try{const fd=new FormData(); fd.append('action','resolve_reset'); fd.append('login',login); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){toast('Solicitação resolvida. Usuário terá que criar nova senha no próximo acesso.','success'); await carregarCredenciaisOnline(); renderSenhasTab();}else{toast('Não consegui resolver a solicitação.')}}catch(e){toast('Não consegui resolver a solicitação.')}}
 async function adminLimparHistoricoReset(mode='resolved'){try{const fd=new FormData(); fd.append('action','clear_reset_history'); fd.append('mode',mode); const r=await fetch(API_CRED,{method:'POST',body:fd}); const j=await r.json(); if(j.ok){toast(mode==='all'?'Solicitações limpas da tela.':'Histórico de solicitações limpo.','success'); await carregarCredenciaisOnline(); renderSenhasTab();}else{toast('Não consegui limpar o histórico.')}}catch(e){toast('Não consegui limpar o histórico.')}}
 
+async function adminExcluirUsuario(login){
+  login=String(login||'').trim().toLowerCase();
+  const auth=getAuthUser(login);
+  if(!auth){toast('Usuário não encontrado.','warn');return;}
+  if(!auth.custom_user){toast('Por segurança, somente usuários avulsos criados nesta área podem ser excluídos.','warn');return;}
+  const nome=String(auth.nome||login);
+  if(!confirm(`Excluir definitivamente o usuário "${nome}" (${login})?\n\nEle perderá o acesso imediatamente. Histórico de cobranças já realizado NÃO será apagado.`)) return;
+  try{
+    const fd=new FormData();
+    fd.append('action','admin_delete_user');
+    fd.append('login',login);
+    const r=await fetch(API_CRED,{method:'POST',body:fd,cache:'no-store'});
+    const j=await r.json();
+    if(!j.ok){
+      toast('Não consegui excluir: '+String(j.error||'erro desconhecido'),'warn');
+      return;
+    }
+
+    // Se for crediarista customizado e estiver configurado em Metas, remove também
+    // o vínculo para não recriar o acesso no próximo MAIN.
+    try{
+      if(Array.isArray(CONFIG_META?.crediaristas_config)){
+        const antes=CONFIG_META.crediaristas_config.length;
+        CONFIG_META.crediaristas_config=CONFIG_META.crediaristas_config.filter(
+          x=>String(x?.login||'').trim().toLowerCase()!==login
+        );
+        if(CONFIG_META.crediaristas_config.length!==antes && typeof mdlV97SaveConfig==='function'){
+          await mdlV97SaveConfig();
+        }
+      }
+    }catch(e){console.warn('[V10.102] limpeza config crediarista',e)}
+
+    await carregarCredenciaisOnline();
+    try{publicarKickV1051(login,'Seu usuário foi excluído pelo Master.')}catch(e){}
+    renderSenhasTab();
+    toast(`🗑️ ${nome} excluído. Histórico de cobranças foi preservado.`,'success');
+  }catch(e){
+    console.warn('[V10.102] excluir usuário',e);
+    toast('Falha ao excluir usuário.','warn');
+  }
+}
+
 async function adminCriarUsuarioCobranca(){
   const msg=document.getElementById('newUserMsg');
   const login=(document.getElementById('newUserLogin')?.value||'').trim().toLowerCase();
@@ -15262,7 +15473,7 @@ async function adminCriarUsuarioCobranca(){
     fd.append('login',login); fd.append('nome',nome); fd.append('filial',filial); fd.append('password',senha); fd.append('tipo',tipo);
     const r=await fetch(API_CRED,{method:'POST',body:fd});
     const j=await r.json();
-    if(msg) msg.textContent=j.ok?'✅ Usuário criado online.':'⚠️ Não consegui criar o usuário.';
+    if(msg) msg.textContent=j.ok?'✅ Usuário criado online. No primeiro acesso ele deverá confirmar/trocar a senha.':'⚠️ Não consegui criar o usuário: '+String(j.error||'erro');
     if(j.ok){ await carregarCredenciaisOnline(); renderSenhasTab(); }
   }catch(e){ if(msg) msg.textContent='⚠️ Não consegui criar o usuário.'; }
 }
@@ -15588,8 +15799,22 @@ async function fazerLogin(){
   }
 
   const auth=getAuthUser(u);
-  if(CREDS[u] && auth && String(auth.password)===s){
-    if(auth.access_disabled || auth.status_operacional==='inativo' || CREDS[u]?.access_disabled || CREDS[u]?.status_operacional==='inativo'){
+  // V10.102: usuário avulso existe primeiro no AUTH_STATE online. Ele não precisa
+  // esperar o próximo MAIN para entrar nem precisa existir no CREDS embutido.
+  const credBase=CREDS[u] || (auth ? {
+    nome:auth.nome||u,
+    filial:String(auth.filial||'').toUpperCase(),
+    is_gerente:!!auth.is_gerente,
+    is_terceiro:!!auth.is_terceiro,
+    is_crediarista:!!auth.is_crediarista,
+    is_cob_externa:!!auth.is_cob_externa,
+    is_viewer:!!auth.is_viewer,
+    only_cobranca:!!auth.only_cobranca,
+    custom_user:!!auth.custom_user,
+    pendente:0,pago:0,total:0,perc_filial:100
+  } : null);
+  if(credBase && auth && String(auth.password)===s){
+    if(auth.access_disabled || auth.status_operacional==='inativo' || credBase?.access_disabled || credBase?.status_operacional==='inativo'){
       msg.innerHTML='🔒 Usuário inativo/bloqueado pelo Master.<br><small>Peça liberação ao responsável.</small>';
       return;
     }
@@ -15597,7 +15822,21 @@ async function fazerLogin(){
       msg.textContent='Primeiro acesso: defina sua nova senha.';
       return openPrimeiroAcesso(u);
     }
-    usuarioAtual={tipo:'user',login:u,...CREDS[u]}; usuarioAtual.whatsapp_nome_global=usuarioAtual.whatsapp_nome_global||usuarioAtual.nome||u;
+    usuarioAtual={
+      tipo:'user',
+      login:u,
+      ...credBase,
+      nome:auth.nome||credBase.nome||u,
+      filial:String(auth.filial||credBase.filial||'').toUpperCase(),
+      is_gerente:!!auth.is_gerente,
+      is_terceiro:!!auth.is_terceiro,
+      is_crediarista:!!auth.is_crediarista,
+      is_cob_externa:!!auth.is_cob_externa,
+      is_viewer:!!auth.is_viewer,
+      only_cobranca:!!auth.only_cobranca,
+      custom_user:!!auth.custom_user
+    };
+    usuarioAtual.whatsapp_nome_global=auth.whatsapp_nome_global||usuarioAtual.whatsapp_nome_global||usuarioAtual.nome||u;
     saveSession();
     return abrirApp();
   }
@@ -23936,6 +24175,7 @@ if (!is_array($data)) $data = ['users'=>[], 'director'=>[], 'password_reset_requ
 if (!isset($data['users']) || !is_array($data['users'])) $data['users'] = [];
 if (!isset($data['director']) || !is_array($data['director'])) $data['director'] = [];
 if (!isset($data['password_reset_requests']) || !is_array($data['password_reset_requests'])) $data['password_reset_requests'] = [];
+if (!isset($data['deleted_custom_users']) || !is_array($data['deleted_custom_users'])) $data['deleted_custom_users'] = [];
 if (!isset($data['access_revision'])) $data['access_revision'] = 0;
 foreach($data['users'] as &$uRev){ if(!isset($uRev['session_revision'])) $uRev['session_revision']=0; } unset($uRev);
 
@@ -24098,9 +24338,49 @@ if ($action === 'admin_force_change') {
 if ($action === 'admin_create_user') {
   $login = strtolower(trim($_POST['login'] ?? '')); $nome = trim($_POST['nome'] ?? ''); $filial = strtoupper(trim($_POST['filial'] ?? '')); $senha = strval($_POST['password'] ?? ''); $tipo = strtolower(trim($_POST['tipo'] ?? 'crediarista'));
   if (!$login || !$nome || !$filial || !$senha || strlen($senha) < 4) { echo json_encode(['ok'=>false,'error'=>'dados_invalidos']); exit; }
+  if (!preg_match('/^[a-z0-9._-]+$/', $login)) { echo json_encode(['ok'=>false,'error'=>'login_invalido']); exit; }
   if (resolve_login_ref($data, $login)) { echo json_encode(['ok'=>false,'error'=>'login_ja_existe']); exit; }
-  $data['users'][$login] = ['login'=>$login,'nome'=>$nome,'filial'=>$filial,'password'=>$senha,'must_change_password'=>true,'is_gerente'=>false,'is_terceiro'=>($tipo==='cobranca'),'is_crediarista'=>($tipo!=='cobranca'),'only_cobranca'=>true];
-  save_all($file, $data); echo json_encode(['ok'=>true], JSON_UNESCAPED_UNICODE); exit;
+  $data['users'][$login] = [
+    'login'=>$login,'nome'=>$nome,'filial'=>$filial,
+    'password'=>$senha,'initial_password'=>$senha,'must_change_password'=>true,
+    'is_gerente'=>false,'is_terceiro'=>($tipo==='cobranca'),'is_crediarista'=>($tipo!=='cobranca'),
+    'is_cob_externa'=>false,'only_cobranca'=>true,'custom_user'=>true,
+    'status_operacional'=>'ativo','access_disabled'=>false,
+    'participa_cobrancas'=>true,'participa_sem_movimento'=>false,
+    'participa_aniversariantes'=>false,'participa_murais'=>true,
+    'created_at'=>date('c'),'session_revision'=>0
+  ];
+  $data['deleted_custom_users'] = array_values(array_filter(
+    ($data['deleted_custom_users'] ?? []),
+    function($x) use ($login){ return strtolower(trim((string)$x)) !== $login; }
+  ));
+  save_all($file, $data); echo json_encode(['ok'=>true,'login'=>$login,'data'=>$data], JSON_UNESCAPED_UNICODE); exit;
+}
+
+if ($action === 'admin_delete_user') {
+  $login = strtolower(trim($_POST['login'] ?? ''));
+  if (!$login) { echo json_encode(['ok'=>false,'error'=>'login_obrigatorio']); exit; }
+  if (in_array($login, ['master','diretorcomercial','cobranca10','cob','painel'], true)) {
+    echo json_encode(['ok'=>false,'error'=>'usuario_protegido']); exit;
+  }
+  $ref = resolve_login_ref($data, $login);
+  if (!$ref || $ref['type'] !== 'user') { echo json_encode(['ok'=>false,'error'=>'login_nao_encontrado']); exit; }
+  $key = $ref['key'];
+  $u = $data['users'][$key] ?? [];
+  if (empty($u['custom_user'])) {
+    echo json_encode(['ok'=>false,'error'=>'somente_usuario_avulso_pode_ser_excluido']); exit;
+  }
+  unset($data['users'][$key]);
+  if (!isset($data['deleted_custom_users']) || !is_array($data['deleted_custom_users'])) $data['deleted_custom_users'] = [];
+  if (!in_array($login, $data['deleted_custom_users'], true)) $data['deleted_custom_users'][] = $login;
+  $data['password_reset_requests'] = array_values(array_filter(
+    ($data['password_reset_requests'] ?? []),
+    function($r) use ($login){ return strtolower((string)($r['login'] ?? '')) !== $login; }
+  ));
+  $data['access_revision'] = intval($data['access_revision'] ?? 0) + 1;
+  $data['force_logout_before'] = date('c');
+  save_all($file, $data);
+  echo json_encode(['ok'=>true,'deleted_login'=>$login,'data'=>$data], JSON_UNESCAPED_UNICODE); exit;
 }
 
 if ($action === 'admin_update_user_entry_date') {
@@ -24697,3 +24977,5 @@ driver.quit()
 # V10.100_TELEGRAM_SYNC_CSM_EXCEL_REGRAS_METRICAS_DEPLOY_LOCK
 
 # V10.101_LIVE_TELEGRAM_EXCEL_REAL_CSM50_FILIAL_PREFETCH
+
+# V10.102_CUSTOM_USERS_LOGIN_DELETE_PERSIST
