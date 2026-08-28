@@ -36,9 +36,10 @@ LOGIN = "administrativo01.moveisdolar"
 SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
+BR_TZ = APP_TZ  # V10.106: alias usado pelo histórico operacional V10.104
 
-DASHBOARD_BUILD_VERSION = "V10.105"
-DASHBOARD_BUILD_TAG = "v10105_internal_nav_stable_audit_worker"
+DASHBOARD_BUILD_VERSION = "V10.106"
+DASHBOARD_BUILD_TAG = "v10106_third_individual_stable_csm_ftp_history_fix"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
 # V10.52: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
@@ -46,6 +47,7 @@ DASHBOARD_BUILD_TAG = "v10105_internal_nav_stable_audit_worker"
 # que travavam navegador antigo/fraco. Para voltar ao modo completo, use DASHBOARD_MODO_LEVE=0.
 DASHBOARD_MODO_LEVE = os.getenv("DASHBOARD_MODO_LEVE", "1") != "0"
 DASHBOARD_HIST_MAX = int(os.getenv("DASHBOARD_HIST_MAX", "200"))
+CSM_RULE_VERSION = "CSM_FILIAL50_RATEIO_V1"  # não muda a cada deploy
 
 def now_brasilia():
     return datetime.now(APP_TZ)
@@ -8747,6 +8749,46 @@ def carregar_clientes_sem_movimento_local():
     clientes_sem_movimento_meta_py = {"modo":"acionaveis_novos_pendentes_retorno_30d", "base_total":0, "acionaveis_total":0, "novos_total":0, "seen_total":0}
     clientes_sem_movimento_base_py = []
 
+    # V10.106: MAIN normal usa o snapshot operacional já publicado no FTP.
+    # Só o job diário das 07h (BAIXAR_CLIENTES_SEM_MOVIMENTO=1) consulta o SGI/XLS.
+    if os.getenv("BAIXAR_CLIENTES_SEM_MOVIMENTO", "0") == "0":
+        try:
+            _remote_op_v10106 = _remote_json_colaborador_v95("clientes_sem_movimento.json", None)
+            if isinstance(_remote_op_v10106, dict):
+                _rows_op_v10106 = _remote_op_v10106.get("clientes") or []
+                if isinstance(_rows_op_v10106, list) and _rows_op_v10106:
+                    _meta_keys_v10106 = [
+                        "modo","base_total","acionaveis_total","novos_total",
+                        "pendentes_sem_envio_total","retorno_30d_total",
+                        "aguardando_reenvio_total","acionaveis_sem_limite_total",
+                        "limite_por_usuario_dia","limite_global_dia",
+                        "limite_por_filial_dia","por_filial","lote_diario_reusado",
+                        "publicados_no_dashboard","seen_total","cooldown_dias","gerado_em"
+                    ]
+                    clientes_sem_movimento_meta_py = {
+                        k: _remote_op_v10106.get(k)
+                        for k in _meta_keys_v10106
+                        if k in _remote_op_v10106
+                    }
+                    _remote_base_v10106 = _remote_json_colaborador_v95("clientes_sem_movimento_base.json", None)
+                    if isinstance(_remote_base_v10106, dict) and isinstance(_remote_base_v10106.get("clientes"), list):
+                        clientes_sem_movimento_base_py = _remote_base_v10106.get("clientes") or []
+                    try:
+                        with open(json_path, "w", encoding="utf-8") as _f_cache_v10106:
+                            json.dump(_remote_op_v10106, _f_cache_v10106, ensure_ascii=False, indent=2)
+                        if isinstance(_remote_base_v10106, dict):
+                            with open(base_path, "w", encoding="utf-8") as _f_base_cache_v10106:
+                                json.dump(_remote_base_v10106, _f_base_cache_v10106, ensure_ascii=False, indent=2)
+                    except Exception:
+                        pass
+                    print(
+                        f"🧡 V10.106 CSM cache FTP: {len(_rows_op_v10106)} acionável(is) "
+                        f"reutilizados; SGI/XLS não foi consultado neste MAIN."
+                    )
+                    return _rows_op_v10106
+        except Exception as _e_cache_v10106:
+            print(f"⚠️ V10.106 CSM cache FTP indisponível; usando fallback local: {_e_cache_v10106}")
+
     def _csm_key_row(r):
         tels = r.get("telefones") or []
         tel = ""
@@ -9175,7 +9217,7 @@ def carregar_clientes_sem_movimento_local():
     _lote_ant_mesma_regra_v1079 = bool(
         isinstance(_lote_ant_v1016, dict)
         and str(_lote_ant_v1016.get('data') or '') == hoje_lote_v1016
-        and str(_lote_ant_v1016.get('versao') or '') == DASHBOARD_BUILD_VERSION
+        and str(_lote_ant_v1016.get('versao') or '') == CSM_RULE_VERSION
     )
     if isinstance(_lote_ant_v1016, dict) and isinstance(_lote_ant_v1016.get('clientes'), list) and _lote_ant_v1016.get('clientes') and _lote_ant_mesma_regra_v1079:
         lote_rows = []
@@ -9199,7 +9241,7 @@ def carregar_clientes_sem_movimento_local():
         print(f"🧡 V10.79: lote diário CSM reaproveitado ({len(actionable)} cliente(s)); mesma regra/versão do dia.")
     else:
         if isinstance(_lote_ant_v1016, dict) and str(_lote_ant_v1016.get('data') or '') == hoje_lote_v1016:
-            print(f"🔄 V10.79 CSM: lote de hoje era de outra versão/regra ({_lote_ant_v1016.get('versao') or 'sem versão'}); reconstruindo a distribuição para não deixar usuários zerados.")
+            print(f"🔄 V10.79 CSM: lote de hoje era de outra regra CSM ({_lote_ant_v1016.get('versao') or 'sem versão'}); reconstruindo a distribuição para não deixar usuários zerados.")
         por_owner = {}
         for r in actionable_sem_limite_v1016:
             rr = _annot_owner_py_v1016(r)
@@ -9250,7 +9292,7 @@ def carregar_clientes_sem_movimento_local():
             u['base_acionavel_ultimo_lote'] = len(arr)
         actionable = sorted(lote_rows, key=lambda x: (str(x.get('filial','')), str(x.get('_owner_key_py','')), int(x.get('dias_sem_movimento') or 999999), str(x.get('cliente',''))))
         _fila_state_v1038['gerado_em'] = now_brasilia().isoformat()
-        _fila_state_v1038['versao'] = DASHBOARD_BUILD_VERSION
+        _fila_state_v1038['versao'] = CSM_RULE_VERSION
         _fila_state_v1038['regra'] = 'v1079_lote_rotativo_por_usuario_com_teto_global_50_rebuild_por_versao'
         _fila_state_v1038['limite_por_usuario_dia'] = max_por_usuario_v1016
         try:
@@ -9322,7 +9364,7 @@ def carregar_clientes_sem_movimento_local():
         _lote_payload_v1016 = {
             'data': hoje_lote_v1016,
             'gerado_em': now_brasilia().isoformat(),
-            'versao': DASHBOARD_BUILD_VERSION,
+            'versao': CSM_RULE_VERSION,
             'regra': 'v10101_max_50_por_filial_rateado_entre_responsaveis_reenvio_30d',
             'limite_por_usuario_dia': max_por_usuario_v1016,
             'limite_global_dia': None,
@@ -14500,7 +14542,7 @@ function renderCobrancasEnt(ent){
   };
 
   const faixas=['grave','alerta','atencao'];
-  const tabs=`<div class="tabs" style="justify-content:flex-start;margin:0 0 12px"><button class="tab active" data-cobtab="geral" onclick="switchCobTab(this,'geral')">Para cobrar</button><button class="tab" data-cobtab="novos" onclick="switchCobTab(this,'novos')">Novos Hoje</button><button class="tab" data-cobtab="cobrados" onclick="switchCobTab(this,'cobrados')">Cobrados Hoje</button><button class="tab" data-cobtab="retorno" onclick="switchCobTab(this,'retorno')">Aguardando retorno cliente</button><button class="tab" data-cobtab="auditoria" onclick="switchCobTab(this,'auditoria')">Auditoria / prints</button><button class="tab" data-cobtab="aguardando" onclick="switchCobTab(this,'aguardando')">Aguardando 3 dias</button></div>`;
+  const tabs=`<div class="tabs" style="justify-content:flex-start;margin:0 0 12px"><button class="tab active" data-cobtab="geral" onclick="switchCobTab(this,'geral')">Para cobrar</button><button class="tab" data-cobtab="novos" onclick="switchCobTab(this,'novos')">Novos Hoje</button><button class="tab" data-cobtab="cobrados" onclick="switchCobTab(this,'cobrados')">Cobrados Hoje</button><button class="tab" data-cobtab="retorno" onclick="switchCobTab(this,'retorno')">Aguardando retorno cliente</button><button class="tab" data-cobtab="auditoria" onclick="switchCobTab(this,'auditoria');setTimeout(()=>{try{refreshCobAuditPanelV10106(true)}catch(e){}},0)">Auditoria / prints</button><button class="tab" data-cobtab="aguardando" onclick="switchCobTab(this,'aguardando')">Aguardando 3 dias</button></div>`;
   let geral='';
   let aguardando=[];
   faixas.forEach(fx=>{
@@ -15170,7 +15212,7 @@ async function marcarMsgLida(id){
   const fd=new FormData(); fd.append('action','mark_read'); fd.append('id',id); fd.append('user_key',currentUserKey()); fd.append('user_keys', JSON.stringify(currentUserKeys()));
   try{
     const r=await fetch(API_MSG,{method:'POST',body:fd}); const j=await r.json();
-    if(j.ok){await carregarMsgsOnline(); if(!detailScreen.classList.contains('hidden')){const titleEl=detailScreen.querySelector('.back-row h2'); const subEl=detailScreen.querySelector('.back-row .sub'); if(titleEl && subEl){}} openBell(); if(usuarioAtual?.tipo!=='master'){const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',login:String(ent.login||'').toLowerCase(),filial:String(ent.filial||'FTER').toUpperCase(),nome:String(ent.nome||ent.login||COBRANCA10_NOME)}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); if(usuarioAtual?.is_terceiro){openThirdChargePanel(usuarioAtual.login,usuarioAtual.filial||'FTER',usuarioAtual.nome||usuarioAtual.login)} else if(usuarioAtual?.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome});} }
+    if(j.ok){await carregarMsgsOnline(); if(!detailScreen.classList.contains('hidden')){const titleEl=detailScreen.querySelector('.back-row h2'); const subEl=detailScreen.querySelector('.back-row .sub'); if(titleEl && subEl){}} openBell(); if(usuarioAtual?.tipo!=='master'){const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',login:String(usuarioAtual.login||'').toLowerCase(),filial:String(usuarioAtual.filial||'FTER').toUpperCase(),nome:String(usuarioAtual.nome||usuarioAtual.login||COBRANCA10_NOME)}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); if(usuarioAtual?.is_terceiro){openThirdChargePanel(usuarioAtual.login,usuarioAtual.filial||'FTER',usuarioAtual.nome||usuarioAtual.login)} else if(usuarioAtual?.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome});} }
     else {toast('Não consegui marcar como lido.')}
   }catch(e){
     if(String(id||'').startsWith('LOCAL_MSG_')){
@@ -16433,7 +16475,7 @@ async function fazerLogin(){
 }
 async function abrirApp(){
   try{document.body.classList.toggle('master-view', String(usuarioAtual?.tipo||'').toLowerCase()==='master'); document.body.classList.toggle('diretor-view', String(usuarioAtual?.tipo||'').toLowerCase()==='diretor');}catch(e){}
- loginScreen.classList.add('hidden'); app.classList.remove('hidden'); if(usuarioAtual.tipo==='master'){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); const isDiretor=usuarioAtual?.roleLabel==='Diretor Comercial'; userBadge.textContent=isDiretor?'👑 Diretor Comercial':'👑 Master'; masterTabs.classList.remove('hidden'); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{const t=btn.dataset.tab; btn.classList.toggle('hidden', isDiretor && ['cobrancas','senhas','whatsapp_master'].includes(t));}); setMainTab('inicio')} else if(usuarioAtual.is_viewer){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); userBadge.textContent='📺 Painel'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); listSection.classList.add('hidden'); metaSection.classList.add('hidden'); logSection.classList.add('hidden'); avisosSection.classList.add('hidden'); senhasSection.classList.add('hidden'); histSection.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden'); mainTab='inicio'; renderTopMural(); renderInicioTab();} else if(usuarioAtual.is_cob_externa){document.getElementById('kpis').classList.add('hidden'); userBadge.textContent='🤝 COB Externa'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden'); applyCobExternalUiV1089(); setMainTab('cob_terceira');} else {document.getElementById('kpis').classList.add('hidden'); userBadge.textContent=usuarioAtual.is_terceiro?`🤝 ${usuarioAtual.nome}`:(usuarioAtual.is_crediarista?`🧾 ${usuarioAtual.nome}`:(usuarioAtual.is_gerente?`🏬 ${usuarioAtual.filial}`:`👤 ${usuarioAtual.nome}`)); masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',login:String(ent.login||'').toLowerCase(),filial:String(ent.filial||'FTER').toUpperCase(),nome:String(ent.nome||ent.login||COBRANCA10_NOME)}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(usuarioAtual.is_terceiro){openThirdChargePanel()} else if(usuarioAtual.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login}) }
+ loginScreen.classList.add('hidden'); app.classList.remove('hidden'); if(usuarioAtual.tipo==='master'){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); const isDiretor=usuarioAtual?.roleLabel==='Diretor Comercial'; userBadge.textContent=isDiretor?'👑 Diretor Comercial':'👑 Master'; masterTabs.classList.remove('hidden'); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{const t=btn.dataset.tab; btn.classList.toggle('hidden', isDiretor && ['cobrancas','senhas','whatsapp_master'].includes(t));}); setMainTab('inicio')} else if(usuarioAtual.is_viewer){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); userBadge.textContent='📺 Painel'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); listSection.classList.add('hidden'); metaSection.classList.add('hidden'); logSection.classList.add('hidden'); avisosSection.classList.add('hidden'); senhasSection.classList.add('hidden'); histSection.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden'); mainTab='inicio'; renderTopMural(); renderInicioTab();} else if(usuarioAtual.is_cob_externa){document.getElementById('kpis').classList.add('hidden'); userBadge.textContent='🤝 COB Externa'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden'); applyCobExternalUiV1089(); setMainTab('cob_terceira');} else {document.getElementById('kpis').classList.add('hidden'); userBadge.textContent=usuarioAtual.is_terceiro?`🤝 ${usuarioAtual.nome}`:(usuarioAtual.is_crediarista?`🧾 ${usuarioAtual.nome}`:(usuarioAtual.is_gerente?`🏬 ${usuarioAtual.filial}`:`👤 ${usuarioAtual.nome}`)); masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',login:String(usuarioAtual.login||'').toLowerCase(),filial:String(usuarioAtual.filial||'FTER').toUpperCase(),nome:String(usuarioAtual.nome||usuarioAtual.login||COBRANCA10_NOME)}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(usuarioAtual.is_terceiro){openThirdChargePanel(usuarioAtual.login,usuarioAtual.filial||'FTER',usuarioAtual.nome||usuarioAtual.login)} else if(usuarioAtual.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login}) }
   setTimeout(()=>{tentarAtualizarOnlineDepoisLogin();}, 80);
 }
 function logout(){
@@ -22773,30 +22815,18 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
       const lastEnd=String(job.last_end||'');
       const exit=job.last_exit;
 
-      setUpdating(running);
+      // V10.106: o guard V10.99 NÃO derruba mais sessão em MAIN normal.
+      // A única autoridade para bloquear/deslogar por atualização é o guard
+      // de DEPLOY V10.100, baseado em deploy_update_active.
+      setUpdating(false);
 
       let seen='';
       try{seen=String(localStorage.getItem(KEY)||'')}catch(e){}
-
-      if(first){
-        first=false;
-        // Primeira execução da V10.99 neste navegador: adota a publicação atual como baseline.
-        if(!seen&&lastEnd){
-          try{localStorage.setItem(KEY,lastEnd)}catch(e){}
-          seen=lastEnd;
-        }
-      }
-
-      // Detecta publicação nova mesmo se a aba ficou fechada durante a atualização.
-      if(!running && lastEnd && exit===0 && seen && lastEnd!==seen){
-        forceFreshLogin(lastEnd);
-        return;
-      }
-
-      // Mantém a baseline sincronizada se não há sessão/logado.
-      if(!running && lastEnd && !window.usuarioAtual && !seen){
+      if(first) first=false;
+      if(lastEnd && lastEnd!==seen){
         try{localStorage.setItem(KEY,lastEnd)}catch(e){}
       }
+      return;
     }catch(e){
       // Em falha de rede não bloqueia login nem derruba usuário.
       setUpdating(false);
@@ -23945,28 +23975,27 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
       };
     }
 
-    // Ao abrir a auditoria, recarrega status com força. Enquanto houver IA pendente,
-    // atualiza a cada 10 s sem trocar de usuário.
-    setInterval(async()=>{
+    // V10.106: removido o re-render automático de 10 s da tela inteira.
+    // Ele causava o "pisca/volta" visto no vídeo. A atualização da auditoria
+    // passa a ocorrer somente quando o usuário entra/clica para atualizar.
+    window.refreshCobAuditPanelV10106=async function(force=true){
       try{
-        if(!currentDetailRef||!isThirdRef105(currentDetailRef)||detailScreen?.classList.contains('hidden'))return;
-        const active=detailScreen.querySelector('[data-cobtab="auditoria"].active');
-        if(!active)return;
+        if(!currentDetailRef||!isThirdRef105(currentDetailRef))return false;
         const before={...currentDetailRef};
-        await carregarAuditoriasCobranca(true);
+        const scroll=window.scrollY;
+        await carregarAuditoriasCobranca(!!force);
         if(
-          isThirdRef105(currentDetailRef) &&
-          normLogin105(currentDetailRef.login)===normLogin105(before.login)
-        ){
-          const btn=detailScreen.querySelector('[data-cobtab="auditoria"]');
-          const scroll=window.scrollY;
-          openThirdChargePanelCore(before.login,before.filial,before.nome);
-          const newBtn=detailScreen.querySelector('[data-cobtab="auditoria"]');
-          if(newBtn) switchCobTab(newBtn,'auditoria');
-          setTimeout(()=>window.scrollTo(0,scroll),0);
-        }
-      }catch(e){}
-    },10000);
+          !currentDetailRef ||
+          !isThirdRef105(currentDetailRef) ||
+          normLogin105(currentDetailRef.login)!==normLogin105(before.login)
+        ) return false;
+        openThirdChargePanelCore(before.login,before.filial,before.nome);
+        const newBtn=detailScreen.querySelector('[data-cobtab="auditoria"]');
+        if(newBtn) switchCobTab(newBtn,'auditoria');
+        setTimeout(()=>window.scrollTo(0,scroll),0);
+        return true;
+      }catch(e){console.warn(TAG,'refresh auditoria',e);return false}
+    };
 
     window.DASHBOARD_BUILD_VERSION='V10.105';
     console.log(TAG,'ativo: login real por painel + proteção contra race/stale + individual não volta ao início');
@@ -25990,3 +26019,5 @@ driver.quit()
 # V10.104_FILIAIS_DIARIO_HISTORICO_COBRANCA_MENSAL
 
 # V10.105_INTERNAL_NAV_STABLE_AUDIT_WORKER
+
+# V10.106_THIRD_INDIVIDUAL_STABLE_CSM_FTP_HISTORY_FIX
