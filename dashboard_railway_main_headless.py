@@ -37,8 +37,8 @@ SENHA = "mdladm01"
 URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 
-DASHBOARD_BUILD_VERSION = "V10.104"
-DASHBOARD_BUILD_TAG = "v10104_daily_branches_monthly_collection_history"
+DASHBOARD_BUILD_VERSION = "V10.105"
+DASHBOARD_BUILD_TAG = "v10105_internal_nav_stable_audit_worker"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
 # V10.52: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
@@ -13162,7 +13162,7 @@ return `<div class="section-head" style="margin-bottom:8px"><div><h2>📌 Mural 
 
 function bindSpecialCards(){document.querySelectorAll('[data-action="cred-card"]').forEach(el=>{el.style.cursor='pointer';el.onclick=(ev)=>{ev.preventDefault();ev.stopPropagation();const node=ev.currentTarget.closest('[data-action="cred-card"]')||ev.currentTarget;const ds=node.dataset||{};openCrediaristaPanel(ds.login||'',ds.filial||'',ds.nome||'');return false};el.onkeydown=(ev)=>{if(ev.key==='Enter' || ev.key===' '){ev.preventDefault();const node=ev.currentTarget.closest('[data-action="cred-card"]')||ev.currentTarget;const ds=node.dataset||{};openCrediaristaPanel(ds.login||'',ds.filial||'',ds.nome||'')}}});document.querySelectorAll('[data-action="third-card"]').forEach(el=>{el.style.cursor='pointer';el.onclick=(ev)=>{ev.preventDefault();ev.stopPropagation();const ds=el.dataset||{};openThirdChargePanel(ds.login||'',ds.filial||'',ds.nome||'');return false};el.onkeydown=(ev)=>{if(ev.key==='Enter' || ev.key===' '){ev.preventDefault();const ds=el.dataset||{};openThirdChargePanel(ds.login||'',ds.filial||'',ds.nome||'')}}})}
 function openEntityFromRowPayload(payload){try{const ref=JSON.parse(decodeURIComponent(payload)); if(ref?.type==='terceiro') return openThirdChargePanel(ref.login||'',ref.filial||'',ref.nome||''); if(ref?.type==='crediarista') return openCrediaristaPanel(ref.login||'',ref.filial||'',ref.nome||''); return openEntity(ref);}catch(e){}}
-function renderEntityRow(ent){const m=calcMeta(ent); const isThird=!!(ent?.is_terceiro||ent?.type==='terceiro'); const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista'); const ref=isThird?{type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}:isCred?{type:'crediarista',login:String(ent.login||crediaristaLoginByFilial(ent.filial)||'').toLowerCase(),filial:ent.filial,nome:ent.nome}:{type:ent.type,filial:ent.filial,nome:ent.nome}; const payload=encodeURIComponent(JSON.stringify(ref)); const sales=summarizeSalesCard(ent)||{}; const role=isThird?'Cobrança Interna Global':isCred?'Crediarista':(ent.type==='filial'?'Filial':'Colaborador'); return `<div class="entity-row" onclick="openEntityFromRowPayload('${payload}')"><div class="entity-cell"><div class="v">${esc(ent.nome||filialLabel(ent.filial)||'')}</div><div class="small muted">${esc(role)} ${ent.filial?`· ${esc(ent.filial)}`:''}</div></div><div class="entity-cell"><div class="k">Pendente</div><div class="v red">${R(ent.pendente||0)}</div></div><div class="entity-cell"><div class="k">Recebido</div><div class="v green">${R((ent.pago_meta??ent.pago)||0)}</div></div><div class="entity-cell"><div class="k">Grave</div><div class="v red">${pct(m.grave.perc||0)}</div></div><div class="entity-cell"><div class="k">Alerta</div><div class="v orange">${pct(m.alerta.perc||0)}</div></div><div class="entity-cell"><div class="k">Atenção</div><div class="v">${pct(m.atencao.perc||0)}</div></div><div class="entity-cell"><div class="k">Meta geral</div><div class="v blue">${pct(m.geral||0)}</div></div><div class="entity-cell"><div class="k">Vendas/serviços</div><div class="v">${sales.n!=null?pct(sales.n):'—'}</div></div></div>`}
+function renderEntityRow(ent){const m=calcMeta(ent); const isThird=!!(ent?.is_terceiro||ent?.type==='terceiro'); const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista'); const ref=isThird?{type:'terceiro',login:String(ent.login||'').toLowerCase(),filial:String(ent.filial||'FTER').toUpperCase(),nome:String(ent.nome||ent.login||COBRANCA10_NOME)}:isCred?{type:'crediarista',login:String(ent.login||crediaristaLoginByFilial(ent.filial)||'').toLowerCase(),filial:ent.filial,nome:ent.nome}:{type:ent.type,filial:ent.filial,nome:ent.nome}; const payload=encodeURIComponent(JSON.stringify(ref)); const sales=summarizeSalesCard(ent)||{}; const role=isThird?'Cobrança Interna Global':isCred?'Crediarista':(ent.type==='filial'?'Filial':'Colaborador'); return `<div class="entity-row" onclick="openEntityFromRowPayload('${payload}')"><div class="entity-cell"><div class="v">${esc(ent.nome||filialLabel(ent.filial)||'')}</div><div class="small muted">${esc(role)} ${ent.filial?`· ${esc(ent.filial)}`:''}</div></div><div class="entity-cell"><div class="k">Pendente</div><div class="v red">${R(ent.pendente||0)}</div></div><div class="entity-cell"><div class="k">Recebido</div><div class="v green">${R((ent.pago_meta??ent.pago)||0)}</div></div><div class="entity-cell"><div class="k">Grave</div><div class="v red">${pct(m.grave.perc||0)}</div></div><div class="entity-cell"><div class="k">Alerta</div><div class="v orange">${pct(m.alerta.perc||0)}</div></div><div class="entity-cell"><div class="k">Atenção</div><div class="v">${pct(m.atencao.perc||0)}</div></div><div class="entity-cell"><div class="k">Meta geral</div><div class="v blue">${pct(m.geral||0)}</div></div><div class="entity-cell"><div class="k">Vendas/serviços</div><div class="v">${sales.n!=null?pct(sales.n):'—'}</div></div></div>`}
 function renderEntityList(entities){return `<div class="entity-list"><div class="entity-row entity-row-head"><div>Nome / tipo</div><div>Pendente</div><div>Recebido</div><div>Grave</div><div>Alerta</div><div>Atenção</div><div>Meta</div><div>Vendas</div></div>${entities.map(renderEntityRow).join('')}</div>`}
 function renderList(){const entities=currentEntities();const title=mainTab==='filiais'?'🏬 Filiais':'👥 Colaboradores';const hint=`${entities.length} ${mainTab==='filiais'?'filiais':'colaboradores'} exibidos`; const useRows=usuarioAtual?.tipo==='master'; listSection.innerHTML=`${renderCampaignStrip()}<div class="section-head"><div><h2>${title}</h2><div class="hint">Clique em uma linha para abrir a tela individual completa.</div></div><div class="hint">${hint}</div></div>${useRows?renderEntityList(entities):`<div class="grid-cards">${entities.map(renderEntityCard).join('')}</div>`}`; bindSpecialCards()}
 function findEntity(ref){const n=String(ref?.nome||'').toLowerCase(); const f=String(ref?.filial||'').toUpperCase(); const t=String(ref?.type||'').toLowerCase(); if(t==='terceiro' || ref?.is_terceiro || n===String(COBRANCA10_NOME).toLowerCase() || n===String(COBRANCA10_LOGIN).toLowerCase() || f==='FTER'){return thirdChargeEntity(ref?.login||(usuarioAtual?.is_terceiro?usuarioAtual?.login:''))} if(t==='crediarista' || ref?.is_crediarista || n.startsWith('crediarista') || String(ref?.login||'').toLowerCase().startsWith('crediaristaf')){return crediaristaEntityByLogin(ref?.login||ref?.nome||ref?.filial)} if(ref.type==='filial'){return flattenFiliais().find(x=>x.filial===ref.filial)} return flattenVendedores().find(x=>x.filial===ref.filial && x.nome===ref.nome)}
@@ -15170,7 +15170,7 @@ async function marcarMsgLida(id){
   const fd=new FormData(); fd.append('action','mark_read'); fd.append('id',id); fd.append('user_key',currentUserKey()); fd.append('user_keys', JSON.stringify(currentUserKeys()));
   try{
     const r=await fetch(API_MSG,{method:'POST',body:fd}); const j=await r.json();
-    if(j.ok){await carregarMsgsOnline(); if(!detailScreen.classList.contains('hidden')){const titleEl=detailScreen.querySelector('.back-row h2'); const subEl=detailScreen.querySelector('.back-row .sub'); if(titleEl && subEl){}} openBell(); if(usuarioAtual?.tipo!=='master'){const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); if(usuarioAtual?.is_terceiro){openThirdChargePanel()} else if(usuarioAtual?.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome});} }
+    if(j.ok){await carregarMsgsOnline(); if(!detailScreen.classList.contains('hidden')){const titleEl=detailScreen.querySelector('.back-row h2'); const subEl=detailScreen.querySelector('.back-row .sub'); if(titleEl && subEl){}} openBell(); if(usuarioAtual?.tipo!=='master'){const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',login:String(ent.login||'').toLowerCase(),filial:String(ent.filial||'FTER').toUpperCase(),nome:String(ent.nome||ent.login||COBRANCA10_NOME)}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); if(usuarioAtual?.is_terceiro){openThirdChargePanel(usuarioAtual.login,usuarioAtual.filial||'FTER',usuarioAtual.nome||usuarioAtual.login)} else if(usuarioAtual?.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome});} }
     else {toast('Não consegui marcar como lido.')}
   }catch(e){
     if(String(id||'').startsWith('LOCAL_MSG_')){
@@ -16433,7 +16433,7 @@ async function fazerLogin(){
 }
 async function abrirApp(){
   try{document.body.classList.toggle('master-view', String(usuarioAtual?.tipo||'').toLowerCase()==='master'); document.body.classList.toggle('diretor-view', String(usuarioAtual?.tipo||'').toLowerCase()==='diretor');}catch(e){}
- loginScreen.classList.add('hidden'); app.classList.remove('hidden'); if(usuarioAtual.tipo==='master'){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); const isDiretor=usuarioAtual?.roleLabel==='Diretor Comercial'; userBadge.textContent=isDiretor?'👑 Diretor Comercial':'👑 Master'; masterTabs.classList.remove('hidden'); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{const t=btn.dataset.tab; btn.classList.toggle('hidden', isDiretor && ['cobrancas','senhas','whatsapp_master'].includes(t));}); setMainTab('inicio')} else if(usuarioAtual.is_viewer){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); userBadge.textContent='📺 Painel'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); listSection.classList.add('hidden'); metaSection.classList.add('hidden'); logSection.classList.add('hidden'); avisosSection.classList.add('hidden'); senhasSection.classList.add('hidden'); histSection.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden'); mainTab='inicio'; renderTopMural(); renderInicioTab();} else if(usuarioAtual.is_cob_externa){document.getElementById('kpis').classList.add('hidden'); userBadge.textContent='🤝 COB Externa'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden'); applyCobExternalUiV1089(); setMainTab('cob_terceira');} else {document.getElementById('kpis').classList.add('hidden'); userBadge.textContent=usuarioAtual.is_terceiro?`🤝 ${usuarioAtual.nome}`:(usuarioAtual.is_crediarista?`🧾 ${usuarioAtual.nome}`:(usuarioAtual.is_gerente?`🏬 ${usuarioAtual.filial}`:`👤 ${usuarioAtual.nome}`)); masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(usuarioAtual.is_terceiro){openThirdChargePanel()} else if(usuarioAtual.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login}) }
+ loginScreen.classList.add('hidden'); app.classList.remove('hidden'); if(usuarioAtual.tipo==='master'){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); const isDiretor=usuarioAtual?.roleLabel==='Diretor Comercial'; userBadge.textContent=isDiretor?'👑 Diretor Comercial':'👑 Master'; masterTabs.classList.remove('hidden'); document.querySelectorAll('#masterTabs .tab').forEach(btn=>{const t=btn.dataset.tab; btn.classList.toggle('hidden', isDiretor && ['cobrancas','senhas','whatsapp_master'].includes(t));}); setMainTab('inicio')} else if(usuarioAtual.is_viewer){document.getElementById('kpis').classList.remove('hidden'); renderKPIs(); userBadge.textContent='📺 Painel'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); listSection.classList.add('hidden'); metaSection.classList.add('hidden'); logSection.classList.add('hidden'); avisosSection.classList.add('hidden'); senhasSection.classList.add('hidden'); histSection.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden'); mainTab='inicio'; renderTopMural(); renderInicioTab();} else if(usuarioAtual.is_cob_externa){document.getElementById('kpis').classList.add('hidden'); userBadge.textContent='🤝 COB Externa'; masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); document.getElementById('mainScreen').classList.remove('hidden'); detailScreen.classList.add('hidden'); applyCobExternalUiV1089(); setMainTab('cob_terceira');} else {document.getElementById('kpis').classList.add('hidden'); userBadge.textContent=usuarioAtual.is_terceiro?`🤝 ${usuarioAtual.nome}`:(usuarioAtual.is_crediarista?`🧾 ${usuarioAtual.nome}`:(usuarioAtual.is_gerente?`🏬 ${usuarioAtual.filial}`:`👤 ${usuarioAtual.nome}`)); masterTabs.classList.add('hidden'); mainFilters.classList.add('hidden'); const ent=usuarioAtual.is_terceiro?findEntity({type:'terceiro',login:String(ent.login||'').toLowerCase(),filial:String(ent.filial||'FTER').toUpperCase(),nome:String(ent.nome||ent.login||COBRANCA10_NOME)}):(usuarioAtual.is_crediarista?findEntity({type:'crediarista',filial:usuarioAtual.filial,login:usuarioAtual.login,nome:usuarioAtual.nome}):(usuarioAtual.is_gerente?findEntity({type:'filial',filial:usuarioAtual.filial}):findEntity({type:'vendedor',filial:usuarioAtual.filial,nome:usuarioAtual.nome}))); document.getElementById('mainScreen').classList.add('hidden'); detailScreen.classList.remove('hidden'); if(usuarioAtual.is_terceiro){openThirdChargePanel()} else if(usuarioAtual.is_crediarista){openCrediaristaPanel(usuarioAtual.login,usuarioAtual.filial,usuarioAtual.nome)} else if(ent) openEntity({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login}) }
   setTimeout(()=>{tentarAtualizarOnlineDepoisLogin();}, 80);
 }
 function logout(){
@@ -20367,7 +20367,7 @@ Preparamos condições especiais para você comemorar com a gente.
     renderEntityRow=window.renderEntityRow=function(ent){
       const isThird=!!(ent?.is_terceiro||ent?.type==='terceiro');
       const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista');
-      const ref=isThird?{type:'terceiro',filial:'FTER',nome:COBRANCA10_NOME}:isCred?{type:'crediarista',login:String(ent.login||crediaristaLoginByFilial(ent.filial)||'').toLowerCase(),filial:ent.filial,nome:ent.nome}:{type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''};
+      const ref=isThird?{type:'terceiro',login:String(ent.login||'').toLowerCase(),filial:String(ent.filial||'FTER').toUpperCase(),nome:String(ent.nome||ent.login||COBRANCA10_NOME)}:isCred?{type:'crediarista',login:String(ent.login||crediaristaLoginByFilial(ent.filial)||'').toLowerCase(),filial:ent.filial,nome:ent.nome}:{type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''};
       const payload=encodeURIComponent(JSON.stringify(ref));
       const sales=summarizeSalesCard(ent)||{};
       const role=isThird?'Cobrança Interna Global':isCred?'Crediarista':(ent.type==='filial'?'Filial':'Colaborador');
@@ -23799,6 +23799,181 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
 })();
 </script>
 
+
+<script>
+/* ===== V10.105 — NAVEGAÇÃO ESTÁVEL COBRANÇA INTERNA ===== */
+(function(){
+  const TAG='[V10.105 NAV COB INT]';
+  try{
+    let navSeq105=0;
+    let desiredThird105=null;
+
+    function normLogin105(v){return String(v||'').trim().toLowerCase()}
+    function admin105(){
+      const t=String(usuarioAtual?.tipo||'').toLowerCase();
+      const r=String(usuarioAtual?.roleLabel||'').toLowerCase();
+      return t==='master'||t==='diretor'||r.includes('diretor');
+    }
+    function isThirdRef105(r){return !!(r&&(r.type==='terceiro'||r.is_terceiro))}
+    function resolveThird105(login='',filial='',nome=''){
+      let lg=normLogin105(login);
+      let f=String(filial||'').toUpperCase();
+      let n=String(nome||'').trim();
+
+      // Chamada automática antiga sem login deve permanecer no painel atualmente escolhido.
+      if(!lg && desiredThird105?.login){
+        lg=desiredThird105.login;
+        if(!f)f=desiredThird105.filial||'FTER';
+        if(!n)n=desiredThird105.nome||'';
+      }
+      if(!lg && isThirdRef105(currentDetailRef) && currentDetailRef?.login){
+        lg=normLogin105(currentDetailRef.login);
+        if(!f)f=String(currentDetailRef.filial||'FTER').toUpperCase();
+        if(!n)n=String(currentDetailRef.nome||'');
+      }
+      // Usuário individual sempre volta para o PRÓPRIO login, nunca Cobrança10 por padrão.
+      if(!lg && usuarioAtual?.is_terceiro){
+        lg=normLogin105(usuarioAtual.login);
+        if(!f)f=String(usuarioAtual.filial||'FTER').toUpperCase();
+        if(!n)n=String(usuarioAtual.nome||usuarioAtual.login||'');
+      }
+      if(!lg)lg=normLogin105(typeof COBRANCA10_LOGIN!=='undefined'?COBRANCA10_LOGIN:'cobranca10');
+
+      let ent=null;
+      try{ent=thirdChargeEntity(lg)}catch(e){}
+      if(!f)f=String(ent?.filial||'FTER').toUpperCase();
+      if(!n)n=String(ent?.nome||lg);
+      return {type:'terceiro',login:lg,filial:f||'FTER',nome:n,is_terceiro:true};
+    }
+
+    const baseThird105=window.openThirdChargePanel;
+    window.openThirdChargePanel=openThirdChargePanel=async function(login='',filial='',nome=''){
+      const ref=resolveThird105(login,filial,nome);
+      desiredThird105={...ref};
+      window.__mdlDesiredThird105={...ref};
+
+      // Atualiza imediatamente para impedir que callbacks antigos resolvam como Cobrança10.
+      currentDetailRef={...ref};
+      const mySeq=++navSeq105;
+
+      let out;
+      try{
+        out=await baseThird105.call(this,ref.login,ref.filial,ref.nome);
+      }catch(e){
+        console.warn(TAG,'open',e);
+        try{
+          if(mySeq===navSeq105 && typeof openThirdChargePanelCore==='function'){
+            out=openThirdChargePanelCore(ref.login,ref.filial,ref.nome);
+          }
+        }catch(_e){}
+      }
+
+      // Se uma abertura antiga terminou depois da nova, redesenha a entidade MAIS RECENTE.
+      if(mySeq!==navSeq105){
+        const want=desiredThird105;
+        if(want && typeof openThirdChargePanelCore==='function'){
+          openThirdChargePanelCore(want.login,want.filial,want.nome);
+        }
+        return out;
+      }
+
+      currentDetailRef={...ref};
+      try{
+        document.getElementById('mainScreen')?.classList.add('hidden');
+        detailScreen?.classList.remove('hidden');
+      }catch(e){}
+      return out;
+    };
+
+    // Qualquer openEntity legado sem login passa pela entidade desejada atual.
+    const baseOpenEntity105=window.openEntity;
+    if(typeof baseOpenEntity105==='function'){
+      window.openEntity=openEntity=async function(ref){
+        if(isThirdRef105(ref)){
+          const rr=resolveThird105(ref?.login||'',ref?.filial||'',ref?.nome||'');
+          return window.openThirdChargePanel(rr.login,rr.filial,rr.nome);
+        }
+        return baseOpenEntity105.apply(this,arguments);
+      };
+    }
+
+    // Linha do MASTER: reforço final para nunca transformar Cobrança20 em Cobrança10.
+    const baseRow105=window.renderEntityRow;
+    if(typeof baseRow105==='function'){
+      window.renderEntityRow=renderEntityRow=function(ent){
+        if(!(ent?.type==='terceiro'||ent?.is_terceiro)) return baseRow105.apply(this,arguments);
+        const m=calcMeta(ent);
+        const ref={
+          type:'terceiro',
+          login:normLogin105(ent.login),
+          filial:String(ent.filial||'FTER').toUpperCase(),
+          nome:String(ent.nome||ent.login||'Cobrança Interna')
+        };
+        const payload=encodeURIComponent(JSON.stringify(ref));
+        const sales=summarizeSalesCard(ent)||{};
+        return `<div class="entity-row" onclick="openEntityFromRowPayload('${payload}')">
+          <div class="entity-cell"><div class="v">${esc(ent.nome||ent.login||'Cobrança Interna')}</div><div class="small muted">Cobrança Interna Global · ${esc(ent.filial||'FTER')} · ${esc(ent.login||'')}</div></div>
+          <div class="entity-cell"><div class="k">Pendente</div><div class="v red">${R(ent.pendente||0)}</div></div>
+          <div class="entity-cell"><div class="k">Recebido</div><div class="v green">${R((ent.pago_meta??ent.pago)||0)}</div></div>
+          <div class="entity-cell"><div class="k">Grave</div><div class="v red">${pct(m.grave.perc||0)}</div></div>
+          <div class="entity-cell"><div class="k">Alerta</div><div class="v orange">${pct(m.alerta.perc||0)}</div></div>
+          <div class="entity-cell"><div class="k">Atenção</div><div class="v">${pct(m.atencao.perc||0)}</div></div>
+          <div class="entity-cell"><div class="k">Meta geral</div><div class="v blue">${pct(m.geral||0)}</div></div>
+          <div class="entity-cell"><div class="k">Vendas/serviços</div><div class="v">${sales.n!=null?pct(sales.n):'—'}</div></div>
+        </div>`;
+      };
+    }
+
+    // Usuário individual de cobrança não pode ser empurrado para mainScreen por
+    // setMainTab disparado por scripts assíncronos/legados.
+    const baseSetTab105=window.setMainTab;
+    if(typeof baseSetTab105==='function'){
+      window.setMainTab=setMainTab=function(tab){
+        if(usuarioAtual?.only_cobranca && usuarioAtual?.is_terceiro && !admin105()){
+          const own=resolveThird105(usuarioAtual.login,usuarioAtual.filial||'FTER',usuarioAtual.nome||usuarioAtual.login);
+          desiredThird105={...own};
+          currentDetailRef={...own};
+          try{
+            document.getElementById('mainScreen')?.classList.add('hidden');
+            detailScreen?.classList.remove('hidden');
+          }catch(e){}
+          // Não chama o tab principal; apenas mantém/recupera a própria tela.
+          setTimeout(()=>window.openThirdChargePanel(own.login,own.filial,own.nome),0);
+          return;
+        }
+        return baseSetTab105.apply(this,arguments);
+      };
+    }
+
+    // Ao abrir a auditoria, recarrega status com força. Enquanto houver IA pendente,
+    // atualiza a cada 10 s sem trocar de usuário.
+    setInterval(async()=>{
+      try{
+        if(!currentDetailRef||!isThirdRef105(currentDetailRef)||detailScreen?.classList.contains('hidden'))return;
+        const active=detailScreen.querySelector('[data-cobtab="auditoria"].active');
+        if(!active)return;
+        const before={...currentDetailRef};
+        await carregarAuditoriasCobranca(true);
+        if(
+          isThirdRef105(currentDetailRef) &&
+          normLogin105(currentDetailRef.login)===normLogin105(before.login)
+        ){
+          const btn=detailScreen.querySelector('[data-cobtab="auditoria"]');
+          const scroll=window.scrollY;
+          openThirdChargePanelCore(before.login,before.filial,before.nome);
+          const newBtn=detailScreen.querySelector('[data-cobtab="auditoria"]');
+          if(newBtn) switchCobTab(newBtn,'auditoria');
+          setTimeout(()=>window.scrollTo(0,scroll),0);
+        }
+      }catch(e){}
+    },10000);
+
+    window.DASHBOARD_BUILD_VERSION='V10.105';
+    console.log(TAG,'ativo: login real por painel + proteção contra race/stale + individual não volta ao início');
+  }catch(e){console.warn(TAG,e)}
+})();
+</script>
+
 </body>
 </html>
 """
@@ -24074,7 +24249,11 @@ def processar_auditorias_v1067():
         print(f"⚠️ V10.69 não conseguiu carregar a fila: {type(exc).__name__}: {exc}")
 
 
-processar_auditorias_v1067()
+if os.getenv("COBRANCA_AUDITORIA_MAIN_FALLBACK", "0") == "1":
+    print("🛡️ V10.105 fallback de auditoria pelo MAIN ativado.")
+    processar_auditorias_v1067()
+else:
+    print("⚡ V10.105 auditoria IA delegada ao worker leve; MAIN não precisa esperar a fila.")
 
 html = template
 repls = {
@@ -24817,7 +24996,13 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
 echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado']);
 ?>"""
 
-COBRANCA_AUDITORIA_API_PHP = COBRANCA_AUDITORIA_API_PHP.replace("__AUDIT_TRIGGER_URL__", os.getenv("COBRANCA_AUDITORIA_TRIGGER_URL", "").strip()).replace("__AUDIT_TRIGGER_SECRET__", os.getenv("COBRANCA_AUDITORIA_WEBHOOK_SECRET", "").strip())
+COBRANCA_AUDITORIA_API_PHP = COBRANCA_AUDITORIA_API_PHP.replace(
+    "__AUDIT_TRIGGER_URL__",
+    os.getenv("COBRANCA_AUDITORIA_TRIGGER_URL", "https://dashbboardcobvendasmdl.up.railway.app/run/audit").strip()
+).replace(
+    "__AUDIT_TRIGGER_SECRET__",
+    os.getenv("COBRANCA_AUDITORIA_WEBHOOK_SECRET", "").strip()
+)
 
 CONFIG_META_API_PHP = r"""<?php
 header('Content-Type: application/json; charset=utf-8');
@@ -25803,3 +25988,5 @@ driver.quit()
 # V10.103_INTERNAL_CHARGE_POOL_PARTITION_NO_DUPLICATE
 
 # V10.104_FILIAIS_DIARIO_HISTORICO_COBRANCA_MENSAL
+
+# V10.105_INTERNAL_NAV_STABLE_AUDIT_WORKER
