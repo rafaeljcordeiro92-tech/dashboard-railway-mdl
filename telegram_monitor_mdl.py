@@ -189,6 +189,24 @@ def load_json_local_or_remote(base_dir, local_rel, remote_name, default):
     return _read_url_json(f"{PUBLIC_BASE}/{remote_name}", default)
 
 
+def _read_url_json_object_raw_v10108(url, default=None, timeout=12):
+    """Lê config_meta.json preservando o OBJETO completo.
+
+    _read_url_json é adequada para logs/APIs porque tenta localizar listas
+    aninhadas. Em um arquivo de CONFIGURAÇÃO isso é perigoso: a presença de
+    global.telegram_contacts pode fazer a função devolver apenas essa lista e
+    perder o restante do objeto. Por isso config_meta usa este leitor RAW.
+    """
+    try:
+        raw = _read_url_text(url, "", timeout=timeout).strip()
+        if not raw:
+            return default
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else default
+    except Exception:
+        return default
+
+
 def _load_telegram_global_config(base_dir=None):
     """V10.92: Telegram usa PRIMEIRO a config online mais recente.
 
@@ -199,7 +217,7 @@ def _load_telegram_global_config(base_dir=None):
     base_dir = base_dir or os.path.dirname(os.path.abspath(__file__))
 
     # Fonte principal: config público salvo pelo dashboard, com cachebuster.
-    cfg = _read_url_json(
+    cfg = _read_url_json_object_raw_v10108(
         f"{PUBLIC_BASE}/config_meta.json?_tg={int(time.time())}",
         None,
         timeout=10,
@@ -282,6 +300,26 @@ def _telegram_contacts_for_alert(alert_type='geral', base_dir=None):
     return [c for c in contacts if c.get(flag)]
 
 
+def telegram_contacts_diagnostic_v10108(base_dir=None):
+    glob = _load_telegram_global_config(base_dir)
+    contacts = _load_telegram_contacts_from_config(base_dir)
+    return {
+        "ok": True,
+        "telegram_contacts_raw": len(glob.get("telegram_contacts") or []) if isinstance(glob, dict) else 0,
+        "contacts": [
+            {
+                "nome": c.get("nome"),
+                "chat_id": c.get("chat_id"),
+                "ativo": bool(c.get("ativo")),
+                "cobranca_3h": bool(c.get("cobranca_3h")),
+                "cobranca_diaria": bool(c.get("cobranca_diaria")),
+                "resumo": bool(c.get("resumo")),
+            }
+            for c in contacts
+        ],
+    }
+
+
 def _sanitize_meta_alert_text(text):
     """Blindagem final dos alertas de META no Telegram.
 
@@ -360,7 +398,14 @@ def telegram_send(text, parse_mode=None, disable_web_page_preview=True, chat_id=
         return _telegram_send_one(text, chat_id, parse_mode=parse_mode, disable_web_page_preview=disable_web_page_preview)
     contacts = _telegram_contacts_for_alert(alert_type, base_dir=base_dir)
     if not contacts:
-        return False, f"Nenhum contato Telegram ativo para alerta {alert_type}"
+        all_contacts = _load_telegram_contacts_from_config(base_dir)
+        if all_contacts:
+            diag = "; ".join(
+                f"{c.get('nome') or c.get('chat_id')}[ativo={bool(c.get('ativo'))},cobranca_3h={bool(c.get('cobranca_3h'))}]"
+                for c in all_contacts
+            )
+            return False, f"Nenhum contato Telegram ativo para alerta {alert_type} | carregados: {diag}"
+        return False, f"Nenhum contato Telegram ativo para alerta {alert_type} | nenhum telegram_contacts encontrado no config online/local"
     oks = []
     resps = []
     for c in contacts:
@@ -2219,3 +2264,5 @@ def send_collection_progress_3h_now(base_dir, date_str=None):
 # V10.107_TELEGRAM_COBRANCAS_3H
 
 # V10.101_TELEGRAM_COBRANCA_DIARIA_LIVE
+
+# V10.108_FIX_RAW_CONFIG_TELEGRAM_COBRANCA3H
