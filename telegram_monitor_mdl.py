@@ -2194,20 +2194,79 @@ def send_daily_collection_now_v10100(base_dir, date_str=None):
     return telegram_send(text, alert_type="cobranca_diaria", base_dir=base_dir)
 
 
-# ===== V10.107: COBRANÇAS FEITAS ATÉ O MOMENTO — 3H =====
+# ===== V10.109: COBRANÇAS 3H — FILIAIS/GERENTES + USUÁRIOS =====
 def build_collection_progress_3h(base_dir, date_str=None):
-    """Resumo LIVE por usuário, incluindo quem está zerado."""
+    """
+    Resumo LIVE a cada 3h.
+
+    Exibe DUAS visões:
+    1) FILIAIS / GERENTES = consolidado da filial inteira, igual ao painel do gerente.
+       Inclui todas as cobranças registradas com aquela filial.
+    2) USUÁRIOS / CARTEIRAS = vendedores, crediaristas e cobranças internas,
+       incluindo explicitamente quem está zerado.
+
+    A visão de filial NÃO é somada novamente no TOTAL, evitando duplicação.
+    O TOTAL ÚNICO é calculado diretamente dos CPF/título/parcela registrados no dia.
+    """
     date_str = date_str or now_br().strftime("%Y-%m-%d")
-    users = [u for u in _load_users(base_dir) if u.get("participa_cobrancas", True) and not u.get("is_gerente")]
+
+    all_users = [
+        u for u in _load_users(base_dir)
+        if u.get("participa_cobrancas", True)
+    ]
+    regular_users = [u for u in all_users if not u.get("is_gerente")]
+    manager_users = [u for u in all_users if u.get("is_gerente")]
+
     logs = [
         x for x in _load_cobrancas(base_dir)
         if isinstance(x, dict)
         and str(x.get("acao") or "whatsapp").lower() == "whatsapp"
-        and _v1099_date(x.get("server_time") or x.get("criado_em") or x.get("data") or x.get("server_date")) == date_str
+        and _v1099_date(
+            x.get("server_time") or x.get("criado_em") or x.get("data") or x.get("server_date")
+        ) == date_str
     ]
 
-    rows = []
-    for u in users:
+    # ---------------------------------------------------------
+    # Filiais/gerentes: mesma lógica conceitual do painel do gerente:
+    # qualquer cobrança registrada naquela filial entra no consolidado.
+    # ---------------------------------------------------------
+    filial_names = set()
+    for u in manager_users:
+        f = str(u.get("filial") or "").upper().strip()
+        if re.fullmatch(r"F\d+", f or "") and f not in {"F7", "F90", "F99"}:
+            filial_names.add(f)
+
+    # Se houver uma filial operacional nos logs e por algum motivo o gerente
+    # ainda não estiver no arquivo de usuários, não perdemos a filial.
+    for log in logs:
+        f = str(log.get("filial") or "").upper().strip()
+        if re.fullmatch(r"F\d+", f or "") and f not in {"F7", "F90", "F99"}:
+            filial_names.add(f)
+
+    filial_rows = []
+    for filial in sorted(
+        filial_names,
+        key=lambda f: int(re.sub(r"\D+", "", f) or 999)
+    ):
+        keys = set()
+        for log in logs:
+            if str(log.get("filial") or "").upper().strip() != filial:
+                continue
+            k = _v1099_row_key(log)
+            if k:
+                keys.add(k)
+        filial_rows.append({
+            "filial": filial,
+            "nome": f"Filial {filial}",
+            "cobrancas": len(keys),
+        })
+
+    # ---------------------------------------------------------
+    # Usuários/carteiras: mantém a regra V10.107.
+    # Gerentes ficam representados acima pela filial consolidada.
+    # ---------------------------------------------------------
+    user_rows = []
+    for u in regular_users:
         ent = {
             "login": str(u.get("login") or "").lower().strip(),
             "nome": str(u.get("nome") or u.get("login") or "").strip(),
@@ -2221,26 +2280,51 @@ def build_collection_progress_3h(base_dir, date_str=None):
                 k = _v1099_row_key(log)
                 if k:
                     keys.add(k)
-        rows.append({**ent, "cobrancas": len(keys)})
+        user_rows.append({**ent, "cobrancas": len(keys)})
 
-    rows.sort(key=lambda r: (str(r.get("filial") or "ZZZ"), str(r.get("nome") or r.get("login") or "").upper()))
+    user_rows.sort(
+        key=lambda r: (
+            str(r.get("filial") or "ZZZ"),
+            str(r.get("nome") or r.get("login") or "").upper(),
+        )
+    )
+
+    # TOTAL ÚNICO: não soma filial + usuário.
+    all_keys = {_v1099_row_key(log) for log in logs if _v1099_row_key(log)}
+    total_unique = len(all_keys)
+
+    filial_zero = sum(1 for r in filial_rows if int(r.get("cobrancas") or 0) == 0)
+    user_zero = sum(1 for r in user_rows if int(r.get("cobrancas") or 0) == 0)
 
     try:
         date_br = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")
     except Exception:
         date_br = date_str
 
-    total = sum(int(r.get("cobrancas") or 0) for r in rows)
-    zeros = sum(1 for r in rows if int(r.get("cobrancas") or 0) == 0)
+    lines = [
+        f"⏱️ COBRANÇAS ATÉ O MOMENTO — {date_br}",
+        f"🕒 {now_br().strftime('%H:%M')}",
+        "",
+        "🏬 FILIAIS / GERENTES — CONSOLIDADO",
+    ]
 
-    lines = [f"⏱️ COBRANÇAS ATÉ O MOMENTO — {date_br}", f"🕒 {now_br().strftime('%H:%M')}", ""]
+    if filial_rows:
+        for r in filial_rows:
+            qtd = int(r.get("cobrancas") or 0)
+            palavra = "COBRANÇA" if qtd == 1 else "COBRANÇAS"
+            lines.append(f"• {r['nome']} = {qtd} {palavra}")
+    else:
+        lines.append("• Nenhuma filial/gerente encontrada.")
+
+    lines += ["", "👥 USUÁRIOS / CARTEIRAS"]
+
     last_filial = None
-    for r in rows:
+    for r in user_rows:
         filial = str(r.get("filial") or "SEM FILIAL")
         if filial != last_filial:
             if last_filial is not None:
                 lines.append("")
-            lines.append(f"🏬 {filial}")
+            lines.append(f"📍 {filial}")
             last_filial = filial
         nome = str(r.get("nome") or r.get("login") or "Usuário")
         qtd = int(r.get("cobrancas") or 0)
@@ -2249,20 +2333,28 @@ def build_collection_progress_3h(base_dir, date_str=None):
 
     lines += [
         "",
-        f"📲 TOTAL ATÉ AGORA = {total} COBRANÇAS",
-        f"⚠️ USUÁRIOS COM ZERO = {zeros}",
+        f"📲 TOTAL ÚNICO ATÉ AGORA = {total_unique} COBRANÇAS",
+        f"⚠️ FILIAIS/GERENTES COM ZERO = {filial_zero}",
+        f"⚠️ USUÁRIOS/CARTEIRAS COM ZERO = {user_zero}",
         "",
-        "ℹ️ Contagem LIVE por CPF/título/parcela único registrado hoje.",
+        "ℹ️ Filial/Gerente = visão consolidada da loja e não é somada novamente no total.",
+        "ℹ️ Total único = CPF/título/parcela registrado hoje, sem duplicar filial + usuário.",
         f"🕒 Gerado em {now_br().strftime('%d/%m/%Y %H:%M:%S')}",
     ]
     return "\n".join(lines)
 
+
 def send_collection_progress_3h_now(base_dir, date_str=None):
-    text = build_collection_progress_3h(base_dir, date_str or now_br().strftime("%Y-%m-%d"))
+    text = build_collection_progress_3h(
+        base_dir,
+        date_str or now_br().strftime("%Y-%m-%d")
+    )
     return telegram_send(text, alert_type="cobranca_3h", base_dir=base_dir)
 
-# V10.107_TELEGRAM_COBRANCAS_3H
+# V10.109_TELEGRAM_3H_FILIAIS_GERENTES
 
 # V10.101_TELEGRAM_COBRANCA_DIARIA_LIVE
 
 # V10.108_FIX_RAW_CONFIG_TELEGRAM_COBRANCA3H
+
+# V10.109_TELEGRAM3H_FILIAIS_GERENTES

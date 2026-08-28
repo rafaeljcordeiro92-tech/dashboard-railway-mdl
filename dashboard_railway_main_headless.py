@@ -38,8 +38,8 @@ URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 BR_TZ = APP_TZ  # V10.106: alias usado pelo histórico operacional V10.104
 
-DASHBOARD_BUILD_VERSION = "V10.108"
-DASHBOARD_BUILD_TAG = "v10108_fix_raw_config_telegram_cobranca3h"
+DASHBOARD_BUILD_VERSION = "V10.109"
+DASHBOARD_BUILD_TAG = "v10109_telegram3h_filiais_gerentes"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
 # V10.52: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
@@ -26038,3 +26038,5 @@ driver.quit()
 # V10.107_TELEGRAM_COBRANCAS_3H
 
 # V10.108_FIX_RAW_CONFIG_TELEGRAM_COBRANCA3H
+
+# V10.109_TELEGRAM3H_FILIAIS_GERENTES
