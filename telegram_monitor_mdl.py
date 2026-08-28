@@ -251,12 +251,13 @@ def _load_telegram_contacts_from_config(base_dir=None):
                 'auditoria': b('auditoria', True),
                 'cob_externa': b('cob_externa', True),
                 'cobranca_diaria': b('cobranca_diaria', False),
+                'cobranca_3h': b('cobranca_3h', False),
                 'teste': True,
             })
     if not out:
         env_chat = os.getenv('TELEGRAM_CHAT_ID', '').strip()
         if env_chat:
-            out.append({'nome':'TELEGRAM_CHAT_ID','chat_id':env_chat,'ativo':True,'erros':True,'meta_diaria':True,'meta_mensal':True,'avisos':True,'resumo':True,'auditoria':True,'cob_externa':True,'cobranca_diaria':True,'teste':True})
+            out.append({'nome':'TELEGRAM_CHAT_ID','chat_id':env_chat,'ativo':True,'erros':True,'meta_diaria':True,'meta_mensal':True,'avisos':True,'resumo':True,'auditoria':True,'cob_externa':True,'cobranca_diaria':True,'cobranca_3h':False,'teste':True})
     return out
 
 
@@ -271,6 +272,7 @@ def _telegram_contacts_for_alert(alert_type='geral', base_dir=None):
         'auditoria': 'auditoria', 'audit': 'auditoria',
         'cob_externa': 'cob_externa', 'cob': 'cob_externa',
         'cobranca_diaria': 'cobranca_diaria', 'daily_collection': 'cobranca_diaria',
+        'cobranca_3h': 'cobranca_3h', 'collection_3h': 'cobranca_3h', 'cobrancas_3h': 'cobranca_3h',
         'teste': None, 'test': None,
     }
     flag = key_map.get(alert_type, None)
@@ -2145,5 +2147,75 @@ def send_daily_collection_now_v10100(base_dir, date_str=None):
     # Mantém o nome importado pelo scheduler, mas agora usa V10.101 LIVE.
     text = build_daily_collection_summary(base_dir, date_str or now_br().strftime("%Y-%m-%d"))
     return telegram_send(text, alert_type="cobranca_diaria", base_dir=base_dir)
+
+
+# ===== V10.107: COBRANÇAS FEITAS ATÉ O MOMENTO — 3H =====
+def build_collection_progress_3h(base_dir, date_str=None):
+    """Resumo LIVE por usuário, incluindo quem está zerado."""
+    date_str = date_str or now_br().strftime("%Y-%m-%d")
+    users = [u for u in _load_users(base_dir) if u.get("participa_cobrancas", True) and not u.get("is_gerente")]
+    logs = [
+        x for x in _load_cobrancas(base_dir)
+        if isinstance(x, dict)
+        and str(x.get("acao") or "whatsapp").lower() == "whatsapp"
+        and _v1099_date(x.get("server_time") or x.get("criado_em") or x.get("data") or x.get("server_date")) == date_str
+    ]
+
+    rows = []
+    for u in users:
+        ent = {
+            "login": str(u.get("login") or "").lower().strip(),
+            "nome": str(u.get("nome") or u.get("login") or "").strip(),
+            "filial": str(u.get("filial") or "").upper().strip(),
+            "is_crediarista": bool(u.get("is_crediarista")),
+            "is_terceiro": bool(u.get("is_terceiro")),
+        }
+        keys = set()
+        for log in logs:
+            if _v1099_entity_match(log, ent):
+                k = _v1099_row_key(log)
+                if k:
+                    keys.add(k)
+        rows.append({**ent, "cobrancas": len(keys)})
+
+    rows.sort(key=lambda r: (str(r.get("filial") or "ZZZ"), str(r.get("nome") or r.get("login") or "").upper()))
+
+    try:
+        date_br = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+    except Exception:
+        date_br = date_str
+
+    total = sum(int(r.get("cobrancas") or 0) for r in rows)
+    zeros = sum(1 for r in rows if int(r.get("cobrancas") or 0) == 0)
+
+    lines = [f"⏱️ COBRANÇAS ATÉ O MOMENTO — {date_br}", f"🕒 {now_br().strftime('%H:%M')}", ""]
+    last_filial = None
+    for r in rows:
+        filial = str(r.get("filial") or "SEM FILIAL")
+        if filial != last_filial:
+            if last_filial is not None:
+                lines.append("")
+            lines.append(f"🏬 {filial}")
+            last_filial = filial
+        nome = str(r.get("nome") or r.get("login") or "Usuário")
+        qtd = int(r.get("cobrancas") or 0)
+        palavra = "COBRANÇA" if qtd == 1 else "COBRANÇAS"
+        lines.append(f"• {nome} = {qtd} {palavra}")
+
+    lines += [
+        "",
+        f"📲 TOTAL ATÉ AGORA = {total} COBRANÇAS",
+        f"⚠️ USUÁRIOS COM ZERO = {zeros}",
+        "",
+        "ℹ️ Contagem LIVE por CPF/título/parcela único registrado hoje.",
+        f"🕒 Gerado em {now_br().strftime('%d/%m/%Y %H:%M:%S')}",
+    ]
+    return "\n".join(lines)
+
+def send_collection_progress_3h_now(base_dir, date_str=None):
+    text = build_collection_progress_3h(base_dir, date_str or now_br().strftime("%Y-%m-%d"))
+    return telegram_send(text, alert_type="cobranca_3h", base_dir=base_dir)
+
+# V10.107_TELEGRAM_COBRANCAS_3H
 
 # V10.101_TELEGRAM_COBRANCA_DIARIA_LIVE
