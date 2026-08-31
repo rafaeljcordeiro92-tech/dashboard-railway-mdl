@@ -38,8 +38,8 @@ URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 BR_TZ = APP_TZ  # V10.106: alias usado pelo histórico operacional V10.104
 
-DASHBOARD_BUILD_VERSION = "V10.109"
-DASHBOARD_BUILD_TAG = "v10109_telegram3h_filiais_gerentes"
+DASHBOARD_BUILD_VERSION = "V10.110"
+DASHBOARD_BUILD_TAG = "v10110_auditoria_owner_sticky_internal"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
 # V10.52: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
@@ -3347,6 +3347,93 @@ for _c_tmp in clientes_cobrar:
     _g_tmp = cliente_grupo_key_py(_c_tmp)
     _clientes_cobrar_grupos.setdefault(_g_tmp, []).append(_c_tmp)
 
+
+# ===== V10.110: CONTINUIDADE DO DONO NA COBRANÇA INTERNA =====
+# Antes de escolher os 20% do pool interno, recupera contatos/auditorias já
+# existentes. Um CPF que já está sendo acompanhado pela cobrança interna deve
+# permanecer no pool interno, evitando voltar para vendedor/gerente no próximo MAIN.
+#
+# A quantidade TOTAL do pool continua respeitando COBRANCA10_RATEIO; casos já
+# acompanhados apenas têm prioridade dentro desse mesmo limite.
+def _remote_public_json_v10110(nome, default):
+    try:
+        import urllib.request as _urlreq_v10110
+        url = f"https://moveisdolar.com.br/colaborador/{nome}?_v10110={int(time.time())}"
+        req = _urlreq_v10110.Request(url, headers={"User-Agent":"Mozilla/5.0 MDL-V10.110"})
+        with _urlreq_v10110.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+        return data
+    except Exception as e:
+        print(f"⚠️ V10.110 continuidade interna: falha lendo {nome}: {e}")
+        return default
+
+def _internal_owner_hint_v10110(row):
+    if not isinstance(row, dict):
+        return ""
+    login = str(
+        row.get("usuario_login")
+        or row.get("destino_login")
+        or row.get("responsavel_cobranca_login")
+        or row.get("login")
+        or ""
+    ).strip().lower()
+    if login:
+        return login
+    return str(
+        row.get("usuario")
+        or row.get("usuario_nome")
+        or row.get("responsavel_cobranca_nome")
+        or ""
+    ).strip()
+
+def _is_internal_event_hint_v10110(row):
+    if not isinstance(row, dict):
+        return False
+    filial = str(row.get("filial") or "").strip().upper()
+    hint = _internal_owner_hint_v10110(row)
+    hint_norm = re.sub(r"[^a-z0-9]+", "", unicodedata.normalize("NFKD", hint.lower()).encode("ascii","ignore").decode("ascii"))
+    return filial == "FTER" or hint_norm.startswith("cobranca")
+
+_sticky_internal_seed_v10110 = {}
+_aud_seed_v10110 = _remote_public_json_v10110("cobranca_auditoria.json", [])
+if isinstance(_aud_seed_v10110, dict):
+    _aud_seed_v10110 = _aud_seed_v10110.get("data") or []
+if not isinstance(_aud_seed_v10110, list):
+    _aud_seed_v10110 = []
+
+_log_seed_v10110 = _remote_public_json_v10110("cobrancas_log.json", [])
+if isinstance(_log_seed_v10110, dict):
+    _log_seed_v10110 = _log_seed_v10110.get("data") or []
+if not isinstance(_log_seed_v10110, list):
+    _log_seed_v10110 = []
+
+for _src_name_v10110, _rows_seed_v10110 in (
+    ("log", _log_seed_v10110),
+    ("audit", _aud_seed_v10110),
+):
+    for _ev_v10110 in _rows_seed_v10110:
+        if not _is_internal_event_hint_v10110(_ev_v10110):
+            continue
+        _g_ev_v10110 = cliente_grupo_key_py(_ev_v10110)
+        if not _g_ev_v10110:
+            continue
+        _ts_ev_v10110 = str(
+            _ev_v10110.get("updated_at")
+            or _ev_v10110.get("master_decidido_em")
+            or _ev_v10110.get("ia_analisado_em")
+            or _ev_v10110.get("server_time")
+            or _ev_v10110.get("criado_em")
+            or _ev_v10110.get("data")
+            or ""
+        )
+        _prev_ev_v10110 = _sticky_internal_seed_v10110.get(_g_ev_v10110)
+        if (not _prev_ev_v10110) or _ts_ev_v10110 >= str(_prev_ev_v10110.get("ts") or ""):
+            _sticky_internal_seed_v10110[_g_ev_v10110] = {
+                "owner_hint": _internal_owner_hint_v10110(_ev_v10110),
+                "ts": _ts_ev_v10110,
+                "source": _src_name_v10110,
+            }
+
 _clientes_grupos_hash = sorted(
     _clientes_cobrar_grupos.items(),
     key=lambda kv: _hashlib.md5(str(kv[0]).encode("utf-8")).hexdigest(),
@@ -3354,8 +3441,38 @@ _clientes_grupos_hash = sorted(
 _qtd_terceiro_grupos = int(round(len(_clientes_grupos_hash) * COBRANCA10_RATEIO))
 _qtd_terceiro_grupos = max(0, min(len(_clientes_grupos_hash), _qtd_terceiro_grupos))
 
-_clientes_terceiro_grupos = _clientes_grupos_hash[:_qtd_terceiro_grupos]
+# V10.110: prioriza CPFs já acompanhados pela cobrança interna dentro dos mesmos 20%.
+_sticky_present_v10110 = [
+    (k, rows)
+    for k, rows in _clientes_grupos_hash
+    if k in _sticky_internal_seed_v10110
+]
+_sticky_present_v10110.sort(
+    key=lambda kv: (
+        str(_sticky_internal_seed_v10110.get(kv[0], {}).get("ts") or ""),
+        _hashlib.md5(str(kv[0]).encode("utf-8")).hexdigest(),
+    ),
+    reverse=True,
+)
+
+_sticky_selected_v10110 = _sticky_present_v10110[:_qtd_terceiro_grupos]
+_sticky_selected_keys_v10110 = {k for k, _ in _sticky_selected_v10110}
+
+_remaining_hash_v10110 = [
+    (k, rows)
+    for k, rows in _clientes_grupos_hash
+    if k not in _sticky_selected_keys_v10110
+]
+_needed_v10110 = max(0, _qtd_terceiro_grupos - len(_sticky_selected_v10110))
+
+_clientes_terceiro_grupos = _sticky_selected_v10110 + _remaining_hash_v10110[:_needed_v10110]
 _clientes_terceiro_cliente_keys = {k for k, _rows in _clientes_terceiro_grupos}
+
+print(
+    f"🔒 V10.110 continuidade pool interno: "
+    f"{len(_sticky_selected_v10110)} CPF(s) já acompanhados preservados dentro do pool "
+    f"de {len(_clientes_terceiro_cliente_keys)} CPF(s)"
+)
 _clientes_terceiro_lista = [
     row
     for _k_grupo, _rows_grupo in _clientes_terceiro_grupos
@@ -7599,6 +7716,35 @@ recebimentos_terceiro_por_login_js = {
 _nome_third_v10103 = {x["login"]: x["nome"] for x in _usuarios_cob_int_v10103}
 _owner_third_v10103 = {}
 
+# V10.110: resolve o owner_hint histórico para um login interno ATIVO.
+_alias_owner_v10110 = {}
+for _u_alias_v10110 in _usuarios_cob_int_v10103:
+    _lg_alias_v10110 = str(_u_alias_v10110.get("login") or "").lower()
+    _nm_alias_v10110 = str(_u_alias_v10110.get("nome") or "")
+    _alias_owner_v10110[_lg_alias_v10110] = _lg_alias_v10110
+    _alias_owner_v10110[
+        re.sub(
+            r"[^a-z0-9]+",
+            "",
+            unicodedata.normalize("NFKD", _nm_alias_v10110.lower()).encode("ascii","ignore").decode("ascii"),
+        )
+    ] = _lg_alias_v10110
+
+def _resolve_sticky_owner_v10110(group_key):
+    rec = (_sticky_internal_seed_v10110 or {}).get(group_key) or {}
+    raw = str(rec.get("owner_hint") or "").strip()
+    if not raw:
+        return ""
+    raw_lower = raw.lower()
+    if raw_lower in _alias_owner_v10110:
+        return _alias_owner_v10110[raw_lower]
+    raw_norm = re.sub(
+        r"[^a-z0-9]+",
+        "",
+        unicodedata.normalize("NFKD", raw_lower).encode("ascii","ignore").decode("ascii"),
+    )
+    return _alias_owner_v10110.get(raw_norm, "")
+
 # Reagrupa a fatia global por cliente/CPF. A ordenação por hash é estável.
 _grupos_third_v10103 = {}
 for _fx_ci_v10103 in ("grave", "alerta", "atencao"):
@@ -7612,17 +7758,54 @@ _grupos_third_ord_v10103 = sorted(
 )
 
 if _usuarios_cob_int_v10103:
-    # Round-robin por CPF/cliente: diferença máxima de 1 CPF entre usuários.
-    for _idx_ci_v10103, (_gk_ci_v10103, _items_ci_v10103) in enumerate(_grupos_third_ord_v10103):
-        _dest_ci_v10103 = _usuarios_cob_int_v10103[_idx_ci_v10103 % len(_usuarios_cob_int_v10103)]
-        _login_dest_ci_v10103 = _dest_ci_v10103["login"]
+    _user_by_login_v10110 = {u["login"]: u for u in _usuarios_cob_int_v10103}
+    _count_owner_v10110 = {u["login"]: 0 for u in _usuarios_cob_int_v10103}
+    _pending_unowned_v10110 = []
+
+    # Primeiro fixa CPFs com histórico de cobrança/auditoria ao mesmo usuário.
+    for _gk_ci_v10103, _items_ci_v10103 in _grupos_third_ord_v10103:
+        _sticky_login_v10110 = _resolve_sticky_owner_v10110(_gk_ci_v10103)
+        if _sticky_login_v10110 and _sticky_login_v10110 in _user_by_login_v10110:
+            _dest_ci_v10103 = _user_by_login_v10110[_sticky_login_v10110]
+            _login_dest_ci_v10103 = _sticky_login_v10110
+            _owner_third_v10103[_gk_ci_v10103] = _login_dest_ci_v10103
+            _count_owner_v10110[_login_dest_ci_v10103] += 1
+            for _fx_ci_v10103, _row_ci_v10103 in _items_ci_v10103:
+                _clone_ci_v10103 = dict(_row_ci_v10103)
+                _clone_ci_v10103["vendedor"] = _dest_ci_v10103["nome"]
+                _clone_ci_v10103["responsavel_cobranca_login"] = _login_dest_ci_v10103
+                _clone_ci_v10103["responsavel_cobranca_nome"] = _dest_ci_v10103["nome"]
+                _clone_ci_v10103["owner_sticky_v10110"] = True
+                clientes_terceiro_por_login_js[_login_dest_ci_v10103][_fx_ci_v10103].append(_clone_ci_v10103)
+        else:
+            _pending_unowned_v10110.append((_gk_ci_v10103, _items_ci_v10103))
+
+    # Depois distribui somente os NOVOS CPFs, sempre para quem estiver com menos CPFs.
+    # Mantém o pool equilibrado sem transferir quem já está em acompanhamento.
+    for _gk_ci_v10103, _items_ci_v10103 in _pending_unowned_v10110:
+        _login_dest_ci_v10103 = sorted(
+            _count_owner_v10110.keys(),
+            key=lambda lg: (
+                _count_owner_v10110.get(lg, 0),
+                _hashlib.md5(f"{_gk_ci_v10103}|{lg}".encode("utf-8")).hexdigest(),
+            )
+        )[0]
+        _dest_ci_v10103 = _user_by_login_v10110[_login_dest_ci_v10103]
         _owner_third_v10103[_gk_ci_v10103] = _login_dest_ci_v10103
+        _count_owner_v10110[_login_dest_ci_v10103] += 1
         for _fx_ci_v10103, _row_ci_v10103 in _items_ci_v10103:
             _clone_ci_v10103 = dict(_row_ci_v10103)
             _clone_ci_v10103["vendedor"] = _dest_ci_v10103["nome"]
             _clone_ci_v10103["responsavel_cobranca_login"] = _login_dest_ci_v10103
             _clone_ci_v10103["responsavel_cobranca_nome"] = _dest_ci_v10103["nome"]
+            _clone_ci_v10103["owner_sticky_v10110"] = False
             clientes_terceiro_por_login_js[_login_dest_ci_v10103][_fx_ci_v10103].append(_clone_ci_v10103)
+
+    print(
+        "🔐 V10.110 dono cobrança interna: "
+        + ", ".join(f"{lg}={qtd} CPF(s)" for lg, qtd in sorted(_count_owner_v10110.items()))
+        + f" | preservados={sum(1 for k in _owner_third_v10103 if _resolve_sticky_owner_v10110(k))}"
+    )
 
     # Recebimentos operacionais acompanham exatamente o dono do CPF.
     # recebimentos_terceiro_js já foi filtrado pela mesma chave de grupo do pool.
@@ -14248,7 +14431,28 @@ async function salvarMeuNomeCobrador(entRef){
   }catch(e){toast('Não consegui salvar o nome do cobrador.','warn');}
 }
 function auditoriaKey(reg){return [String(reg?.cpf_cnpj_normalizado||reg?.cpf_cnpj||'').replace(/\D/g,''),String(reg?.titulo||''),String(reg?.parcela||''),String(reg?.vencimento||'')].join('|')}
-function auditoriaDoTitulo(reg){const k=auditoriaKey(reg); return (COB_AUDITORIAS||[]).filter(a=>String(a.audit_key||'')===k).sort((a,b)=>String(a.server_time||'').localeCompare(String(b.server_time||''))).pop()||null}
+function auditoriaOwnerKey(reg,entRef){
+  const owner=String(entRef?.login||usuarioAtual?.login||'').trim().toLowerCase();
+  return `${auditoriaKey(reg)}|${owner}`;
+}
+function auditoriaDoTitulo(reg,entRef=null){
+  const k=auditoriaKey(reg);
+  let rows=(COB_AUDITORIAS||[]).filter(a=>String(a.audit_key||'')===k);
+  if(entRef){
+    // V10.110: título igual NÃO basta. A auditoria também precisa pertencer
+    // à entidade que está aberta. Para FTER isso impede Cobrança10 -> Cobrança20.
+    rows=rows.filter(a=>{
+      try{
+        return typeof cobrancaAuditEntMatch==='function'
+          ? !!cobrancaAuditEntMatch(a,entRef)
+          : String(a?.usuario_login||'').toLowerCase()===String(entRef?.login||'').toLowerCase();
+      }catch(e){
+        return String(a?.usuario_login||'').toLowerCase()===String(entRef?.login||'').toLowerCase();
+      }
+    });
+  }
+  return rows.sort((a,b)=>String(a.server_time||'').localeCompare(String(b.server_time||''))).pop()||null;
+}
 let COB_AUDITORIAS_LAST_LOAD=0; let COB_AUDITORIAS_LOADING=null;
 async function carregarAuditoriasCobranca(force=false){
   const agora=Date.now();
@@ -14268,7 +14472,7 @@ function auditAttachmentLinks(a){
   return `<div style="display:flex;gap:6px;flex-wrap:wrap">${arr.map((x,i)=>{const mime=String(x.mime||x.media_type||x.evidence_type||'').toLowerCase();const audio=mime.includes('audio');return `<a class="btn soft btn-xs" target="_blank" rel="noopener" href="${esc(x.url||x.media_url||'')}">${audio?'🎧 Áudio':'🖼️ Print'} ${i+1}</a>`}).join('')}</div>`;
 }
 function printAuditBox(reg,entRef){
-  const a=auditoriaDoTitulo(reg);
+  const a=auditoriaDoTitulo(reg,entRef);
   if(a){
     const st=String(a.status||'aguardando_ia').toLowerCase();
     const aprovado=['aprovado','aprovado_ia','aprovado_manual'].includes(st);
@@ -14292,7 +14496,7 @@ async function enviarPrintCobranca(reg,entRef,inputId){
   fd.append('audit_key',auditoriaKey(reg)); fd.append('cliente',reg.cliente||reg.nome||''); fd.append('cpf_cnpj',reg.cpf_cnpj||'');
   fd.append('titulo',reg.titulo||''); fd.append('parcela',reg.parcela||''); fd.append('vencimento',reg.vencimento||'');
   fd.append('telefone',Array.isArray(reg.telefones)?(reg.telefones[0]||''):(reg.contato||'')); fd.append('faixa',cobrancaFaixaNormalizada(reg));
-  fd.append('usuario_login',usuarioAtual?.login||entRef?.login||''); fd.append('usuario_nome',cobradorNomeAtual()); fd.append('filial',entRef?.filial||'');
+  fd.append('usuario_login',entRef?.login||usuarioAtual?.login||''); fd.append('owner_key',auditoriaOwnerKey(reg,entRef)); fd.append('usuario_nome',cobradorNomeAtual()); fd.append('filial',entRef?.filial||'');
   try{
     const r=await fetch(API_COB_AUD,{method:'POST',body:fd}); const j=await r.json();
     if(!j.ok){if(j.error==='evidencia_duplicada') throw new Error('Um dos arquivos já foi usado em outra cobrança.'); throw new Error(j.error||'erro_upload');}
@@ -14557,8 +14761,9 @@ function renderCobrancasEnt(ent){
     const m=srcAll.find(r=>cobrancaRowKey(r)===cobrancaRowKey(x))||{};
     return decorateRow({cliente:x.cliente,titulo:x.titulo,parcela:x.parcela,vencimento:x.vencimento,pendente:x.pendente,vendedor:x.usuario||m.vendedor||'',dias:m.dias||'',telefones:Array.isArray(m.telefones)&&m.telefones.length?m.telefones:[x.telefone],contato:m.contato||x.telefone,avalista:m.avalista||'',restricao:m.restricao||'',faixa_label:m.faixa||'',novo:false,pagamento:m.pagamento||'',lancamento:m.lancamento||''});
   });
-  const retornoRows=aguardando.filter(r=>!auditoriaDoTitulo(r));
-  const auditoriaRows=aguardando.filter(r=>!!auditoriaDoTitulo(r));
+  const auditEntRef={type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||'',is_terceiro:!!ent.is_terceiro,is_crediarista:!!ent.is_crediarista};
+  const retornoRows=aguardando.filter(r=>!auditoriaDoTitulo(r,auditEntRef));
+  const auditoriaRows=aguardando.filter(r=>!!auditoriaDoTitulo(r,auditEntRef));
   const retornoSearchId=renderBaseId+'_retorno_search';
   COB_RETORNO_SEARCH[retornoSearchId]={
     rows:retornoRows,
@@ -14572,7 +14777,7 @@ function renderCobrancasEnt(ent){
   aguardando.forEach(r=>exportRows.push(mdlCobExportRow(r,'Aguardando 3 dias')));
   mdlRegisterExport(exportId, 'Relatorio de cobrancas - '+(ent?.nome||ent?.filial||'usuario'), exportRows);
 
-  return `${renderMeuNomeCobrador(ent)}<div style="display:flex;justify-content:flex-end;margin:0 0 10px">${mdlExportButtons(exportId)}</div>${tabs}<div class="cob-pane" data-cobpane="geral">${geral}</div><div class="cob-pane hidden" data-cobpane="novos">${renderRows(allHoje.map(r=>decorateRow({...r,faixa_label:r.faixa||''})).filter(shouldShowInGeral),true,'novos')}</div><div class="cob-pane hidden" data-cobpane="cobrados">${renderRows(cobradosRows,true,'cobrados')}</div><div class="cob-pane hidden" data-cobpane="retorno">${retornoRows.length?cobRetornoSearchBox(retornoSearchId,retornoRows.length):'<div class="empty">Nenhuma cobrança aguardando print de retorno.</div>'}</div><div class="cob-pane hidden" data-cobpane="auditoria">${auditoriaRows.length?auditoriaRows.map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · parcela ${esc(r.parcela||'')}</div></div><div>${printAuditBox(r,{type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''})}</div></div></div>`).join(''):'<div class="empty">Nenhum print enviado para auditoria.</div>'}</div><div class="cob-pane hidden" data-cobpane="aguardando">${renderRows(aguardando,true,'aguardando')}</div>`;
+  return `${renderMeuNomeCobrador(ent)}<div style="display:flex;justify-content:flex-end;margin:0 0 10px">${mdlExportButtons(exportId)}</div>${tabs}<div class="cob-pane" data-cobpane="geral">${geral}</div><div class="cob-pane hidden" data-cobpane="novos">${renderRows(allHoje.map(r=>decorateRow({...r,faixa_label:r.faixa||''})).filter(shouldShowInGeral),true,'novos')}</div><div class="cob-pane hidden" data-cobpane="cobrados">${renderRows(cobradosRows,true,'cobrados')}</div><div class="cob-pane hidden" data-cobpane="retorno">${retornoRows.length?cobRetornoSearchBox(retornoSearchId,retornoRows.length):'<div class="empty">Nenhuma cobrança aguardando print de retorno.</div>'}</div><div class="cob-pane hidden" data-cobpane="auditoria">${auditoriaRows.length?auditoriaRows.map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · parcela ${esc(r.parcela||'')}</div></div><div>${printAuditBox(r,auditEntRef)}</div></div></div>`).join(''):'<div class="empty">Nenhum print enviado para auditoria.</div>'}</div><div class="cob-pane hidden" data-cobpane="aguardando">${renderRows(aguardando,true,'aguardando')}</div>`;
 }
 function switchCobTab(btn,name){const box=btn.closest('.acc-body'); box.querySelectorAll('[data-cobtab]').forEach(b=>b.classList.toggle('active',b===btn)); box.querySelectorAll('[data-cobpane]').forEach(p=>p.classList.toggle('hidden',p.dataset.cobpane!==name));}
 function abrirWhats(reg,entRef){const nums=normalizarListaTelefones((reg.telefones&&reg.telefones.length)?reg.telefones:reg.contato); if(!nums.length){toast('Cliente sem telefone válido.'); return} reg._cob_status=cobStatusTitulo(reg,entRef); phoneContext={reg,entRef}; if(nums.length===1){enviarWhats(nums[0]); return} const phoneList=document.getElementById('phoneList'); phoneList.innerHTML=nums.map(n=>`<button class="btn soft" style="width:100%" onclick="enviarWhats('${n}')">${n}</button>`).join(''); document.getElementById('phoneModal').classList.add('show')}
@@ -24016,6 +24221,49 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
 })();
 </script>
 
+
+<script>
+/* ===== V10.110 — BLINDAGEM FINAL AUDITORIA POR PROPRIETÁRIO ===== */
+(function(){
+  const TAG='[V10.110 AUDIT OWNER]';
+  try{
+    const baseAuditDoTitulo110=window.auditoriaDoTitulo||auditoriaDoTitulo;
+    window.auditoriaDoTitulo=auditoriaDoTitulo=function(reg,entRef=null){
+      const k=auditoriaKey(reg);
+      let rows=(COB_AUDITORIAS||[]).filter(a=>String(a.audit_key||'')===k);
+
+      // Se um caller antigo não passou entRef, usa a entidade atualmente aberta.
+      const ref=entRef || (
+        currentDetailRef
+          ? {
+              type:currentDetailRef.type,
+              filial:currentDetailRef.filial,
+              nome:currentDetailRef.nome,
+              login:currentDetailRef.login,
+              is_terceiro:currentDetailRef.type==='terceiro',
+              is_crediarista:currentDetailRef.type==='crediarista'
+            }
+          : null
+      );
+
+      if(ref){
+        rows=rows.filter(a=>{
+          try{return !!cobrancaAuditEntMatch(a,ref)}
+          catch(e){
+            const al=String(a?.usuario_login||'').toLowerCase();
+            const rl=String(ref?.login||'').toLowerCase();
+            return !!rl && al===rl;
+          }
+        });
+      }
+      return rows.sort((a,b)=>String(a.server_time||'').localeCompare(String(b.server_time||''))).pop()||null;
+    };
+
+    console.log(TAG,'ativo: audit_key + proprietário obrigatório');
+  }catch(e){console.warn(TAG,e)}
+})();
+</script>
+
 </body>
 </html>
 """
@@ -25032,7 +25280,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   if(strpos($mime,'image/')===0)$hasImage=true;if(strpos($mime,'audio/')===0)$hasAudio=true;
  }
  if($hasAudio&&!$hasImage){echo json_encode(['ok'=>false,'error'=>'audio_exige_print']);exit;}
- $item=['id'=>uniqid('aud_',true),'audit_key'=>(string)($_POST['audit_key']??''),'cliente'=>(string)($_POST['cliente']??''),'cpf_cnpj'=>(string)($_POST['cpf_cnpj']??''),'titulo'=>(string)($_POST['titulo']??''),'parcela'=>(string)($_POST['parcela']??''),'vencimento'=>(string)($_POST['vencimento']??''),'telefone'=>(string)($_POST['telefone']??''),'faixa'=>(string)($_POST['faixa']??''),'usuario_login'=>(string)($_POST['usuario_login']??''),'usuario_nome'=>(string)($_POST['usuario_nome']??''),'filial'=>(string)($_POST['filial']??''),'attachments'=>$attachments,'evidence_count'=>count($attachments),'has_image'=>$hasImage,'has_audio'=>$hasAudio,'status'=>'aguardando_ia','motivo'=>'Conjunto de evidências recebido. Aguardando auditoria antifraude da IA.','server_time'=>date('c')];
+ $item=['id'=>uniqid('aud_',true),'audit_key'=>(string)($_POST['audit_key']??''),'owner_key'=>(string)($_POST['owner_key']??''),'cliente'=>(string)($_POST['cliente']??''),'cpf_cnpj'=>(string)($_POST['cpf_cnpj']??''),'titulo'=>(string)($_POST['titulo']??''),'parcela'=>(string)($_POST['parcela']??''),'vencimento'=>(string)($_POST['vencimento']??''),'telefone'=>(string)($_POST['telefone']??''),'faixa'=>(string)($_POST['faixa']??''),'usuario_login'=>(string)($_POST['usuario_login']??''),'usuario_nome'=>(string)($_POST['usuario_nome']??''),'filial'=>(string)($_POST['filial']??''),'attachments'=>$attachments,'evidence_count'=>count($attachments),'has_image'=>$hasImage,'has_audio'=>$hasAudio,'status'=>'aguardando_ia','motivo'=>'Conjunto de evidências recebido. Aguardando auditoria antifraude da IA.','server_time'=>date('c')];
  $data[]=$item;$ok=sw($data);$triggerUrl='__AUDIT_TRIGGER_URL__';$triggerSecret='__AUDIT_TRIGGER_SECRET__';if($ok&&$triggerUrl!==''){ $payload=json_encode(['id'=>$item['id']],JSON_UNESCAPED_UNICODE);$opts=['http'=>['method'=>'POST','header'=>"Content-Type: application/json\r\nX-Audit-Secret: ".$triggerSecret."\r\n",'content'=>$payload,'timeout'=>2,'ignore_errors'=>true]];@file_get_contents($triggerUrl,false,stream_context_create($opts)); }echo json_encode(['ok'=>$ok,'data'=>$item,'triggered'=>($triggerUrl!==''),'version'=>'V10.76'],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);exit;
 }
 echo json_encode(['ok'=>false,'error'=>'metodo_nao_suportado']);
@@ -26040,3 +26288,5 @@ driver.quit()
 # V10.108_FIX_RAW_CONFIG_TELEGRAM_COBRANCA3H
 
 # V10.109_TELEGRAM3H_FILIAIS_GERENTES
+
+# V10.110_AUDITORIA_PROPRIETARIO_COBRANCA_INTERNA
