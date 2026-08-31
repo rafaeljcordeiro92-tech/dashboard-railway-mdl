@@ -38,8 +38,8 @@ URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 BR_TZ = APP_TZ  # V10.106: alias usado pelo histórico operacional V10.104
 
-DASHBOARD_BUILD_VERSION = "V10.110"
-DASHBOARD_BUILD_TAG = "v10110_auditoria_owner_sticky_internal"
+DASHBOARD_BUILD_VERSION = "V10.111"
+DASHBOARD_BUILD_TAG = "v10111_filtro_cobranca_senhas_mobile"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
 # V10.52: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
@@ -3124,6 +3124,104 @@ for _i in range(len(df_raw)):
             "mensagem_whatsapp": _mensagem,
         })
 
+
+# ===== V10.111: FILTRO CENTRAL DE MARCADOR NA BASE OPERACIONAL DE COBRANÇA =====
+# Regra MDL:
+# - cliente SEM marcador final continua normalmente na cobrança;
+# - COB, CURTY e SPC continuam normalmente na cobrança;
+# - marcadores finais protegidos ficam FORA da cobrança operacional:
+#   ADV / ADV1 / ADV2 / qualquer ADV+número, NC, OBT e MEL.
+#
+# O filtro roda ANTES de qualquer rateio (vendedor, gerente/filial, crediarista,
+# Cobrança10/Cobrança20 e demais usuários internos). Histórico antigo não é apagado.
+#
+# COBRANCA_NOME_MARCADORES_BLOQUEADOS permite acrescentar novos marcadores depois
+# sem alterar código. Padrão: ADV,ADV1,ADV2,NC,OBT,MEL
+_COB_BLOCKED_MARKERS_V10111 = {
+    x.strip().upper()
+    for x in os.getenv(
+        "COBRANCA_NOME_MARCADORES_BLOQUEADOS",
+        "ADV,ADV1,ADV2,NC,OBT,MEL",
+    ).split(",")
+    if x.strip()
+}
+
+
+def _cobranca_nome_norm_v10111(value):
+    s = str(value or "").upper()
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _cobranca_marcador_final_v10111(value):
+    """Retorna apenas o marcador FINAL relevante do cadastro.
+
+    Exemplos:
+      NEUCI ... *ADV (31058) -> ADV
+      CLIENTE ADV2          -> ADV2
+      CLIENTE MEL           -> MEL
+      CLIENTE MELLO         -> ''     (não confunde sobrenome com MEL)
+      CLIENTE SEM MARCADOR  -> ''
+      CLIENTE COB           -> COB
+    """
+    s = _cobranca_nome_norm_v10111(value)
+    if not s:
+        return ""
+
+    # O SGI/relatórios podem mostrar um código numérico entre parênteses depois
+    # do nome. Ele não faz parte do marcador.
+    s = re.sub(r"\s*\(\s*\d+\s*\)\s*$", "", s).strip()
+
+    # Último token alfanumérico real, aceitando *ADV, (ADV), -ADV etc.
+    m = re.search(r"(?:^|[^A-Z0-9])(ADV\d*|NC|OBT|MEL|COB|CURTY|SPC)\s*[\*\)\]\}\._-]*\s*$", s)
+    return (m.group(1) if m else "").upper()
+
+
+def _cobranca_nome_elegivel_v10111(value):
+    marker = _cobranca_marcador_final_v10111(value)
+    # ADV + qualquer número também é protegido (ADV1, ADV2, ADV3...).
+    blocked = marker in _COB_BLOCKED_MARKERS_V10111 or bool(re.fullmatch(r"ADV\d*", marker or ""))
+    return (not blocked), marker
+
+
+_clientes_cobrar_antes_v10111 = list(clientes_cobrar)
+_clientes_cobrar_ok_v10111 = []
+_cobranca_bloqueados_v10111 = {}
+_cobranca_bloqueados_exemplos_v10111 = []
+
+for _r_v10111 in _clientes_cobrar_antes_v10111:
+    _nome_v10111 = str((_r_v10111 or {}).get("cliente") or (_r_v10111 or {}).get("nome") or "")
+    _ok_v10111, _marker_v10111 = _cobranca_nome_elegivel_v10111(_nome_v10111)
+    if _ok_v10111:
+        _r_v10111["marcador_final_v10111"] = _marker_v10111
+        _clientes_cobrar_ok_v10111.append(_r_v10111)
+        continue
+
+    _mk_v10111 = _marker_v10111 or "BLOQUEADO"
+    _cobranca_bloqueados_v10111[_mk_v10111] = _cobranca_bloqueados_v10111.get(_mk_v10111, 0) + 1
+    if len(_cobranca_bloqueados_exemplos_v10111) < 20:
+        _cobranca_bloqueados_exemplos_v10111.append(f"{_nome_v10111} [{_mk_v10111}]")
+
+clientes_cobrar = _clientes_cobrar_ok_v10111
+
+# clientes_key_hoje era alimentado durante o parse. Recria após o filtro para
+# que nenhum título bloqueado sobreviva por uma chave auxiliar antiga.
+clientes_key_hoje = {
+    str(c.get("titulo_key") or "")
+    for c in clientes_cobrar
+    if str(c.get("titulo_key") or "")
+}
+
+print(
+    f"🛡️ V10.111 filtro marcador cobrança: "
+    f"{len(_clientes_cobrar_antes_v10111)} -> {len(clientes_cobrar)} título(s) | "
+    f"bloqueados={len(_clientes_cobrar_antes_v10111)-len(clientes_cobrar)} | "
+    f"marcadores_bloqueados={sorted(_COB_BLOCKED_MARKERS_V10111)} + ADV<n>"
+)
+if _cobranca_bloqueados_v10111:
+    print("   ↳ Bloqueados por marcador:", _cobranca_bloqueados_v10111)
+if _cobranca_bloqueados_exemplos_v10111:
+    print("   ↳ Exemplos bloqueados:", " || ".join(_cobranca_bloqueados_exemplos_v10111[:10]))
 
 # Contagem
 _ng = sum(1 for c in clientes_cobrar if c['faixa']=='grave')
@@ -24264,6 +24362,119 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
 })();
 </script>
 
+
+<style id="mdlSenhasMobileV10111">
+/* ===== V10.111 — SENHAS RESPONSIVO NO CELULAR ===== */
+@media (max-width:760px){
+  #senhasSection{max-width:100%!important;overflow-x:hidden!important}
+  #senhasSection .senhas-table-wrap{width:100%!important;max-width:100%!important;min-width:0!important;overflow:visible!important}
+
+  #senhasSection .senhas-main-table,
+  #senhasSection .senhas-status-table{
+    display:block!important;width:100%!important;max-width:100%!important;min-width:0!important;
+    table-layout:auto!important;border-spacing:0!important;font-size:12px!important
+  }
+  #senhasSection .senhas-main-table thead,
+  #senhasSection .senhas-status-table thead{display:none!important}
+  #senhasSection .senhas-main-table tbody,
+  #senhasSection .senhas-status-table tbody{display:block!important;width:100%!important}
+
+  #senhasSection .senhas-main-table tr,
+  #senhasSection .senhas-status-table tr{
+    display:block!important;width:100%!important;max-width:100%!important;min-width:0!important;
+    box-sizing:border-box!important;margin:0 0 14px!important;padding:12px!important;
+    border:1px solid rgba(148,163,184,.22)!important;border-radius:14px!important;
+    background:rgba(17,24,39,.74)!important
+  }
+
+  #senhasSection .senhas-main-table td,
+  #senhasSection .senhas-status-table td{
+    display:grid!important;grid-template-columns:minmax(110px,36%) minmax(0,1fr)!important;
+    align-items:center!important;gap:8px!important;width:100%!important;max-width:100%!important;
+    min-width:0!important;box-sizing:border-box!important;padding:7px 0!important;border:0!important;
+    white-space:normal!important;overflow:visible!important;text-overflow:clip!important;word-break:break-word!important;
+    font-size:12px!important;line-height:1.25!important
+  }
+
+  #senhasSection .senhas-main-table td::before,
+  #senhasSection .senhas-status-table td::before{
+    content:attr(data-mobile-label);display:block!important;min-width:0!important;color:#94a3b8!important;
+    font-size:10.5px!important;line-height:1.15!important;font-weight:900!important;
+    text-transform:uppercase!important;letter-spacing:.04em!important;white-space:normal!important
+  }
+
+  #senhasSection .senhas-main-table td>*,
+  #senhasSection .senhas-status-table td>*{min-width:0!important;max-width:100%!important;box-sizing:border-box!important}
+
+  #senhasSection .senhas-main-table input,
+  #senhasSection .senhas-main-table select,
+  #senhasSection .senhas-main-table textarea,
+  #senhasSection .senhas-status-table input,
+  #senhasSection .senhas-status-table select,
+  #senhasSection .senhas-status-table textarea{
+    width:100%!important;max-width:100%!important;min-width:0!important;min-height:44px!important;
+    height:auto!important;padding:9px 10px!important;font-size:16px!important;box-sizing:border-box!important
+  }
+
+  #senhasSection .senhas-main-table button,
+  #senhasSection .senhas-main-table .btn,
+  #senhasSection .senhas-status-table button,
+  #senhasSection .senhas-status-table .btn{
+    min-height:44px!important;height:auto!important;max-width:100%!important;padding:9px 10px!important;
+    font-size:12px!important;white-space:normal!important;line-height:1.15!important;touch-action:manipulation!important
+  }
+
+  #senhasSection .senha-inline,
+  #senhasSection .senha-col-acoes,
+  #senhasSection .senha-view-row,
+  #senhasSection .senha-nova-row{display:flex!important;width:100%!important;min-width:0!important;max-width:100%!important;flex-wrap:wrap!important;gap:6px!important}
+
+  #senhasSection .senha-inline input,
+  #senhasSection .senha-view-row input,
+  #senhasSection .senha-nova-row input{width:100%!important;max-width:100%!important;min-width:0!important}
+
+  #senhasSection .ger-filial-grid{grid-template-columns:1fr!important;gap:10px!important}
+  #senhasSection .ger-filial-card .form-grid.bonus{grid-template-columns:1fr!important}
+}
+
+@media (max-width:430px){
+  #senhasSection .senhas-main-table td,
+  #senhasSection .senhas-status-table td{grid-template-columns:1fr!important;gap:4px!important;padding:8px 0!important}
+  #senhasSection .senhas-main-table tr,
+  #senhasSection .senhas-status-table tr{padding:11px!important}
+}
+</style>
+<script>
+/* ===== V10.111 — RÓTULOS MOBILE NAS TABELAS DE SENHAS ===== */
+(function(){
+  const TAG='[V10.111 SENHAS MOBILE]';
+  function clean(v){return String(v||'').replace(/\s+/g,' ').trim()}
+  function apply(){
+    try{
+      document.querySelectorAll('#senhasSection table.senhas-main-table,#senhasSection table.senhas-status-table').forEach(table=>{
+        const heads=[...table.querySelectorAll('thead th')].map(th=>clean(th.textContent));
+        table.querySelectorAll('tbody tr').forEach(tr=>{
+          [...tr.children].forEach((td,i)=>{
+            if(td.tagName!=='TD')return;
+            td.setAttribute('data-mobile-label',heads[i]||td.getAttribute('data-mobile-label')||`Campo ${i+1}`);
+          });
+        });
+      });
+    }catch(e){console.warn(TAG,e)}
+  }
+  apply();setTimeout(apply,250);setTimeout(apply,900);setTimeout(apply,1800);
+  try{
+    const host=document.getElementById('senhasSection');
+    if(host){
+      const obs=new MutationObserver(()=>{clearTimeout(window.__senhaMob111);window.__senhaMob111=setTimeout(apply,60)});
+      obs.observe(host,{childList:true,subtree:true});
+    }
+  }catch(e){}
+  window.mdlRefreshSenhasMobileV10111=apply;
+  console.log(TAG,'ativo');
+})();
+</script>
+
 </body>
 </html>
 """
@@ -26290,3 +26501,5 @@ driver.quit()
 # V10.109_TELEGRAM3H_FILIAIS_GERENTES
 
 # V10.110_AUDITORIA_PROPRIETARIO_COBRANCA_INTERNA
+
+# V10.111_FILTRO_COBRANCA_SENHAS_MOBILE
