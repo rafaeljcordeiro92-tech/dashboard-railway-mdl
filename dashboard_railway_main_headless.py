@@ -38,8 +38,8 @@ URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 BR_TZ = APP_TZ  # V10.106: alias usado pelo histórico operacional V10.104
 
-DASHBOARD_BUILD_VERSION = "V10.112"
-DASHBOARD_BUILD_TAG = "v10112_bonus_gerente_meta_historico"
+DASHBOARD_BUILD_VERSION = "V10.113"
+DASHBOARD_BUILD_TAG = "v10113_comissao_renegociacao_recuperada"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
 # V10.52: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
@@ -885,14 +885,44 @@ def _parse_quitados_xls_180d(caminho_quitados, colmap):
         except Exception:
             dias_atraso_pg = 0
 
+        # V10.113 — identifica renegociação/acordo no próprio relatório de quitados.
+        # O novo título de acordo deve continuar visível mesmo quando pago em dia,
+        # porque a comissão herdará a faixa da cobrança ORIGINAL que gerou o acordo.
+        _forma_v10113 = _limpa(row[colmap["forma_pagamento"]]) if len(row) > colmap["forma_pagamento"] else ""
+        _hist_v10113 = _limpa(row[colmap["historico"]]) if colmap.get("historico") is not None and len(row) > colmap["historico"] else ""
+        _obs_v10113 = _limpa(row[colmap["observacoes"]]) if colmap.get("observacoes") is not None and len(row) > colmap["observacoes"] else ""
+
+        def _norm_reneg_v10113(v):
+            s = unicodedata.normalize("NFKD", str(v or "").upper())
+            s = "".join(c for c in s if not unicodedata.combining(c))
+            return re.sub(r"[^A-Z0-9]+", " ", s).strip()
+
+        _forma_n_v10113 = _norm_reneg_v10113(_forma_v10113)
+        _ctx_n_v10113 = _norm_reneg_v10113(" ".join([_hist_v10113, _obs_v10113]))
+        _is_reneg_titulo_v10113 = bool(
+            re.search(r"\bRENEGOCI", _forma_n_v10113)
+            or re.search(r"\bACORDO\b", _forma_n_v10113)
+            or re.search(r"(^|\s)17($|\s)", _forma_n_v10113)
+        )
+        _ctx_reneg_v10113 = bool(re.search(r"\bRENEGOCI|\bACORDO\b", _ctx_n_v10113))
+        # Quando um título antigo é apenas baixado contabilmente porque virou acordo,
+        # ele NÃO representa dinheiro recebido e não pode gerar comissão.
+        _is_baixa_por_reneg_v10113 = bool(_ctx_reneg_v10113 and not _is_reneg_titulo_v10113)
+
         if dias_atraso_pg >= 60:
             faixa = "grave"
         elif 30 <= dias_atraso_pg < 60:
             faixa = "alerta"
         elif 15 <= dias_atraso_pg < 30:
             faixa = "atencao"
+        elif _is_reneg_titulo_v10113:
+            # Parcela de acordo paga em dia: entra somente para recuperação por renegociação.
+            faixa = "renegociacao"
+        elif _is_baixa_por_reneg_v10113:
+            # Mantém no dataset para conseguirmos reconhecer/ignorar a baixa contábil.
+            faixa = "renegociacao_baixa"
         else:
-            # quitou antes de entrar na regra de cobrança
+            # Quitou antes de entrar na regra de cobrança e não é acordo/renegociação.
             continue
 
         filial_txt = c0
@@ -917,12 +947,20 @@ def _parse_quitados_xls_180d(caminho_quitados, colmap):
             "pago": round(float(pago), 2),
             "dias_atraso_pagamento": dias_atraso_pg,
             "faixa": faixa,
-            "forma_pagamento": _limpa(row[colmap["forma_pagamento"]]) if len(row) > colmap["forma_pagamento"] else "",
+            "forma_pagamento": _forma_v10113,
             "conta_caixa": _limpa(row[colmap["conta_caixa"]]) if len(row) > colmap["conta_caixa"] else "",
+            "historico": _hist_v10113,
+            "observacoes": _obs_v10113,
+            "is_renegociacao_titulo": bool(_is_reneg_titulo_v10113),
+            "is_baixa_por_renegociacao": bool(_is_baixa_por_reneg_v10113),
+            "renegociacao_tipo": "titulo_acordo" if _is_reneg_titulo_v10113 else ("baixa_origem" if _is_baixa_por_reneg_v10113 else ""),
             "origem": "relatorio_quitados_180d",
         })
 
+    _reneg_q_v10113 = sum(1 for x in quitados if x.get("is_renegociacao_titulo"))
+    _baixa_q_v10113 = sum(1 for x in quitados if x.get("is_baixa_por_renegociacao"))
     print(f"✅ Quitados 180d lidos: {len(quitados)} título(s)")
+    print(f"🤝 V10.113 renegociação nos quitados: títulos de acordo pagos={_reneg_q_v10113} | baixas contábeis origem ignoráveis={_baixa_q_v10113}")
     return quitados
 
 
@@ -9935,8 +9973,9 @@ else:
 _quitados_full_v1049 = (quitados_180_info.get('dados') or {}).get('quitados', []) or []
 if DASHBOARD_MODO_LEVE:
     _quitados_keys_v1049 = (
-        'cliente','cpf_cnpj','cpf_cnpj_normalizado','cliente_key','filial','titulo','parcela',
-        'vencimento','pagamento','pago','dias_atraso_pagamento','faixa'
+        'cliente','cpf_cnpj','cpf_cnpj_normalizado','cliente_key','filial','lancamento','titulo','parcela',
+        'vencimento','pagamento','pago','dias_atraso_pagamento','faixa','forma_pagamento',
+        'is_renegociacao_titulo','is_baixa_por_renegociacao','renegociacao_tipo'
     )
     _quitados_lite_v1049 = [
         {k: item.get(k) for k in _quitados_keys_v1049 if item.get(k) not in (None, '')}
@@ -14200,7 +14239,7 @@ function renderCobrancaUsuarioCommission(ent){
   if(!canVerCobrancaUsuarioCommission(ent)) return '';
   const c=calcCobrancaUsuarioCommission(ent), f=c.fx;
   const item=(t,v,extra='')=>`<div class="commission-item unlocked ${extra}"><div class="k">${t}</div><div class="v">${v}</div></div>`;
-  return `<div class="glass panel commission-card"><h3>📲 Comissão de cobrança auditada <span class="note">· print aprovado + baixa do mesmo título</span></h3><div class="commission-grid">${item('Atenção %',String(f.atencao.pct.toFixed(2)).replace('.',',')+'%')}${item('Alerta %',String(f.alerta.pct.toFixed(2)).replace('.',',')+'%')}${item('Grave %',String(f.grave.pct.toFixed(2)).replace('.',',')+'%')}${item('Recebido atenção',R(f.atencao.recebido))}${item('Recebido alerta',R(f.alerta.recebido))}${item('Recebido grave',R(f.grave.recebido))}${item('Comissão atenção',R(f.atencao.comissao))}${item('Comissão alerta',R(f.alerta.comissao))}${item('Comissão grave',R(f.grave.comissao))}${item('Total previsto',R(c.total),'total-final')}${item('Prints aguardando IA',String(c.aguardandoIa))}${item('Auditorias aprovadas',String(c.aprovados))}${item('Aguardando pagamento',String(c.aguardandoPagamento))}${item('Pagamentos conciliados',String(c.pagos))}</div><div class="commission-note">${esc(CONFIG_META?.comissao_pagamento_texto||'A comissão reinicia a cada mês e o pagamento é previsto para o dia 25 do mês seguinte.')} O valor só aparece após auditoria aprovada e conciliação do mesmo CPF/título/parcela.</div></div>`;
+  return `<div class="glass panel commission-card"><h3>📲 Comissão de cobrança auditada <span class="note">· print aprovado + baixa exata ou renegociação paga</span></h3><div class="commission-grid">${item('Atenção %',String(f.atencao.pct.toFixed(2)).replace('.',',')+'%')}${item('Alerta %',String(f.alerta.pct.toFixed(2)).replace('.',',')+'%')}${item('Grave %',String(f.grave.pct.toFixed(2)).replace('.',',')+'%')}${item('Recebido atenção',R(f.atencao.recebido))}${item('Recebido alerta',R(f.alerta.recebido))}${item('Recebido grave',R(f.grave.recebido))}${item('Comissão atenção',R(f.atencao.comissao))}${item('Comissão alerta',R(f.alerta.comissao))}${item('Comissão grave',R(f.grave.comissao))}${item('Total previsto',R(c.total),'total-final')}${item('Prints aguardando IA',String(c.aguardandoIa))}${item('Auditorias aprovadas',String(c.aprovados))}${item('Aguardando pagamento',String(c.aguardandoPagamento))}${item('Pagamentos conciliados',String(c.pagos))}${item('Recuperado via renegociação',R(c.recebidoRenegociacao||0))}${item('Comissão renegociação',R(c.comissaoRenegociacao||0))}</div><div class="commission-note">${esc(CONFIG_META?.comissao_pagamento_texto||'A comissão reinicia a cada mês e o pagamento é previsto para o dia 25 do mês seguinte.')} O valor aparece após auditoria aprovada e baixa exata, ou sobre valores realmente pagos de uma renegociação originada daquela cobrança.</div></div>`;
 }
 
 function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';const c=calcCommissionSummary(ent); const totalLiberado = c.elegivelMercantil && c.elegivelServicos; const totalExibido = totalLiberado ? c.totalPrevisto : 0; const moneyCell=(title,val,locked=false,extra='')=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''} ${extra}"><div class="k">${title}</div><div class="v">${R(val||0)}</div></div>`; const pctCell=(title,val,locked=false)=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''}"><div class="k">${title}</div><div class="v">${String(Number(val||0).toFixed(2)).replace('.',',')}%</div></div>`; return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,c.rentAppliedKey!=='rent48')}${moneyCell('Rentab 52,15%',c.rent52,c.rentAppliedKey!=='rent52')}${moneyCell('Rentab 55,50%',c.rent55,c.rentAppliedKey!=='rent55')}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo comissão mercantil ${pct(c.minVenda)}${ent.type==='filial'?` · mínimo Bônus/Classificação Loja ${pct(c.minBonusGerente||90)}`:''} · mínimo serviços/caminhão ${pct(c.minServico)} · rentab exige cobrança 50% + mercantil ${pct(c.rentMinMercantil)} · prêmio por faixa única (não acumulativo).</div></div>`}
@@ -15368,7 +15407,7 @@ function renderMasterAuditoriaPanel(){
   rows.forEach(a=>{const st=norm(a.status);if(auditNeedsMaster(a))counts.master++;else if(st==='aprovado_ia'||st==='aprovado')counts.auto++;else if(st==='aprovado_manual')counts.aprovadoMaster++;else if(st==='recusado_manual')counts.recusadoMaster++;else counts.processando++;const c=Number(a.custo_total_usd||a?.ia_resultado?.cost_total_usd||0);const dt=String(a.ia_analisado_em||a.updated_at||a.server_time||'');if(dt.slice(0,7)===mes){custoMes+=c;analisadasMes++}if(dt.slice(0,10)===hoje)custoHoje+=c});
   const cards=`<div class="wa-master-grid" style="grid-template-columns:repeat(6,minmax(0,1fr))"><div class="wa-master-card"><div class="k">Decisão MASTER</div><div class="v" style="color:var(--orange)">${counts.master}</div></div><div class="wa-master-card"><div class="k">Aprovadas IA</div><div class="v" style="color:var(--green)">${counts.auto}</div></div><div class="wa-master-card"><div class="k">Aprovadas MASTER</div><div class="v" style="color:var(--green)">${counts.aprovadoMaster}</div></div><div class="wa-master-card"><div class="k">Recusadas MASTER</div><div class="v" style="color:var(--red)">${counts.recusadoMaster}</div></div><div class="wa-master-card"><div class="k">Custo hoje</div><div class="v">US$ ${custoHoje.toFixed(4)}</div></div><div class="wa-master-card"><div class="k">Custo mês</div><div class="v">US$ ${custoMes.toFixed(2)}</div><div class="small muted">${analisadasMes} análise(s)</div></div></div>`;
   const opts=[['pendentes_master','Aguardando decisão MASTER'],['processando','IA processando'],['aprovados','Aprovados'],['recusados','Recusados pelo MASTER'],['todos','Todos']].map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
-  return `<div class="glass panel" style="margin-bottom:18px;border-color:rgba(245,158,11,.30)"><div class="section-head"><div><h2>🧑‍⚖️ Auditoria IA / MASTER</h2><div class="hint">A IA pode aprovar casos claros. Qualquer recusa, divergência de nome/telefone, duplicidade ou suspeita fica pendente para o veredito final do MASTER. A comissão continua exigindo pagamento conciliado do mesmo CPF, título e parcela.</div></div><button class="btn soft" onclick="carregarAuditoriasCobranca(true).then(()=>renderLogsTab())">🔄 Atualizar fila</button></div>${cards}<div class="input-card" style="max-width:360px;margin-bottom:12px"><label>Filtrar auditoria</label><select id="masterAuditFilter" onchange="renderMasterAuditRows()">${opts}</select></div><div id="masterAuditRows"></div></div>`;
+  return `<div class="glass panel" style="margin-bottom:18px;border-color:rgba(245,158,11,.30)"><div class="section-head"><div><h2>🧑‍⚖️ Auditoria IA / MASTER</h2><div class="hint">A IA pode aprovar casos claros. Qualquer recusa, divergência de nome/telefone, duplicidade ou suspeita fica pendente para o veredito final do MASTER. A comissão exige baixa exata do título auditado ou pagamento real de renegociação originada da cobrança; acordo sem pagamento não gera comissão.</div></div><button class="btn soft" onclick="carregarAuditoriasCobranca(true).then(()=>renderLogsTab())">🔄 Atualizar fila</button></div>${cards}<div class="input-card" style="max-width:360px;margin-bottom:12px"><label>Filtrar auditoria</label><select id="masterAuditFilter" onchange="renderMasterAuditRows()">${opts}</select></div><div id="masterAuditRows"></div></div>`;
 }
 function renderMasterAuditRows(){
   const box=document.getElementById('masterAuditRows');if(!box)return;
@@ -21357,6 +21396,9 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
       return rows;
     }
     function calcAuditCommission93(ent){
+      if(typeof window.mdlCommissionRecoverySummaryV10113==='function'){
+        return window.mdlCommissionRecoverySummaryV10113(ent,month93());
+      }
       const fx={atencao:{pct:0,recebido:0,comissao:0},alerta:{pct:0,recebido:0,comissao:0},grave:{pct:0,recebido:0,comissao:0}};
       policy93(ent).forEach(r=>{const k=String(r?.faixa||'').toLowerCase();if(fx[k])fx[k].pct=Number(String(r?.pct||0).replace(',','.'))||0});
       const all=uniqueAudits93((COB_AUDITORIAS||[]).filter(a=>auditMatchesEnt93(a,ent)));
@@ -21403,7 +21445,7 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
       if(!canVerCobrancaUsuarioCommission(ent))return '';
       const c=calcAuditCommission93(ent),f=c.fx;
       const item=(t,v,extra='')=>`<div class="commission-item unlocked ${extra}"><div class="k">${t}</div><div class="v">${v}</div></div>`;
-      return `<div class="glass panel commission-card"><h3>📲 ${esc(title||'Comissão de cobrança auditada')} <span class="note">· evidência aprovada + baixa do mesmo CPF/título/parcela</span></h3><div class="commission-grid">${item('Atenção %',String(f.atencao.pct.toFixed(2)).replace('.',',')+'%')}${item('Alerta %',String(f.alerta.pct.toFixed(2)).replace('.',',')+'%')}${item('Grave %',String(f.grave.pct.toFixed(2)).replace('.',',')+'%')}${item('Recebido atenção',R(f.atencao.recebido))}${item('Recebido alerta',R(f.alerta.recebido))}${item('Recebido grave',R(f.grave.recebido))}${item('Comissão atenção',R(f.atencao.comissao))}${item('Comissão alerta',R(f.alerta.comissao))}${item('Comissão grave',R(f.grave.comissao))}${item('Total previsto',R(c.total),'total-final')}${item('Prints aguardando IA',String(c.aguardandoIa))}${item('Auditorias aprovadas',String(c.aprovados))}${item('Aguardando pagamento',String(c.aguardandoPagamento))}${item('Pagamentos conciliados',String(c.pagos))}</div><div class="commission-note">${esc(CONFIG_META?.comissao_pagamento_texto||'A comissão reinicia a cada mês e o pagamento é previsto para o dia 25 do mês seguinte.')} O gráfico/meta de cobrança é operacional e continua contabilizando os pagamentos da carteira; a comissão só entra após auditoria aprovada e conciliação exata.</div></div>`;
+      return `<div class="glass panel commission-card"><h3>📲 ${esc(title||'Comissão de cobrança auditada')} <span class="note">· evidência aprovada + baixa exata ou recuperação via renegociação</span></h3><div class="commission-grid">${item('Atenção %',String(f.atencao.pct.toFixed(2)).replace('.',',')+'%')}${item('Alerta %',String(f.alerta.pct.toFixed(2)).replace('.',',')+'%')}${item('Grave %',String(f.grave.pct.toFixed(2)).replace('.',',')+'%')}${item('Recebido atenção',R(f.atencao.recebido))}${item('Recebido alerta',R(f.alerta.recebido))}${item('Recebido grave',R(f.grave.recebido))}${item('Comissão atenção',R(f.atencao.comissao))}${item('Comissão alerta',R(f.alerta.comissao))}${item('Comissão grave',R(f.grave.comissao))}${item('Total previsto',R(c.total),'total-final')}${item('Prints aguardando IA',String(c.aguardandoIa))}${item('Auditorias aprovadas',String(c.aprovados))}${item('Aguardando pagamento',String(c.aguardandoPagamento))}${item('Pagamentos conciliados',String(c.pagos))}${item('Recuperado via renegociação',R(c.recebidoRenegociacao||0))}${item('Comissão renegociação',R(c.comissaoRenegociacao||0))}</div><div class="commission-note">${esc(CONFIG_META?.comissao_pagamento_texto||'A comissão reinicia a cada mês e o pagamento é previsto para o dia 25 do mês seguinte.')} O gráfico/meta de cobrança é operacional e continua contabilizando os pagamentos da carteira; a comissão só entra após auditoria aprovada e pagamento conciliado; renegociações só entram quando o valor do novo acordo é efetivamente pago.</div></div>`;
     }
     renderCobrancaUsuarioCommission=window.renderCobrancaUsuarioCommission=function(ent){return renderAuditCommission93(ent,'Comissão de cobrança auditada')};
     renderTerceiroCommission=window.renderTerceiroCommission=function(ent){
@@ -21623,7 +21665,7 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
           ${faixaCard97(src,'atencao','Atenção','var(--yellow)')}
         </div>
         <div class="small muted" style="margin-top:10px">
-          Para crediarista/cobrança terceiro, comissão só é liberada quando houver evidência aprovada e baixa conciliada do mesmo CPF/título/parcela.
+          Para crediarista/cobrança interna, comissão é liberada após evidência aprovada e baixa exata ou sobre valores efetivamente pagos em renegociação originada da cobrança.
         </div>
       </div>`;
     }
@@ -21821,6 +21863,9 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
     }
 
     function auditRowsForEnt97(ent,month){
+      if(typeof window.mdlCommissionRecoveryRowsV10113==='function'){
+        return window.mdlCommissionRecoveryRowsV10113(ent,month);
+      }
       const audits=(COB_AUDITORIAS||[])
         .filter(a=>approved97(a?.status)&&auditMatch97(a,ent))
         .sort((a,b)=>String(a?.server_time||a?.criado_em||'').localeCompare(String(b?.server_time||b?.criado_em||'')));
@@ -21915,6 +21960,8 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
         ['mes','Mês'],['tipo','Tipo'],['usuario','Usuário'],['login','Login'],['filial','Filial'],
         ['faixa','Faixa'],['cliente','Cliente'],['cpf_cnpj','CPF/CNPJ'],['titulo','Título'],['parcela','Parcela'],
         ['vencimento','Vencimento'],['pagamento','Pagamento'],['recebido','Valor recebido'],
+        ['origem_comissao','Origem comissão'],['vinculo_renegociacao','Vínculo renegociação'],
+        ['titulo_cobrado_original','Título cobrado original'],['parcela_cobrada_original','Parcela cobrada original'],
         ['percentual_comissao','% comissão'],['comissao','Comissão'],['auditoria_status','Auditoria'],
         ['auditoria_data','Data auditoria'],['auditoria_id','ID auditoria']
       ];
@@ -21939,7 +21986,7 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
         .sum{font-weight:bold;background:#e2f0d9}
       </style></head><body>
         <h2>Comissões de cobrança auditada e paga</h2>
-        <p>Regra: evidência aprovada + mesmo CPF/título/parcela + pagamento conciliado.</p>
+        <p>Regra: evidência aprovada + baixa exata; se a cobrança originar renegociação, comissão sobre o valor efetivamente pago no novo acordo.</p>
         <table>${trs}</table>
         <br><table>
           <tr><th>Registros</th><th>Total recebido auditado</th><th>Total comissão</th></tr>
@@ -22313,6 +22360,9 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
     // Recebimentos auditados / conciliados
     // --------------------------------------------------------
     function auditPaidRows98(ent,month=month98()){
+      if(typeof window.mdlCommissionRecoveryRowsV10113==='function'){
+        return window.mdlCommissionRecoveryRowsV10113(ent,month);
+      }
       const audits=(COB_AUDITORIAS||[]).filter(a=>approved98(a?.status)&&auditEnt98(a,ent));
       const out=[],used=new Set();
 
@@ -22382,7 +22432,7 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
         ? `<div class="tableish">${rows.map(r=>`<div class="row-item">
             <div class="row-top" style="grid-template-columns:1.4fr .65fr .65fr .65fr .75fr .75fr">
               <div><div class="name">${esc(r.cliente||'')}</div><div class="small muted">${esc(r.cpf_cnpj||'')} · ${esc(r.faixa||'')}</div></div>
-              <div><strong>${esc(r.titulo||'')}</strong><div class="small muted">Título</div></div>
+              <div><strong>${esc(r.titulo||'')}</strong><div class="small muted">${r.origem_comissao==='renegociacao'?'Título do acordo':'Título'}</div>${r.origem_comissao==='renegociacao'?`<div class="small" style="color:var(--amber-300)">🤝 Renegociação originada do título ${esc(r.titulo_cobrado_original||'-')}/${esc(r.parcela_cobrada_original||'-')}</div>`:''}</div>
               <div><strong>${esc(r.parcela||'')}</strong><div class="small muted">Parcela</div></div>
               <div><strong>${br98(r.pagamento)}</strong><div class="small muted">Pagamento</div></div>
               <div><strong style="color:var(--green)">${R(r.recebido)}</strong><div class="small muted">Recebido</div></div>
@@ -22413,7 +22463,7 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
       const item=(k,v,cl='')=>`<div class="commission-item unlocked ${cl}"><div class="k">${k}</div><div class="v">${v}</div></div>`;
       const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista');
       return `<div class="glass panel commission-card">
-        <h3>📲 ${isCred?'Comissão crediarista auditada':'Comissão cobrança interna auditada'} <span class="note">· somente evidência aprovada + baixa exata</span></h3>
+        <h3>📲 ${isCred?'Comissão crediarista auditada':'Comissão cobrança interna auditada'} <span class="note">· evidência aprovada + baixa exata ou renegociação originada da cobrança</span></h3>
         <div class="commission-grid">
           ${item('Atenção %',String(Number(f.atencao?.pct||0).toFixed(2)).replace('.',',')+'%')}
           ${item('Alerta %',String(Number(f.alerta?.pct||0).toFixed(2)).replace('.',',')+'%')}
@@ -22430,7 +22480,7 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
           ${item('Aguardando pagamento',String(c.aguardandoPagamento||0))}
           ${item('Pagamentos conciliados',String(c.pagos||0))}
         </div>
-        <div class="commission-note">O campo Recebido acima NÃO espelha a filial. Ele só soma pagamentos que tenham auditoria aprovada e conciliação do mesmo CPF/título/parcela.</div>
+        <div class="commission-note">O campo Recebido acima NÃO espelha a filial. Ele soma pagamentos com auditoria aprovada por título/parcela e também valores efetivamente pagos em renegociação originada daquela cobrança.</div>
       </div>`;
     };
 
@@ -22680,7 +22730,7 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
       return `<section class="page98">
         <header><div><h1>${xesc98(ent?.nome||r.nome||ent?.filial||'')}</h1><p>${xesc98(ent?.type||r.tipo||'')} · ${xesc98(ent?.filial||r.filial||'')} · ${month98()}</p></div><div class="ver98">Dashboard MDL V10.98</div></header>
         ${body}
-        <footer>Regra cobrança: evidência aprovada + mesmo CPF/título/parcela + pagamento conciliado.</footer>
+        <footer>Regra cobrança: evidência aprovada + baixa exata ou recuperação paga via renegociação.</footer>
       </section>`;
     }
 
@@ -23306,7 +23356,7 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
           pct_caminhao:0,
           bonus:'Não se aplica',
           rentab:'Não se aplica',
-          cobranca:`Comissão somente após evidência aprovada + mesmo CPF/título/parcela pago. Atenção ${pctTxt100(by.atencao||0)} · Alerta ${pctTxt100(by.alerta||0)} · Grave ${pctTxt100(by.grave||0)}`
+          cobranca:`Comissão após evidência aprovada + baixa exata ou recuperação paga via renegociação. Atenção ${pctTxt100(by.atencao||0)} · Alerta ${pctTxt100(by.alerta||0)} · Grave ${pctTxt100(by.grave||0)}`
         };
       }
       const isFil=ent?.type==='filial';
@@ -23329,7 +23379,7 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
         pct_caminhao:Number(c.camPct||0),
         bonus,
         rentab:rent,
-        cobranca:'Cobrança auditada é separada: só gera comissão após evidência aprovada e pagamento conciliado do mesmo CPF/título/parcela.'
+        cobranca:'Cobrança auditada é separada: gera comissão após baixa exata ou sobre valor efetivamente pago em renegociação originada da cobrança.'
       };
     }
     window.mdlCommissionRulesV10100=ruleData100;
@@ -24717,6 +24767,205 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
 })();
 </script>
 
+
+<script>
+/* ===== V10.113 — COMISSÃO POR RECUPERAÇÃO VIA RENEGOCIAÇÃO ===== */
+(function(){
+  const TAG='[V10.113 RENEG COMISSAO]';
+  const FALLBACK_DAYS=30;
+
+  const norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim();
+  const dig=v=>String(v||'').replace(/\D/g,'');
+  const title=v=>{const d=dig(v);return d||String(v||'').trim().toUpperCase()};
+  const parts=v=>(String(v||'').match(/\d+/g)||[]).map(x=>Number(x));
+  const pnorm=v=>parts(v).join('/');
+  const money=v=>Math.round((Number(v||0)+Number.EPSILON)*100)/100;
+  const approved=s=>['aprovado','aprovado_ia','aprovado_manual'].includes(String(s||'').toLowerCase());
+  const rejected=s=>['recusado','recusado_ia','recusado_manual'].includes(String(s||'').toLowerCase());
+  const iso=v=>{try{return dateOnlyISO(v||'')}catch(e){const s=String(v||'').trim();let m=s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);if(m)return `${m[3]}-${m[2]}-${m[1]}`;m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);return m?`${m[1]}-${m[2]}-${m[3]}`:''}};
+  const dayNum=v=>{const s=iso(v);if(!s)return NaN;const [y,m,d]=s.split('-').map(Number);return Date.UTC(y,m-1,d)/86400000};
+  const days=(a,b)=>{const x=dayNum(a),y=dayNum(b);return Number.isFinite(x)&&Number.isFinite(y)?y-x:NaN};
+
+  function policyPct(ent,fx){
+    try{
+      const cfg=commissionCfg(entityConfig(ent));
+      const isCred=!!(ent?.is_crediarista||ent?.type==='crediarista');
+      const isThird=!!(ent?.is_terceiro||ent?.type==='terceiro');
+      let rows=isCred?(cfg.camp_cob_crediarista||[]):isThird?(cfg.camp_cobranca_terceiro||[]):(cfg.camp_cob_usuarios||[]);
+      if(!Array.isArray(rows)||!rows.length){
+        rows=(isCred||isThird)
+          ?[{faixa:'atencao',pct:'1.00'},{faixa:'alerta',pct:'2.00'},{faixa:'grave',pct:'3.00'}]
+          :[{faixa:'atencao',pct:'0.50'},{faixa:'alerta',pct:'1.00'},{faixa:'grave',pct:'2.00'}];
+      }
+      const r=rows.find(x=>String(x?.faixa||'').toLowerCase()===String(fx||'').toLowerCase());
+      return Number(String(r?.pct||0).replace(',','.'))||0;
+    }catch(e){return 0}
+  }
+
+  function auditEnt(a,ent){
+    try{if(typeof cobrancaAuditEntMatch==='function')return !!cobrancaAuditEntMatch(a,ent)}catch(e){}
+    if(ent?.type==='filial')return String(a?.filial||'').toUpperCase()===String(ent?.filial||'').toUpperCase();
+    const login=String(ent?.login||'').toLowerCase();
+    const nome=norm(ent?.nome);
+    return String(a?.usuario_login||'').toLowerCase()===login || norm(a?.usuario_nome||a?.usuario||a?.responsavel)===nome;
+  }
+
+  function sameExact(a,q){
+    const ad=dig(a?.cpf_cnpj),qd=dig(q?.cpf_cnpj_normalizado||q?.cpf_cnpj);
+    if(ad&&qd&&ad!==qd)return false;
+    if(title(a?.titulo)&&title(q?.titulo)&&title(a?.titulo)!==title(q?.titulo))return false;
+    const x=parts(a?.parcela),y=parts(q?.parcela);
+    if(!x.length||!y.length)return String(a?.parcela||'').trim()===String(q?.parcela||'').trim();
+    if(x[0]!==y[0])return false;
+    if(x.length>1&&y.length>1&&x[1]!==y[1])return false;
+    return true;
+  }
+
+  function isRenegTitle(q){
+    if(q?.is_renegociacao_titulo===true || String(q?.is_renegociacao_titulo||'')==='1')return true;
+    const f=norm(q?.forma_pagamento);
+    return /\bRENEGOCI/.test(f)||/\bACORDO\b/.test(f)||/(^| )17($| )/.test(f);
+  }
+  function isAccountingReneg(q){
+    return q?.is_baixa_por_renegociacao===true || String(q?.is_baixa_por_renegociacao||'')==='1' || String(q?.renegociacao_tipo||'')==='baixa_origem';
+  }
+  function auditIntent(a){
+    const ia=(a?.ia_resultado&&typeof a.ia_resultado==='object')?a.ia_resultado:{};
+    if(ia?.intencao_renegociacao===true || String(ia?.intencao_renegociacao||'').toLowerCase()==='true')return true;
+    if(String(ia?.tipo_resposta||a?.tipo_resposta||'').toLowerCase()==='renegociacao_acordo')return true;
+    const text=norm([
+      ia?.resposta_cliente_resumida,ia?.motivo,a?.motivo,a?.master_motivo,
+      ...(Array.isArray(a?.attachments)?a.attachments.map(x=>x?.transcript||''):[])
+    ].join(' '));
+    return /\bRENEGOCI/.test(text)||/\bFAZER ACORDO\b/.test(text)||/\bQUERO ACORDO\b/.test(text)||
+      /\bQUITAR TUDO\b/.test(text)||/\bPAGAR TUDO\b/.test(text)||/\bACERTAR TUDO\b/.test(text)||
+      /\bTODOS OS TITULOS\b/.test(text)||/\bTODA A DIVIDA\b/.test(text)||/\bPARCELAR NOVAMENTE\b/.test(text);
+  }
+
+  function auditDate(a){return iso(a?.server_time||a?.criado_em||a?.ia_analisado_em||a?.updated_at||'')}
+  function payKey(q){return [dig(q?.cpf_cnpj_normalizado||q?.cpf_cnpj),String(q?.lancamento||''),title(q?.titulo),pnorm(q?.parcela),iso(q?.pagamento||q?.data_pagamento||'')].join('|')}
+  function agreementKey(q){
+    const doc=dig(q?.cpf_cnpj_normalizado||q?.cpf_cnpj);
+    const lanc=String(q?.lancamento||'').trim();
+    return [doc,lanc?`L:${lanc}`:`T:${title(q?.titulo)}`].join('|');
+  }
+
+  const originMemo=new Map();
+  function originForReneg(q){
+    const ag=agreementKey(q);
+    if(originMemo.has(ag))return originMemo.get(ag);
+    const doc=dig(q?.cpf_cnpj_normalizado||q?.cpf_cnpj);
+    if(!doc){originMemo.set(ag,null);return null}
+
+    const agreementRows=(QUITADOS_180||[])
+      .filter(x=>isRenegTitle(x)&&agreementKey(x)===ag&&iso(x?.pagamento||x?.data_pagamento||''))
+      .sort((a,b)=>iso(a?.pagamento||a?.data_pagamento||'').localeCompare(iso(b?.pagamento||b?.data_pagamento||'')));
+    const first=agreementRows[0]||q;
+    const firstDate=iso(first?.pagamento||first?.data_pagamento||q?.pagamento||'');
+
+    let cand=(COB_AUDITORIAS||[])
+      .filter(a=>approved(a?.status)&&dig(a?.cpf_cnpj)===doc&&auditDate(a)&&(!firstDate||auditDate(a)<=firstDate))
+      .sort((a,b)=>auditDate(a).localeCompare(auditDate(b)));
+
+    const explicit=cand.filter(a=>auditIntent(a));
+    let chosen=null,method='';
+    if(explicit.length){
+      // Preferimos a manifestação explícita MAIS RECENTE antes do acordo.
+      chosen=explicit[explicit.length-1]; method='intencao_cliente_confirmada';
+    }else{
+      // Legado: auditorias antigas não tinham categoria renegociação.
+      // Fallback conservador: última auditoria aprovada até 30 dias antes do primeiro pagamento.
+      const near=cand.filter(a=>{const d=days(auditDate(a),firstDate);return Number.isFinite(d)&&d>=0&&d<=FALLBACK_DAYS});
+      if(near.length){chosen=near[near.length-1];method=`fallback_${FALLBACK_DAYS}d`;}
+    }
+    const out=chosen?{audit:chosen,method,agreement_key:ag,first_payment:firstDate}:null;
+    originMemo.set(ag,out);
+    return out;
+  }
+
+  function rowsForEnt(ent,month){
+    month=month||(()=>{try{return mesAtualComissao()}catch(e){return new Date().toISOString().slice(0,7)}})();
+    const out=[],used=new Set();
+    const entAudits=(COB_AUDITORIAS||[]).filter(a=>approved(a?.status)&&auditEnt(a,ent));
+
+    // 1) Regra original: mesmo CPF + título + parcela, mas nunca uma baixa meramente contábil de renegociação.
+    for(const a of entAudits){
+      const cand=(QUITADOS_180||[])
+        .filter(q=>sameExact(a,q)&&!isAccountingReneg(q)&&iso(q?.pagamento||q?.data_pagamento||'').slice(0,7)===month)
+        .sort((x,y)=>Number(y?.pago||0)-Number(x?.pago||0));
+      const q=cand[0];
+      if(!q)continue;
+      const pk=payKey(q);if(used.has(pk))continue;used.add(pk);
+      let fx=String(a?.faixa||q?.faixa||'atencao').toLowerCase();if(!['grave','alerta','atencao'].includes(fx))fx='atencao';
+      const recebido=money(q?.pago||0),pctc=policyPct(ent,fx);
+      out.push({
+        key:pk,mes:month,tipo:String(ent?.type||''),usuario:String(ent?.nome||''),login:String(ent?.login||''),filial:String(ent?.filial||''),
+        faixa:fx,cliente:String(a?.cliente||q?.cliente||''),cpf_cnpj:String(a?.cpf_cnpj||q?.cpf_cnpj||''),
+        titulo:String(q?.titulo||a?.titulo||''),parcela:String(q?.parcela||a?.parcela||''),vencimento:String(a?.vencimento||q?.vencimento||''),
+        pagamento:String(q?.pagamento||q?.data_pagamento||''),recebido,pct:pctc,percentual_comissao:pctc,comissao:money(recebido*pctc/100),
+        auditoria_status:String(a?.status||''),audit_id:String(a?.id||a?.audit_id||''),auditoria_id:String(a?.id||a?.audit_id||''),
+        audit_data:String(a?.server_time||a?.criado_em||a?.ia_analisado_em||''),auditoria_data:String(a?.server_time||a?.criado_em||a?.ia_analisado_em||''),
+        origem_comissao:'titulo_auditado',vinculo_renegociacao:'',titulo_cobrado_original:String(a?.titulo||''),parcela_cobrada_original:String(a?.parcela||'')
+      });
+    }
+
+    // 2) Recuperação via renegociação: TODO valor efetivamente pago do NOVO acordo.
+    for(const q of (QUITADOS_180||[])){
+      if(!isRenegTitle(q))continue;
+      if(iso(q?.pagamento||q?.data_pagamento||'').slice(0,7)!==month)continue;
+      const origin=originForReneg(q);
+      if(!origin?.audit || !auditEnt(origin.audit,ent))continue;
+      const pk=payKey(q);if(used.has(pk))continue;used.add(pk);
+      const a=origin.audit;
+      let fx=String(a?.faixa||'atencao').toLowerCase();if(!['grave','alerta','atencao'].includes(fx))fx='atencao';
+      const recebido=money(q?.pago||0);if(recebido<=0)continue;
+      const pctc=policyPct(ent,fx);
+      out.push({
+        key:pk,mes:month,tipo:String(ent?.type||''),usuario:String(ent?.nome||''),login:String(ent?.login||''),filial:String(ent?.filial||''),
+        faixa:fx,cliente:String(q?.cliente||a?.cliente||''),cpf_cnpj:String(q?.cpf_cnpj||a?.cpf_cnpj||''),
+        titulo:String(q?.titulo||''),parcela:String(q?.parcela||''),vencimento:String(q?.vencimento||''),pagamento:String(q?.pagamento||q?.data_pagamento||''),
+        recebido,pct:pctc,percentual_comissao:pctc,comissao:money(recebido*pctc/100),
+        auditoria_status:String(a?.status||''),audit_id:String(a?.id||a?.audit_id||''),auditoria_id:String(a?.id||a?.audit_id||''),
+        audit_data:String(a?.server_time||a?.criado_em||a?.ia_analisado_em||''),auditoria_data:String(a?.server_time||a?.criado_em||a?.ia_analisado_em||''),
+        origem_comissao:'renegociacao',vinculo_renegociacao:origin.method,acordo_key:origin.agreement_key,primeiro_pagamento_acordo:origin.first_payment,
+        titulo_cobrado_original:String(a?.titulo||''),parcela_cobrada_original:String(a?.parcela||''),cliente_cobrado_original:String(a?.cliente||''),
+        forma_pagamento:String(q?.forma_pagamento||''),lancamento_acordo:String(q?.lancamento||'')
+      });
+    }
+
+    return out.sort((a,b)=>iso(b.pagamento).localeCompare(iso(a.pagamento)));
+  }
+
+  function summaryForEnt(ent,month){
+    const fx={atencao:{pct:policyPct(ent,'atencao'),recebido:0,comissao:0},alerta:{pct:policyPct(ent,'alerta'),recebido:0,comissao:0},grave:{pct:policyPct(ent,'grave'),recebido:0,comissao:0}};
+    const rows=rowsForEnt(ent,month);
+    rows.forEach(r=>{const k=fx[r.faixa]?r.faixa:'atencao';fx[k].recebido+=Number(r.recebido||0);fx[k].comissao+=Number(r.comissao||0)});
+    Object.values(fx).forEach(v=>{v.recebido=money(v.recebido);v.comissao=money(v.comissao)});
+    const all=(COB_AUDITORIAS||[]).filter(a=>auditEnt(a,ent));
+    const appr=all.filter(a=>approved(a?.status)),pend=all.filter(a=>!approved(a?.status)&&!rejected(a?.status)),rej=all.filter(a=>rejected(a?.status));
+    const paidAuditIds=new Set(rows.map(r=>String(r.audit_id||r.auditoria_id||'')).filter(Boolean));
+    const reneg=rows.filter(r=>r.origem_comissao==='renegociacao');
+    return {
+      fx,total:money(Object.values(fx).reduce((s,v)=>s+v.comissao,0)),aguardandoIa:pend.length,aprovados:appr.length,recusados:rej.length,
+      aguardandoPagamento:Math.max(0,appr.filter(a=>!paidAuditIds.has(String(a?.id||a?.audit_id||''))).length),pagos:rows.length,liquidadosMesAnterior:0,totalCasos:all.length,
+      renegociacoes:reneg.length,recebidoRenegociacao:money(reneg.reduce((s,r)=>s+Number(r.recebido||0),0)),
+      comissaoRenegociacao:money(reneg.reduce((s,r)=>s+Number(r.comissao||0),0)),rows
+    };
+  }
+
+  window.mdlCommissionRecoveryRowsV10113=rowsForEnt;
+  window.mdlCommissionRecoverySummaryV10113=summaryForEnt;
+  window.mdlRenegOriginV10113=originForReneg;
+
+  // Substitui a fonte pública de comissão depois que todos os módulos antigos já carregaram.
+  window.calcCobrancaAuditadaV1093=function(ent){return summaryForEnt(ent,(()=>{try{return mesAtualComissao()}catch(e){return new Date().toISOString().slice(0,7)}})())};
+  window.calcCobrancaUsuarioCommission=window.calcCobrancaAuditadaV1093;
+  window.mdlAuditPaidRowsV1098=rowsForEnt;
+
+  console.log(TAG,'ativo: pagamento exato + recuperação de acordo paga; baixa contábil de renegociação excluída');
+})();
+</script>
+
 </body>
 </html>
 """
@@ -24939,8 +25188,8 @@ Registro esperado: cliente {cliente}; telefone {telefone}; título {titulo}; par
 Há {sum(1 for x in processed if x['mime'].startswith('image/'))} print(s) e {sum(1 for x in processed if x['mime'].startswith('audio/'))} áudio(s).
 Transcrições: {transcripts if transcripts else 'nenhuma'}.
 Analise os arquivos em conjunto. Aprove somente quando os prints mostram contexto da cobrança e resposta recebida depois da mensagem. Quando houver áudio, confirme que o print mostra mensagem de áudio recebida e que a transcrição é coerente com a conversa. O contato do WhatsApp pode estar salvo com apelido, nome de familiar, empresa ou descrição diferente do cadastro; divergência de nome ou telefone, sozinha, NUNCA deve causar recusa automática. Procure inconsistências de horários, fontes, bolhas, recortes, aplicativos simuladores, manipulação, arquivos de clientes diferentes e sequência temporal impossível.
-A resposta pode validar a cobrança mesmo sem promessa de pagamento, desde que demonstre que o cliente recebeu e compreendeu a cobrança. Qualquer recomendação negativa, duplicidade ou suspeita deve usar revisao_master, pois o veredito final de recusa é exclusivo do MASTER. Classifique também o tipo de resposta.
-Retorne somente JSON: {{"status":"aprovado|revisao_master|recusado","confidence":0.0,"contato_compativel":true,"contexto_cobranca":true,"resposta_cliente":true,"audio_visivel_no_print":true,"ordem_temporal_coerente":true,"sinais_manipulacao":[],"suspeita_app_gerador":false,"resposta_cliente_resumida":"...","tipo_resposta":"promessa_pagamento|pedido_boleto_pix|data_pagamento|negativa|duvida|responsavel_terceiro|ciente_sem_promessa|outro","motivo":"..."}}"""
+A resposta pode validar a cobrança mesmo sem promessa de pagamento, desde que demonstre que o cliente recebeu e compreendeu a cobrança. Qualquer recomendação negativa, duplicidade ou suspeita deve usar revisao_master, pois o veredito final de recusa é exclusivo do MASTER. Classifique também o tipo de resposta. Se o cliente pedir para renegociar, fazer acordo, parcelar novamente, quitar/acertar todos os títulos ou toda a dívida, classifique tipo_resposta como renegociacao_acordo e intencao_renegociacao=true.
+Retorne somente JSON: {{"status":"aprovado|revisao_master|recusado","confidence":0.0,"contato_compativel":true,"contexto_cobranca":true,"resposta_cliente":true,"audio_visivel_no_print":true,"ordem_temporal_coerente":true,"sinais_manipulacao":[],"suspeita_app_gerador":false,"resposta_cliente_resumida":"...","tipo_resposta":"promessa_pagamento|pedido_boleto_pix|data_pagamento|renegociacao_acordo|negativa|duvida|responsavel_terceiro|ciente_sem_promessa|outro","intencao_renegociacao":false,"motivo":"..."}}"""
     content=[{"type":"input_text","text":prompt},*image_contents]
     body={"model":COBRANCA_AUDITORIA_IA_MODEL,"input":[{"role":"user","content":content}],"store":False}
     raw=_http_json_v1067("https://api.openai.com/v1/responses",data=json.dumps(body,ensure_ascii=False).encode("utf-8"),headers={"Authorization":f"Bearer {api_key}","Content-Type":"application/json; charset=utf-8"},timeout=240)
@@ -26747,3 +26996,5 @@ driver.quit()
 # V10.111_FILTRO_COBRANCA_SENHAS_MOBILE
 
 # V10.112_BONUS_GERENTE_META_HISTORICO
+
+# V10.113_COMISSAO_RENEGOCIACAO_RECUPERADA

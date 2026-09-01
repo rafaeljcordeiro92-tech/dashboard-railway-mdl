@@ -1,4 +1,4 @@
-# V10.105 — WORKER LEVE DE AUDITORIA IA
+# V10.113 — WORKER LEVE DE AUDITORIA IA + INTENÇÃO RENEGOCIAÇÃO
 import os
 import sys
 import re
@@ -236,8 +236,8 @@ Registro esperado: cliente {cliente}; telefone {telefone}; título {titulo}; par
 Há {sum(1 for x in processed if x['mime'].startswith('image/'))} print(s) e {sum(1 for x in processed if x['mime'].startswith('audio/'))} áudio(s).
 Transcrições: {transcripts if transcripts else 'nenhuma'}.
 Analise os arquivos em conjunto. Aprove somente quando os prints mostram contexto da cobrança e resposta recebida depois da mensagem. Quando houver áudio, confirme que o print mostra mensagem de áudio recebida e que a transcrição é coerente com a conversa. O contato do WhatsApp pode estar salvo com apelido, nome de familiar, empresa ou descrição diferente do cadastro; divergência de nome ou telefone, sozinha, NUNCA deve causar recusa automática. Procure inconsistências de horários, fontes, bolhas, recortes, aplicativos simuladores, manipulação, arquivos de clientes diferentes e sequência temporal impossível.
-A resposta pode validar a cobrança mesmo sem promessa de pagamento, desde que demonstre que o cliente recebeu e compreendeu a cobrança. Qualquer recomendação negativa, duplicidade ou suspeita deve usar revisao_master, pois o veredito final de recusa é exclusivo do MASTER. Classifique também o tipo de resposta.
-Retorne somente JSON: {{"status":"aprovado|revisao_master|recusado","confidence":0.0,"contato_compativel":true,"contexto_cobranca":true,"resposta_cliente":true,"audio_visivel_no_print":true,"ordem_temporal_coerente":true,"sinais_manipulacao":[],"suspeita_app_gerador":false,"resposta_cliente_resumida":"...","tipo_resposta":"promessa_pagamento|pedido_boleto_pix|data_pagamento|negativa|duvida|responsavel_terceiro|ciente_sem_promessa|outro","motivo":"..."}}"""
+A resposta pode validar a cobrança mesmo sem promessa de pagamento, desde que demonstre que o cliente recebeu e compreendeu a cobrança. Qualquer recomendação negativa, duplicidade ou suspeita deve usar revisao_master, pois o veredito final de recusa é exclusivo do MASTER. Classifique também o tipo de resposta. Se o cliente pedir para renegociar, fazer acordo, parcelar novamente, quitar/acertar todos os títulos ou toda a dívida, classifique tipo_resposta como renegociacao_acordo e intencao_renegociacao=true.
+Retorne somente JSON: {{"status":"aprovado|revisao_master|recusado","confidence":0.0,"contato_compativel":true,"contexto_cobranca":true,"resposta_cliente":true,"audio_visivel_no_print":true,"ordem_temporal_coerente":true,"sinais_manipulacao":[],"suspeita_app_gerador":false,"resposta_cliente_resumida":"...","tipo_resposta":"promessa_pagamento|pedido_boleto_pix|data_pagamento|renegociacao_acordo|negativa|duvida|responsavel_terceiro|ciente_sem_promessa|outro","intencao_renegociacao":false,"motivo":"..."}}"""
     content=[{"type":"input_text","text":prompt},*image_contents]
     body={"model":COBRANCA_AUDITORIA_IA_MODEL,"input":[{"role":"user","content":content}],"store":False}
     raw=_http_json_v1067("https://api.openai.com/v1/responses",data=json.dumps(body,ensure_ascii=False).encode("utf-8"),headers={"Authorization":f"Bearer {api_key}","Content-Type":"application/json; charset=utf-8"},timeout=240)
@@ -315,7 +315,7 @@ def _requeue_stale_v1105(items):
                 action="set_status",
                 id=str(x.get("id") or ""),
                 status="aguardando_ia",
-                motivo="Processamento anterior excedeu 10 minutos; worker V10.105 recolocou na fila.",
+                motivo="Processamento anterior excedeu 10 minutos; worker V10.113 recolocou na fila.",
                 ia_confidence="0",ia_model=COBRANCA_AUDITORIA_IA_MODEL,
                 fraude_suspeita="0",input_tokens="0",output_tokens="0",custo_total_usd="0"
             )
@@ -325,7 +325,7 @@ def _requeue_stale_v1105(items):
     return qtd
 
 def processar_v1105():
-    print("⚡ V10.105 worker auditoria iniciado", flush=True)
+    print("⚡ V10.113 worker auditoria iniciado", flush=True)
     if not COBRANCA_AUDITORIA_IA_ENABLED:
         print("ℹ️ COBRANCA_AUDITORIA_IA_ENABLED=0")
         return 0
@@ -377,7 +377,7 @@ def processar_v1105():
             print(f"⚠️ falha {item.get('id','')}: {type(exc).__name__}: {exc}", flush=True)
             _requeue_failure_v1105(item,exc)
 
-    print(f"✅ worker V10.105 concluído: {processed} processado(s)", flush=True)
+    print(f"✅ worker V10.113 concluído: {processed} processado(s)", flush=True)
     return 0
 
 if __name__=="__main__":
@@ -386,5 +386,7 @@ if __name__=="__main__":
     except SystemExit:
         raise
     except Exception as e:
-        print(f"🚨 worker V10.105 erro fatal: {type(e).__name__}: {e}", flush=True)
+        print(f"🚨 worker V10.113 erro fatal: {type(e).__name__}: {e}", flush=True)
         raise
+
+# V10.113_RENEGOCIACAO_INTENCAO
