@@ -38,8 +38,8 @@ URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 BR_TZ = APP_TZ  # V10.106: alias usado pelo histórico operacional V10.104
 
-DASHBOARD_BUILD_VERSION = "V10.111"
-DASHBOARD_BUILD_TAG = "v10111_filtro_cobranca_senhas_mobile"
+DASHBOARD_BUILD_VERSION = "V10.112"
+DASHBOARD_BUILD_TAG = "v10112_bonus_gerente_meta_historico"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
 # V10.52: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
@@ -5248,7 +5248,7 @@ def _normalizar_config_meta_payload(_data):
         # Formato antigo: o próprio objeto era o global.
         _chaves_global = {
             "grave_pct", "alerta_pct", "atencao_pct", "peso_grave", "peso_alerta", "peso_atencao",
-            "vendas_min_pct", "servicos_min_pct", "gerente_vendas_min_pct", "gerente_servicos_min_pct",
+            "vendas_min_pct", "servicos_min_pct", "gerente_vendas_min_pct", "gerente_servicos_min_pct", "gerente_bonus_min_pct",
             "vendedor_policy", "gerente_policy", "camp_meta_diaria_vend", "camp_meta_diaria_ger",
             "camp_dindin_vend", "camp_dindin_ger", "camp_admin", "comissao_pagamento_texto",
         }
@@ -5266,7 +5266,7 @@ def _config_meta_tem_conteudo(_payload):
         _glob = _payload.get("global") if isinstance(_payload.get("global"), dict) else {}
         _ind = _payload.get("individual") if isinstance(_payload.get("individual"), dict) else {}
         _chaves_criticas = (
-            "comissao_pagamento_texto", "gerente_vendas_min_pct", "gerente_servicos_min_pct",
+            "comissao_pagamento_texto", "gerente_vendas_min_pct", "gerente_servicos_min_pct", "gerente_bonus_min_pct",
             "camp_meta_diaria_vend", "camp_meta_diaria_ger", "vendedor_policy", "gerente_policy",
             "crediaristas_config",
         )
@@ -5367,6 +5367,7 @@ _config_meta_default_global = {
     "servicos_min_pct": 80.0,
     "gerente_vendas_min_pct": 80.0,
     "gerente_servicos_min_pct": 80.0,
+    "gerente_bonus_min_pct": 90.0,
     "vendedor_rentab_min_mercantil_pct": 80.0,
     "gerente_rentab_min_mercantil_pct": 80.0,
     "vendedor_policy": [],
@@ -5444,7 +5445,7 @@ def get_config_meta(key):
             return {**CONFIG_META, **CONFIG_META_IND[ak]}
     return CONFIG_META
 
-print(f"⚙️  Config meta global: Grave={CONFIG_META['grave_pct']}% Alerta={CONFIG_META['alerta_pct']}% Atenção={CONFIG_META['atencao_pct']}% | Pesos: {CONFIG_META['peso_grave']}/{CONFIG_META['peso_alerta']}/{CONFIG_META['peso_atencao']} | Gerente mínimo={CONFIG_META.get('gerente_vendas_min_pct')}%/{CONFIG_META.get('gerente_servicos_min_pct')}% | Comissão texto={CONFIG_META.get('comissao_pagamento_texto')}")
+print(f"⚙️  Config meta global: Grave={CONFIG_META['grave_pct']}% Alerta={CONFIG_META['alerta_pct']}% Atenção={CONFIG_META['atencao_pct']}% | Pesos: {CONFIG_META['peso_grave']}/{CONFIG_META['peso_alerta']}/{CONFIG_META['peso_atencao']} | Gerente comissão={CONFIG_META.get('gerente_vendas_min_pct')}%/{CONFIG_META.get('gerente_servicos_min_pct')}% | bônus loja={CONFIG_META.get('gerente_bonus_min_pct',90)}% | Comissão texto={CONFIG_META.get('comissao_pagamento_texto')}")
 print(f"⚙️  Configs individuais: {len(CONFIG_META_IND)} sobreposições")
 
 # Histórico mensal de comissão de cobrança (pagamento configurável no config_meta.json)
@@ -11894,7 +11895,7 @@ Preparamos condições especiais para você comemorar com a gente.`,reativacao_m
 
 Aqui é da Lojas MDL - Móveis do Lar. Estamos com saudades de você! Faz um tempinho que você não aparece na loja.
 
-Venha conhecer nossas novidades e aproveitar condições especiais que preparamos para nossos clientes.`,peso_grave:60,peso_alerta:30,peso_atencao:10,vendas_min_pct:80,servicos_min_pct:80,gerente_vendas_min_pct:80,gerente_servicos_min_pct:80,vendedor_rentab_min_mercantil_pct:80,gerente_rentab_min_mercantil_pct:80,bonus_50:'',bonus_75:'',bonus_85:'',bonus_100:'',cob_cred_rateio_filial_pct:50,cob_cred_rateio_cred_pct:50,cobranca_global_rateio_pct:20,cobranca_msg_template_terceira:`Olá, {primeiro_nome}. Tudo bem?
+Venha conhecer nossas novidades e aproveitar condições especiais que preparamos para nossos clientes.`,peso_grave:60,peso_alerta:30,peso_atencao:10,vendas_min_pct:80,servicos_min_pct:80,gerente_vendas_min_pct:80,gerente_servicos_min_pct:80,gerente_bonus_min_pct:90,vendedor_rentab_min_mercantil_pct:80,gerente_rentab_min_mercantil_pct:80,bonus_50:'',bonus_75:'',bonus_85:'',bonus_100:'',cob_cred_rateio_filial_pct:50,cob_cred_rateio_cred_pct:50,cobranca_global_rateio_pct:20,cobranca_msg_template_terceira:`Olá, {primeiro_nome}. Tudo bem?
 Aqui é da Lojas MDL - Móveis do Lar.
 
 Já tentamos contato sobre a parcela vencida em {vencimento}, no valor de {valor}, referente ao título {titulo}/{parcela}.
@@ -13642,7 +13643,7 @@ function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';
   const rentNote = c.rentUnlocked
     ? `Rentabilidade atual ${String(Number(c.rentAtual||0).toFixed(2)).replace('.',',')}% · faixa aplicada ${c.rentFaixaTxt}.`
     : `Rentabilidade atual ${String(Number(c.rentAtual||0).toFixed(2)).replace('.',',')}% · bloqueada até bater 50% da meta de cobrança.`;
-  return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,c.rentAppliedKey!=='rent48')}${moneyCell('Rentab 52,15%',c.rent52,c.rentAppliedKey!=='rent52')}${moneyCell('Rentab 55,50%',c.rent55,c.rentAppliedKey!=='rent55')}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo vendas ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)} · rentab exige cobrança 50% + mercantil ${pct(c.rentMinMercantil)} · prêmio por faixa única (não acumulativo). ${rentNote}</div></div>`
+  return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,c.rentAppliedKey!=='rent48')}${moneyCell('Rentab 52,15%',c.rent52,c.rentAppliedKey!=='rent52')}${moneyCell('Rentab 55,50%',c.rent55,c.rentAppliedKey!=='rent55')}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo comissão mercantil ${pct(c.minVenda)}${ent.type==='filial'?` · mínimo Bônus/Classificação Loja ${pct(c.minBonusGerente||90)}`:''} · mínimo serviços/caminhão ${pct(c.minServico)} · rentab exige cobrança 50% + mercantil ${pct(c.rentMinMercantil)} · prêmio por faixa única (não acumulativo). ${rentNote}</div></div>`
 }
 
 function backToMain(){currentDetailRef=null; try{renderLaranjitoNotify()}catch(e){}; detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden')}
@@ -13765,7 +13766,7 @@ const MASCOTE_TRISTE='https://moveisdolar.com.br/colaborador/mascote%20triste1.p
 function mascotByPerc(p){const n=Number(p||0); if(n>=80) return {src:MASCOTE_FELIZ,txt:'Laranjito feliz: meta em ótimo ritmo!'}; if(n>=60) return {src:MASCOTE_PREOC,txt:'Laranjito preocupado: atenção para a meta.'}; return {src:MASCOTE_TRISTE,txt:'Laranjito triste: precisa reagir já!'} }
 function renderMascotStatus(p,label=''){const m=mascotByPerc(p); return `<div class="mascot-status"><img src="${m.src}" alt=""><div><strong>${label?label+': ':''}${m.txt}</strong></div></div>`}
 function renderDualMascotStatus(ent){const metaCob=calcMeta(ent).geral||0; if(ent?.is_terceiro || ent?.type==='terceiro'){return `<div>${renderMascotStatus(metaCob,'Cobrança Interna Global')}</div>`} const vendaRow=(getSalesRows(ent, ent.type==='filial'?'venda_filial_meta':'venda_filial_vendedor_meta')[0])||null; const vendaPerc=salesNum(salesCell(vendaRow,['Atingido Total'])); return `<div>${renderMascotStatus(metaCob,'Cobrança')}${renderMascotStatus(vendaPerc,'Vendas/serviços')}</div>`}
-function salesCfgHeader(ent){const c=calcMeta(ent).cfg||{}; return ent.type==='filial' ? `mín. vendas ${Number(c.gerente_vendas_min_pct||0)}% · mín. serviços ${Number(c.gerente_servicos_min_pct||0)}% · rentab libera com mercantil ${Number(c.gerente_rentab_min_mercantil_pct||80)}%` : `mín. vendas ${Number(c.vendas_min_pct||0)}% · mín. serviços ${Number(c.servicos_min_pct||0)}% · rentab libera com mercantil ${Number(c.vendedor_rentab_min_mercantil_pct||80)}%`}
+function salesCfgHeader(ent){const c=calcMeta(ent).cfg||{}; return ent.type==='filial' ? `mín. comissão mercantil ${Number(c.gerente_vendas_min_pct||80)}% · bônus loja ${Number(c.gerente_bonus_min_pct??90)}% · mín. serviços ${Number(c.gerente_servicos_min_pct||80)}% · rentab libera com mercantil ${Number(c.gerente_rentab_min_mercantil_pct||80)}%` : `mín. vendas ${Number(c.vendas_min_pct||0)}% · mín. serviços ${Number(c.servicos_min_pct||0)}% · rentab libera com mercantil ${Number(c.vendedor_rentab_min_mercantil_pct||80)}%`}
 function rentabilidadeAtualPct(ent){return Number(ent?.rentabilidade_pct||0)}
 function renderRentabilidadeBadge(ent){const r=rentabilidadeAtualPct(ent); const txt=r?`${r.toFixed(2).replace('.',',')}%`:'Sem dado'; return `<div class="rent-badge"><span>📊 Rentabilidade atual</span><strong>${txt}</strong></div>`}
 function renderSalesPanel(ent){const blocks = ent.type==='filial' ? [['venda_filial_meta','📈 Venda · Meta Filial'],['servico_filial_ouro_fob','🛠️ Serviço · Ouro / FOB'],['venda_filial_subgrupo_20k','🚚 Venda · Caminhão 20K / Subgrupo']] : [['venda_filial_vendedor_meta','📈 Venda · Meta Vendedor'],['servico_filial_vendedor_ouro_fob','🛠️ Serviço · Ouro / FOB Vendedor'],['venda_vendedor_subgrupo_20k','🚚 Venda · Caminhão 20K / Subgrupo']]; return `<div class="glass panel sales-panel"><div class="section-head" style="margin:0 0 10px;align-items:flex-start"><div><h3 style="margin:0">💲 Vendas e metas <span class="sales-note">· SGI / mês atual</span></h3><div style="margin-top:8px">${renderRentabilidadeBadge(ent)}</div></div><div class="sales-note" style="text-align:right;max-width:280px">${salesCfgHeader(ent)}</div></div>${renderDualMascotStatus(ent)}<div class="sales-stack">${blocks.map(([k,t])=>renderSalesRows(ent,k,t)).join('')}</div><div style="height:14px"></div>${renderServicosEntidade(ent)}</div>`}
@@ -13823,7 +13824,7 @@ function defaultCampCrediarista(){return [{faixa:'atencao',pct:'1.00'},{faixa:'a
 function defaultCampUsuarios(){return [{faixa:'atencao',pct:'0.50'},{faixa:'alerta',pct:'1.00'},{faixa:'grave',pct:'2.00'}]}
 function renderCommissionPanel(cfg){const pc=commissionCfg(cfg);
 const vendCols=[{key:'faixa1',label:'De'},{key:'faixa2',label:'Até'},{key:'comissao',label:'% Comissão'},{key:'bonus90',label:'Bônus 90%'},{key:'bonus100',label:'Bônus 100%'},{key:'bonus120',label:'Bônus 120%'},{key:'rent48',label:'Rentab 48%'},{key:'rent52',label:'Rentab 52,15%'},{key:'rent55',label:'Rentab 55,50%'},{key:'servico_pct',label:'% Serviços'},{key:'caminhao_pct',label:'% Caminhão'}];
-const gerCols=[{key:'faixa1',label:'De'},{key:'faixa2',label:'Até'},{key:'bonusLoja',label:'Classificação Loja'},{key:'comissao',label:'% Comissão'},{key:'rent48',label:'Rentab 48%'},{key:'rent52',label:'Rentab 52,15%'},{key:'rent55',label:'Rentab 55,50%'},{key:'servico_pct',label:'% Serviços'},{key:'caminhao_pct',label:'% Caminhão'}];
+const gerCols=[{key:'faixa1',label:'De'},{key:'faixa2',label:'Até'},{key:'bonusLoja',label:'Classificação Loja Bônus'},{key:'comissao',label:'% Comissão'},{key:'rent48',label:'Rentab 48%'},{key:'rent52',label:'Rentab 52,15%'},{key:'rent55',label:'Rentab 55,50%'},{key:'servico_pct',label:'% Serviços'},{key:'caminhao_pct',label:'% Caminhão'}];
 const cmdCols=[{key:'dias_uteis',label:'Dias úteis'},{key:'bonus_final',label:'Bônus final'}];
 const cdiCols=[{key:'atingido',label:'Atingiu %'},{key:'extra_pct',label:'Extra % sobre mercantil'}];
 const admCols=[{key:'atingido',label:'Atingiu % total geral'},{key:'extra_pct',label:'Extra % sobre mercantil lojas'},{key:'colaboradores',label:'Nº colaboradores'}];
@@ -13893,12 +13894,15 @@ function calcCommissionSummary(ent){
   let bonusMeta=0;
   let bonusLiberado=false;
   const minVenda = ent.type==='filial' ? Number(cfg.gerente_vendas_min_pct||80) : Number(cfg.vendas_min_pct||80);
+  const minBonusGerente = ent.type==='filial' ? Number(cfg.gerente_bonus_min_pct??90) : 0;
   const minServico = ent.type==='filial' ? Number(cfg.gerente_servicos_min_pct||80) : Number(cfg.servicos_min_pct||80);
   const rentMinMercantil = ent.type==='filial' ? Number(cfg.gerente_rentab_min_mercantil_pct||80) : Number(cfg.vendedor_rentab_min_mercantil_pct||80);
   const rentMin50 = 50;
   const geralMeta = calcMeta(ent).geral||0;
   if(ent.type==='filial'){
-    if(vendaPerc>=minVenda){ bonusMeta=Number(faixa.bonusLoja||0); bonusLiberado=bonusMeta>0; }
+    // V10.112: comissão mercantil e Bônus/Classificação Loja têm travas independentes.
+    // Ex.: comissão pode liberar com 80%, mas bonusLoja somente a partir de 90%.
+    if(vendaPerc>=minBonusGerente){ bonusMeta=Number(faixa.bonusLoja||0); bonusLiberado=bonusMeta>0; }
   } else {
     if(vendaPerc>=120){ bonusMeta=Number(faixa.bonus120||0); bonusLiberado=bonusMeta>0; }
     else if(vendaPerc>=100){ bonusMeta=Number(faixa.bonus100||0); bonusLiberado=bonusMeta>0; }
@@ -13941,7 +13945,7 @@ function calcCommissionSummary(ent){
     rentAtual,rentPremio,rentFaixaTxt,rentAppliedKey,
     totalPrevisto:(vendasComissao+servicosComissao+caminhaoComissao+bonusMeta+rentPremio),
     faixaTxt:`${faixa.faixa1||'-'} até ${faixa.faixa2||'-'}`,
-    metaAtingida,minVenda,minServico,rentMinMercantil,geralMeta
+    metaAtingida,minVenda,minBonusGerente,minServico,rentMinMercantil,geralMeta
   }
 }
 
@@ -14199,7 +14203,7 @@ function renderCobrancaUsuarioCommission(ent){
   return `<div class="glass panel commission-card"><h3>📲 Comissão de cobrança auditada <span class="note">· print aprovado + baixa do mesmo título</span></h3><div class="commission-grid">${item('Atenção %',String(f.atencao.pct.toFixed(2)).replace('.',',')+'%')}${item('Alerta %',String(f.alerta.pct.toFixed(2)).replace('.',',')+'%')}${item('Grave %',String(f.grave.pct.toFixed(2)).replace('.',',')+'%')}${item('Recebido atenção',R(f.atencao.recebido))}${item('Recebido alerta',R(f.alerta.recebido))}${item('Recebido grave',R(f.grave.recebido))}${item('Comissão atenção',R(f.atencao.comissao))}${item('Comissão alerta',R(f.alerta.comissao))}${item('Comissão grave',R(f.grave.comissao))}${item('Total previsto',R(c.total),'total-final')}${item('Prints aguardando IA',String(c.aguardandoIa))}${item('Auditorias aprovadas',String(c.aprovados))}${item('Aguardando pagamento',String(c.aguardandoPagamento))}${item('Pagamentos conciliados',String(c.pagos))}</div><div class="commission-note">${esc(CONFIG_META?.comissao_pagamento_texto||'A comissão reinicia a cada mês e o pagamento é previsto para o dia 25 do mês seguinte.')} O valor só aparece após auditoria aprovada e conciliação do mesmo CPF/título/parcela.</div></div>`;
 }
 
-function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';const c=calcCommissionSummary(ent); const totalLiberado = c.elegivelMercantil && c.elegivelServicos; const totalExibido = totalLiberado ? c.totalPrevisto : 0; const moneyCell=(title,val,locked=false,extra='')=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''} ${extra}"><div class="k">${title}</div><div class="v">${R(val||0)}</div></div>`; const pctCell=(title,val,locked=false)=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''}"><div class="k">${title}</div><div class="v">${String(Number(val||0).toFixed(2)).replace('.',',')}%</div></div>`; return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,c.rentAppliedKey!=='rent48')}${moneyCell('Rentab 52,15%',c.rent52,c.rentAppliedKey!=='rent52')}${moneyCell('Rentab 55,50%',c.rent55,c.rentAppliedKey!=='rent55')}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo vendas ${pct(c.minVenda)} · mínimo serviços/caminhão ${pct(c.minServico)} · rentab exige cobrança 50% + mercantil ${pct(c.rentMinMercantil)} · prêmio por faixa única (não acumulativo).</div></div>`}
+function renderCommissionSummary(ent){if(!canVerComissionamento()) return '';const c=calcCommissionSummary(ent); const totalLiberado = c.elegivelMercantil && c.elegivelServicos; const totalExibido = totalLiberado ? c.totalPrevisto : 0; const moneyCell=(title,val,locked=false,extra='')=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''} ${extra}"><div class="k">${title}</div><div class="v">${R(val||0)}</div></div>`; const pctCell=(title,val,locked=false)=>`<div class="commission-item ${locked?'locked':''} ${!locked?'unlocked':''}"><div class="k">${title}</div><div class="v">${String(Number(val||0).toFixed(2)).replace('.',',')}%</div></div>`; return `<div class="glass panel commission-card"><h3>💵 Comissionamento previsto <span class="note">· calculado pela política salva</span></h3>${c.metaAtingida?`<div class="meta-hit-banner"><img src="${LARANJITO}" alt=""><span>Meta liberada! O Laranjito está comemorando sua liberação de comissão/bonus.</span></div>`:''}<div class="commission-grid">${`<div class="commission-item unlocked"><div class="k">Faixa aplicada</div><div class="v" style="font-size:16px">${esc(c.faixaTxt)}</div></div>`}${pctCell('% comissão mercantil',c.comPerc,!c.elegivelMercantil)}${pctCell('% serviços',c.servPct,!c.elegivelServicos)}${pctCell('% caminhão',c.camPct,!c.elegivelServicos)}${moneyCell('Comissão vendas',c.vendasComissao,!c.elegivelMercantil)}${moneyCell('Comissão serviços',c.servicosComissao,!c.elegivelServicos)}${moneyCell('Comissão caminhão',c.caminhaoComissao,!c.elegivelServicos)}${moneyCell('Bônus por meta',c.bonusMeta,!c.bonusLiberado)}${moneyCell('Rentab 48%',c.rent48,c.rentAppliedKey!=='rent48')}${moneyCell('Rentab 52,15%',c.rent52,c.rentAppliedKey!=='rent52')}${moneyCell('Rentab 55,50%',c.rent55,c.rentAppliedKey!=='rent55')}${moneyCell('Total previsto',totalExibido,!totalLiberado,'total-final '+(!totalLiberado?'total-locked':''))}</div><div class="commission-note">Base mercantil bruta: ${R(c.vendaRealBruto||0)} · Caminhão abatido: ${R(c.camReal||0)} · Mercantil líquido para comissão: ${R(c.vendaReal||0)} · Serviço: ${R(c.servReal||0)}. Mínimo comissão mercantil ${pct(c.minVenda)}${ent.type==='filial'?` · mínimo Bônus/Classificação Loja ${pct(c.minBonusGerente||90)}`:''} · mínimo serviços/caminhão ${pct(c.minServico)} · rentab exige cobrança 50% + mercantil ${pct(c.rentMinMercantil)} · prêmio por faixa única (não acumulativo).</div></div>`}
 function backToMain(){currentDetailRef=null; try{renderLaranjitoNotify()}catch(e){}; detailScreen.classList.add('hidden');document.getElementById('mainScreen').classList.remove('hidden')}
 function renderMetaBox(title,color,obj){return `<div class="meta-card"><div class="meta-title">${title}</div><div class="meta-main" style="color:${color}">${pct(obj.perc||0)}</div><div class="meta-sub">Alvo: ${R(obj.alvo||0)}</div><div class="meta-sub">Recebido: ${R(obj.rec||0)}</div></div>`}
 function renderBonusBox(cfg,geral){const achieved=(geral>=100&&cfg.bonus_100)?100:(geral>=85&&cfg.bonus_85)?85:(geral>=75&&cfg.bonus_75)?75:(geral>=50&&cfg.bonus_50)?50:0; const items=[[50,cfg.bonus_50||'-'],[75,cfg.bonus_75||'-'],[85,cfg.bonus_85||'-'],[100,cfg.bonus_100||'-']];return `<div class="bonus-box"><h4>Faixas configuradas</h4><div class="bonus-list">${items.map(([p,t])=>`<div class="bonus-item ${achieved===p?'active':''}" style="${achieved===p?'box-shadow:0 0 0 2px rgba(59,130,246,.18),0 0 26px rgba(59,130,246,.2);animation:liquid 1.6s ease-in-out infinite alternate':''}"><div class="left"><span>🎯</span><span>${p}%</span></div><div style="display:flex;align-items:center;gap:10px">${achieved===p?`<img src="${LARANJITO}" alt="laranjito" style="width:34px;height:34px;border-radius:10px;object-fit:cover">`:''}<span>${esc(t)}</span></div></div>`).join('')}</div></div>`}
@@ -15087,7 +15091,7 @@ window._configMetaOnlineLoaded=false;
 async function carregarConfigOnline(){try{const r=await fetchComTimeout(API_CFG+'?_='+Date.now(),{},8000); const j=await r.json(); const payload=normalizarConfigMetaPayloadOnline(j); if(payload){CONFIG_META={...CONFIG_META,...(payload.global||{})}; CREDIARISTAS_CONFIG=getCrediaristasConfig(); CONFIG_META_IND=payload.individual||{}; window._configMetaOnlineLoaded=true;}}catch(e){console.log('Falha ao carregar config meta',e);}}
 
 function optionTargets(){let opts=''; flattenFiliais().forEach(f=>{opts+=`<option value="FILIAL::${f.filial}">🏬 ${filialLabel(f.filial)}</option>`}); opts+=`<option value="VEND::${COBRANCA10_NOME}_FTER">🤝 ${COBRANCA10_NOME} (Cobranças Terceiro)</option>`; crediaristaEntities().forEach(c=>{opts+=`<option value="VEND::${c.nome}_${c.filial}">🧾 ${c.nome} (${c.filial})</option>`}); flattenVendedores().forEach(v=>{opts+=`<option value="VEND::${v.nome}_${v.filial}">👤 ${v.nome} (${v.filial})</option>`}); return opts}
-function fillMetaForm(mode,val){const cfg=mode==='global'?{...CONFIG_META}:mergedMetaConfig(metaAliasesFromRaw(val)); ['grave_pct','alerta_pct','atencao_pct','peso_grave','peso_alerta','peso_atencao','bonus_50','bonus_75','bonus_85','bonus_100','vendas_min_pct','servicos_min_pct','gerente_vendas_min_pct','gerente_servicos_min_pct','vendedor_rentab_min_mercantil_pct','gerente_rentab_min_mercantil_pct','cobranca_global_rateio_pct','comissao_pagamento_texto'].forEach(k=>{const el=document.getElementById('cfg_'+k); if(el) el.value=cfg[k]??''}); renderCommissionPanel(cfg)}
+function fillMetaForm(mode,val){const cfg=mode==='global'?{...CONFIG_META}:mergedMetaConfig(metaAliasesFromRaw(val)); ['grave_pct','alerta_pct','atencao_pct','peso_grave','peso_alerta','peso_atencao','bonus_50','bonus_75','bonus_85','bonus_100','vendas_min_pct','servicos_min_pct','gerente_vendas_min_pct','gerente_servicos_min_pct','gerente_bonus_min_pct','vendedor_rentab_min_mercantil_pct','gerente_rentab_min_mercantil_pct','cobranca_global_rateio_pct','comissao_pagamento_texto'].forEach(k=>{const el=document.getElementById('cfg_'+k); if(el) el.value=cfg[k]??''}); renderCommissionPanel(cfg)}
 function canonicalMetaLabelFromKey(k){
   const v=String(k||'').trim();
   if(!v) return '';
@@ -15138,10 +15142,10 @@ function readCrediaristasConfigFromUI(){
   }).filter(r=>r.login&&r.filial&&r.pct>0);
 }
 
-function renderMetasTab(){const cards=[...flattenVendedores(),...flattenFiliais()]; const currentMode=window._metaMode||'global'; const currentTarget=window._metaSelectedTarget||''; metaSection.innerHTML=`<div class="section-head"><div><h2>🎯 Configuração de metas e bônus</h2><div class="hint">Altere globalmente ou por vendedor/filial. Ao salvar, já fica online.</div></div></div><div class="meta-layout"><div class="glass panel"><div class="tabs" style="justify-content:flex-start;margin-top:0"><button id="btnModeGlobal" class="tab" onclick="setMetaMode('global')">🌐 Padrão global</button><button id="btnModeInd" class="tab" onclick="setMetaMode('individual')">👤 Por vendedor/filial</button></div><div id="metaSelectWrap" class="hidden" style="margin:8px 0 14px"><div class="input-card"><label>Selecionar alvo</label><select id="metaTarget" onchange="loadMetaSelected()"><option value="">Selecione...</option>${optionTargets()}</select></div></div><div class="section-head" style="margin-top:10px"><div><h2 style="font-size:18px">% de meta por faixa</h2></div></div><div class="form-grid"><div class="input-card"><label>Grave</label><input id="cfg_grave_pct" type="number" step="0.01"></div><div class="input-card"><label>Alerta</label><input id="cfg_alerta_pct" type="number" step="0.01"></div><div class="input-card"><label>Atenção</label><input id="cfg_atencao_pct" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">Pesos da meta geral</h2></div></div><div class="form-grid"><div class="input-card"><label>Peso Grave</label><input id="cfg_peso_grave" type="number" step="0.01"></div><div class="input-card"><label>Peso Alerta</label><input id="cfg_peso_alerta" type="number" step="0.01"></div><div class="input-card"><label>Peso Atenção</label><input id="cfg_peso_atencao" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">Bônus / mensagem da faixa <span class="note">· Não acumulativo</span></h2></div></div><div class="form-grid bonus"><div class="input-card"><label>50%</label><input id="cfg_bonus_50" placeholder="Ex: Parabéns, você ganhou R$ 100,00"></div><div class="input-card"><label>75%</label><input id="cfg_bonus_75"></div><div class="input-card"><label>85%</label><input id="cfg_bonus_85"></div><div class="input-card"><label>100%</label><input id="cfg_bonus_100"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">💲 Meta mínima Vendas e Serviços</h2><div class="hint">Configuração inicial para comissão de vendedor e gerente/filial.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Vendedor · mínimo vendas (%)</label><input id="cfg_vendas_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Vendedor · mínimo serviços (%)</label><input id="cfg_servicos_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial · mínimo vendas (%)</label><input id="cfg_gerente_vendas_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial · mínimo serviços (%)</label><input id="cfg_gerente_servicos_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Vendedor · mercantil mínimo para rentab (%)</label><input id="cfg_vendedor_rentab_min_mercantil_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial · mercantil mínimo para rentab (%)</label><input id="cfg_gerente_rentab_min_mercantil_pct" type="number" step="0.01" placeholder="80"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🤝 Rateio cobrança interna global</h2><div class="hint">Percentual da carteira D+15 a D+90 distribuído para usuários internos do tipo Cobrança Interna Global (ex.: Cobrança10). Todos os títulos do mesmo cliente seguem juntos. A parceira COB Externa NÃO participa deste percentual: ela recebe somente CPFs elegíveis a partir de D+91.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Cobrança Interna Global (%)</label><input id="cfg_cobranca_global_rateio_pct" type="number" step="0.01" placeholder="20"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🧾 Texto da comissão</h2><div class="hint">Frase exibida no card de comissão de crediaristas/cobrança interna global.</div></div></div><div class="form-grid bonus"><div class="input-card" style="grid-column:1/-1"><label>Mensagem abaixo da comissão</label><input id="cfg_comissao_pagamento_texto" placeholder="Ex: Pagamento previsto para o dia 25 do mês seguinte"></div></div>${renderCrediaristasConfigPanel()}<div id="commissionPanel"></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button class="btn primary" onclick="salvarMeta()">💾 Salvar configuração</button><button class="btn ghost" onclick="removerMetaIndividual()">🗑️ Remover individual</button></div><div id="metaSaveMsg" class="note" style="margin-top:10px"></div><div id="metaSavedList" class="note" style="margin-top:10px"></div></div></div>`; const sel=document.getElementById('metaTarget'); if(sel && currentTarget) sel.value=currentTarget; setMetaMode(currentMode); renderSavedMetaList();}
+function renderMetasTab(){const cards=[...flattenVendedores(),...flattenFiliais()]; const currentMode=window._metaMode||'global'; const currentTarget=window._metaSelectedTarget||''; metaSection.innerHTML=`<div class="section-head"><div><h2>🎯 Configuração de metas e bônus</h2><div class="hint">Altere globalmente ou por vendedor/filial. Ao salvar, já fica online.</div></div></div><div class="meta-layout"><div class="glass panel"><div class="tabs" style="justify-content:flex-start;margin-top:0"><button id="btnModeGlobal" class="tab" onclick="setMetaMode('global')">🌐 Padrão global</button><button id="btnModeInd" class="tab" onclick="setMetaMode('individual')">👤 Por vendedor/filial</button></div><div id="metaSelectWrap" class="hidden" style="margin:8px 0 14px"><div class="input-card"><label>Selecionar alvo</label><select id="metaTarget" onchange="loadMetaSelected()"><option value="">Selecione...</option>${optionTargets()}</select></div></div><div class="section-head" style="margin-top:10px"><div><h2 style="font-size:18px">% de meta por faixa</h2></div></div><div class="form-grid"><div class="input-card"><label>Grave</label><input id="cfg_grave_pct" type="number" step="0.01"></div><div class="input-card"><label>Alerta</label><input id="cfg_alerta_pct" type="number" step="0.01"></div><div class="input-card"><label>Atenção</label><input id="cfg_atencao_pct" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">Pesos da meta geral</h2></div></div><div class="form-grid"><div class="input-card"><label>Peso Grave</label><input id="cfg_peso_grave" type="number" step="0.01"></div><div class="input-card"><label>Peso Alerta</label><input id="cfg_peso_alerta" type="number" step="0.01"></div><div class="input-card"><label>Peso Atenção</label><input id="cfg_peso_atencao" type="number" step="0.01"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">Bônus / mensagem da faixa <span class="note">· Não acumulativo</span></h2></div></div><div class="form-grid bonus"><div class="input-card"><label>50%</label><input id="cfg_bonus_50" placeholder="Ex: Parabéns, você ganhou R$ 100,00"></div><div class="input-card"><label>75%</label><input id="cfg_bonus_75"></div><div class="input-card"><label>85%</label><input id="cfg_bonus_85"></div><div class="input-card"><label>100%</label><input id="cfg_bonus_100"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">💲 Meta mínima Vendas e Serviços</h2><div class="hint">Comissão e bônus do gerente são travas separadas. Ex.: comissão mercantil pode liberar com 80%, enquanto o Bônus/Classificação Loja começa em 90%.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Vendedor · mínimo vendas (%)</label><input id="cfg_vendas_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Vendedor · mínimo serviços (%)</label><input id="cfg_servicos_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial · mínimo vendas para comissão mercantil (%)</label><input id="cfg_gerente_vendas_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial · mínimo mercantil para BÔNUS / Classificação Loja (%)</label><input id="cfg_gerente_bonus_min_pct" type="number" step="0.01" placeholder="90"></div><div class="input-card"><label>Gerente/Filial · mínimo serviços (%)</label><input id="cfg_gerente_servicos_min_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Vendedor · mercantil mínimo para rentab (%)</label><input id="cfg_vendedor_rentab_min_mercantil_pct" type="number" step="0.01" placeholder="80"></div><div class="input-card"><label>Gerente/Filial · mercantil mínimo para rentab (%)</label><input id="cfg_gerente_rentab_min_mercantil_pct" type="number" step="0.01" placeholder="80"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🤝 Rateio cobrança interna global</h2><div class="hint">Percentual da carteira D+15 a D+90 distribuído para usuários internos do tipo Cobrança Interna Global (ex.: Cobrança10). Todos os títulos do mesmo cliente seguem juntos. A parceira COB Externa NÃO participa deste percentual: ela recebe somente CPFs elegíveis a partir de D+91.</div></div></div><div class="form-grid bonus"><div class="input-card"><label>Cobrança Interna Global (%)</label><input id="cfg_cobranca_global_rateio_pct" type="number" step="0.01" placeholder="20"></div></div><div class="section-head" style="margin-top:14px"><div><h2 style="font-size:18px">🧾 Texto da comissão</h2><div class="hint">Frase exibida no card de comissão de crediaristas/cobrança interna global.</div></div></div><div class="form-grid bonus"><div class="input-card" style="grid-column:1/-1"><label>Mensagem abaixo da comissão</label><input id="cfg_comissao_pagamento_texto" placeholder="Ex: Pagamento previsto para o dia 25 do mês seguinte"></div></div>${renderCrediaristasConfigPanel()}<div id="commissionPanel"></div><div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px"><button class="btn primary" onclick="salvarMeta()">💾 Salvar configuração</button><button class="btn ghost" onclick="removerMetaIndividual()">🗑️ Remover individual</button></div><div id="metaSaveMsg" class="note" style="margin-top:10px"></div><div id="metaSavedList" class="note" style="margin-top:10px"></div></div></div>`; const sel=document.getElementById('metaTarget'); if(sel && currentTarget) sel.value=currentTarget; setMetaMode(currentMode); renderSavedMetaList();}
 function setMetaMode(mode){window._metaMode=mode; const bg=document.getElementById('btnModeGlobal'); const bi=document.getElementById('btnModeInd'); if(bg) bg.classList.toggle('active',mode==='global'); if(bi) bi.classList.toggle('active',mode==='individual'); const wrap=document.getElementById('metaSelectWrap'); if(wrap) wrap.classList.toggle('hidden',mode!=='individual'); if(mode==='global'){fillMetaForm('global')} else {const raw=(document.getElementById('metaTarget')?.value)||window._metaSelectedTarget||''; if(raw){window._metaSelectedTarget=raw; fillMetaForm('individual',raw)} else {fillMetaForm('global')}}}
 function loadMetaSelected(){const val=document.getElementById('metaTarget').value; window._metaSelectedTarget=val; if(!val){fillMetaForm('global'); return;} fillMetaForm('individual',val)}
-function collectMetaForm(){const out={}; ['grave_pct','alerta_pct','atencao_pct','peso_grave','peso_alerta','peso_atencao','vendas_min_pct','servicos_min_pct','gerente_vendas_min_pct','gerente_servicos_min_pct','vendedor_rentab_min_mercantil_pct','gerente_rentab_min_mercantil_pct','cobranca_global_rateio_pct'].forEach(k=>out[k]=Number(document.getElementById('cfg_'+k).value||0)); ['bonus_50','bonus_75','bonus_85','bonus_100','comissao_pagamento_texto'].forEach(k=>out[k]=document.getElementById('cfg_'+k)?.value||''); return {...out,crediaristas_config:readCrediaristasConfigFromUI(),...readCommissionPanel()}}
+function collectMetaForm(){const out={}; ['grave_pct','alerta_pct','atencao_pct','peso_grave','peso_alerta','peso_atencao','vendas_min_pct','servicos_min_pct','gerente_vendas_min_pct','gerente_servicos_min_pct','gerente_bonus_min_pct','vendedor_rentab_min_mercantil_pct','gerente_rentab_min_mercantil_pct','cobranca_global_rateio_pct'].forEach(k=>out[k]=Number(document.getElementById('cfg_'+k).value||0)); ['bonus_50','bonus_75','bonus_85','bonus_100','comissao_pagamento_texto'].forEach(k=>out[k]=document.getElementById('cfg_'+k)?.value||''); return {...out,crediaristas_config:readCrediaristasConfigFromUI(),...readCommissionPanel()}}
 async function salvarMeta(){
   const msgEl=document.getElementById('metaSaveMsg');
   const cfg=collectMetaForm();
@@ -23308,9 +23312,10 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
       const isFil=ent?.type==='filial';
       const minV=Number(isFil?cfg.gerente_vendas_min_pct:cfg.vendas_min_pct)||80;
       const minS=Number(isFil?cfg.gerente_servicos_min_pct:cfg.servicos_min_pct)||80;
+      const minB=isFil?Number(cfg.gerente_bonus_min_pct??90):0;
       const minR=Number(isFil?cfg.gerente_rentab_min_mercantil_pct:cfg.vendedor_rentab_min_mercantil_pct)||80;
       const bonus=isFil
-        ? `Bônus da loja é liberado quando o atingimento mercantil chega a ${minV}%; valor depende da faixa de venda realizada.`
+        ? `Bônus/Classificação Loja é liberado quando o atingimento mercantil chega a ${minB}%; a comissão mercantil continua usando seu mínimo próprio de ${minV}%. Valor do bônus depende da faixa de venda realizada.`
         : `Bônus vendedor por atingimento mercantil: faixas de 90%, 100% e 120%, com valor definido pela faixa de venda realizada.`;
       const rent=`Rentabilidade só desbloqueia se Meta Geral da cobrança ≥ 50% E atingimento mercantil ≥ ${minR}%. Depois paga somente a maior faixa atingida: 48%, 52,15% ou 55,50% (não acumulativo).`;
       return {
@@ -23344,6 +23349,7 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
         row.regra_pct_servicos=rr.pct_servicos;
         row.regra_pct_caminhao=rr.pct_caminhao;
         row.regra_bonus=rr.bonus;
+        row.gerente_bonus_min_pct_aplicado=(ent?.type==='filial')?Number((entityConfig(ent)||{}).gerente_bonus_min_pct??90):null;
         row.regra_rentabilidade=rr.rentab;
         row.regra_cobranca_auditada=rr.cobranca;
         return row;
@@ -24472,6 +24478,242 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
   }catch(e){}
   window.mdlRefreshSenhasMobileV10111=apply;
   console.log(TAG,'ativo');
+})();
+</script>
+
+
+<script>
+/* ===== V10.112 — BÔNUS GERENTE SEPARADO + RECÁLCULO HISTÓRICO SEGURO ===== */
+(function(){
+  const TAG='[V10.112 BONUS GERENTE]';
+
+  function n112(v){
+    const x=Number(v);
+    return Number.isFinite(x)?x:0;
+  }
+
+  function isManagerRow112(row){
+    const t=String(row?.tipo||'').toLowerCase();
+    return !row?.cob_only && (t==='filial'||t==='gerente');
+  }
+
+  function entFromHist112(row){
+    try{
+      if(typeof findEntityBySnapshotRow==='function'){
+        const e=findEntityBySnapshotRow(row);
+        if(e) return e.type==='filial'?e:{type:'filial',filial:e.filial||row.filial,nome:e.nome||row.nome};
+      }
+    }catch(e){}
+    return {type:'filial',filial:String(row?.filial||''),nome:String(row?.nome||row?.filial||'Filial')};
+  }
+
+  function rowAting112(row){
+    let p=n112(row?.venda_ating_total ?? row?.venda_atingido_total ?? row?.venda_ating_total_pct);
+    if(p<=0){
+      const meta=n112(row?.venda_meta_total);
+      const real=n112(row?.venda_real_total ?? row?.venda_real);
+      if(meta>0) p=(real/meta)*100;
+    }
+    return p;
+  }
+
+  function correctedHistHtml112(row,month){
+    const ating=rowAting112(row);
+    const rec=row?.recalculo_bonus_v10112||{};
+    const fmtMoney=(v)=>{try{return R(n112(v))}catch(e){return 'R$ '+n112(v).toFixed(2).replace('.',',')}};
+    const fmtPct=(v)=>{try{return pct(n112(v))}catch(e){return n112(v).toFixed(2).replace('.',',')+'%'}};
+    return `<div style="max-width:1080px;margin:0 auto;background:#0d0f14;color:#f3f6ff;font-family:Inter,Arial,sans-serif;padding:22px;border-radius:20px">
+      <div style="border:1px solid #334155;border-radius:16px;padding:16px;margin-bottom:14px;background:#111827">
+        <h1 style="margin:0 0 6px">${esc(row?.nome||row?.filial||'Filial')}</h1>
+        <div style="color:#aeb7ca">Fechamento ${esc(month)} · ${esc(row?.filial||'')} · recálculo V10.112</div>
+      </div>
+      <div style="border:1px solid rgba(245,158,11,.55);background:rgba(245,158,11,.08);border-radius:16px;padding:14px;margin-bottom:14px">
+        <strong>✅ Bônus de gerente recalculado usando somente os números congelados deste mês.</strong>
+        <div style="margin-top:6px;color:#d6d9e0">Comissão mercantil continua com o mínimo próprio. Bônus/Classificação Loja usa ${fmtPct(rec.min_bonus_pct||row?.gerente_bonus_min_pct_aplicado||90)}.</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">
+        ${[
+          ['Venda mercantil congelada',fmtMoney(row?.venda_real_total??row?.venda_real)],
+          ['Atingimento mercantil congelado',fmtPct(ating)],
+          ['Comissão mercantil',fmtMoney(row?.comissao_mercantil??row?.comissao_vendas)],
+          ['Bônus/Classificação Loja',fmtMoney(row?.bonus_meta)],
+          ['Bônus anterior',fmtMoney(rec.bonus_anterior)],
+          ['Total previsto corrigido',fmtMoney(row?.total_previsto)]
+        ].map(([k,v])=>`<div style="background:#111827;border:1px solid #334155;border-radius:14px;padding:13px"><div style="font-size:11px;color:#9ca3af;text-transform:uppercase;font-weight:800">${k}</div><div style="font-size:20px;font-weight:900;margin-top:5px">${v}</div></div>`).join('')}
+      </div>
+      <div style="margin-top:14px;color:#aeb7ca;font-size:12px">O HTML original do fechamento continua preservado no JSON; esta é a visualização corrigida do bônus.</div>
+    </div>`;
+  }
+
+  async function postSnapshot112(month,snap){
+    const fd=new FormData();
+    fd.append('month',month);
+    fd.append('payload',JSON.stringify(snap));
+    const r=await fetch(API_COMIS,{method:'POST',body:fd});
+    const j=await r.json();
+    if(!j?.ok) throw new Error(j?.error||'Falha ao salvar fechamento corrigido');
+    HIST_COMISSAO=j.data||HIST_COMISSAO;
+    return j;
+  }
+
+  window.recalcularBonusGerentesHistoricoV10112=async function(){
+    if(usuarioAtual?.tipo!=='master'){
+      try{toast('Somente o Master pode recalcular fechamento histórico.','warn')}catch(e){}
+      return;
+    }
+    const month=document.getElementById('histComMonth')?.value||'';
+    const snap=HIST_COMISSAO?.months?.[month];
+    if(!month||!snap){
+      try{toast('Selecione um mês já salvo no histórico.','warn')}catch(e){}
+      return;
+    }
+
+    const rows=Array.isArray(snap.entidades)?snap.entidades:[];
+    const managers=rows.filter(isManagerRow112);
+    if(!managers.length){
+      try{toast('Este fechamento não possui linhas de gerente/filial.','warn')}catch(e){}
+      return;
+    }
+
+    const ok=confirm(
+      `Recalcular SOMENTE o Bônus/Classificação Loja dos gerentes em ${month}?\n\n`+
+      `Serão usados os números congelados desse fechamento. Vendas, serviços, cobrança e comissões já salvas NÃO serão substituídos pelos dados do mês atual.`
+    );
+    if(!ok) return;
+
+    let changed=0, skipped=0;
+    const snap2=JSON.parse(JSON.stringify(snap));
+
+    for(const row of (snap2.entidades||[])){
+      if(!isManagerRow112(row)) continue;
+
+      const ent=entFromHist112(row);
+      let cfg={};
+      try{cfg=entityConfig(ent)||{}}catch(e){cfg=CONFIG_META||{}}
+      const minBonus=n112(cfg.gerente_bonus_min_pct??90);
+
+      let cc={};
+      try{cc=commissionCfg(cfg)||{}}catch(e){}
+      const policy=Array.isArray(cc.gerente_policy)?cc.gerente_policy:[];
+      if(!policy.length){
+        skipped++;
+        continue;
+      }
+
+      const bruto=n112(row.venda_real_total??row.venda_real);
+      const cam=n112(row.caminhao_real_total??row.caminhao_real);
+      const liquido=Math.max(0,bruto-cam);
+      const ating=rowAting112(row);
+      const faixa=faixaMatchRealizado(policy,liquido)||{};
+      const oldBonus=n112(row.bonus_meta);
+      const newBonus=ating>=minBonus?n112(faixa.bonusLoja):0;
+      const delta=newBonus-oldBonus;
+
+      row.bonus_meta=newBonus;
+      row.total_previsto=n112(row.total_previsto)+delta;
+      row.gerente_bonus_min_pct_aplicado=minBonus;
+      row.regra_bonus=`Bônus/Classificação Loja liberado com atingimento mercantil ≥ ${String(minBonus).replace('.',',')}%. Comissão mercantil possui trava separada.`;
+      row.recalculo_bonus_v10112={
+        recalculado_em:new Date().toISOString(),
+        month,
+        atingimento_mercantil:ating,
+        venda_liquida_base:liquido,
+        min_bonus_pct:minBonus,
+        bonus_anterior:oldBonus,
+        bonus_corrigido:newBonus,
+        delta
+      };
+      row.html_individual_recalculado_v10112=correctedHistHtml112(row,month);
+      if(Math.abs(delta)>0.0001 || !row.recalculo_bonus_v10112) changed++;
+    }
+
+    snap2.total_previsto=(snap2.entidades||[]).reduce((s,r)=>s+n112(r.total_previsto),0);
+    snap2.recalculo_bonus_gerente_v10112={
+      recalculado_em:new Date().toISOString(),
+      descricao:'Recálculo somente do Bônus/Classificação Loja de gerente/filial usando números congelados do próprio fechamento.',
+      filiais_processadas:managers.length,
+      sem_politica:skipped
+    };
+
+    try{
+      await postSnapshot112(month,snap2);
+      try{toast(`✅ ${month}: bônus dos gerentes recalculado com os números congelados. Filiais ${managers.length}${skipped?` · sem política ${skipped}`:''}.`,'success')}catch(e){}
+      try{renderHistoricoComissaoResults()}catch(e){}
+    }catch(e){
+      console.error(TAG,e);
+      try{toast('Erro ao salvar o recálculo histórico: '+String(e?.message||e),'warn')}catch(_){}
+    }
+  };
+
+  // Não deixa o botão normal "Salvar fechamento" regravar agosto com números de setembro.
+  try{
+    const baseSave112=window.salvarSnapshotComissionamentoMensal||salvarSnapshotComissionamentoMensal;
+    salvarSnapshotComissionamentoMensal=window.salvarSnapshotComissionamentoMensal=async function(auto=false){
+      const month=document.getElementById('histComMonthSave')?.value||mesAtualComissao();
+      const current=mesAtualComissao();
+      if(month!==current){
+        if(!auto){
+          try{toast(`⚠️ ${month} é mês fechado. Para não misturar dados atuais, use “Recalcular bônus gerentes do mês salvo”.`,'warn')}catch(e){}
+        }
+        return {ok:false,blocked_past_month:true};
+      }
+      return baseSave112.apply(this,arguments);
+    };
+  }catch(e){console.warn(TAG,'proteção mês passado',e)}
+
+  // Tela congelada histórica corrigida: original continua preservado, mas a visualização
+  // passa a priorizar a versão recalculada quando houver.
+  try{
+    const baseGet112=window.getSnapshotHtmlFromSelection;
+    window.getSnapshotHtmlFromSelection=function(){
+      try{
+        const month=document.getElementById('histComMonth')?.value||'';
+        const key=document.getElementById('histComEntityView')?.value||'';
+        const row=(HIST_COMISSAO?.months?.[month]?.entidades||[]).find(r=>String(r.key||'')===String(key));
+        if(row?.html_individual_recalculado_v10112){
+          return {ok:true,html:String(row.html_individual_recalculado_v10112),row,month,fonte:'fechamento histórico com bônus gerente recalculado V10.112'};
+        }
+      }catch(e){}
+      return typeof baseGet112==='function'?baseGet112.apply(this,arguments):{ok:false,msg:'Tela não encontrada.'};
+    };
+  }catch(e){}
+
+  function patchHistoryButton112(){
+    try{
+      const box=document.getElementById('histComResults');
+      if(!box||document.getElementById('btnRecalcBonusGer112')) return;
+
+      const month=document.getElementById('histComMonth')?.value||'';
+      const snap=HIST_COMISSAO?.months?.[month];
+      if(!snap) return;
+
+      const panel=document.createElement('div');
+      panel.className='glass panel';
+      panel.id='histBonusRecalcPanel112';
+      panel.style.cssText='margin-bottom:14px;border-color:rgba(245,158,11,.30)';
+      panel.innerHTML=`
+        <div class="section-head" style="margin:0">
+          <div>
+            <h2 style="font-size:18px">🏬 Bônus histórico gerente / filial</h2>
+            <div class="hint">Recalcula somente Bônus/Classificação Loja usando vendas e atingimento já congelados em ${esc(month)}. Não usa os números do mês atual.</div>
+          </div>
+          <button id="btnRecalcBonusGer112" class="btn primary" onclick="recalcularBonusGerentesHistoricoV10112()">🔄 Recalcular bônus gerentes do mês salvo</button>
+        </div>`;
+      box.prepend(panel);
+    }catch(e){console.warn(TAG,'botão histórico',e)}
+  }
+
+  try{
+    const baseRender112=window.renderHistoricoComissaoResults||renderHistoricoComissaoResults;
+    renderHistoricoComissaoResults=window.renderHistoricoComissaoResults=function(){
+      const ret=baseRender112.apply(this,arguments);
+      setTimeout(patchHistoryButton112,40);
+      return ret;
+    };
+  }catch(e){}
+
+  setTimeout(patchHistoryButton112,900);
+  console.log(TAG,'ativo: comissão mercantil e bônus gerente separados; histórico seguro');
 })();
 </script>
 
@@ -26503,3 +26745,5 @@ driver.quit()
 # V10.110_AUDITORIA_PROPRIETARIO_COBRANCA_INTERNA
 
 # V10.111_FILTRO_COBRANCA_SENHAS_MOBILE
+
+# V10.112_BONUS_GERENTE_META_HISTORICO
