@@ -38,8 +38,8 @@ URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 BR_TZ = APP_TZ  # V10.106: alias usado pelo histórico operacional V10.104
 
-DASHBOARD_BUILD_VERSION = "V10.114"
-DASHBOARD_BUILD_TAG = "v10114_contato_alternativo_cobranca"
+DASHBOARD_BUILD_VERSION = "V10.115"
+DASHBOARD_BUILD_TAG = "v10115_corrige_trava_deploy"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
 # V10.52: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
@@ -27033,31 +27033,69 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
     except Exception as e_ver_ftp:
         print(f'⚠️ Erro enviando arquivos de versão: {e_ver_ftp}')
 
+    # ===== V10.115: DEPLOY NÃO PODE TRAVAR POR FALHA NÃO ESSENCIAL =====
+    # Antes, QUALQUER timeout em cópia histórica/relatório datado impedia a publicação
+    # de dashboard_deploy_state.json e deixava todos presos em "Atualizando".
+    #
+    # Agora a liberação depende somente do pacote essencial do Dashboard.
+    _deploy_essential_v10115 = {
+        'dashboard_vendedores.html',
+        'cobrancas_api.php',
+        'cobranca_auditoria_api.php',
+        'cobranca_terceira_api.php',
+        'config_meta_api.php',
+        'mensagens_api.php',
+        'access_guard_api.php',
+        'credenciais_api.php',
+        'historico_api.php',
+        'historico_comissionamento_api.php',
+        'dashboard_version.json',
+    }
+    _ftp_ok_set_v10115 = {str(x or '').strip().lstrip('/') for x in _ftp_ok_v1019}
+    _deploy_missing_essential_v10115 = sorted(
+        x for x in _deploy_essential_v10115
+        if x not in _ftp_ok_set_v10115
+    )
+
     if _ftp_fail_v1019:
-        print(f'⚠️ Upload FTP V10.19 finalizado com {len(_ftp_fail_v1019)} falha(s). HTML/API essenciais já foram tentados primeiro.')
+        print(f'⚠️ Upload FTP V10.19 finalizado com {len(_ftp_fail_v1019)} falha(s).')
         for _nome_fail, _erro_fail in _ftp_fail_v1019[:8]:
             print(f'   - {_nome_fail}: {_erro_fail}')
-    else:
-        # V10.100: marcador de deploy PRONTO é publicado apenas após todos os uploads
-        # essenciais terminarem sem falha. O scheduler usa este arquivo para distinguir
-        # "primeiro MAIN de um novo deploy" de um MAIN normal agendado.
+
+    if not _deploy_missing_essential_v10115:
         try:
-            _deploy_ready_v10100 = {
+            _deploy_ready_v10115 = {
                 'version': DASHBOARD_BUILD_VERSION,
                 'status': 'ready',
                 'completed_at': now_brasilia().isoformat(),
                 'completed_at_label': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'),
-                'scope': 'deploy_first_main_complete'
+                'scope': 'deploy_first_main_complete',
+                'release_rule': 'v10.115_core_ftp_only',
+                'noncritical_failures': len(_ftp_fail_v1019),
             }
-            _ftp_upload_bytes_v1019(
+            _deploy_state_ok_v10115 = _ftp_upload_bytes_v1019(
                 'dashboard_deploy_state.json',
-                json.dumps(_deploy_ready_v10100, ensure_ascii=False, indent=2).encode('utf-8'),
+                json.dumps(_deploy_ready_v10115, ensure_ascii=False, indent=2).encode('utf-8'),
                 label='dashboard_deploy_state.json'
             )
-            print(f"🔓 V10.100 deploy liberado após MAIN/FTP: {DASHBOARD_BUILD_VERSION}")
-        except Exception as _e_deploy_state_v10100:
-            print(f"⚠️ V10.100 falha publicando dashboard_deploy_state.json: {_e_deploy_state_v10100}")
-        print('✅ Upload FTP V10.20 concluído sem falhas → https://moveisdolar.com.br/colaborador/')
+            if _deploy_state_ok_v10115:
+                print(
+                    f"🔓 V10.115 deploy liberado após FTP ESSENCIAL: {DASHBOARD_BUILD_VERSION}"
+                    + (f" | falhas não críticas={len(_ftp_fail_v1019)}" if _ftp_fail_v1019 else "")
+                )
+            else:
+                print('⚠️ V10.115 marcador remoto de deploy não foi publicado; scheduler ainda poderá liberar pelo Exit 0 do MAIN.')
+        except Exception as _e_deploy_state_v10115:
+            print(f"⚠️ V10.115 falha publicando dashboard_deploy_state.json: {_e_deploy_state_v10115}")
+        if _ftp_fail_v1019:
+            print('✅ V10.115: falha(s) NÃO essencial(is) NÃO bloqueiam mais o acesso ao Dashboard.')
+        else:
+            print('✅ Upload FTP essencial + complementar concluído sem falhas.')
+    else:
+        print(
+            '🚨 V10.115 deploy NÃO liberado pelo marcador remoto: '
+            'faltou upload essencial: ' + ', '.join(_deploy_missing_essential_v10115)
+        )
 else:
     print('\nℹ️ FTP não configurado. Envie manualmente:')
     print(f'   {html_path} → {FTP_DIR}/dashboard_vendedores.html')
@@ -27145,3 +27183,5 @@ driver.quit()
 # V10.113_COMISSAO_RENEGOCIACAO_RECUPERADA
 
 # V10.114_CONTATO_ALTERNATIVO_COBRANCA
+
+# V10.115_CORRIGE_TRAVA_DEPLOY_FTP_ESSENCIAL

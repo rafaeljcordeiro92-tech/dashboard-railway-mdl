@@ -118,7 +118,7 @@ _force_main_boot = True
 _force_sales_after_main = False
 
 STATE = {
-    'version': 'V10.114_CONTATO_ALTERNATIVO_COBRANCA',
+    'version': 'V10.115_CORRIGE_TRAVA_DEPLOY',
     'started_at': None,
     'updated_at': None,
     'scheduler': 'starting',
@@ -262,10 +262,12 @@ def finish_if_done(name, proc):
     if key == 'dashboard_completo_cobranca':
         _last_cobranca_end = br_now()
         _display_v10100 = str(STATE['jobs'][key].get('display_name') or '')
-        if code == 0 and STATE.get('deploy_update_active') and 'DEPLOY_V10114' in _display_v10100:
+        _deploy_token_v10115 = 'DEPLOY_' + str(DEPLOY_BUILD_VERSION).replace('.', '').upper()
+        if code == 0 and STATE.get('deploy_update_active') and _deploy_token_v10115 in _display_v10100:
             STATE['deploy_update_active'] = False
             STATE['deploy_update_completed_at'] = iso_now()
-            log('🔓 DEPLOY V10.114 liberado: primeiro MAIN terminou com Exit 0 após publicação FTP. Próximos MAINs normais NÃO bloquearão acessos.')
+            _save_status()
+            log(f'🔓 {DEPLOY_BUILD_VERSION} liberado: primeiro MAIN do deploy terminou com Exit 0. Token={_deploy_token_v10115}.')
     if key == 'cobranca_terceira' and code == 0:
         STATE['last_cob_terceira_date'] = br_now().strftime('%Y-%m-%d')
         _save_status()
@@ -684,7 +686,7 @@ def start_http_panel():
     server.serve_forever()
 
 
-DEPLOY_BUILD_VERSION = "V10.114"
+DEPLOY_BUILD_VERSION = "V10.115"
 DEPLOY_STATE_PUBLIC_URL = "https://moveisdolar.com.br/colaborador/dashboard_deploy_state.json"
 
 def _remote_deploy_version_v10100():
@@ -711,11 +713,15 @@ if _deploy_update_active_v10100:
 else:
     log(f"✅ Reinício sem mudança de versão: {DEPLOY_BUILD_VERSION}. Não haverá bloqueio de acesso.")
 
+# V10.115: segunda via de liberação.
+# Se o MAIN publicar dashboard_deploy_state.json mas algum evento local do scheduler
+# for perdido, o scheduler se recupera sozinho consultando o marcador remoto.
+_last_deploy_remote_recheck_v10115 = 0.0
 
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log(f'VERSAO V10.111: filtro de marcador na cobrança + Senhas mobile + V10.110 preservada | canal={NOTIFICATION_CHANNEL} | manual_only={COB_TERCEIRA_MANUAL_ONLY}')
+log(f'VERSAO V10.115: corrige lock de deploy + V10.114 preservada | canal={NOTIFICATION_CHANNEL} | manual_only={COB_TERCEIRA_MANUAL_ONLY}')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
@@ -727,6 +733,19 @@ while True:
     if cobranca_finished: _force_sales_after_main = True
 
     now = br_now(); maybe_send_daily_summary(now); maybe_send_daily_collection_report(now); maybe_send_collection_progress_3h(now); maybe_send_general_message_alerts(now); maybe_send_meta_diaria_alerts(now); maybe_send_meta_mercantil_100_alerts(now); maybe_send_audit_master_alerts(now)
+
+    # V10.115: auto-heal do lock de deploy a cada ~30s.
+    if STATE.get('deploy_update_active') and (time.time() - _last_deploy_remote_recheck_v10115 >= 30):
+        _last_deploy_remote_recheck_v10115 = time.time()
+        try:
+            _rv115 = _remote_deploy_version_v10100()
+            if _rv115 == DEPLOY_BUILD_VERSION:
+                STATE['deploy_update_active'] = False
+                STATE['deploy_update_completed_at'] = iso_now()
+                _save_status()
+                log(f'🔓 V10.115 auto-heal: marcador remoto já está em {DEPLOY_BUILD_VERSION}; lock removido.')
+        except Exception as _e115:
+            log(f'ℹ️ V10.115 auto-heal deploy: {_e115}')
     STATE['next_daily_lists_label'] = fmt_delta(next_daily_lists_time(now))
     STATE['next_sales_label'] = fmt_delta(next_sales_time(now))
     STATE['next_cobranca_label'] = fmt_delta(next_cobranca_time(now))
@@ -757,7 +776,12 @@ while True:
         _daily = daily_lists_due(now) or FORCE_DAILY_LISTS_ON_BOOT
         if _daily:
             STATE['last_daily_lists_date'] = now.strftime('%Y-%m-%d')
-        _boot_name_v10100 = ('dashboard_completo_cobranca_DEPLOY_V10113' if STATE.get('deploy_update_active') else 'dashboard_completo_cobranca_boot_publica_html') + ('_com_listas_pesadas' if _daily else '')
+        _deploy_token_v10115 = 'DEPLOY_' + str(DEPLOY_BUILD_VERSION).replace('.', '').upper()
+        _boot_name_v10100 = (
+            f'dashboard_completo_cobranca_{_deploy_token_v10115}'
+            if STATE.get('deploy_update_active')
+            else 'dashboard_completo_cobranca_boot_publica_html'
+        ) + ('_com_listas_pesadas' if _daily else '')
         _cobranca_proc=start_job(_boot_name_v10100, COBRANCA_CMD, main_job_env(_daily)); cobranca_running=True
     elif cobranca_ok and not sales_running and not cobranca_running and not cob_terceira_running and _last_cobranca_slot != ckey:
         _last_cobranca_slot=ckey
@@ -827,3 +851,5 @@ while True:
 # V10.113_COMISSAO_RENEGOCIACAO_RECUPERADA
 
 # V10.114_CONTATO_ALTERNATIVO_COBRANCA
+
+# V10.115_CORRIGE_TRAVA_DEPLOY_DINAMICO
