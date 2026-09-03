@@ -38,8 +38,8 @@ URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 BR_TZ = APP_TZ  # V10.106: alias usado pelo histórico operacional V10.104
 
-DASHBOARD_BUILD_VERSION = "V10.113"
-DASHBOARD_BUILD_TAG = "v10113_comissao_renegociacao_recuperada"
+DASHBOARD_BUILD_VERSION = "V10.114"
+DASHBOARD_BUILD_TAG = "v10114_contato_alternativo_cobranca"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
 # V10.52: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
@@ -11763,7 +11763,7 @@ body.inicio-view .kpi .value{font-size:21px!important}
 </div>
 
 <div id="toast" class="toast"></div>
-<div id="phoneModal" class="modal"><div class="glass modal-card"><h3 style="margin:0">Escolher contato</h3><div class="sub">Selecione para abrir o WhatsApp</div><div id="phoneList" class="modal-list"></div><button class="btn soft" style="width:100%;margin-top:10px" onclick="closePhoneModal()">Fechar</button></div></div>
+<div id="phoneModal" class="modal"><div class="glass modal-card" style="width:min(560px,100%)"><h3 id="phoneModalTitle" style="margin:0">Escolher contato</h3><div id="phoneModalSub" class="sub">Selecione para abrir o WhatsApp</div><div id="phoneList" class="modal-list"></div><div class="input-card" style="margin-top:12px"><label>➕ Outro número / número corrigido</label><div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px"><input id="phoneManualInput" inputmode="tel" autocomplete="tel" placeholder="Ex: (42) 99999-9999"><button class="btn primary" onclick="usarNumeroManualPhoneModal()">Abrir WhatsApp</button></div><div class="small muted" style="margin-top:6px">Aceita DDD + telefone ou número com 55. O número digitado fica registrado no histórico do título.</div></div><div id="phoneModalRule" class="note" style="margin-top:10px"></div><button class="btn soft" style="width:100%;margin-top:10px" onclick="closePhoneModal()">Fechar</button></div></div>
 <div id="bellModal" class="modal"><div class="glass modal-card" style="width:min(760px,100%)"><h3 style="margin:0">🔔 Avisos e mensagens</h3><div class="sub">Atualizações enviadas pelo Master para você.</div><div id="bellList" class="modal-list" style="max-height:70vh;overflow:auto"></div><button class="btn soft" style="width:100%;margin-top:10px" onclick="closeBell()">Fechar</button></div></div>
 <div id="firstAccessModal" class="modal"><div class="glass modal-card" style="width:min(560px,100%)"><h3 style="margin:0">🔑 Primeiro acesso / troca de senha</h3><div class="sub">Defina sua nova senha para entrar no dashboard.</div><div class="modal-list"><div class="input-card"><label>Usuário</label><input id="faLogin" placeholder="Ex: joaodasilva"></div><div class="input-card"><label>Senha atual</label><input id="faCurrentPass" type="password" placeholder="Senha atual"></div><div class="input-card"><label>Nova senha</label><input id="faNewPass" type="password" placeholder="Nova senha"></div><div class="input-card"><label>Confirmar nova senha</label><input id="faNewPass2" type="password" placeholder="Confirmar nova senha"></div><div id="faMsg" class="note"></div></div><div style="display:flex;gap:10px;margin-top:10px"><button class="btn primary" style="flex:1" onclick="salvarPrimeiroAcesso()">💾 Salvar nova senha</button><button class="btn soft" style="flex:1" onclick="closeFirstAccess()">Fechar</button></div></div></div>
 <div id="recoverModal" class="modal"><div class="glass modal-card" style="width:min(560px,100%)"><h3 style="margin:0">📩 Recuperar senha</h3><div class="sub">O pedido será enviado para o Master no dashboard e também pode ser registrado em sac@moveisdolar.com.br.</div><div class="modal-list"><div class="input-card"><label>Usuário</label><input id="recLogin" placeholder="Seu usuário"></div><div class="input-card"><label>Nome / observação</label><input id="recObs" placeholder="Ex: sou da filial F4"></div><div id="recMsg" class="note"></div></div><div style="display:flex;gap:10px;margin-top:10px"><button class="btn primary" style="flex:1" onclick="enviarRecuperacaoSenha()">📨 Enviar solicitação</button><button class="btn soft" style="flex:1" onclick="closeRecover()">Fechar</button></div></div></div>
@@ -14408,7 +14408,7 @@ function getCobradosHoje(ent){
   if(ent.type==='terceiro' || ent.is_terceiro){
     const login=String(ent.login||usuarioAtual?.login||COBRANCA10_LOGIN||'cobranca10').toLowerCase();
     const nome=String(ent.nome||'').toLowerCase();
-    return (COB_LOGS||[]).filter(x=>isLogCobrancaReal(x) && isTodayStr(x.server_time||x.data||'') && (
+    return (COB_LOGS||[]).filter(x=>String(x?.acao||'')==='whatsapp' && isLogCobrancaReal(x) && isTodayStr(x.server_time||x.data||'') && (
       String(x.usuario||'').toLowerCase()===login ||
       (!!nome && String(x.usuario||'').toLowerCase()===nome) ||
       String(x.destino_login||'').toLowerCase()===login
@@ -14418,13 +14418,13 @@ function getCobradosHoje(ent){
     const credLogin=String(ent.login||'').toLowerCase();
     const credNome=String(ent.nome||'').toLowerCase();
     const credFilial=String(ent.filial||'').toUpperCase();
-    return (COB_LOGS||[]).filter(x=>isLogCobrancaReal(x) && isTodayStr(x.server_time||x.data||'') && (
+    return (COB_LOGS||[]).filter(x=>String(x?.acao||'')==='whatsapp' && isLogCobrancaReal(x) && isTodayStr(x.server_time||x.data||'') && (
       String(x.usuario||'').toLowerCase()===credLogin ||
       String(x.usuario||'').toLowerCase()===credNome ||
       (String(x.filial||'').toUpperCase()===credFilial && String(x.destino_tipo||'').toLowerCase()==='crediarista')
     ));
   }
-  return (COB_LOGS||[]).filter(x=>isLogCobrancaReal(x) && isTodayStr(x.server_time||x.data||'') && String(x.filial||'')===String(ent.filial||'') && (ent.type==='filial' || String(x.destino_nome||'')===String(ent.nome||'')));
+  return (COB_LOGS||[]).filter(x=>String(x?.acao||'')==='whatsapp' && isLogCobrancaReal(x) && isTodayStr(x.server_time||x.data||'') && String(x.filial||'')===String(ent.filial||'') && (ent.type==='filial' || String(x.destino_nome||'')===String(ent.nome||'')));
 }
 
 const DEFAULT_COBRANCA_TEMPLATE_ATENCAO = `Olá, {primeiro_nome} tudo bem?
@@ -14540,6 +14540,55 @@ function cobStatusTitulo(reg,ent=null){
     proxima_tentativa: qtd+1
   };
 }
+
+// ===== V10.114: CONTATOS ALTERNATIVOS SEM CRIAR NOVA COBRANÇA =====
+function cobLogsContatoTitulo(reg,ent=null){
+  return (COB_LOGS||[]).filter(x=>{
+    const ac=String(x?.acao||'');
+    return (ac==='whatsapp'||ac==='whatsapp_alternativo') && sameCobTitle(x,reg) && entMatchesCobLog(x,ent);
+  }).sort((a,b)=>(parseCobDate(a.server_time||a.data)||0)-(parseCobDate(b.server_time||b.data)||0));
+}
+function cobNumeroNormalizadoV10114(value){
+  let d=String(value||'').replace(/\D/g,'');
+  if(d.startsWith('00')) d=d.slice(2);
+  if(d.length===10||d.length===11) d='55'+d;
+  if(!/^55\d{10,11}$/.test(d)) return '';
+  return d;
+}
+function cobNumeroExibicaoV10114(value){
+  const d=cobNumeroNormalizadoV10114(value);
+  if(!d) return String(value||'');
+  const n=d.slice(2);
+  if(n.length===11) return `(${n.slice(0,2)}) ${n.slice(2,7)}-${n.slice(7)}`;
+  return `(${n.slice(0,2)}) ${n.slice(2,6)}-${n.slice(6)}`;
+}
+function cobTelefonesContextoV10114(reg,entRef){
+  const cadastro=normalizarListaTelefones((reg?.telefones&&reg.telefones.length)?reg.telefones:reg?.contato);
+  const logs=cobLogsContatoTitulo(reg,entRef);
+  const usados=new Set();
+  const historicos=[];
+  logs.forEach(x=>{
+    const n=cobNumeroNormalizadoV10114(x?.telefone);
+    if(n){usados.add(n);historicos.push(n)}
+  });
+  const todos=[]; const seen=new Set();
+  [...cadastro,...historicos].forEach(x=>{const n=cobNumeroNormalizadoV10114(x);if(n&&!seen.has(n)){seen.add(n);todos.push(n)}});
+  return {cadastro,todos,usados,logs};
+}
+function cobContatoResumoV10114(reg,entRef){
+  const ctx=cobTelefonesContextoV10114(reg,entRef);
+  if(!ctx.logs.length) return '';
+  const itens=ctx.logs.map(x=>{
+    const alt=String(x?.acao||'')==='whatsapp_alternativo';
+    return `${alt?'📞 extra':'💬 cobrança'} ${cobNumeroExibicaoV10114(x?.telefone)}${String(x?.numero_origem||'')==='manual'?' (manual)':''}`;
+  });
+  return `<div class="small muted" style="margin-top:5px">Contatos já utilizados: ${esc(itens.join(' · '))}</div>`;
+}
+function cobTelefoneJaUsadoV10114(reg,entRef,numero){
+  const n=cobNumeroNormalizadoV10114(numero); if(!n)return false;
+  return cobTelefonesContextoV10114(reg,entRef).usados.has(n);
+}
+
 function cobrancaTemplateTerceiraAtual(){
   return String(CONFIG_META?.cobranca_msg_template_terceira || `Olá, {primeiro_nome}. Tudo bem?
 Aqui é da Lojas MDL - Móveis do Lar.
@@ -14651,9 +14700,9 @@ function renderMeuNomeCobrador(ent){
   return `<div class="glass panel cobrador-name-panel"><div><strong>👤 Nome do cobrador nas mensagens</strong><div class="small muted">Salve apenas seu primeiro nome. Você pode conferir e alterar quando necessário.</div></div><div class="cobrador-name-actions"><input id="meuNomeCobrador" value="${esc(nome)}" placeholder="Ex: Dani"><button class="btn primary" onclick='salvarMeuNomeCobrador(${JSON.stringify({login:ent.login||'',filial:ent.filial||'',nome:ent.nome||''})})'>💾 Salvar nome</button></div></div>`;
 }
 
-function montarMensagemCobranca(reg){
+function montarMensagemCobranca(reg,opts={}){
   const st=reg?._cob_status||cobStatusTitulo(reg, phoneContext?.entRef||null);
-  const tentativa=Number(st?.proxima_tentativa||1);
+  const tentativa=Number(opts?.tentativaOverride ?? st?.proxima_tentativa ?? 1);
   const faixa=cobrancaFaixaNormalizada(reg);
   let tpl=(tentativa>=3)?cobrancaTemplateTerceiraAtual():cobrancaTemplateFaixaAtual(faixa);
   const dados={
@@ -14799,7 +14848,7 @@ function cobRetornoMatch(r,q){
   return nome.includes(nq) || titulo.includes(nq) || parcela===nq || (qd.length>=3 && cpf.includes(qd));
 }
 function cobRetornoResultRow(r,entRef){
-  return `<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div>${r.cpf_cnpj?`<div class="small muted">🪪 CPF/CNPJ: <strong>${esc(r.cpf_cnpj)}</strong></div>`:''}<div class="small muted">Título <strong>${esc(r.titulo||'')}</strong> · parcela ${esc(r.parcela||'')} · ${esc(r.faixa_label||'')}</div></div><div>${printAuditBox(r,entRef)}</div></div></div>`;
+  return `<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div>${r.cpf_cnpj?`<div class="small muted">🪪 CPF/CNPJ: <strong>${esc(r.cpf_cnpj)}</strong></div>`:''}<div class="small muted">Título <strong>${esc(r.titulo||'')}</strong> · parcela ${esc(r.parcela||'')} · ${esc(r.faixa_label||'')}</div>${cobContatoResumoV10114(r,entRef)}</div><div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">${printAuditBox(r,entRef)}<button class="btn soft" onclick='abrirOutroNumero(${JSON.stringify(r)},${JSON.stringify(entRef)})'>📞 Outro número</button></div></div></div>`;
 }
 function cobRetornoFiltered(id){
   const cfg=COB_RETORNO_SEARCH[id]; if(!cfg)return [];
@@ -14871,12 +14920,16 @@ function renderCobrancasEnt(ent){
     const statusChip = retry
       ? `<span class="cob-retry-chip">🔁 Cobrar novamente · ${tentativa}ª tentativa</span>`
       : (cobrado ? `<span class="cob-history-chip">🕒 Cobrado ${st.qtd}x</span>` : '');
+    const entRefContato={type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||'',is_terceiro:!!ent.is_terceiro,is_crediarista:!!ent.is_crediarista};
     const info = cobrado
-      ? `<div class="cob-info-box ${bloqueado?'waiting':''}">${retry?'⚠️ Cliente já foi cobrado e não pagou em 3 dias.':'✅ Cliente cobrado recentemente.'} Última cobrança: <strong>${esc(st.ultima_fmt||'')}</strong> · Total de cobranças: <strong>${st.qtd||0}</strong>${tentativa>=3?' · A próxima mensagem será a <strong>Terceira Mensagem de Cobrança</strong>.':''}</div>`
+      ? `<div class="cob-info-box ${bloqueado?'waiting':''}">${retry?'⚠️ Cliente já foi cobrado e não pagou em 3 dias.':'✅ Cliente cobrado recentemente.'} Última cobrança oficial: <strong>${esc(st.ultima_fmt||'')}</strong> · Total de cobranças oficiais: <strong>${st.qtd||0}</strong>${tentativa>=3?' · A próxima cobrança oficial será a <strong>Terceira Mensagem de Cobrança</strong>.':''}${cobContatoResumoV10114(r,entRefContato)}</div>`
+      : '';
+    const altBtn=(cobrado&&!st.pago)
+      ? `<button class="btn soft" style="margin-top:6px" onclick='abrirOutroNumero(${JSON.stringify(r)}, ${JSON.stringify(entRefContato)})'>📞 Outro número</button>`
       : '';
     const btn = bloqueado
-      ? `<button class="btn soft" title="Só volta para cobrança após 3 dias sem pagamento" disabled>⏳ Aguardando 3 dias</button>`
-      : `<button class="btn wa" onclick='abrirWhats(${JSON.stringify(r)}, ${JSON.stringify({type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||''})})'>💬 ${retry?'Cobrar novamente':'WhatsApp'}</button>`;
+      ? `<div><button class="btn soft" title="A cobrança oficial só volta após 3 dias sem pagamento" disabled>⏳ Aguardando 3 dias</button>${altBtn}</div>`
+      : `<div><button class="btn wa" onclick='abrirWhats(${JSON.stringify(r)}, ${JSON.stringify(entRefContato)})'>💬 ${retry?'Cobrar novamente':'WhatsApp'}</button>${altBtn}</div>`;
     return `<div class="row-item ${retry?'retry-due':''}"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')} ${r.novo?'<span class="mini-chip" style="margin-left:6px;background:#eef7ff;color:#1e3a8a;border-color:#93c5fd">Novo hoje</span>':''} ${statusChip}</div>${info}${r.cpf_cnpj?`<div class="small muted">🪪 CPF/CNPJ: <strong>${esc(r.cpf_cnpj)}</strong></div>`:''}<div class="small muted">✍️ Avalista: ${esc((r.avalista && String(r.avalista).toLowerCase()!=='nan')?r.avalista:'Sem Aval')}</div>${(r.avalista && String(r.avalista).toLowerCase()!=='nan')?'<div class="small avalista-alert">⚠️ Atenção, lembre de cobrar o AVALISTA</div>':''}<div class="small muted">🔒 Restrição crédito: ${/sem restr/i.test(String(r.restricao||''))?`<span class="restr-ok">${esc(r.restricao||'Sem Restrição')}</span>`:esc(r.restricao||'Sem informação')}</div><div class="small muted">👤 ${esc(r.vendedor||'')}</div><div class="small muted">☎️ ${esc(Array.isArray(r.telefones)?r.telefones.join(', '):(r.contato||''))}</div></div><div><strong>${esc(r.titulo||'')}</strong><div class="small muted">Título</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${R(r.pendente||0)}</strong><div class="small muted">Pendente</div></div><div>${showFaixa?`<div class="small muted">${esc(r.faixa_label||'')}</div>`:''}${btn}</div></div></div>`;
   };
   const renderRows=(arr,showFaixa,datasetName)=>{
@@ -14900,7 +14953,7 @@ function renderCobrancasEnt(ent){
 
   const cobradosRows=(cobradosHoje||[]).map(x=>{
     const m=srcAll.find(r=>cobrancaRowKey(r)===cobrancaRowKey(x))||{};
-    return decorateRow({cliente:x.cliente,titulo:x.titulo,parcela:x.parcela,vencimento:x.vencimento,pendente:x.pendente,vendedor:x.usuario||m.vendedor||'',dias:m.dias||'',telefones:Array.isArray(m.telefones)&&m.telefones.length?m.telefones:[x.telefone],contato:m.contato||x.telefone,avalista:m.avalista||'',restricao:m.restricao||'',faixa_label:m.faixa||'',novo:false,pagamento:m.pagamento||'',lancamento:m.lancamento||''});
+    return decorateRow({cliente:x.cliente||m.cliente||'',cpf_cnpj:x.cpf_cnpj||m.cpf_cnpj||'',cpf_cnpj_normalizado:x.cpf_cnpj_normalizado||m.cpf_cnpj_normalizado||'',cliente_key:x.cliente_key||m.cliente_key||'',cliente_key_legacy:x.cliente_key_legacy||m.cliente_key_legacy||'',cobranca_key:x.cobranca_key||m.cobranca_key||'',cobranca_key_doc:x.cobranca_key_doc||m.cobranca_key_doc||'',owner_key:x.owner_key||m.owner_key||'',titulo:x.titulo,titulo_key:m.titulo_key||'',titulo_key_doc:m.titulo_key_doc||'',parcela:x.parcela,vencimento:x.vencimento,pendente:x.pendente,vendedor:x.usuario||m.vendedor||'',dias:m.dias||'',telefones:Array.isArray(m.telefones)&&m.telefones.length?m.telefones:[x.telefone],contato:m.contato||x.telefone,avalista:m.avalista||'',restricao:m.restricao||'',faixa_label:m.faixa||'',faixa:m.faixa||'',novo:false,pagamento:m.pagamento||'',lancamento:m.lancamento||'',filial:m.filial||x.filial||''});
   });
   const auditEntRef={type:ent.type,filial:ent.filial,nome:ent.nome,login:ent.login||'',is_terceiro:!!ent.is_terceiro,is_crediarista:!!ent.is_crediarista};
   const retornoRows=aguardando.filter(r=>!auditoriaDoTitulo(r,auditEntRef));
@@ -14918,13 +14971,88 @@ function renderCobrancasEnt(ent){
   aguardando.forEach(r=>exportRows.push(mdlCobExportRow(r,'Aguardando 3 dias')));
   mdlRegisterExport(exportId, 'Relatorio de cobrancas - '+(ent?.nome||ent?.filial||'usuario'), exportRows);
 
-  return `${renderMeuNomeCobrador(ent)}<div style="display:flex;justify-content:flex-end;margin:0 0 10px">${mdlExportButtons(exportId)}</div>${tabs}<div class="cob-pane" data-cobpane="geral">${geral}</div><div class="cob-pane hidden" data-cobpane="novos">${renderRows(allHoje.map(r=>decorateRow({...r,faixa_label:r.faixa||''})).filter(shouldShowInGeral),true,'novos')}</div><div class="cob-pane hidden" data-cobpane="cobrados">${renderRows(cobradosRows,true,'cobrados')}</div><div class="cob-pane hidden" data-cobpane="retorno">${retornoRows.length?cobRetornoSearchBox(retornoSearchId,retornoRows.length):'<div class="empty">Nenhuma cobrança aguardando print de retorno.</div>'}</div><div class="cob-pane hidden" data-cobpane="auditoria">${auditoriaRows.length?auditoriaRows.map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · parcela ${esc(r.parcela||'')}</div></div><div>${printAuditBox(r,auditEntRef)}</div></div></div>`).join(''):'<div class="empty">Nenhum print enviado para auditoria.</div>'}</div><div class="cob-pane hidden" data-cobpane="aguardando">${renderRows(aguardando,true,'aguardando')}</div>`;
+  return `${renderMeuNomeCobrador(ent)}<div style="display:flex;justify-content:flex-end;margin:0 0 10px">${mdlExportButtons(exportId)}</div>${tabs}<div class="cob-pane" data-cobpane="geral">${geral}</div><div class="cob-pane hidden" data-cobpane="novos">${renderRows(allHoje.map(r=>decorateRow({...r,faixa_label:r.faixa||''})).filter(shouldShowInGeral),true,'novos')}</div><div class="cob-pane hidden" data-cobpane="cobrados">${renderRows(cobradosRows,true,'cobrados')}</div><div class="cob-pane hidden" data-cobpane="retorno">${retornoRows.length?cobRetornoSearchBox(retornoSearchId,retornoRows.length):'<div class="empty">Nenhuma cobrança aguardando print de retorno.</div>'}</div><div class="cob-pane hidden" data-cobpane="auditoria">${auditoriaRows.length?auditoriaRows.map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · parcela ${esc(r.parcela||'')}</div>${cobContatoResumoV10114(r,auditEntRef)}</div><div style="display:flex;gap:8px;flex-wrap:wrap">${printAuditBox(r,auditEntRef)}<button class="btn soft" onclick='abrirOutroNumero(${JSON.stringify(r)},${JSON.stringify(auditEntRef)})'>📞 Outro número</button></div></div></div>`).join(''):'<div class="empty">Nenhum print enviado para auditoria.</div>'}</div><div class="cob-pane hidden" data-cobpane="aguardando">${renderRows(aguardando,true,'aguardando')}</div>`;
 }
 function switchCobTab(btn,name){const box=btn.closest('.acc-body'); box.querySelectorAll('[data-cobtab]').forEach(b=>b.classList.toggle('active',b===btn)); box.querySelectorAll('[data-cobpane]').forEach(p=>p.classList.toggle('hidden',p.dataset.cobpane!==name));}
-function abrirWhats(reg,entRef){const nums=normalizarListaTelefones((reg.telefones&&reg.telefones.length)?reg.telefones:reg.contato); if(!nums.length){toast('Cliente sem telefone válido.'); return} reg._cob_status=cobStatusTitulo(reg,entRef); phoneContext={reg,entRef}; if(nums.length===1){enviarWhats(nums[0]); return} const phoneList=document.getElementById('phoneList'); phoneList.innerHTML=nums.map(n=>`<button class="btn soft" style="width:100%" onclick="enviarWhats('${n}')">${n}</button>`).join(''); document.getElementById('phoneModal').classList.add('show')}
-function closePhoneModal(){document.getElementById('phoneModal').classList.remove('show'); phoneContext=null}
-function enviarWhats(numero){if(!phoneContext) return; const {reg,entRef}=phoneContext; const msg=montarMensagemCobranca(reg); window.open(`https://wa.me/${numero}?text=${encodeURIComponent(msg)}`,'_blank'); registrarCobrancaOnline(reg,entRef,numero); closePhoneModal()}
-async function registrarCobrancaOnline(r,entRef,numero){
+function abrirPhoneModalV10114(reg,entRef,alternativo=false){
+  reg._cob_status=cobStatusTitulo(reg,entRef);
+  phoneContext={reg,entRef,alternativo:!!alternativo};
+  const ctx=cobTelefonesContextoV10114(reg,entRef);
+  const list=document.getElementById('phoneList');
+  const title=document.getElementById('phoneModalTitle');
+  const sub=document.getElementById('phoneModalSub');
+  const rule=document.getElementById('phoneModalRule');
+  const manual=document.getElementById('phoneManualInput');
+  if(manual) manual.value='';
+  if(title) title.textContent=alternativo?'📞 Tentar outro número':'Escolher contato';
+  if(sub) sub.textContent=alternativo?'Escolha outro telefone cadastrado ou digite um novo número.':'Selecione o telefone para a cobrança.';
+  if(rule) rule.innerHTML=alternativo
+    ? '<strong>Este é um contato adicional.</strong> Não cria uma nova cobrança, não aumenta o contador e não reinicia o prazo de 3 dias.'
+    : '<strong>Primeiro envio:</strong> este contato registra a cobrança oficial e inicia o prazo normal de acompanhamento.';
+  if(list){
+    list.innerHTML=ctx.todos.length?ctx.todos.map(n=>{
+      const used=ctx.usados.has(n);
+      const manualHist=!ctx.cadastro.includes(n);
+      const fn=alternativo?'enviarWhatsAlternativo':'enviarWhats';
+      return `<button class="btn ${alternativo?'soft':'wa'}" style="width:100%;display:flex;justify-content:space-between;gap:8px;align-items:center" onclick="${fn}('${n}','${manualHist?'historico':'cadastro'}')"><span>${cobNumeroExibicaoV10114(n)}</span><span class="small">${used?'✅ já utilizado':(manualHist?'📝 manual anterior':'cadastrado')}</span></button>`;
+    }).join(''):'<div class="empty">Nenhum telefone válido cadastrado. Digite um número abaixo.</div>';
+  }
+  document.getElementById('phoneModal').classList.add('show');
+  setTimeout(()=>{try{if(!ctx.todos.length)document.getElementById('phoneManualInput')?.focus()}catch(e){}},80);
+}
+function abrirWhats(reg,entRef){
+  const nums=normalizarListaTelefones((reg.telefones&&reg.telefones.length)?reg.telefones:reg.contato);
+  reg._cob_status=cobStatusTitulo(reg,entRef);
+  phoneContext={reg,entRef,alternativo:false};
+  if(nums.length===1){enviarWhats(nums[0],'cadastro');return;}
+  abrirPhoneModalV10114(reg,entRef,false);
+}
+function abrirOutroNumero(reg,entRef){
+  abrirPhoneModalV10114(reg,entRef,true);
+}
+function closePhoneModal(){
+  document.getElementById('phoneModal').classList.remove('show');
+  phoneContext=null;
+}
+function usarNumeroManualPhoneModal(){
+  if(!phoneContext)return;
+  const el=document.getElementById('phoneManualInput');
+  const n=cobNumeroNormalizadoV10114(el?.value||'');
+  if(!n){toast('Informe um telefone válido com DDD. Ex.: (42) 99999-9999.','warn');try{el?.focus()}catch(e){}return;}
+  if(phoneContext.alternativo) enviarWhatsAlternativo(n,'manual');
+  else enviarWhats(n,'manual');
+}
+function enviarWhats(numero,origemNumero='cadastro'){
+  if(!phoneContext)return;
+  const {reg,entRef}=phoneContext;
+  const n=cobNumeroNormalizadoV10114(numero);
+  if(!n){toast('Telefone inválido.','warn');return;}
+  const msg=montarMensagemCobranca(reg);
+  window.open(`https://wa.me/${n}?text=${encodeURIComponent(msg)}`,'_blank');
+  registrarCobrancaOnline(reg,entRef,n,{alternativo:false,origemNumero});
+  closePhoneModal();
+}
+function enviarWhatsAlternativo(numero,origemNumero='cadastro'){
+  if(!phoneContext)return;
+  const {reg,entRef}=phoneContext;
+  const n=cobNumeroNormalizadoV10114(numero);
+  if(!n){toast('Telefone inválido.','warn');return;}
+  if(cobTelefoneJaUsadoV10114(reg,entRef,n)){
+    const ok=confirm(`${cobNumeroExibicaoV10114(n)} já foi utilizado neste título. Deseja abrir o WhatsApp novamente mesmo assim?`);
+    if(!ok)return;
+  }
+  const st=reg?._cob_status||cobStatusTitulo(reg,entRef);
+  // O telefone alternativo pertence à MESMA tentativa oficial; não avança a régua.
+  const tentativaOficial=Math.max(1,Number(st?.qtd||1));
+  const msg=montarMensagemCobranca(reg,{tentativaOverride:tentativaOficial});
+  window.open(`https://wa.me/${n}?text=${encodeURIComponent(msg)}`,'_blank');
+  registrarCobrancaOnline(reg,entRef,n,{alternativo:true,origemNumero,tentativaOficial});
+  closePhoneModal();
+}
+async function registrarCobrancaOnline(r,entRef,numero,opts={}){
+  // V10.114: contato alternativo fica no WAL/histórico, mas NÃO é uma nova cobrança oficial.
+  const isAlternativo=!!opts?.alternativo && String(r?.titulo||'')!=='REATIVACAO';
+  const st=r?._cob_status||cobStatusTitulo(r,entRef);
   // Para crediarista usa o login como usuario para que getCobradosHoje() funcione corretamente
   const usuarioLog = (entRef.type==='crediarista'||entRef.is_crediarista)
     ? (String(entRef.login||entRef.nome||usuarioAtual?.login||'').toLowerCase() || usuarioAtual?.login || 'master')
@@ -14935,8 +15063,16 @@ async function registrarCobrancaOnline(r,entRef,numero){
     cliente_key:r.cliente_key||'',cliente_key_legacy:r.cliente_key_legacy||'',
     cobranca_key:r.cobranca_key||'',cobranca_key_doc:r.cobranca_key_doc||'',owner_key:r.owner_key||'',
     vencimento:r.vencimento||'',pendente:Number(r.pendente||0),telefone:numero,
-    usuario:usuarioLog,login:entRef.login||usuarioAtual?.login||'',filial:entRef.filial||'',
-    destino_tipo:entRef.type||'',destino_nome:entRef.nome||'',acao:'whatsapp',tentativa:Number(r._cob_status?.proxima_tentativa||1),qtd_cobrancas_antes:Number(r._cob_status?.qtd||0),ultima_cobranca_anterior:String(r._cob_status?.ultima_fmt||'')
+    usuario:usuarioLog,login:entRef.login||usuarioAtual?.login||'',destino_login:entRef.login||'',filial:entRef.filial||'',
+    destino_tipo:entRef.type||'',destino_nome:entRef.nome||'',
+    acao:isAlternativo?'whatsapp_alternativo':'whatsapp',
+    contato_alternativo:isAlternativo,
+    numero_origem:String(opts?.origemNumero||'cadastro'),
+    tentativa:isAlternativo?Math.max(1,Number(opts?.tentativaOficial||st?.qtd||1)):Number(st?.proxima_tentativa||1),
+    tentativa_oficial:isAlternativo?Math.max(1,Number(opts?.tentativaOficial||st?.qtd||1)):Number(st?.proxima_tentativa||1),
+    qtd_cobrancas_antes:Number(st?.qtd||0),
+    ultima_cobranca_anterior:String(st?.ultima_fmt||''),
+    cobranca_principal_server_time:String(st?.last?.server_time||st?.last?.data||'')
   };
   if(payload.titulo==='REATIVACAO') marcarReativacaoUsuarioHoje(payload);
   try{
@@ -14945,27 +15081,27 @@ async function registrarCobrancaOnline(r,entRef,numero){
     if(j.ok){
       if(payload.titulo==='REATIVACAO') registrarReativacaoLocal(payload);
       await carregarCobrancasOnline();
-      toast(payload.titulo==='REATIVACAO'?'Mensagem de reativação registrada.':'Cobrança registrada online com sucesso.','success');
+      toast(payload.titulo==='REATIVACAO'?'Mensagem de reativação registrada.':(isAlternativo?'Contato adicional registrado. O prazo de 3 dias não foi reiniciado.':'Cobrança registrada online com sucesso.'),'success');
       if(!detailScreen.classList.contains('hidden')){
         if(entRef.type==='crediarista'||entRef.is_crediarista){
           openCrediaristaPanel(entRef.login||'',entRef.filial||'',entRef.nome||'');
-        } else {
+        }else{
           openEntity(entRef);
         }
       }
-    } else {
+    }else{
       if(payload.titulo==='REATIVACAO'){
-        registrarReativacaoLocal(payload); toast('Reativação registrada localmente para teste.','success');
-      } else if(window.location.protocol==='file:'){
-        registrarCobrancaLocal(payload); toast('Cobrança registrada localmente para teste.','success');
-      } else toast('Não consegui gravar a cobrança online.');
+        registrarReativacaoLocal(payload);toast('Reativação registrada localmente para teste.','success');
+      }else if(window.location.protocol==='file:'){
+        registrarCobrancaLocal(payload);toast(isAlternativo?'Contato adicional registrado localmente.':'Cobrança registrada localmente para teste.','success');
+      }else toast(isAlternativo?'Não consegui gravar o contato adicional.':'Não consegui gravar a cobrança online.');
     }
   }catch(e){
     if(payload.titulo==='REATIVACAO'){
-      registrarReativacaoLocal(payload); toast('Reativação registrada localmente para teste.','success');
-    } else if(window.location.protocol==='file:'){
-      registrarCobrancaLocal(payload); toast('Cobrança registrada localmente para teste.','success');
-    } else toast('Falha ao salvar cobrança online.');
+      registrarReativacaoLocal(payload);toast('Reativação registrada localmente para teste.','success');
+    }else if(window.location.protocol==='file:'){
+      registrarCobrancaLocal(payload);toast(isAlternativo?'Contato adicional registrado localmente.':'Cobrança registrada localmente para teste.','success');
+    }else toast(isAlternativo?'Falha ao salvar contato adicional.':'Falha ao salvar cobrança online.');
   }
 }
 function registrarCobrancaLocal(payload){
@@ -24966,6 +25102,15 @@ try{window.DASHBOARD_BUILD_VERSION='V10.80';console.log('[V10.88] COB Externa D+
 })();
 </script>
 
+
+<style id="mdlContatoAlternativoV10114">
+@media(max-width:600px){
+  #phoneModal .modal-card{max-height:88vh;overflow:auto}
+  #phoneModal .input-card>div{grid-template-columns:1fr!important}
+  #phoneModal button,#phoneModal input{min-height:44px;font-size:16px}
+}
+</style>
+
 </body>
 </html>
 """
@@ -26998,3 +27143,5 @@ driver.quit()
 # V10.112_BONUS_GERENTE_META_HISTORICO
 
 # V10.113_COMISSAO_RENEGOCIACAO_RECUPERADA
+
+# V10.114_CONTATO_ALTERNATIVO_COBRANCA

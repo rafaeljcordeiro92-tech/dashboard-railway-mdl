@@ -118,7 +118,7 @@ _force_main_boot = True
 _force_sales_after_main = False
 
 STATE = {
-    'version': 'V10.113_COMISSAO_RENEGOCIACAO_RECUPERADA',
+    'version': 'V10.114_CONTATO_ALTERNATIVO_COBRANCA',
     'started_at': None,
     'updated_at': None,
     'scheduler': 'starting',
@@ -262,10 +262,10 @@ def finish_if_done(name, proc):
     if key == 'dashboard_completo_cobranca':
         _last_cobranca_end = br_now()
         _display_v10100 = str(STATE['jobs'][key].get('display_name') or '')
-        if code == 0 and STATE.get('deploy_update_active') and 'DEPLOY_V10113' in _display_v10100:
+        if code == 0 and STATE.get('deploy_update_active') and 'DEPLOY_V10114' in _display_v10100:
             STATE['deploy_update_active'] = False
             STATE['deploy_update_completed_at'] = iso_now()
-            log('🔓 DEPLOY V10.113 liberado: primeiro MAIN terminou com Exit 0 após publicação FTP. Próximos MAINs normais NÃO bloquearão acessos.')
+            log('🔓 DEPLOY V10.114 liberado: primeiro MAIN terminou com Exit 0 após publicação FTP. Próximos MAINs normais NÃO bloquearão acessos.')
     if key == 'cobranca_terceira' and code == 0:
         STATE['last_cob_terceira_date'] = br_now().strftime('%Y-%m-%d')
         _save_status()
@@ -684,7 +684,7 @@ def start_http_panel():
     server.serve_forever()
 
 
-DEPLOY_BUILD_VERSION = "V10.113"
+DEPLOY_BUILD_VERSION = "V10.114"
 DEPLOY_STATE_PUBLIC_URL = "https://moveisdolar.com.br/colaborador/dashboard_deploy_state.json"
 
 def _remote_deploy_version_v10100():
@@ -825,3 +825,5 @@ while True:
 # V10.112_BONUS_GERENTE_META_HISTORICO
 
 # V10.113_COMISSAO_RENEGOCIACAO_RECUPERADA
+
+# V10.114_CONTATO_ALTERNATIVO_COBRANCA
