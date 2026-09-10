@@ -38,8 +38,8 @@ URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 BR_TZ = APP_TZ  # V10.106: alias usado pelo histórico operacional V10.104
 
-DASHBOARD_BUILD_VERSION = "V10.117"
-DASHBOARD_BUILD_TAG = "v10116_protecao_carteira_minima_sem_duplicacao"
+DASHBOARD_BUILD_VERSION = "V10.118"
+DASHBOARD_BUILD_TAG = "v10118_fix_conciliacao_data_aniversarios"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
 # V10.52: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
@@ -9080,11 +9080,6 @@ def _aniv_remote_atual_v10117(remote, agora=None):
     agora = agora or now_brasilia()
     if not isinstance(remote, dict):
         return False
-    # Payload V10.117 marcado como stale/indisponível não é considerado fonte atual,
-    # mesmo que tenha sido regravado hoje após uma tentativa sem download.
-    status = str(remote.get("status") or "").strip().lower()
-    if status and status not in {"atual", "ok", "sem_aniversariantes"}:
-        return False
     ref = str(remote.get("data_referencia") or "").strip()
     if ref == agora.strftime("%Y-%m-%d"):
         return True
@@ -9110,11 +9105,12 @@ def carregar_aniversariantes_local():
     # cujo dia/mês não seja o de hoje.
     arquivos_ler = arquivos_hoje if arquivos_hoje else (arquivos[:1] if arquivos else [])
     print(
-        f"🎂 V10.117 Aniversariantes: {len(arquivos)} XLS local(is) | "
+        f"🎂 V10.118 Aniversariantes: {len(arquivos)} XLS local(is) | "
         f"atuais={len(arquivos_hoje)} | referência={agora.strftime('%d/%m')}"
     )
 
     todos=[]; seen=set(); descartados_data=0
+    _remote_atual_usado118 = False
     for arq in arquivos_ler:
         for row in parse_aniversariantes_xls(arq):
             if not _aniv_row_eh_hoje_v10117(row, agora):
@@ -9129,6 +9125,7 @@ def carregar_aniversariantes_local():
     if not todos and not arquivos_hoje:
         remote = _remote_json_colaborador_v95('aniversariantes_dia.json', None)
         if _aniv_remote_atual_v10117(remote, agora):
+            _remote_atual_usado118 = True
             dados = remote.get('dados') or remote.get('clientes') or []
             if isinstance(dados, list):
                 for row in dados:
@@ -9138,16 +9135,21 @@ def carregar_aniversariantes_local():
                     if key in seen: continue
                     seen.add(key); todos.append(row)
                 if todos:
-                    print(f"🎂 V10.117: usando JSON remoto ATUAL de {hoje_iso} com {len(todos)} cliente(s).")
+                    print(f"🎂 V10.118: usando JSON remoto ATUAL de {hoje_iso} com {len(todos)} cliente(s).")
         elif isinstance(remote, dict):
-            print("🧊 V10.117: JSON remoto de aniversariantes está desatualizado e foi ignorado.")
+            print("🧊 V10.118: JSON remoto de aniversariantes está desatualizado e foi ignorado.")
 
     payload = {
         "gerado_em": agora.isoformat(),
         "data_referencia": hoje_iso,
         "dia_mes_referencia": agora.strftime("%d/%m"),
-        "versao": "V10.117",
-        "status": "atual" if (arquivos_hoje or todos) else "fonte_desatualizada_ou_download_indisponivel",
+        "versao": "V10.118",
+        "fonte_atual_confirmada": bool(arquivos_hoje or _remote_atual_usado118),
+        "status": (
+            "atual"
+            if todos
+            else ("sem_aniversariantes" if (arquivos_hoje or _remote_atual_usado118) else "download_indisponivel")
+        ),
         "total": len(todos),
         "descartados_por_data": descartados_data,
         "dados": todos,
@@ -9158,16 +9160,46 @@ def carregar_aniversariantes_local():
     except Exception as e:
         print(f"⚠️ Não consegui salvar aniversariantes_dia.json: {e}")
     print(
-        f"🎂 V10.117 aniversariantes válidos de {agora.strftime('%d/%m')}: "
+        f"🎂 V10.118 aniversariantes válidos de {agora.strftime('%d/%m')}: "
         f"{len(todos)} cliente(s) | descartados de outra data={descartados_data}"
     )
     return todos
 
 
+def _aniv_cache_atual_disponivel_v10118():
+    """Confere se já existe XLS local de hoje ou JSON remoto explicitamente datado de hoje."""
+    agora = now_brasilia()
+    stamp = agora.strftime("%Y%m%d")
+    try:
+        for fname in os.listdir(pasta):
+            if nome_arquivo_aniversariantes_valido(fname) and stamp in os.path.basename(fname):
+                return True
+    except Exception:
+        pass
+    try:
+        remote = _remote_json_colaborador_v95("aniversariantes_dia.json", None)
+        if _aniv_remote_atual_v10117(remote, agora):
+            return True
+    except Exception:
+        pass
+    return False
+
 def baixar_aniversariantes_selenium():
-    if os.getenv("BAIXAR_ANIVERSARIANTES", "0") != "1":
-        print("ℹ️ Download aniversariantes desativado por BAIXAR_ANIVERSARIANTES=0")
-        return []
+    _forcado118 = os.getenv("BAIXAR_ANIVERSARIANTES", "0") == "1"
+    _auto118 = os.getenv("ANIVERSARIANTES_AUTO_REFRESH_MISSING", "1") != "0"
+
+    if not _forcado118:
+        if not _auto118:
+            print("ℹ️ V10.118 aniversariantes: refresh automático desativado.")
+            return []
+        if _aniv_cache_atual_disponivel_v10118():
+            print("🎂 V10.118 aniversariantes: cache do dia atual disponível; download extra dispensado.")
+            return []
+        print(
+            "🎂 V10.118 aniversariantes: cache do dia atual ausente/desatualizado; "
+            "fazendo refresh direcionado mesmo fora das 07h."
+        )
+
     print("🎂 Iniciando download Aniversariantes do dia...")
     baixados=[]
     try:
@@ -10254,19 +10286,6 @@ def relatorio_duplicidades_carteira_py():
     return out
 
 baixar_clientes_sem_movimento_selenium()
-
-# V10.117: autocura de aniversariantes. Se o JSON publicado não é de hoje,
-# força SOMENTE a consulta de aniversariantes neste MAIN, mesmo fora da rodada 07h.
-# Assim um deploy no meio do dia não deixa 16/06 congelado até amanhã.
-try:
-    if os.getenv("BAIXAR_ANIVERSARIANTES", "0") != "1":
-        _aniv_remote_pre117 = _remote_json_colaborador_v95("aniversariantes_dia.json", None)
-        if not _aniv_remote_atual_v10117(_aniv_remote_pre117, now_brasilia()):
-            os.environ["BAIXAR_ANIVERSARIANTES"] = "1"
-            print("♻️ V10.117 aniversariantes: fonte remota desatualizada; forçando atualização de HOJE.")
-except Exception as _e_aniv_autofix117:
-    print(f"⚠️ V10.117 autocura aniversariantes: {_e_aniv_autofix117}")
-
 baixar_aniversariantes_selenium()
 clientes_sem_movimento_meta_py = {"modo":"somente_novos", "base_total":0, "novos_total":0, "seen_total":0}
 clientes_sem_movimento_js = carregar_clientes_sem_movimento_local()
@@ -10488,7 +10507,16 @@ def _v1099_dt(v):
         return d.astimezone(BR_TZ)
     except Exception:
         pass
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%Y-%m-%d"):
+    # V10.118: o SGI grava "Data último pagamento" normalmente como DD/MM/AAAA
+    # sem horário (ex.: 08/09/2026). A V10.117 não aceitava esse formato e,
+    # por isso, a conciliação mensal descartava todas as baixas.
+    for fmt in (
+        "%Y-%m-%d %H:%M:%S",
+        "%d/%m/%Y %H:%M:%S",
+        "%d/%m/%Y %H:%M",
+        "%d/%m/%Y",
+        "%Y-%m-%d",
+    ):
         try:
             d = datetime.strptime(s[:19], fmt)
             return d.replace(tzinfo=BR_TZ)
@@ -10625,6 +10653,9 @@ def _v10117_doc(r):
 def _v10117_title(v):
     return _v1099_digits(v) or str(v or "").strip().upper()
 
+def _v10118_part_nums(v):
+    return [int(x) for x in re.findall(r"\d+", str(v or ""))[:2]]
+
 def _v10117_same_exact(a, q):
     ad, qd = _v10117_doc(a), _v10117_doc(q)
     if ad and qd and ad != qd:
@@ -10637,7 +10668,19 @@ def _v10117_same_exact(a, q):
     at, qt = _v10117_title((a or {}).get("titulo")), _v10117_title((q or {}).get("titulo"))
     if at and qt and at != qt:
         return False
-    return _v1099_part((a or {}).get("parcela")) == _v1099_part((q or {}).get("parcela"))
+
+    # V10.118: mesma tolerância usada pela engine JS de comissão V10.113.
+    # "06", "06/12" e "06 / 12" representam a mesma parcela quando uma das
+    # fontes não traz o total de parcelas. Se ambas trazem o total, ele deve bater.
+    ap = _v10118_part_nums((a or {}).get("parcela"))
+    qp = _v10118_part_nums((q or {}).get("parcela"))
+    if not ap or not qp:
+        return str((a or {}).get("parcela") or "").strip() == str((q or {}).get("parcela") or "").strip()
+    if ap[0] != qp[0]:
+        return False
+    if len(ap) > 1 and len(qp) > 1 and ap[1] != qp[1]:
+        return False
+    return True
 
 def _v10117_is_reneg_title(q):
     if _v10117_truth((q or {}).get("is_renegociacao_titulo")):
@@ -10792,6 +10835,44 @@ def _v10117_recovery_rows(ent, month, audits_all, quitados_all, logs_all):
 
 def _v10117_apply_monthly_reconciliation(months, audits_all, quitados_all, logs_all):
     if not isinstance(months,dict): return months
+
+    # V10.118: diagnóstico antes do cruzamento. Isso deixa claro no Railway
+    # se a fonte trouxe datas válidas e quantas baixas pertencem ao mês atual.
+    try:
+        _valid_dates118 = 0
+        _invalid_dates118 = 0
+        _month_counts118 = {}
+        _invalid_examples118 = []
+        for _q118 in (quitados_all or []):
+            if not isinstance(_q118, dict):
+                continue
+            _raw118 = _q118.get("pagamento") or _q118.get("data_pagamento")
+            if not str(_raw118 or "").strip():
+                continue
+            _iso118 = _v10117_iso_date(_raw118)
+            if _iso118:
+                _valid_dates118 += 1
+                _mm118 = _iso118[:7]
+                _month_counts118[_mm118] = _month_counts118.get(_mm118, 0) + 1
+            else:
+                _invalid_dates118 += 1
+                if len(_invalid_examples118) < 5:
+                    _invalid_examples118.append(str(_raw118))
+        _current_month118 = now_brasilia().strftime("%Y-%m")
+        print(
+            f"🧪 V10.118 datas de pagamento: válidas={_valid_dates118} | "
+            f"inválidas={_invalid_dates118} | {_current_month118}={_month_counts118.get(_current_month118,0)} baixa(s)"
+        )
+        if _invalid_examples118:
+            print("   ↳ Exemplos inválidos: " + " | ".join(_invalid_examples118))
+        _approved118 = sum(
+            1 for _a118 in (audits_all or [])
+            if isinstance(_a118, dict) and _v10104_status_aprovado(_a118.get("status"))
+        )
+        print(f"🧪 V10.118 auditorias carregadas: total={len(audits_all or [])} | aprovadas={_approved118}")
+    except Exception as _diag118:
+        print(f"⚠️ V10.118 diagnóstico conciliação: {_diag118}")
+
     for month, payload in months.items():
         if not isinstance(payload,dict): continue
         company_rows={}
@@ -10818,7 +10899,7 @@ def _v10117_apply_monthly_reconciliation(months, audits_all, quitados_all, logs_
         summary["reconciliacao_v10117"]="filiais_unicas_mais_cobranca_interna"
         payload["summary"]=summary
         if month == now_brasilia().strftime("%Y-%m"):
-            print(f"💵 V10.117 conciliação mensal {month}: {len(company_rows)} pagamento(s) | R$ {summary['recebido_conciliado']:.2f}")
+            print(f"💵 V10.118 conciliação mensal {month}: {len(company_rows)} pagamento(s) | R$ {summary['recebido_conciliado']:.2f}")
     return months
 
 def _v1099_entity_daily(tipo, login, nome, filial, buckets, logs_all, audits_all, quitados_all, now):
@@ -10944,7 +11025,7 @@ def _v1099_entity_daily(tipo, login, nome, filial, buckets, logs_all, audits_all
         pagamentos = len(_rec_day117)
         recebido = sum(float(x.get("recebido") or 0) for x in _rec_day117)
     except Exception as _e_day117:
-        print(f"⚠️ V10.117 conciliação diária {tipo}/{login or nome}: {_e_day117}")
+        print(f"⚠️ V10.118 conciliação diária {tipo}/{login or nome}: {_e_day117}")
 
     previstos = len(plan)
     cobrancas = len(today_logs)
@@ -27588,10 +27669,29 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
         else:
             print('🛡️ V9.5/V10.19: pulando clientes_sem_movimento.json para não zerar lista do FTP')
 
-        if os.path.exists(_ani_path) and (_listas_forcadas or _json_has_items_v95(_ani_path, ('dados','clientes'))):
+        _ani_atual_confirmado118 = False
+        try:
+            if os.path.exists(_ani_path):
+                with open(_ani_path, "r", encoding="utf-8") as _fa118:
+                    _ani_payload118 = json.load(_fa118)
+                _ani_atual_confirmado118 = bool(
+                    isinstance(_ani_payload118, dict)
+                    and str(_ani_payload118.get("data_referencia") or "") == now_brasilia().strftime("%Y-%m-%d")
+                    and _ani_payload118.get("fonte_atual_confirmada") is True
+                )
+        except Exception:
+            _ani_atual_confirmado118 = False
+
+        if os.path.exists(_ani_path) and (
+            _listas_forcadas
+            or _json_has_items_v95(_ani_path, ('dados','clientes'))
+            or _ani_atual_confirmado118
+        ):
             _ftp_upload_file_v1019(_ani_path, 'aniversariantes_dia.json', label='aniversariantes_dia.json')
+            if _ani_atual_confirmado118 and not _json_has_items_v95(_ani_path, ('dados','clientes')):
+                print("🎂 V10.118: publicado aniversário atual vazio; cache antigo foi substituído com segurança.")
         else:
-            print('🛡️ V9.5/V10.19: pulando aniversariantes_dia.json para não zerar lista do FTP')
+            print('🛡️ V10.118: aniversariantes_dia.json sem fonte atual confirmada; remoto anterior preservado')
 
         if os.path.exists(_csm_seen_path) and (_listas_forcadas or _json_has_items_v95(_csm_seen_path, ('seen',))):
             _ftp_upload_file_v1019(_csm_seen_path, 'clientes_sem_movimento_seen.json', label='clientes_sem_movimento_seen.json')
@@ -27871,3 +27971,5 @@ driver.quit()
 # V10.116_PROTECAO_CARTEIRA_MINIMA_SEM_DUPLICACAO
 
 # V10.117_CONCILIACAO_MENSAL_ANIVERSARIOS_ATUAIS_GERENTE_PISO
+
+# V10.118_FIX_CONCILIACAO_DATA_DDMMYYYY_E_ANIVERSARIOS_ATUAIS
