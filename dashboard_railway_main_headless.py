@@ -38,8 +38,8 @@ URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 BR_TZ = APP_TZ  # V10.106: alias usado pelo histórico operacional V10.104
 
-DASHBOARD_BUILD_VERSION = "V10.115"
-DASHBOARD_BUILD_TAG = "v10115_corrige_trava_deploy"
+DASHBOARD_BUILD_VERSION = "V10.116"
+DASHBOARD_BUILD_TAG = "v10116_protecao_carteira_minima_sem_duplicacao"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
 # V10.52: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
@@ -3570,6 +3570,48 @@ for _src_name_v10110, _rows_seed_v10110 in (
                 "source": _src_name_v10110,
             }
 
+# ===== V10.116: PROTEÇÃO DE CARTEIRA MÍNIMA POR FILIAL SEM REDUZIR O POOL GLOBAL =====
+# Objetivo:
+# - manter o percentual global configurado para Cobrança Interna (ex.: 40%);
+# - preservar CPFs já acompanhados pelos cobradores internos;
+# - evitar que filiais pequenas fiquem praticamente zeradas;
+# - nunca dividir o mesmo CPF entre responsáveis.
+#
+# Regra padrão:
+# - reserva até 10 CPFs por vendedor ativo da filial antes de completar o pool interno;
+# - o percentual global continua sendo buscado nas filiais com maior sobra/FDEP;
+# - CPFs "sticky" já trabalhados pela Cobrança Interna continuam tendo prioridade.
+_COB_MIN_CPFS_POR_VENDEDOR_V10116 = max(
+    0, int(float(os.getenv("COBRANCA_VENDEDOR_MIN_CPFS_CARTEIRA", "10") or 10))
+)
+_COB_MIN_DISPONIVEIS_V10116 = max(
+    0, int(float(os.getenv("COBRANCA_VENDEDOR_MIN_DISPONIVEIS", "5") or 5))
+)
+_COB_FILIAIS_V10116 = {"F1","F2","F3","F4","F5","F6","F8","F9"}
+
+def _group_filiais_v10116(_rows):
+    _out = set()
+    for _rr in (_rows or []):
+        _ff = str((_rr or {}).get("filial") or "").strip().upper()
+        if _ff in _COB_FILIAIS_V10116:
+            _out.add(_ff)
+    return _out
+
+# Vendedores realmente ativos por filial, já após os bloqueios administrativos aplicados no df.
+_vendedores_ativos_filial_v10116 = {}
+try:
+    for _, _rr116 in df_ativos_raw.iterrows():
+        if bool(_rr116.get("is_gerente")):
+            continue
+        _ff116 = str(_rr116.get("filial_vendedor") or "").strip().upper()
+        if _ff116 not in _COB_FILIAIS_V10116:
+            continue
+        _nm116 = limpar_nome_display(limpar_nome_erp(str(_rr116.get("vendedor") or "")))
+        if _nm116:
+            _vendedores_ativos_filial_v10116.setdefault(_ff116, set()).add(_nm116)
+except Exception as _e116:
+    print(f"⚠️ V10.116 não conseguiu mapear vendedores ativos para reserva mínima: {_e116}")
+
 _clientes_grupos_hash = sorted(
     _clientes_cobrar_grupos.items(),
     key=lambda kv: _hashlib.md5(str(kv[0]).encode("utf-8")).hexdigest(),
@@ -3577,7 +3619,26 @@ _clientes_grupos_hash = sorted(
 _qtd_terceiro_grupos = int(round(len(_clientes_grupos_hash) * COBRANCA10_RATEIO))
 _qtd_terceiro_grupos = max(0, min(len(_clientes_grupos_hash), _qtd_terceiro_grupos))
 
-# V10.110: prioriza CPFs já acompanhados pela cobrança interna dentro dos mesmos 20%.
+# Quantos CPFs/grupos cada filial ainda possui após filtros e COB Externa.
+_total_grupos_filial_v10116 = {f: 0 for f in _COB_FILIAIS_V10116}
+_filiais_por_grupo_v10116 = {}
+for _gk116, _rows116 in _clientes_grupos_hash:
+    _fs116 = _group_filiais_v10116(_rows116)
+    _filiais_por_grupo_v10116[_gk116] = _fs116
+    for _ff116 in _fs116:
+        _total_grupos_filial_v10116[_ff116] = _total_grupos_filial_v10116.get(_ff116, 0) + 1
+
+# Reserva operacional: até N CPFs por vendedor ativo, limitada ao que a filial realmente possui.
+_reserva_filial_v10116 = {}
+for _ff116 in sorted(_COB_FILIAIS_V10116):
+    _nv116 = len(_vendedores_ativos_filial_v10116.get(_ff116) or set())
+    _tot116 = int(_total_grupos_filial_v10116.get(_ff116) or 0)
+    _reserva_filial_v10116[_ff116] = min(
+        _tot116,
+        _nv116 * _COB_MIN_CPFS_POR_VENDEDOR_V10116
+    ) if _nv116 > 0 else 0
+
+# V10.110 continua valendo: CPFs já acompanhados pela cobrança interna têm prioridade.
 _sticky_present_v10110 = [
     (k, rows)
     for k, rows in _clientes_grupos_hash
@@ -3594,6 +3655,12 @@ _sticky_present_v10110.sort(
 _sticky_selected_v10110 = _sticky_present_v10110[:_qtd_terceiro_grupos]
 _sticky_selected_keys_v10110 = {k for k, _ in _sticky_selected_v10110}
 
+# Conta quanto da reserva de cada filial já foi consumido por sticky.
+_sel_por_filial_v10116 = {f: 0 for f in _COB_FILIAIS_V10116}
+for _gk116, _rows116 in _sticky_selected_v10110:
+    for _ff116 in _filiais_por_grupo_v10116.get(_gk116, set()):
+        _sel_por_filial_v10116[_ff116] = _sel_por_filial_v10116.get(_ff116, 0) + 1
+
 _remaining_hash_v10110 = [
     (k, rows)
     for k, rows in _clientes_grupos_hash
@@ -3601,14 +3668,88 @@ _remaining_hash_v10110 = [
 ]
 _needed_v10110 = max(0, _qtd_terceiro_grupos - len(_sticky_selected_v10110))
 
-_clientes_terceiro_grupos = _sticky_selected_v10110 + _remaining_hash_v10110[:_needed_v10110]
+_clientes_terceiro_grupos = list(_sticky_selected_v10110)
+_restantes_nao_selecionados_v10116 = []
+
+# 1ª passada: completa o percentual global sem furar a reserva mínima das filiais pequenas.
+for _gk116, _rows116 in _remaining_hash_v10110:
+    if len(_clientes_terceiro_grupos) >= _qtd_terceiro_grupos:
+        _restantes_nao_selecionados_v10116.append((_gk116, _rows116))
+        continue
+
+    _fs116 = _filiais_por_grupo_v10116.get(_gk116, set())
+    _pode116 = True
+    for _ff116 in _fs116:
+        _tot116 = int(_total_grupos_filial_v10116.get(_ff116) or 0)
+        _sel116 = int(_sel_por_filial_v10116.get(_ff116) or 0)
+        _res116 = int(_reserva_filial_v10116.get(_ff116) or 0)
+        # Depois de selecionar este CPF para o pool interno, ainda precisa sobrar a reserva.
+        if (_tot116 - (_sel116 + 1)) < _res116:
+            _pode116 = False
+            break
+
+    if _pode116:
+        _clientes_terceiro_grupos.append((_gk116, _rows116))
+        for _ff116 in _fs116:
+            _sel_por_filial_v10116[_ff116] = _sel_por_filial_v10116.get(_ff116, 0) + 1
+    else:
+        _restantes_nao_selecionados_v10116.append((_gk116, _rows116))
+
+# 2ª passada de contingência: se uma configuração muito alta tornar impossível cumprir
+# percentual global + todas as reservas, preserva o percentual global, mas relaxa primeiro
+# nas filiais com maior quantidade absoluta sobrando.
+if len(_clientes_terceiro_grupos) < _qtd_terceiro_grupos:
+    _faltam116 = _qtd_terceiro_grupos - len(_clientes_terceiro_grupos)
+
+    def _relax_score_v10116(_item):
+        _gk, _rows = _item
+        _fs = _filiais_por_grupo_v10116.get(_gk, set())
+        if not _fs:
+            return (-10**9, _hashlib.md5(str(_gk).encode("utf-8")).hexdigest())
+        _sobras = []
+        for _ff in _fs:
+            _tot = int(_total_grupos_filial_v10116.get(_ff) or 0)
+            _sel = int(_sel_por_filial_v10116.get(_ff) or 0)
+            _res = int(_reserva_filial_v10116.get(_ff) or 0)
+            _sobras.append(_tot - _sel - _res)
+        return (
+            -min(_sobras or [0]),
+            _hashlib.md5(str(_gk).encode("utf-8")).hexdigest()
+        )
+
+    for _gk116, _rows116 in sorted(_restantes_nao_selecionados_v10116, key=_relax_score_v10116):
+        if _faltam116 <= 0:
+            break
+        _clientes_terceiro_grupos.append((_gk116, _rows116))
+        for _ff116 in _filiais_por_grupo_v10116.get(_gk116, set()):
+            _sel_por_filial_v10116[_ff116] = _sel_por_filial_v10116.get(_ff116, 0) + 1
+        _faltam116 -= 1
+
+    if _faltam116 > 0:
+        print(f"⚠️ V10.116 pool interno ficou abaixo do alvo por falta física de CPFs: faltaram {_faltam116}.")
+    else:
+        print("⚠️ V10.116 precisou relaxar parte da reserva mínima para manter o percentual global configurado.")
+
 _clientes_terceiro_cliente_keys = {k for k, _rows in _clientes_terceiro_grupos}
 
 print(
-    f"🔒 V10.110 continuidade pool interno: "
-    f"{len(_sticky_selected_v10110)} CPF(s) já acompanhados preservados dentro do pool "
-    f"de {len(_clientes_terceiro_cliente_keys)} CPF(s)"
+    f"🔒 V10.116 continuidade/proteção pool interno: "
+    f"{len(_sticky_selected_v10110)} CPF(s) sticky preservados | "
+    f"pool={len(_clientes_terceiro_cliente_keys)}/{_qtd_terceiro_grupos} CPF(s) | "
+    f"mínimo carteira por vendedor={_COB_MIN_CPFS_POR_VENDEDOR_V10116}"
 )
+for _ff116 in sorted(_COB_FILIAIS_V10116):
+    _tot116 = int(_total_grupos_filial_v10116.get(_ff116) or 0)
+    _sel116 = int(_sel_por_filial_v10116.get(_ff116) or 0)
+    _sobrou116 = max(0, _tot116 - _sel116)
+    _nv116 = len(_vendedores_ativos_filial_v10116.get(_ff116) or set())
+    _res116 = int(_reserva_filial_v10116.get(_ff116) or 0)
+    if _tot116 or _nv116:
+        print(
+            f"   ↳ {_ff116}: base={_tot116} CPF(s) | vendedores={_nv116} | "
+            f"reserva alvo={_res116} | internos={_sel116} | sobraram={_sobrou116}"
+        )
+
 _clientes_terceiro_lista = [
     row
     for _k_grupo, _rows_grupo in _clientes_terceiro_grupos
@@ -8120,9 +8261,97 @@ for c in _cli_inat_fdep:
             _inat_por_filial[_dest_filial] = []
         _inat_por_filial[_dest_filial].append(c)
 
-# Para cada filial, distribui 60% gerente / 40% vendedores.
-# Importante: NÃO remove títulos do mesmo cliente. Agrupa por cliente/CPF apenas para
-# definir um único destino operacional; todos os títulos desse cliente seguem juntos.
+# ===== V10.116: RATEIO OPERACIONAL COM PISO DE CARTEIRA =====
+# A regra financeira 60/40 usada nos cards/metas continua intacta.
+# Aqui estamos tratando somente de "quem aparece para cobrar".
+#
+# Para vendedores:
+# - o mesmo CPF nunca é quebrado entre dois vendedores;
+# - mantém ao menos 40% dos CPFs inativos/FDEP como antes;
+# - se necessário, aumenta a fatia operacional do vendedor para tentar deixar
+#   cada vendedor com pelo menos 10 CPFs no total;
+# - tenta manter ao menos 5 CPFs sem cobrança oficial nos últimos 3 dias;
+# - se a filial não tiver CPFs suficientes, entrega tudo o que houver, sem inventar/duplicar.
+#
+# O painel da filial/gerente segue consolidado e continua mostrando a visão da filial inteira.
+
+def _recent_cobranca_groups_v10116():
+    _keys = set()
+    try:
+        _cut = now_brasilia() - timedelta(days=3)
+        for _ev in (_log_seed_v10110 or []):
+            if not isinstance(_ev, dict):
+                continue
+            if str(_ev.get("acao") or "").strip().lower() != "whatsapp":
+                continue
+            if str(_ev.get("titulo") or "").strip().upper() in {"ANIVERSARIO", "REATIVACAO"}:
+                continue
+            _raw_ts = str(
+                _ev.get("server_time")
+                or _ev.get("created_at")
+                or _ev.get("criado_em")
+                or ""
+            ).strip()
+            if not _raw_ts:
+                continue
+            try:
+                _ts = datetime.fromisoformat(_raw_ts.replace("Z", "+00:00"))
+                if _ts.tzinfo is None:
+                    _ts = _ts.replace(tzinfo=BR_TZ)
+                _ts = _ts.astimezone(BR_TZ)
+            except Exception:
+                continue
+            if _ts < _cut:
+                continue
+            _gk = cliente_grupo_key_py(_ev)
+            if _gk:
+                _keys.add(_gk)
+    except Exception as _e:
+        print(f"⚠️ V10.116 não conseguiu montar janela de 3 dias para proteção operacional: {_e}")
+    return _keys
+
+_recent_groups_v10116 = _recent_cobranca_groups_v10116()
+
+def _seller_group_keys_v10116(_seller):
+    _out = set()
+    _data = (clientes_por_vend_js or {}).get(_seller) or {}
+    for _fx in ("grave","alerta","atencao"):
+        for _r in (_data.get(_fx) or []):
+            _k = cliente_grupo_key_py(_r)
+            if _k:
+                _out.add(_k)
+    return _out
+
+def _append_group_to_seller_v10116(_vend_dest, _group_rows):
+    if _vend_dest not in clientes_por_vend_js:
+        clientes_por_vend_js[_vend_dest] = {"grave": [], "alerta": [], "atencao": []}
+    for c in (_group_rows or []):
+        _tag = " [FDEP]" if c.get("is_fdep") else " [Inativo]"
+        clientes_por_vend_js[_vend_dest][c["faixa"]].append({
+            "nome": c.get("cliente", c.get("nome", "")),
+            "cliente": c.get("cliente", ""),
+            "cpf_cnpj": c.get("cpf_cnpj", ""),
+            "cpf_cnpj_normalizado": c.get("cpf_cnpj_normalizado", ""),
+            "restricao": c.get("restricao", ""),
+            "vencimento": c.get("vencimento", ""),
+            "pagamento": c.get("pagamento", ""),
+            "dias": c.get("dias", 0),
+            "pendente": c.get("pendente", 0),
+            "pago": c.get("pago", 0.0),
+            "parcela": c.get("parcela", ""),
+            "titulo": c.get("titulo", ""),
+            "avalista": c.get("avalista", ""),
+            "contato": c.get("contato", ""),
+            "telefones": c.get("telefones", []),
+            "mensagem_whatsapp": c.get("mensagem_whatsapp", ""),
+            "vendedor": limpar_nome_display(c["vendedor"])[:20] + _tag,
+            "novo": c.get("novo", False),
+            "cliente_key": c.get("cliente_key", cliente_grupo_key_py(c)),
+            "cliente_key_legacy": c.get("cliente_key_legacy", normalizar_texto_match(c.get("cliente", ""))),
+            "cobranca_key": c.get("cobranca_key", cobranca_row_key_py(c)),
+            "cobranca_key_doc": c.get("cobranca_key_doc", ""),
+        })
+
 for _filial_dest, _clientes_inat in _inat_por_filial.items():
     _clientes_grupos = {}
     for c in _clientes_inat:
@@ -8132,21 +8361,10 @@ for _filial_dest, _clientes_inat in _inat_por_filial.items():
     _grupos = list(_clientes_grupos.values())
     _grupos.sort(key=lambda g: sum(float(x.get('pendente', 0) or 0) for x in g), reverse=True)
 
-    _total = len(_grupos)
-    _n_ger = round(_total * 0.60)   # 60% dos grupos para gerente
-    _n_vend = _total - _n_ger       # 40% dos grupos para vendedores
-
-    _grupos_gerente = _grupos[:_n_ger]
-    _grupos_vends   = _grupos[_n_ger:]
-
-    _para_gerente = [c for g in _grupos_gerente for c in g]
-    _para_vends   = [c for g in _grupos_vends for c in g]
-    _lista        = [c for g in _grupos for c in g]
-
-    # Adiciona ao painel da filial (gerente vê tudo da filial)
+    # Adiciona ao painel consolidado da filial/gerente.
+    _lista = [c for g in _grupos for c in g]
     for c in _lista:
         _tag = " [FDEP]" if c.get("is_fdep") else " [Inativo]"
-
         clientes_js[_filial_dest][c["faixa"]].append({
             "nome": c.get("cliente", c.get("nome", "")),
             "cliente": c.get("cliente", ""),
@@ -8172,53 +8390,116 @@ for _filial_dest, _clientes_inat in _inat_por_filial.items():
             "cobranca_key_doc": c.get("cobranca_key_doc", ""),
         })
 
-    # Distribui os 40% entre vendedores ativos da filial
+    # Vendedores ativos da filial.
     _vends_ativos = [
         r["nome_exibicao"]
         for _, r in df_vend[
             (df_vend["filial_vendedor"] == _filial_dest) & (~df_vend["is_gerente"])
         ].iterrows()
     ]
+    _vends_ativos = list(dict.fromkeys(_vends_ativos))
 
-    if _vends_ativos and _para_vends:
-        _n_vends_ativos = len(_vends_ativos)
+    if not _vends_ativos or not _grupos:
+        continue
 
-        for _idx_c, c in enumerate(_para_vends):
-            # Distribui round-robin pelos vendedores ativos
-            _vend_dest = _vends_ativos[_idx_c % _n_vends_ativos]
-            _tag = " [FDEP]" if c.get("is_fdep") else " [Inativo]"
+    # Carga que o vendedor já possui por clientes ATIVOS próprios.
+    _seller_keys116 = {v: _seller_group_keys_v10116(v) for v in _vends_ativos}
+    _seller_total116 = {v: len(_seller_keys116[v]) for v in _vends_ativos}
+    _seller_free116 = {
+        v: sum(1 for k in _seller_keys116[v] if k not in _recent_groups_v10116)
+        for v in _vends_ativos
+    }
 
-            if _vend_dest not in clientes_por_vend_js:
-                clientes_por_vend_js[_vend_dest] = {
-                    "grave": [],
-                    "alerta": [],
-                    "atencao": []
-                }
+    _total_inat116 = len(_grupos)
+    _base_40_vend116 = _total_inat116 - round(_total_inat116 * 0.60)
 
-            clientes_por_vend_js[_vend_dest][c["faixa"]].append({
-                "nome": c.get("cliente", c.get("nome", "")),
-                "cliente": c.get("cliente", ""),
-                "cpf_cnpj": c.get("cpf_cnpj", ""),
-                "cpf_cnpj_normalizado": c.get("cpf_cnpj_normalizado", ""),
-                "restricao": c.get("restricao", ""),
-                "vencimento": c.get("vencimento", ""),
-                "pagamento": c.get("pagamento", ""),
-                "dias": c.get("dias", 0),
-                "pendente": c.get("pendente", 0),
-                "pago": c.get("pago", 0.0),
-                "parcela": c.get("parcela", ""),
-                "titulo": c.get("titulo", ""),
-                "avalista": c.get("avalista", ""),
-                "contato": c.get("contato", ""),
-                "telefones": c.get("telefones", []),
-                "mensagem_whatsapp": c.get("mensagem_whatsapp", ""),
-                "vendedor": limpar_nome_display(c["vendedor"])[:20] + _tag,
-                "novo": c.get("novo", False),
-                "cliente_key": c.get("cliente_key", cliente_grupo_key_py(c)),
-                "cliente_key_legacy": c.get("cliente_key_legacy", normalizar_texto_match(c.get("cliente", ""))),
-                "cobranca_key": c.get("cobranca_key", cobranca_row_key_py(c)),
-                "cobranca_key_doc": c.get("cobranca_key_doc", ""),
-            })
+    # Quantos grupos adicionais são necessários para o piso de carteira.
+    _need_portfolio116 = sum(
+        max(0, _COB_MIN_CPFS_POR_VENDEDOR_V10116 - _seller_total116[v])
+        for v in _vends_ativos
+    )
+
+    _n_vend116 = min(
+        _total_inat116,
+        max(_base_40_vend116, _need_portfolio116)
+    )
+
+    # Preserva a lógica anterior de deixar os maiores saldos no bloco consolidado/gerente,
+    # usando inicialmente os grupos finais (menores saldos) para vendedores.
+    _candidate_vend116 = list(_grupos[-_n_vend116:]) if _n_vend116 > 0 else []
+    _manager_only116 = list(_grupos[:-_n_vend116]) if _n_vend116 > 0 else list(_grupos)
+
+    _assigned_group_keys116 = set()
+
+    def _choose_seller_v10116(_group):
+        _gk = cliente_grupo_key_py((_group or [{}])[0])
+        _is_free = _gk not in _recent_groups_v10116
+        return sorted(
+            _vends_ativos,
+            key=lambda v: (
+                0 if (_is_free and _seller_free116[v] < _COB_MIN_DISPONIVEIS_V10116) else 1,
+                0 if (_seller_total116[v] < _COB_MIN_CPFS_POR_VENDEDOR_V10116) else 1,
+                _seller_total116[v],
+                _seller_free116[v],
+                _hashlib.md5(f"{_gk}|{v}".encode("utf-8")).hexdigest(),
+            )
+        )[0]
+
+    def _assign_group_v10116(_group):
+        if not _group:
+            return
+        _gk = cliente_grupo_key_py(_group[0])
+        if not _gk or _gk in _assigned_group_keys116:
+            return
+        _dest = _choose_seller_v10116(_group)
+        _append_group_to_seller_v10116(_dest, _group)
+        _assigned_group_keys116.add(_gk)
+        if _gk not in _seller_keys116[_dest]:
+            _seller_keys116[_dest].add(_gk)
+            _seller_total116[_dest] += 1
+            if _gk not in _recent_groups_v10116:
+                _seller_free116[_dest] += 1
+
+    # Primeira distribuição: SEMPRE por CPF/grupo inteiro, nunca título a título.
+    for _group116 in _candidate_vend116:
+        _assign_group_v10116(_group116)
+
+    # Se ainda houver vendedor abaixo de 10 CPFs ou abaixo de 5 livres, usa grupos que
+    # antes ficariam apenas no bloco da filial/gerente. Não duplica: cada grupo entra uma vez.
+    _borrowed116 = 0
+    if _manager_only116:
+        _pool_extra116 = list(reversed(_manager_only116))  # começa pelos menores saldos do bloco
+        for _group116 in _pool_extra116:
+            _def_port = any(
+                _seller_total116[v] < _COB_MIN_CPFS_POR_VENDEDOR_V10116
+                for v in _vends_ativos
+            )
+            _def_free = any(
+                _seller_free116[v] < _COB_MIN_DISPONIVEIS_V10116
+                for v in _vends_ativos
+            )
+            if not (_def_port or _def_free):
+                break
+
+            _gk116 = cliente_grupo_key_py((_group116 or [{}])[0])
+            # Para sanar déficit de "livres", um CPF já cobrado nos últimos 3 dias não ajuda.
+            if _def_free and not _def_port and _gk116 in _recent_groups_v10116:
+                continue
+
+            _assign_group_v10116(_group116)
+            _borrowed116 += 1
+
+    print(
+        f"🧰 V10.116 proteção operacional {_filial_dest}: "
+        f"inativos/FDEP={_total_inat116} CPF(s) | base40={_base_40_vend116} | "
+        f"atribuídos vendedores={len(_assigned_group_keys116)} | extras piso={_borrowed116}"
+    )
+    for _v116 in _vends_ativos:
+        print(
+            f"   ↳ {_v116}: carteira={_seller_total116[_v116]} CPF(s) | "
+            f"livres≈{_seller_free116[_v116]} | "
+            f"mínimos={_COB_MIN_CPFS_POR_VENDEDOR_V10116}/{_COB_MIN_DISPONIVEIS_V10116}"
+        )
 
 print(f"📋 Clientes por filial (gerente):")
 for f in ORDEM_FILIAIS:
@@ -8332,12 +8613,33 @@ def aplicar_anti_duplicidade_operacional_carteiras():
                 rebuilt[dono][fx].append(r)
 
             for ck, por_dono in grupos.items():
-                # Mantém o cliente com o dono que já possui o maior saldo desse CPF.
-                # Em empate, a ordem do login deixa o resultado determinístico.
-                dono_escolhido = sorted(
-                    por_dono.keys(),
-                    key=lambda d: (-sum(float(x.get('pendente', 0) or 0) for _fx, x in por_dono[d]), str(d))
-                )[0]
+                # V10.116: se um CPF apareceu em mais de um vendedor por alguma origem
+                # multfilial/legada, mantém todos os títulos juntos em UM único vendedor.
+                # Para vendedores, prioriza o menor carregamento já reconstruído; em empate,
+                # usa o maior saldo do próprio CPF e ordem determinística.
+                if tipo == 'vendedor':
+                    _load116 = {
+                        d: len({
+                            _cliente_key(_r116)
+                            for _fx116 in ['grave','alerta','atencao']
+                            for _r116 in rebuilt.get(d, {}).get(_fx116, [])
+                            if _cliente_key(_r116)
+                        })
+                        for d in por_dono.keys()
+                    }
+                    dono_escolhido = sorted(
+                        por_dono.keys(),
+                        key=lambda d: (
+                            _load116.get(d, 0),
+                            -sum(float(x.get('pendente', 0) or 0) for _fx, x in por_dono[d]),
+                            str(d)
+                        )
+                    )[0]
+                else:
+                    dono_escolhido = sorted(
+                        por_dono.keys(),
+                        key=lambda d: (-sum(float(x.get('pendente', 0) or 0) for _fx, x in por_dono[d]), str(d))
+                    )[0]
                 titulos_vistos = set()
                 for dono_origem in sorted(por_dono.keys(), key=lambda x: str(x)):
                     for fx, r in por_dono[dono_origem]:
@@ -8375,7 +8677,7 @@ def aplicar_anti_duplicidade_operacional_carteiras():
         print(f"🧯 Anti-duplicidade operacional V10.44 aplicado: {len(removidos)} título(s) removido(s). Vendedor x crediarista preservado.")
         try:
             with open(os.path.join(pasta, 'relatorio_duplicidades_resolvidas.json'), 'w', encoding='utf-8') as f:
-                json.dump({'gerado_em': now_brasilia().isoformat(), 'versao': 'V10.44', 'regra': 'cobranca10 exclusiva por CPF/cliente; dedupe interno por CPF com todos os titulos juntos; vendedor x crediarista preservado', 'total_removidos': len(removidos), 'removidos': removidos[:1500]}, f, ensure_ascii=False, indent=2)
+                json.dump({'gerado_em': now_brasilia().isoformat(), 'versao': 'V10.116', 'regra': 'cobranca interna exclusiva por CPF/cliente; vendedores recebem CPF inteiro com balanceamento; vendedor x crediarista preservado', 'total_removidos': len(removidos), 'removidos': removidos[:1500]}, f, ensure_ascii=False, indent=2)
         except Exception:
             pass
     else:
@@ -27185,3 +27487,5 @@ driver.quit()
 # V10.114_CONTATO_ALTERNATIVO_COBRANCA
 
 # V10.115_CORRIGE_TRAVA_DEPLOY_FTP_ESSENCIAL
+
+# V10.116_PROTECAO_CARTEIRA_MINIMA_SEM_DUPLICACAO
