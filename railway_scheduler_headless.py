@@ -686,7 +686,7 @@ def start_http_panel():
     server.serve_forever()
 
 
-DEPLOY_BUILD_VERSION = "V10.116"
+DEPLOY_BUILD_VERSION = "V10.117"
 DEPLOY_STATE_PUBLIC_URL = "https://moveisdolar.com.br/colaborador/dashboard_deploy_state.json"
 
 def _remote_deploy_version_v10100():
@@ -855,3 +855,5 @@ while True:
 # V10.115_CORRIGE_TRAVA_DEPLOY_DINAMICO
 
 # V10.116_PROTECAO_CARTEIRA_MINIMA_SEM_DUPLICACAO
+
+# V10.117_CONCILIACAO_ANIVERSARIOS_GERENTE_BALANCEADO

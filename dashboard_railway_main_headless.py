@@ -38,7 +38,7 @@ URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 BR_TZ = APP_TZ  # V10.106: alias usado pelo histórico operacional V10.104
 
-DASHBOARD_BUILD_VERSION = "V10.116"
+DASHBOARD_BUILD_VERSION = "V10.117"
 DASHBOARD_BUILD_TAG = "v10116_protecao_carteira_minima_sem_duplicacao"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
@@ -3586,6 +3586,12 @@ _COB_MIN_CPFS_POR_VENDEDOR_V10116 = max(
 )
 _COB_MIN_DISPONIVEIS_V10116 = max(
     0, int(float(os.getenv("COBRANCA_VENDEDOR_MIN_DISPONIVEIS", "5") or 5))
+)
+# V10.117: protege também a carteira exclusiva do gerente/filial.
+# Sem esse piso, a proteção V10.116 do vendedor podia consumir quase todos os
+# CPFs inativos/FDEP de filiais pequenas (caso real F4/Yasmim: 1 cliente).
+_COB_MIN_CPFS_GERENTE_V10117 = max(
+    0, int(float(os.getenv("COBRANCA_GERENTE_MIN_CPFS_CARTEIRA", "5") or 5))
 )
 _COB_FILIAIS_V10116 = {"F1","F2","F3","F4","F5","F6","F8","F9"}
 
@@ -8352,6 +8358,25 @@ def _append_group_to_seller_v10116(_vend_dest, _group_rows):
             "cobranca_key_doc": c.get("cobranca_key_doc", ""),
         })
 
+# V10.117: filiais que possuem gerente ativo. O piso do gerente só é reservado
+# onde existe login de gerente operacional habilitado.
+_gerentes_ativos_filial_v10117 = set()
+try:
+    for _lg117, _u117 in (auth_users or {}).items():
+        if not isinstance(_u117, dict) or not bool(_u117.get("is_gerente")):
+            continue
+        if bool(_u117.get("access_disabled")):
+            continue
+        if str(_u117.get("status_operacional") or "ativo").strip().lower() != "ativo":
+            continue
+        if _u117.get("participa_cobrancas") is False:
+            continue
+        _ff117 = str(_u117.get("filial") or "").strip().upper()
+        if _ff117 in _COB_FILIAIS_V10116:
+            _gerentes_ativos_filial_v10117.add(_ff117)
+except Exception as _e117:
+    print(f"⚠️ V10.117 não conseguiu mapear gerentes ativos para piso de carteira: {_e117}")
+
 for _filial_dest, _clientes_inat in _inat_por_filial.items():
     _clientes_grupos = {}
     for c in _clientes_inat:
@@ -8419,8 +8444,17 @@ for _filial_dest, _clientes_inat in _inat_por_filial.items():
         for v in _vends_ativos
     )
 
-    _n_vend116 = min(
+    # V10.117: vendedores podem receber extras para o piso, MAS nunca a ponto de
+    # deixar o gerente da filial praticamente sem carteira. A reserva é por CPF
+    # inteiro e só existe quando há gerente ativo na filial.
+    _manager_floor117 = min(
         _total_inat116,
+        _COB_MIN_CPFS_GERENTE_V10117
+    ) if _filial_dest in _gerentes_ativos_filial_v10117 else 0
+    _max_vend117 = max(0, _total_inat116 - _manager_floor117)
+
+    _n_vend116 = min(
+        _max_vend117,
         max(_base_40_vend116, _need_portfolio116)
     )
 
@@ -8470,6 +8504,9 @@ for _filial_dest, _clientes_inat in _inat_por_filial.items():
     if _manager_only116:
         _pool_extra116 = list(reversed(_manager_only116))  # começa pelos menores saldos do bloco
         for _group116 in _pool_extra116:
+            # Nunca ultrapassa o teto que preserva o piso exclusivo do gerente.
+            if len(_assigned_group_keys116) >= _max_vend117:
+                break
             _def_port = any(
                 _seller_total116[v] < _COB_MIN_CPFS_POR_VENDEDOR_V10116
                 for v in _vends_ativos
@@ -8490,9 +8527,10 @@ for _filial_dest, _clientes_inat in _inat_por_filial.items():
             _borrowed116 += 1
 
     print(
-        f"🧰 V10.116 proteção operacional {_filial_dest}: "
+        f"🧰 V10.117 proteção operacional {_filial_dest}: "
         f"inativos/FDEP={_total_inat116} CPF(s) | base40={_base_40_vend116} | "
-        f"atribuídos vendedores={len(_assigned_group_keys116)} | extras piso={_borrowed116}"
+        f"atribuídos vendedores={len(_assigned_group_keys116)} | extras piso={_borrowed116} | "
+        f"reserva gerente={_manager_floor117} | gerente restante={max(0, _total_inat116-len(_assigned_group_keys116))}"
     )
     for _v116 in _vends_ativos:
         print(
@@ -9010,40 +9048,121 @@ def _json_has_items_v95(path, list_keys=('clientes','dados','seen')):
 def _baixou_listas_pesadas_v95():
     return os.getenv('BAIXAR_CLIENTES_SEM_MOVIMENTO','0') == '1' or os.getenv('BAIXAR_ANIVERSARIANTES','0') == '1' or os.getenv('FORCE_DAILY_LISTS_ON_BOOT','0') == '1'
 
+def _aniv_mes_dia_v10117(v):
+    """Retorna (mes,dia) da data de nascimento; aceita datetime/pandas e textos SGI."""
+    try:
+        if isinstance(v, (datetime, date)):
+            return (int(v.month), int(v.day))
+    except Exception:
+        pass
+    try:
+        if hasattr(v, "month") and hasattr(v, "day") and not isinstance(v, str):
+            return (int(v.month), int(v.day))
+    except Exception:
+        pass
+    s = str(v or "").strip()
+    if not s or s.lower() in {"nan", "nat", "none"}:
+        return None
+    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})", s)
+    if m:
+        return (int(m.group(2)), int(m.group(1)))
+    m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})", s)
+    if m:
+        return (int(m.group(2)), int(m.group(3)))
+    return None
+
+def _aniv_row_eh_hoje_v10117(row, agora=None):
+    agora = agora or now_brasilia()
+    md = _aniv_mes_dia_v10117((row or {}).get("nascimento"))
+    return bool(md and md == (int(agora.month), int(agora.day)))
+
+def _aniv_remote_atual_v10117(remote, agora=None):
+    agora = agora or now_brasilia()
+    if not isinstance(remote, dict):
+        return False
+    # Payload V10.117 marcado como stale/indisponível não é considerado fonte atual,
+    # mesmo que tenha sido regravado hoje após uma tentativa sem download.
+    status = str(remote.get("status") or "").strip().lower()
+    if status and status not in {"atual", "ok", "sem_aniversariantes"}:
+        return False
+    ref = str(remote.get("data_referencia") or "").strip()
+    if ref == agora.strftime("%Y-%m-%d"):
+        return True
+    ger = _v1099_dt(remote.get("gerado_em") or remote.get("updated_at")) if '_v1099_dt' in globals() else None
+    if ger and ger.strftime("%Y-%m-%d") == agora.strftime("%Y-%m-%d"):
+        return True
+    # Parser local independente porque _v1099_dt é definido mais adiante no arquivo.
+    raw = str(remote.get("gerado_em") or remote.get("updated_at") or "")
+    return raw[:10] == agora.strftime("%Y-%m-%d")
+
 def carregar_aniversariantes_local():
+    agora = now_brasilia()
+    hoje_iso = agora.strftime("%Y-%m-%d")
+    hoje_stamp = agora.strftime("%Y%m%d")
     arquivos=[]
     for fname in os.listdir(pasta):
         if nome_arquivo_aniversariantes_valido(fname):
             arquivos.append(os.path.join(pasta, fname))
     arquivos=sorted(arquivos, key=lambda x: os.path.getmtime(x), reverse=True)
-    print(f"🎂 Aniversariantes: {len(arquivos)} XLS encontrado(s) para leitura")
-    if not arquivos:
-        remote = _remote_json_colaborador_v95('aniversariantes_dia.json', None)
-        if isinstance(remote, dict):
-            dados = remote.get('dados') or remote.get('clientes') or []
-            if isinstance(dados, list) and dados:
-                print(f"🎂 Aniversariantes V9.5: sem XLS local; mantendo JSON do FTP com {len(dados)} cliente(s).")
-                try:
-                    with open(os.path.join(pasta, 'aniversariantes_dia.json'), 'w', encoding='utf-8') as f:
-                        json.dump(remote, f, ensure_ascii=False, indent=2)
-                except Exception:
-                    pass
-                return dados
-        print("ℹ️ Para testar sem Selenium, coloque aniversarios.xls ou relatorio_aniversariantes*.xls nesta pasta. Para baixar pelo Sólidus, rode com BAIXAR_ANIVERSARIANTES=1. V9.5: não vou sobrescrever o FTP com lista vazia.")
-        return []
-    todos=[]; seen=set()
-    for arq in arquivos:
+    arquivos_hoje=[a for a in arquivos if hoje_stamp in os.path.basename(a)]
+    # Se o Selenium baixou hoje, usa SOMENTE os arquivos de hoje. Caso contrário,
+    # pode inspecionar o mais recente apenas para segurança, mas nunca aceita aniversário
+    # cujo dia/mês não seja o de hoje.
+    arquivos_ler = arquivos_hoje if arquivos_hoje else (arquivos[:1] if arquivos else [])
+    print(
+        f"🎂 V10.117 Aniversariantes: {len(arquivos)} XLS local(is) | "
+        f"atuais={len(arquivos_hoje)} | referência={agora.strftime('%d/%m')}"
+    )
+
+    todos=[]; seen=set(); descartados_data=0
+    for arq in arquivos_ler:
         for row in parse_aniversariantes_xls(arq):
+            if not _aniv_row_eh_hoje_v10117(row, agora):
+                descartados_data += 1
+                continue
             key = (row.get('filial',''), _norm_cidade_mdl(row.get('cliente','')), tuple(row.get('telefones') or []))
             if key in seen: continue
             seen.add(key); todos.append(row)
+
+    # Fallback remoto é permitido SOMENTE se o próprio JSON foi gerado hoje.
+    # Nunca mais reaproveita lista de 16/06 em setembro.
+    if not todos and not arquivos_hoje:
+        remote = _remote_json_colaborador_v95('aniversariantes_dia.json', None)
+        if _aniv_remote_atual_v10117(remote, agora):
+            dados = remote.get('dados') or remote.get('clientes') or []
+            if isinstance(dados, list):
+                for row in dados:
+                    if not isinstance(row, dict) or not _aniv_row_eh_hoje_v10117(row, agora):
+                        continue
+                    key = (row.get('filial',''), _norm_cidade_mdl(row.get('cliente','')), tuple(row.get('telefones') or []))
+                    if key in seen: continue
+                    seen.add(key); todos.append(row)
+                if todos:
+                    print(f"🎂 V10.117: usando JSON remoto ATUAL de {hoje_iso} com {len(todos)} cliente(s).")
+        elif isinstance(remote, dict):
+            print("🧊 V10.117: JSON remoto de aniversariantes está desatualizado e foi ignorado.")
+
+    payload = {
+        "gerado_em": agora.isoformat(),
+        "data_referencia": hoje_iso,
+        "dia_mes_referencia": agora.strftime("%d/%m"),
+        "versao": "V10.117",
+        "status": "atual" if (arquivos_hoje or todos) else "fonte_desatualizada_ou_download_indisponivel",
+        "total": len(todos),
+        "descartados_por_data": descartados_data,
+        "dados": todos,
+    }
     try:
         with open(os.path.join(pasta, "aniversariantes_dia.json"), "w", encoding="utf-8") as f:
-            json.dump({"gerado_em": now_brasilia().isoformat(), "total": len(todos), "dados": todos}, f, ensure_ascii=False, indent=2)
+            json.dump(payload, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"⚠️ Não consegui salvar aniversariantes_dia.json: {e}")
-    print(f"🎂 Aniversariantes carregados: {len(todos)} cliente(s)")
+    print(
+        f"🎂 V10.117 aniversariantes válidos de {agora.strftime('%d/%m')}: "
+        f"{len(todos)} cliente(s) | descartados de outra data={descartados_data}"
+    )
     return todos
+
 
 def baixar_aniversariantes_selenium():
     if os.getenv("BAIXAR_ANIVERSARIANTES", "0") != "1":
@@ -10135,6 +10254,19 @@ def relatorio_duplicidades_carteira_py():
     return out
 
 baixar_clientes_sem_movimento_selenium()
+
+# V10.117: autocura de aniversariantes. Se o JSON publicado não é de hoje,
+# força SOMENTE a consulta de aniversariantes neste MAIN, mesmo fora da rodada 07h.
+# Assim um deploy no meio do dia não deixa 16/06 congelado até amanhã.
+try:
+    if os.getenv("BAIXAR_ANIVERSARIANTES", "0") != "1":
+        _aniv_remote_pre117 = _remote_json_colaborador_v95("aniversariantes_dia.json", None)
+        if not _aniv_remote_atual_v10117(_aniv_remote_pre117, now_brasilia()):
+            os.environ["BAIXAR_ANIVERSARIANTES"] = "1"
+            print("♻️ V10.117 aniversariantes: fonte remota desatualizada; forçando atualização de HOJE.")
+except Exception as _e_aniv_autofix117:
+    print(f"⚠️ V10.117 autocura aniversariantes: {_e_aniv_autofix117}")
+
 baixar_aniversariantes_selenium()
 clientes_sem_movimento_meta_py = {"modo":"somente_novos", "base_total":0, "novos_total":0, "seen_total":0}
 clientes_sem_movimento_js = carregar_clientes_sem_movimento_local()
@@ -10471,6 +10603,224 @@ def _v10104_fetch_auditorias():
         pass
     return [], False
 
+# ===== V10.117: CONCILIAÇÃO REAL DE PAGAMENTOS APÓS AUDITORIA =====
+# V10.104 só procurava pagamento se cobrança + auditoria + baixa ocorressem no MESMO DIA.
+# Isso zerava o relatório mensal quando o cliente pagava 1, 2, 3... dias depois.
+# Esta engine espelha a regra V10.113 já usada no painel/comissão:
+# - baixa exata do título auditado no mês do pagamento;
+# - recuperação efetivamente paga via renegociação/acordo;
+# - baixa contábil do título antigo por renegociação é ignorada;
+# - pagamento é deduplicado por CPF/lançamento/título/parcela/data.
+
+def _v10117_truth(v):
+    return v is True or str(v or "").strip().lower() in {"1","true","sim","yes"}
+
+def _v10117_iso_date(v):
+    d = _v1099_dt(v)
+    return d.strftime("%Y-%m-%d") if d else ""
+
+def _v10117_doc(r):
+    return _v1099_digits((r or {}).get("cpf_cnpj_normalizado") or (r or {}).get("cpf_cnpj"))
+
+def _v10117_title(v):
+    return _v1099_digits(v) or str(v or "").strip().upper()
+
+def _v10117_same_exact(a, q):
+    ad, qd = _v10117_doc(a), _v10117_doc(q)
+    if ad and qd and ad != qd:
+        return False
+    if not ad and not qd:
+        an = _v1099_norm((a or {}).get("cliente") or (a or {}).get("nome") or "")
+        qn = _v1099_norm((q or {}).get("cliente") or (q or {}).get("nome") or "")
+        if an and qn and an != qn:
+            return False
+    at, qt = _v10117_title((a or {}).get("titulo")), _v10117_title((q or {}).get("titulo"))
+    if at and qt and at != qt:
+        return False
+    return _v1099_part((a or {}).get("parcela")) == _v1099_part((q or {}).get("parcela"))
+
+def _v10117_is_reneg_title(q):
+    if _v10117_truth((q or {}).get("is_renegociacao_titulo")):
+        return True
+    f = _v1099_norm((q or {}).get("forma_pagamento") or "")
+    return bool(re.search(r"\\bRENEGOCI", f) or re.search(r"\\bACORDO\\b", f) or re.search(r"(^| )17($| )", f))
+
+def _v10117_is_accounting_reneg(q):
+    return (
+        _v10117_truth((q or {}).get("is_baixa_por_renegociacao"))
+        or str((q or {}).get("renegociacao_tipo") or "").strip().lower() == "baixa_origem"
+    )
+
+def _v10117_audit_dt(a):
+    return _v1099_dt(
+        (a or {}).get("server_time")
+        or (a or {}).get("criado_em")
+        or (a or {}).get("ia_analisado_em")
+        or (a or {}).get("updated_at")
+    )
+
+def _v10117_audit_intent(a):
+    ia = (a or {}).get("ia_resultado")
+    if isinstance(ia, str):
+        try: ia = json.loads(ia)
+        except Exception: ia = {}
+    if not isinstance(ia, dict): ia = {}
+    if _v10117_truth(ia.get("intencao_renegociacao")):
+        return True
+    if str(ia.get("tipo_resposta") or (a or {}).get("tipo_resposta") or "").strip().lower() == "renegociacao_acordo":
+        return True
+    trans=[]
+    for x in ((a or {}).get("attachments") or []):
+        if isinstance(x, dict) and x.get("transcript"):
+            trans.append(str(x.get("transcript")))
+    txt = _v1099_norm(" ".join([
+        str(ia.get("resposta_cliente_resumida") or ""), str(ia.get("motivo") or ""),
+        str((a or {}).get("motivo") or ""), str((a or {}).get("master_motivo") or ""), *trans
+    ]))
+    pats=(r"\\bRENEGOCI",r"\\bFAZER ACORDO\\b",r"\\bQUERO ACORDO\\b",r"\\bQUITAR TUDO\\b",r"\\bPAGAR TUDO\\b",r"\\bACERTAR TUDO\\b",r"\\bTODOS OS TITULOS\\b",r"\\bTODA A DIVIDA\\b",r"\\bPARCELAR NOVAMENTE\\b")
+    return any(re.search(p, txt) for p in pats)
+
+def _v10117_payment_key(q):
+    return "|".join([
+        _v10117_doc(q),
+        str((q or {}).get("lancamento") or "").strip(),
+        _v10117_title((q or {}).get("titulo")),
+        _v1099_part((q or {}).get("parcela")),
+        _v10117_iso_date((q or {}).get("pagamento") or (q or {}).get("data_pagamento")),
+    ])
+
+def _v10117_agreement_key(q):
+    doc=_v10117_doc(q)
+    lanc=str((q or {}).get("lancamento") or "").strip()
+    return f"{doc}|" + (f"L:{lanc}" if lanc else f"T:{_v10117_title((q or {}).get('titulo'))}")
+
+def _v10117_collection_before_pay(a, q, ent, logs_all):
+    pay_dt=_v1099_dt((q or {}).get("pagamento") or (q or {}).get("data_pagamento"))
+    logs=[]
+    for l in (logs_all or []):
+        if not isinstance(l, dict): continue
+        if str(l.get("acao") or "whatsapp").strip().lower() != "whatsapp": continue
+        if _v10117_truth(l.get("contato_alternativo")): continue
+        if not _v1099_log_matches_ent(l, ent): continue
+        if not _v10117_same_exact(a, l): continue
+        logs.append(l)
+    # A própria auditoria aprovada comprova a cobrança, então legado sem log completo
+    # não deve perder a conciliação.
+    if not logs or not pay_dt:
+        return True
+    for l in logs:
+        ld=_v1099_dt(l.get("server_time") or l.get("criado_em") or l.get("data") or l.get("server_date"))
+        if not ld or ld <= pay_dt:
+            return True
+    return False
+
+def _v10117_origin_for_reneg(q, audits_all, quitados_all, memo):
+    ag=_v10117_agreement_key(q)
+    if ag in memo: return memo[ag]
+    doc=_v10117_doc(q)
+    if not doc:
+        memo[ag]=None; return None
+    agreement_rows=[x for x in (quitados_all or []) if isinstance(x,dict) and _v10117_is_reneg_title(x) and _v10117_agreement_key(x)==ag and _v10117_iso_date(x.get("pagamento") or x.get("data_pagamento"))]
+    agreement_rows.sort(key=lambda x:_v10117_iso_date(x.get("pagamento") or x.get("data_pagamento")))
+    first=agreement_rows[0] if agreement_rows else q
+    first_dt=_v1099_dt((first or {}).get("pagamento") or (first or {}).get("data_pagamento"))
+    cand=[]
+    for a in (audits_all or []):
+        if not isinstance(a,dict) or not _v10104_status_aprovado(a.get("status")): continue
+        if _v10117_doc(a) != doc: continue
+        ad=_v10117_audit_dt(a)
+        if not ad or (first_dt and ad>first_dt): continue
+        cand.append(a)
+    cand.sort(key=lambda a:_v10117_audit_dt(a) or datetime(2000,1,1,tzinfo=BR_TZ))
+    explicit=[a for a in cand if _v10117_audit_intent(a)]
+    chosen=None; method=""
+    if explicit:
+        chosen=explicit[-1]; method="intencao_cliente_confirmada"
+    elif first_dt:
+        near=[]
+        for a in cand:
+            ad=_v10117_audit_dt(a)
+            if not ad: continue
+            dd=(first_dt-ad).total_seconds()/86400.0
+            if 0 <= dd <= 30: near.append(a)
+        if near:
+            chosen=near[-1]; method="fallback_30d"
+    out={"audit":chosen,"method":method,"agreement_key":ag} if chosen else None
+    memo[ag]=out
+    return out
+
+def _v10117_recovery_rows(ent, month, audits_all, quitados_all, logs_all):
+    if not re.match(r"^\\d{4}-\\d{2}$", str(month or "")):
+        return []
+    ent_aud=[a for a in (audits_all or []) if isinstance(a,dict) and _v10104_status_aprovado(a.get("status")) and _v10104_audit_matches_ent(a,ent)]
+    ent_aud.sort(key=lambda a:_v10117_audit_dt(a) or datetime(2000,1,1,tzinfo=BR_TZ))
+    out=[]; used=set()
+
+    # 1) baixa exata no mês do pagamento.
+    for a in ent_aud:
+        cand=[]
+        for q in (quitados_all or []):
+            if not isinstance(q,dict) or _v10117_is_accounting_reneg(q): continue
+            if not _v10117_same_exact(a,q): continue
+            pdt=_v10117_iso_date(q.get("pagamento") or q.get("data_pagamento"))
+            if pdt[:7] != month: continue
+            if not _v10117_collection_before_pay(a,q,ent,logs_all): continue
+            cand.append(q)
+        cand.sort(key=lambda q:float(q.get("pago") or 0), reverse=True)
+        if not cand: continue
+        q=cand[0]; pk=_v10117_payment_key(q)
+        if not pk or pk in used: continue
+        used.add(pk)
+        out.append({"key":pk,"recebido":float(q.get("pago") or 0),"pagamento":_v10117_iso_date(q.get("pagamento") or q.get("data_pagamento")),"origem":"titulo_auditado","audit":a,"quitado":q})
+
+    # 2) recuperação via novo acordo/renegociação efetivamente pago.
+    memo={}
+    for q in (quitados_all or []):
+        if not isinstance(q,dict) or not _v10117_is_reneg_title(q): continue
+        pdt=_v10117_iso_date(q.get("pagamento") or q.get("data_pagamento"))
+        if pdt[:7] != month: continue
+        origin=_v10117_origin_for_reneg(q,audits_all,quitados_all,memo)
+        a=(origin or {}).get("audit") if origin else None
+        if not a or not _v10104_audit_matches_ent(a,ent): continue
+        pk=_v10117_payment_key(q)
+        if not pk or pk in used: continue
+        val=float(q.get("pago") or 0)
+        if val<=0: continue
+        used.add(pk)
+        out.append({"key":pk,"recebido":val,"pagamento":pdt,"origem":"renegociacao","audit":a,"quitado":q,"vinculo":origin.get("method")})
+    return out
+
+def _v10117_apply_monthly_reconciliation(months, audits_all, quitados_all, logs_all):
+    if not isinstance(months,dict): return months
+    for month, payload in months.items():
+        if not isinstance(payload,dict): continue
+        company_rows={}
+        # Filiais abrangem vendedor + gerente + crediarista da própria filial sem
+        # somar esses usuários novamente no resumo da empresa.
+        for field in ("entities","filiais"):
+            for row in (payload.get(field) or []):
+                if not isinstance(row,dict): continue
+                ent={"tipo":row.get("tipo"),"login":row.get("login"),"nome":row.get("nome"),"filial":row.get("filial")}
+                recs=_v10117_recovery_rows(ent,month,audits_all,quitados_all,logs_all)
+                row["pagamentos_conciliados"]=len(recs)
+                row["recebido_conciliado"]=round(sum(float(x.get("recebido") or 0) for x in recs),2)
+                cob=int(row.get("cobrancas_feitas") or 0)
+                row["taxa_efetividade"]=round((len(recs)/cob*100.0) if cob else 0.0,2)
+                row["reconciliacao_v10117"]="pagamento_no_mes_apos_auditoria"
+                if field=="filiais" or (field=="entities" and str(row.get("tipo") or "").lower()=="terceiro"):
+                    for rr in recs:
+                        company_rows.setdefault(rr.get("key"),rr)
+        summary=payload.get("summary") if isinstance(payload.get("summary"),dict) else {}
+        summary["pagamentos_conciliados"]=len(company_rows)
+        summary["recebido_conciliado"]=round(sum(float(x.get("recebido") or 0) for x in company_rows.values()),2)
+        cob=int(summary.get("cobrancas_feitas") or 0)
+        summary["taxa_efetividade"]=round((len(company_rows)/cob*100.0) if cob else 0.0,2)
+        summary["reconciliacao_v10117"]="filiais_unicas_mais_cobranca_interna"
+        payload["summary"]=summary
+        if month == now_brasilia().strftime("%Y-%m"):
+            print(f"💵 V10.117 conciliação mensal {month}: {len(company_rows)} pagamento(s) | R$ {summary['recebido_conciliado']:.2f}")
+    return months
+
 def _v1099_entity_daily(tipo, login, nome, filial, buckets, logs_all, audits_all, quitados_all, now):
     rows = []
     seen_rows = set()
@@ -10583,6 +10933,18 @@ def _v1099_entity_daily(tipo, login, nome, filial, buckets, logs_all, audits_all
             q = qmatches[0]
             pagamentos += 1
             recebido += float(q.get("pago") or 0)
+
+    # V10.117: pagamento de HOJE pode vir de cobrança/auditoria de dias anteriores.
+    # Recalcula a baixa do dia usando a mesma engine de recuperação do relatório mensal.
+    try:
+        _rec_day117 = [
+            x for x in _v10117_recovery_rows(ent, now.strftime("%Y-%m"), audits_all, quitados_all, logs_all)
+            if str(x.get("pagamento") or "") == today
+        ]
+        pagamentos = len(_rec_day117)
+        recebido = sum(float(x.get("recebido") or 0) for x in _rec_day117)
+    except Exception as _e_day117:
+        print(f"⚠️ V10.117 conciliação diária {tipo}/{login or nome}: {_e_day117}")
 
     previstos = len(plan)
     cobrancas = len(today_logs)
@@ -10878,7 +11240,18 @@ try:
         "updated_at": _now_v1099.isoformat(),
         "updated_at_label": _now_v1099.strftime("%d/%m/%Y %H:%M:%S"),
         "days": _hist_days_v10104,
-        "months": _v10104_rebuild_months(_hist_days_v10104),
+        "months": _v10117_apply_monthly_reconciliation(
+            _v10104_rebuild_months(_hist_days_v10104),
+            _audits_v10104,
+            _quitados_v10104,
+            _logs_v1099,
+        ),
+    }
+    _hist_cob_v10104["version"] = "V10.117"
+    _hist_cob_v10104["reconciliacao_pagamentos"] = {
+        "version":"V10.117",
+        "regra":"pagamento no mês após auditoria aprovada; baixa exata ou renegociação efetivamente paga",
+        "generated_at":_now_v1099.isoformat(),
     }
 
     with open(HIST_COBRANCA_OPERACIONAL_PATH, "w", encoding="utf-8") as _f_hist_cob_v10104:
@@ -14689,8 +15062,15 @@ function getRecebimentos(ent){
 }
 function renderRecebimentos(ent){const src=getRecebimentos(ent); let out=''; ['grave','alerta','atencao'].forEach(fx=>{const arr=src[fx]||[]; const label=fx==='grave'?'Grave':fx==='alerta'?'Alerta':'Atenção'; if(!arr.length){out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>Sem recebimentos</span></div></div>`; return} out+=`<div class="faixa-block"><div class="faixa-title ${fx}">${label}<span>${arr.length} títulos · ${R(arr.reduce((a,b)=>a+Number(b.pago||0),0))}</span></div><div class="tableish">${arr.slice(0,80).map(r=>`<div class="row-item"><div class="row-top"><div><div class="name">${esc(r.cliente||r.nome||'')}</div><div class="small muted">Título ${esc(r.titulo||'')} · Parcela ${esc(r.parcela||'')}</div>${r.cpf_cnpj?`<div class="small muted">CPF/CNPJ: ${esc(r.cpf_cnpj)}</div>`:''}</div><div><strong>${esc(r.pagamento||'')}</strong><div class="small muted">Pagamento</div></div><div><strong>${esc(r.vencimento||'')}</strong><div class="small muted">Vencimento</div></div><div><strong>${r.dias||0}d</strong><div class="small muted">Dias</div></div><div><strong>${R(r.pago||0)}</strong><div class="small muted">Recebido</div></div><div><strong>${esc(r.vendedor||'')}</strong><div class="small muted">Origem</div></div></div></div>`).join('')}</div></div>`}); return out}
 function cobrancaRowKey(r){return [String(r.cliente||r.nome||'').trim().toUpperCase(),String(r.titulo||'').trim(),String(r.parcela||'').trim(),String(r.vencimento||'').trim()].join('|')}
+function cobrancaCpfGroupKey117(r){
+  const doc=String(r?.cpf_cnpj_normalizado||r?.cpf_cnpj||'').replace(/\D/g,'');
+  if(doc)return 'DOC:'+doc;
+  const ck=String(r?.cliente_key||'').trim().toUpperCase();
+  if(ck)return ck;
+  return 'NOME:'+String(r?.cliente||r?.nome||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim();
+}
 function dedupeCobrancaBuckets(src){const out={grave:[],alerta:[],atencao:[]}; const seen=new Set(); ['grave','alerta','atencao'].forEach(fx=>{(src?.[fx]||[]).forEach(r=>{const k=cobrancaRowKey(r); if(!seen.has(k)){seen.add(k); out[fx].push(r);}})}); return out}
-function vendorAssignedKeysByFilial(filial){const keys=new Set(); const arr=(TODOS?.[filial]||[]); arr.forEach(v=>{const buckets=CLIENTES_VEND?.[v.nome]||{grave:[],alerta:[],atencao:[]}; ['grave','alerta','atencao'].forEach(fx=>(buckets[fx]||[]).forEach(r=>keys.add(cobrancaRowKey(r))))}); return keys}
+function vendorAssignedKeysByFilial(filial){const keys=new Set(); const arr=(TODOS?.[filial]||[]); arr.forEach(v=>{const buckets=CLIENTES_VEND?.[v.nome]||{grave:[],alerta:[],atencao:[]}; ['grave','alerta','atencao'].forEach(fx=>(buckets[fx]||[]).forEach(r=>keys.add(cobrancaCpfGroupKey117(r))))}); return keys}
 function getClientesEnt(ent){
   if(ent.type==='terceiro' || ent.is_terceiro){
     const login=String(ent.login||usuarioAtual?.login||COBRANCA10_LOGIN||'cobranca10').toLowerCase();
@@ -14701,7 +15081,7 @@ function getClientesEnt(ent){
   const src=CLIENTES_FIL[ent.filial]||{grave:[],alerta:[],atencao:[]};
   const taken=vendorAssignedKeysByFilial(ent.filial);
   const filtered={grave:[],alerta:[],atencao:[]};
-  ['grave','alerta','atencao'].forEach(fx=>{(src[fx]||[]).forEach(r=>{const k=cobrancaRowKey(r); if(!taken.has(k)) filtered[fx].push(r);})});
+  ['grave','alerta','atencao'].forEach(fx=>{(src[fx]||[]).forEach(r=>{const k=cobrancaCpfGroupKey117(r); if(!taken.has(k)) filtered[fx].push(r);})});
   return dedupeCobrancaBuckets(filtered);
 }
 function isTodayStr(s){return dateOnlyISO(s)===dateOnlyISO(new Date())}
@@ -27489,3 +27869,5 @@ driver.quit()
 # V10.115_CORRIGE_TRAVA_DEPLOY_FTP_ESSENCIAL
 
 # V10.116_PROTECAO_CARTEIRA_MINIMA_SEM_DUPLICACAO
+
+# V10.117_CONCILIACAO_MENSAL_ANIVERSARIOS_ATUAIS_GERENTE_PISO
