@@ -38,8 +38,8 @@ URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 BR_TZ = APP_TZ  # V10.106: alias usado pelo histórico operacional V10.104
 
-DASHBOARD_BUILD_VERSION = "V10.123"
-DASHBOARD_BUILD_TAG = "v10123_sgi_vendedores_monitor_telegram_confirmacao"
+DASHBOARD_BUILD_VERSION = "V10.125"
+DASHBOARD_BUILD_TAG = "v10124_fix_login_monitor_sgi_interagivel"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
 # V10.52: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.

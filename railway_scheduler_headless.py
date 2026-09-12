@@ -8,6 +8,7 @@ import time
 import subprocess
 import threading
 import urllib.request
+import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -102,12 +103,37 @@ COBRANCA_CMD = [sys.executable, os.path.join(BASE_DIR, 'dashboard_railway_main_h
 PREVENTIVA_CMD = [sys.executable, os.path.join(BASE_DIR, 'whatsapp_master_preventiva_worker.py')]
 COB_TERCEIRA_CMD = [sys.executable, os.path.join(BASE_DIR, 'cobranca_terceira_worker_v1096.py')]
 AUDIT_CMD = [sys.executable, os.path.join(BASE_DIR, 'cobranca_auditoria_worker_v1105.py')]
-SGI_VENDEDORES_CMD = [sys.executable, os.path.join(BASE_DIR, 'sgi_vendedores_monitor.py')]
+SGI_VENDEDORES_PATH = os.path.join(BASE_DIR, 'sgi_vendedores_monitor.py')
+SGI_VENDEDORES_CMD = [sys.executable, '-u', SGI_VENDEDORES_PATH]
+SGI_VENDEDORES_EXPECTED_MARKER = 'SGI_VENDEDORES_MONITOR_V10.125'
 SGI_VENDEDORES_HOUR = int(os.getenv('SGI_VENDEDORES_MONITOR_HOUR','8'))
 SGI_VENDEDORES_MINUTE = int(os.getenv('SGI_VENDEDORES_MONITOR_MINUTE','10'))
 SGI_VENDEDORES_RETRY_MIN = max(15,int(os.getenv('SGI_VENDEDORES_MONITOR_RETRY_MIN','30')))
 AUDIT_INTERVAL_SECONDS = max(30, int(os.getenv('COBRANCA_AUDITORIA_FALLBACK_SECONDS', '60')))
 AUDIT_WEBHOOK_SECRET = os.getenv('COBRANCA_AUDITORIA_WEBHOOK_SECRET', '').strip()
+
+
+def _sgi_monitor_runtime_guard_v10125():
+    """Confirma que o arquivo que será executado é realmente a versão nova.
+    Evita rodar silenciosamente uma cópia antiga do monitor dentro do container.
+    """
+    try:
+        with open(SGI_VENDEDORES_PATH, 'rb') as _f:
+            raw = _f.read()
+        txt = raw.decode('utf-8', errors='replace')
+        sha = hashlib.sha256(raw).hexdigest()
+        marker_ok = SGI_VENDEDORES_EXPECTED_MARKER in txt
+        legacy_clear = 'user.clear(); user.send_keys(LOGIN)' in txt
+        ok = bool(marker_ok and not legacy_clear)
+        return ok, {
+            'path': SGI_VENDEDORES_PATH,
+            'sha256': sha,
+            'marker_ok': marker_ok,
+            'legacy_clear': legacy_clear,
+            'bytes': len(raw),
+        }
+    except Exception as e:
+        return False, {'path': SGI_VENDEDORES_PATH, 'error': f'{type(e).__name__}: {e}'}
 
 _sales_proc = None
 _cobranca_proc = None
@@ -127,7 +153,7 @@ _force_sales_after_main = False
 _force_main_status_sync = False
 
 STATE = {
-    'version': 'V10.123_SGI_VENDEDORES_MONITOR',
+    'version': 'V10.125_SGI_MONITOR_RUNTIME_GUARD',
     'started_at': None,
     'updated_at': None,
     'scheduler': 'starting',
@@ -722,7 +748,7 @@ def start_http_panel():
     server.serve_forever()
 
 
-DEPLOY_BUILD_VERSION = "V10.123"
+DEPLOY_BUILD_VERSION = "V10.125"
 DEPLOY_STATE_PUBLIC_URL = "https://moveisdolar.com.br/colaborador/dashboard_deploy_state.json"
 
 def _remote_deploy_version_v10100():
@@ -745,7 +771,12 @@ STATE["deploy_update_active"] = bool(_deploy_update_active_v10100)
 STATE["deploy_update_version"] = DEPLOY_BUILD_VERSION
 STATE["deploy_update_started_at"] = iso_now() if _deploy_update_active_v10100 else None
 if _deploy_update_active_v10100:
+    # V10.125: nova versão do monitor deve testar imediatamente após o primeiro MAIN,
+    # sem herdar cooldown/data de uma tentativa falha da versão anterior.
+    STATE['last_sgi_vendedores_date'] = None
+    STATE['last_sgi_vendedores_attempt_at'] = None
     log(f"🔒 NOVO DEPLOY detectado: público={_remote_deploy_v10100 or 'sem marcador'} -> código={DEPLOY_BUILD_VERSION}. Acesso ficará bloqueado somente até o primeiro MAIN finalizar.")
+    log('👥 V10.125 monitor SGI liberado para nova tentativa após o primeiro MAIN do deploy.')
 else:
     log(f"✅ Reinício sem mudança de versão: {DEPLOY_BUILD_VERSION}. Não haverá bloqueio de acesso.")
 
@@ -757,7 +788,9 @@ _last_deploy_remote_recheck_v10115 = 0.0
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log(f'VERSAO V10.123: monitor diário SGI vendedores/gerentes + confirmação de férias Telegram | canal={NOTIFICATION_CHANNEL} | manual_only={COB_TERCEIRA_MANUAL_ONLY}')
+_sgi_guard_ok_125, _sgi_guard_info_125 = _sgi_monitor_runtime_guard_v10125()
+log(f"👥 V10.125 runtime monitor SGI | ok={_sgi_guard_ok_125} | info={_sgi_guard_info_125}")
+log(f'VERSAO V10.125: guard de runtime do monitor SGI + login sem clear; mantém auditoria diária + confirmação de férias Telegram | canal={NOTIFICATION_CHANNEL} | manual_only={COB_TERCEIRA_MANUAL_ONLY}')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
@@ -851,7 +884,19 @@ while True:
         _cobranca_proc=start_job('dashboard_completo_cobranca_status_sgi_telegram', COBRANCA_CMD, main_job_env(False)); cobranca_running=True
     elif sgi_vendedores_due(now) and not sales_running and not cobranca_running and not cob_terceira_running and not sgi_vendedores_running:
         STATE['last_sgi_vendedores_attempt_at'] = iso_now(); _save_status()
-        _sgi_vendedores_proc=start_job('sgi_vendedores_monitor_diario', SGI_VENDEDORES_CMD); sgi_vendedores_running=True
+        _ok125, _info125 = _sgi_monitor_runtime_guard_v10125()
+        if not _ok125:
+            _msg125 = f"V10.125 BLOQUEOU monitor SGI incompatível: {_info125}"
+            STATE['jobs']['sgi_vendedores_monitor']['last_error'] = _msg125
+            log('🚫 ' + _msg125)
+            try:
+                telegram_send('🚨 MONITOR SGI NÃO EXECUTADO\n\n' + _msg125[:1200])
+            except Exception:
+                pass
+            _save_status()
+        else:
+            log(f"👥 V10.125 iniciando monitor SGI verificado | sha256={_info125.get('sha256','')[:16]} | bytes={_info125.get('bytes')}")
+            _sgi_vendedores_proc=start_job('sgi_vendedores_monitor_diario_v10125', SGI_VENDEDORES_CMD); sgi_vendedores_running=True
     elif _force_sales_after_main and not sales_running and not cobranca_running and not cob_terceira_running and not sgi_vendedores_running:
         _force_sales_after_main=False; _last_sales_slot=skey
         _sales_proc=start_job('vendas_unificadas_pos_main', SALES_CMD); sales_running=True

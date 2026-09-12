@@ -1,4 +1,4 @@
-# VERSAO: SGI_VENDEDORES_MONITOR_V10.123
+# VERSAO: SGI_VENDEDORES_MONITOR_V10.125
 # Auditoria diaria de vendedores/gerentes ativos no SGI + confirmacao de ferias via Telegram.
 from __future__ import annotations
 
@@ -32,6 +32,9 @@ CONFIG_URL = PUBLIC_BASE + '/config_meta.json'
 MONITOR_JSON = os.path.join(BASE_DIR, 'sgi_vendedores_monitor.json')
 FORCE_MAIN_FLAG = os.path.join(BASE_DIR, 'sgi_vendedores_force_main.flag')
 FILIAIS = ('F1','F2','F3','F4','F5','F6','F8','F9')
+MONITOR_BUILD = 'SGI_VENDEDORES_MONITOR_V10.125'
+LOGIN_STRATEGY = 'INTERACTABLE_ONLY_NO_CLEAR'
+
 
 
 def now_br(): return datetime.now(BR_TZ)
@@ -55,14 +58,14 @@ def _filial_marker(desc):
 
 
 def _http_json(url, timeout=20):
-    req=urllib.request.Request(url + ('&' if '?' in url else '?') + '_='+str(int(time.time())), headers={'User-Agent':'MDL-SGI-Vendedores-V10.123','Cache-Control':'no-cache'})
+    req=urllib.request.Request(url + ('&' if '?' in url else '?') + '_='+str(int(time.time())), headers={'User-Agent':'MDL-SGI-Vendedores-V10.125','Cache-Control':'no-cache'})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode('utf-8','replace'))
 
 
 def _post_form(url, data, timeout=25):
     body=urllib.parse.urlencode({k:'' if v is None else str(v) for k,v in data.items()}).encode('utf-8')
-    req=urllib.request.Request(url, data=body, headers={'User-Agent':'MDL-SGI-Vendedores-V10.123','Content-Type':'application/x-www-form-urlencoded'})
+    req=urllib.request.Request(url, data=body, headers={'User-Agent':'MDL-SGI-Vendedores-V10.125','Content-Type':'application/x-www-form-urlencoded'})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode('utf-8','replace'))
 
@@ -75,7 +78,7 @@ def _telegram_api(method, payload=None, timeout=20):
     if not tok: return {'ok':False,'description':'TELEGRAM_BOT_TOKEN ausente'}
     url=f'https://api.telegram.org/bot{tok}/{method}'
     body=urllib.parse.urlencode(payload or {}, doseq=True).encode('utf-8')
-    req=urllib.request.Request(url, data=body, headers={'Content-Type':'application/x-www-form-urlencoded','User-Agent':'MDL-SGI-Vendedores-V10.123'})
+    req=urllib.request.Request(url, data=body, headers={'Content-Type':'application/x-www-form-urlencoded','User-Agent':'MDL-SGI-Vendedores-V10.125'})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode('utf-8','replace'))
 
@@ -150,21 +153,129 @@ def _make_driver():
         raise
 
 
+def _visible_enabled(el):
+    try:
+        if not el.is_displayed() or not el.is_enabled():
+            return False
+        typ=str(el.get_attribute('type') or '').strip().lower()
+        if typ == 'hidden':
+            return False
+        size=el.size or {}
+        return float(size.get('width') or 0) > 0 and float(size.get('height') or 0) > 0
+    except Exception:
+        return False
+
+
+def _first_interactable(driver, selectors, timeout=30):
+    deadline=time.time()+float(timeout)
+    last_counts=[]
+    while time.time() < deadline:
+        for by,sel in selectors:
+            try:
+                els=driver.find_elements(by,sel)
+            except Exception:
+                els=[]
+            if els:
+                last_counts.append(f'{by}:{sel}={len(els)}')
+            for el in els:
+                if _visible_enabled(el):
+                    return el
+        time.sleep(.25)
+    return None
+
+
+def _fill_interactable(driver, el, value, label):
+    err=[]
+    try:
+        driver.execute_script("arguments[0].scrollIntoView({block:'center',inline:'nearest'});", el)
+    except Exception:
+        pass
+    try:
+        el.click()
+    except Exception as e:
+        err.append('click='+type(e).__name__)
+    try:
+        el.send_keys(Keys.CONTROL,'a')
+        el.send_keys(Keys.DELETE)
+        el.send_keys(value)
+        return
+    except Exception as e:
+        err.append('keys='+type(e).__name__)
+    try:
+        driver.execute_script(
+            "arguments[0].focus(); arguments[0].value=arguments[1]; "
+            "arguments[0].dispatchEvent(new Event('input',{bubbles:true})); "
+            "arguments[0].dispatchEvent(new Event('change',{bubbles:true}));",
+            el, value
+        )
+        return
+    except Exception as e:
+        err.append('js='+type(e).__name__)
+    raise RuntimeError(f'nao foi possivel preencher {label}: '+', '.join(err))
+
+
 def _login(driver):
     driver.get(URL)
     wait=WebDriverWait(driver,30)
-    user=None
-    for by,sel in [(By.NAME,'usuario'),(By.ID,'usuario'),(By.CSS_SELECTOR,"input[name='usuario']"),(By.XPATH,"//input[contains(@name,'usuario') or contains(@id,'usuario')]")]:
+    time.sleep(.8)
+
+    # Se o SGI reaproveitar sessão, não exige login.
+    try:
+        if '/home' in str(driver.current_url or '') or driver.find_elements(By.ID,'barra_superior'):
+            return
+    except Exception:
+        pass
+
+    user_selectors=[
+        (By.NAME,'usuario'),
+        (By.ID,'usuario'),
+        (By.CSS_SELECTOR,"input[name='usuario']"),
+        (By.CSS_SELECTOR,"input[id='usuario']"),
+        (By.XPATH,"//input[(contains(@name,'usuario') or contains(@id,'usuario')) and not(@type='hidden')]") ,
+        (By.XPATH,"//input[@type='text' or @type='email']"),
+    ]
+    user=_first_interactable(driver,user_selectors,30)
+    if user is None:
+        raise RuntimeError(f'campo usuario SGI visível/interagível não encontrado | url={driver.current_url} | title={driver.title}')
+    _fill_interactable(driver,user,LOGIN,'usuario SGI')
+
+    pwd=_first_interactable(driver,[(By.CSS_SELECTOR,"input[type='password']"),(By.XPATH,"//input[@type='password']")],20)
+    if pwd is None:
+        raise RuntimeError(f'campo senha SGI visível/interagível não encontrado | url={driver.current_url} | title={driver.title}')
+    _fill_interactable(driver,pwd,SENHA,'senha SGI')
+
+    submitted=False
+    for by,sel in [
+        (By.CSS_SELECTOR,"button[type='submit']"),
+        (By.CSS_SELECTOR,"input[type='submit']"),
+        (By.XPATH,"//button[contains(.,'Entrar') or contains(.,'Login') or contains(.,'Acessar')]")
+    ]:
+        btn=_first_interactable(driver,[(by,sel)],2)
+        if btn is not None:
+            try:
+                btn.click(); submitted=True; break
+            except Exception:
+                pass
+    if not submitted:
         try:
-            user=wait.until(EC.presence_of_element_located((by,sel))); break
-        except Exception: pass
-    if user is None: raise RuntimeError('campo usuario SGI nao encontrado')
-    user.clear(); user.send_keys(LOGIN)
-    pwd=wait.until(EC.presence_of_element_located((By.XPATH,"//input[@type='password']")))
-    pwd.clear(); pwd.send_keys(SENHA); pwd.send_keys(Keys.ENTER)
-    try: wait.until(EC.element_to_be_clickable((By.ID,'botao_prosseguir_informa_local_trabalho'))).click()
-    except Exception: pass
-    time.sleep(2)
+            pwd.send_keys(Keys.ENTER)
+        except Exception:
+            driver.execute_script("arguments[0].form && arguments[0].form.submit();", pwd)
+
+    # SGI pode pedir filial/local de trabalho após autenticação.
+    try:
+        wait.until(EC.element_to_be_clickable((By.ID,'botao_prosseguir_informa_local_trabalho'))).click()
+    except Exception:
+        pass
+
+    # Confirma autenticação acessando diretamente a tela que será usada.
+    driver.get(URL+'/vendedores')
+    try:
+        WebDriverWait(driver,30).until(EC.presence_of_element_located((By.ID,'vendedores.descricao_ilike')))
+    except Exception as e:
+        raise RuntimeError(
+            f'login SGI não confirmado após envio das credenciais | url={driver.current_url} | title={driver.title} | {type(e).__name__}'
+        )
 
 
 def _collect_sgi_roster():
@@ -284,7 +395,7 @@ def _send_question(u):
 
 
 def run_monitor():
-    print('👥 V10.123 monitor SGI vendedores/gerentes iniciado')
+    print(f'👥 V10.125 monitor SGI vendedores/gerentes iniciado | arquivo={__file__} | login_fix=interactable_no_clear', flush=True)
     roster=_collect_sgi_roster()
     print(f'✅ SGI /vendedores: {len(roster)} ativo(s) com tag F#/GERF#')
     creds=_load_creds(); dash=_commercial_dashboard_users(creds)
@@ -307,6 +418,10 @@ def run_monitor():
     # auto retorno: férias que voltaram a ter meta/venda
     reativados=[]
     for u in dash:
+        # V10.124: ausência de venda/meta é sinal confiável somente para vendedor.
+        # Gerente continua auditado pelo roster SGI (GERF#), mas não é inferido como férias por falta de venda.
+        if u['is_gerente']:
+            continue
         k=(u['nome_norm'],u['filial'],u['is_gerente'])
         if u['status']=='ferias' and k in sgi_map and metas_ok and u['nome_norm'] in metas:
             try:
@@ -321,6 +436,8 @@ def run_monitor():
     if metas_ok:
         for u in dash:
             if u['status']!='ativo': continue
+            # V10.124: não perguntar férias de gerente apenas por ausência em metas/vendas.
+            if u['is_gerente']: continue
             k=(u['nome_norm'],u['filial'],u['is_gerente'])
             if k not in sgi_map: continue
             if u['nome_norm'] in metas: continue
@@ -329,9 +446,9 @@ def run_monitor():
             if asked==now_br().strftime('%Y-%m-%d'): continue
             if _send_question(u): perguntas.append(u)
             time.sleep(.25)
-    snap={'version':'V10.123','generated_at':now_br().isoformat(),'sgi_ativos':roster,'dashboard':[{k:v for k,v in u.items() if k!='raw'} for u in dash], 'sgi_only':sgi_only,'dashboard_only':[{k:v for k,v in u.items() if k!='raw'} for u in dash_only], 'meta_names':sorted(metas), 'perguntas_ferias':[u['login'] for u in perguntas], 'reativados':[u['login'] for u in reativados]}
+    snap={'version':'V10.125','generated_at':now_br().isoformat(),'sgi_ativos':roster,'dashboard':[{k:v for k,v in u.items() if k!='raw'} for u in dash], 'sgi_only':sgi_only,'dashboard_only':[{k:v for k,v in u.items() if k!='raw'} for u in dash_only], 'meta_names':sorted(metas), 'perguntas_ferias':[u['login'] for u in perguntas], 'reativados':[u['login'] for u in reativados]}
     with open(MONITOR_JSON,'w',encoding='utf-8') as f: json.dump(snap,f,ensure_ascii=False,indent=2)
-    print(f"✅ V10.123 final: divergências SGI→Dash={len(sgi_only)} Dash→SGI={len(dash_only)} | perguntas férias={len(perguntas)} | retornos={len(reativados)}")
+    print(f"✅ V10.125 final: divergências SGI→Dash={len(sgi_only)} Dash→SGI={len(dash_only)} | perguntas férias={len(perguntas)} | retornos={len(reativados)}")
     return 0
 
 
@@ -380,7 +497,7 @@ def poll_telegram_callbacks_v10123(base_dir=None, offset=0):
 if __name__=='__main__':
     try: raise SystemExit(run_monitor())
     except Exception as e:
-        print('❌ V10.123 monitor SGI vendedores:',repr(e))
+        print('❌ V10.125 monitor SGI vendedores:',repr(e), flush=True)
         try: _send_text('🚨 ERRO MONITOR SGI VENDEDORES\n'+str(e)[:1200])
         except Exception: pass
         raise
