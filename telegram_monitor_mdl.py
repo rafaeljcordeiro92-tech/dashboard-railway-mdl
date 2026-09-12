@@ -572,7 +572,7 @@ def _load_cobrancas(base_dir):
     return out
 
 
-def _load_users(base_dir):
+def _load_users(base_dir, include_ferias=False):
     data = load_json_local_or_remote(base_dir, "credenciais_dashboard.json", "credenciais_dashboard.json", {})
     users = (data or {}).get("users", {}) if isinstance(data, dict) else {}
     out = []
@@ -584,7 +584,8 @@ def _load_users(base_dir):
             if u.get("is_viewer") or login_s.lower() in {"painel", "master", "diretorcomercial"}:
                 continue
             status = str(u.get("status_operacional") or u.get("status") or "ativo").lower().strip()
-            if status and status not in {"ativo", "active", "true", "1"}:
+            is_ferias = status in {"ferias", "férias", "vacation"}
+            if status and status not in {"ativo", "active", "true", "1"} and not (include_ferias and is_ferias):
                 continue
             if u.get("access_disabled") is True:
                 continue
@@ -600,6 +601,8 @@ def _load_users(base_dir):
                 "participa_sem_movimento": bool(u.get("participa_sem_movimento", True)),
                 "participa_aniversariantes": bool(u.get("participa_aniversariantes", True)),
                 "participa_murais": bool(u.get("participa_murais", True)),
+                "status_operacional": "ferias" if is_ferias else "ativo",
+                "em_ferias": bool(is_ferias),
             })
     return out
 
@@ -2235,11 +2238,10 @@ def build_collection_progress_3h(base_dir, date_str=None):
     """
     date_str = date_str or now_br().strftime("%Y-%m-%d")
 
-    all_users = [
-        u for u in _load_users(base_dir)
-        if u.get("participa_cobrancas", True)
-    ]
-    regular_users = [u for u in all_users if not u.get("is_gerente")]
+    _users_3h_v10122 = _load_users(base_dir, include_ferias=True)
+    all_users = [u for u in _users_3h_v10122 if (not u.get("em_ferias")) and u.get("participa_cobrancas", True)]
+    vacation_users = [u for u in _users_3h_v10122 if u.get("em_ferias") and not u.get("is_gerente")]
+    regular_users = [u for u in all_users if not u.get("is_gerente")] + vacation_users
     manager_users = [u for u in all_users if u.get("is_gerente")]
 
     logs = [
@@ -2315,15 +2317,17 @@ def build_collection_progress_3h(base_dir, date_str=None):
                 k = _v1099_row_key(log)
                 if k:
                     keys.add(k)
+        em_ferias = bool(u.get("em_ferias"))
         live = live_by_login.get(ent["login"]) or {}
-        leitura_ok = live.get("carteira_leitura_ok") is not False
-        previstos = int(live.get("previstos") or 0) if leitura_ok else 0
-        sem_carteira = leitura_ok and previstos == 0 and len(keys) == 0
+        leitura_ok = True if em_ferias else (live.get("carteira_leitura_ok") is not False)
+        previstos = 0 if em_ferias else (int(live.get("previstos") or 0) if leitura_ok else 0)
+        sem_carteira = (not em_ferias) and leitura_ok and previstos == 0 and len(keys) == 0
         user_rows.append({
             **ent,
             "cobrancas": len(keys),
             "previstos": previstos,
             "sem_carteira": sem_carteira,
+            "em_ferias": em_ferias,
             "carteira_leitura_ok": leitura_ok,
         })
 
@@ -2339,11 +2343,13 @@ def build_collection_progress_3h(base_dir, date_str=None):
     total_unique = len(all_keys)
 
     filial_zero = sum(1 for r in filial_rows if int(r.get("cobrancas") or 0) == 0)
+    user_ferias = sum(1 for r in user_rows if r.get("em_ferias"))
     user_sem_carteira = sum(1 for r in user_rows if r.get("sem_carteira"))
-    user_indisponivel = sum(1 for r in user_rows if r.get("carteira_leitura_ok") is False)
+    user_indisponivel = sum(1 for r in user_rows if r.get("carteira_leitura_ok") is False and not r.get("em_ferias"))
     user_zero = sum(
         1 for r in user_rows
         if int(r.get("cobrancas") or 0) == 0
+        and not r.get("em_ferias")
         and not r.get("sem_carteira")
         and r.get("carteira_leitura_ok") is not False
     )
@@ -2380,7 +2386,9 @@ def build_collection_progress_3h(base_dir, date_str=None):
             last_filial = filial
         nome = str(r.get("nome") or r.get("login") or "Usuário")
         qtd = int(r.get("cobrancas") or 0)
-        if r.get("carteira_leitura_ok") is False:
+        if r.get("em_ferias"):
+            lines.append(f"• {nome} = 🏖️ FÉRIAS · fora da cobrança e não contabilizado como zero")
+        elif r.get("carteira_leitura_ok") is False:
             lines.append(f"• {nome} = ⚠️ CARTEIRA NÃO CARREGADA · não contabilizado como zero")
         elif r.get("sem_carteira"):
             lines.append(f"• {nome} = ✅ SEM CARTEIRA A COBRAR")
@@ -2394,9 +2402,11 @@ def build_collection_progress_3h(base_dir, date_str=None):
         f"📲 TOTAL ÚNICO ATÉ AGORA = {total_unique} COBRANÇAS",
         f"⚠️ FILIAIS/GERENTES COM ZERO = {filial_zero}",
         f"⚠️ USUÁRIOS/CARTEIRAS COM ZERO E FILA = {user_zero}",
+        f"🏖️ USUÁRIOS EM FÉRIAS = {user_ferias}",
         f"✅ USUÁRIOS SEM CARTEIRA A COBRAR = {user_sem_carteira}",
         f"⚠️ CARTEIRAS NÃO CARREGADAS = {user_indisponivel}",
         "",
+        "ℹ️ Usuário em férias fica fora das filas e não é contabilizado como quem deixou de cobrar.",
         "ℹ️ Usuário sem título acionável não é contabilizado como quem deixou de cobrar.",
         "ℹ️ Filial/Gerente = visão consolidada da loja e não é somada novamente no total.",
         "ℹ️ Total único = CPF/título/parcela registrado hoje, sem duplicar filial + usuário.",
@@ -2421,3 +2431,5 @@ def send_collection_progress_3h_now(base_dir, date_str=None):
 # V10.109_TELEGRAM3H_FILIAIS_GERENTES
 
 # V10.120_TELEGRAM_SEM_CARTEIRA_A_COBRAR_LIVE
+
+# TELEGRAM_MONITOR_MDL_V10_123_SGI_VENDEDORES_CALLBACK_FERIAS

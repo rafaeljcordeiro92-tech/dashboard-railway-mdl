@@ -38,8 +38,8 @@ URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 BR_TZ = APP_TZ  # V10.106: alias usado pelo histórico operacional V10.104
 
-DASHBOARD_BUILD_VERSION = "V10.120"
-DASHBOARD_BUILD_TAG = "v10120_rateio_piso_duro_sticky_acionavel_sem_carteira"
+DASHBOARD_BUILD_VERSION = "V10.123"
+DASHBOARD_BUILD_TAG = "v10123_sgi_vendedores_monitor_telegram_confirmacao"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
 # V10.52: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
@@ -2758,6 +2758,12 @@ def _colab_default_status_py(login='', nome='', filial='', is_gerente=False):
         "obs": "",
     }
 
+def _v10122_status_norm_py(value):
+    s = _colab_norm_key_py(value).lower().strip()
+    if s in ("ferias", "feria", "vacation"): return "ferias"
+    if s in ("inativo", "desligado", "bloqueado", "0", "false"): return "inativo"
+    return "ativo"
+
 def _load_colab_status_state_py():
     path = os.path.join(pasta, "credenciais_dashboard.json")
     data = {}
@@ -2767,8 +2773,23 @@ def _load_colab_status_state_py():
                 data = json.load(f) or {}
     except Exception:
         data = {}
+
+    # V10.123: o status operacional vem somente do estado persistido.
+    # Não existe mais colaborador hardcoded como férias. A confirmação é feita
+    # pelo monitor diário do SGI + botões Telegram e persistida na API de credenciais.
+    if IS_RAILWAY:
+        try:
+            _url123 = "https://moveisdolar.com.br/colaborador/credenciais_dashboard.json?_v=" + str(int(time.time()))
+            _req123 = urllib.request.Request(_url123, headers={"User-Agent":"MDL-V10.123"})
+            with urllib.request.urlopen(_req123, timeout=15) as _resp123:
+                _remote123 = json.loads(_resp123.read().decode("utf-8", errors="replace"))
+            if isinstance(_remote123, dict) and isinstance(_remote123.get("users"), dict):
+                data = _remote123
+        except Exception:
+            pass
+
     raw = data.get("colaborador_status") if isinstance(data, dict) else {}
-    return raw if isinstance(raw, dict) else {}
+    return dict(raw) if isinstance(raw, dict) else {}
 
 COLAB_STATUS_MAP = _load_colab_status_state_py()
 
@@ -2784,7 +2805,7 @@ def _colab_status_by_nome_filial_py(nome, filial):
             if _colab_norm_key_py(_st.get('nome') or '') == nn and str(_st.get('filial') or '').strip().upper() == ff:
                 base = dict(_st)
                 status = str(base.get('status') or 'ativo').lower().strip()
-                base['status'] = 'inativo' if status in ('inativo','desligado','bloqueado','0','false') else 'ativo'
+                base['status'] = _v10122_status_norm_py(status)
                 return base
     except Exception:
         pass
@@ -2809,7 +2830,7 @@ def _colab_get_status_py(nome, filial, is_gerente=False):
     base.update(st)
     # compatibilidade com valores antigos
     status = str(base.get('status') or 'ativo').lower().strip()
-    base['status'] = 'inativo' if status in ('inativo','desligado','bloqueado','0','false') else 'ativo'
+    base['status'] = _v10122_status_norm_py(status)
     for flag in ('participa_cobrancas','participa_sem_movimento','participa_aniversariantes','participa_murais'):
         base[flag] = bool(base.get(flag, True))
     return base
@@ -4654,6 +4675,8 @@ if os.path.exists(cred_path):
 
 cred_state = _load_json_safe(cred_state_path, {"users": {}, "director": {}, "password_reset_requests": []})
 
+# V10.123: férias/ausências são persistidas pelo monitor SGI + Telegram; sem migração hardcoded.
+
 def _norm_login_lookup_py(txt):
     s = unicodedata.normalize("NFKD", str(txt or "").strip().upper())
     s = "".join(c for c in s if not unicodedata.combining(c))
@@ -5142,6 +5165,31 @@ for _login_old_v10102, _u_old_v10102 in list((cred_state.get("users", {}) or {})
         f"({_custom_v10102['nome']})"
     )
 
+# V10.122: usuário em férias sai do rateio, mas NÃO some do cadastro/acesso/histórico.
+for _login_fer122, _old_fer122 in list((cred_state.get("users") or {}).items()):
+    if not isinstance(_old_fer122, dict):
+        continue
+    if _v10122_status_norm_py(_old_fer122.get("status_operacional") or "ativo") != "ferias":
+        continue
+    if _login_fer122 not in auth_users:
+        _keep122 = dict(_old_fer122)
+        _keep122["login"] = str(_keep122.get("login") or _login_fer122).lower()
+        _keep122["status_operacional"] = "ferias"
+        _keep122["access_disabled"] = False
+        for _fl122 in ("participa_cobrancas","participa_sem_movimento","participa_aniversariantes","participa_murais"):
+            _keep122[_fl122] = False
+        auth_users[_login_fer122] = _keep122
+        credenciais[_login_fer122] = {
+            "senha": _keep122.get("password") or "",
+            "senha_inicial": _keep122.get("initial_password") or "",
+            "nome": _keep122.get("nome") or _login_fer122,
+            "filial": _keep122.get("filial") or "",
+            "is_gerente": bool(_keep122.get("is_gerente")),
+            "pendente": 0.0, "pago": 0.0, "total": 0.0, "perc_filial": 0.0,
+            "status_operacional": "ferias", "access_disabled": False,
+        }
+        print(f"🏖️ V10.122 acesso preservado em férias: {_keep122.get('nome') or _login_fer122} ({_keep122.get('filial') or '-'})")
+
 # V5.6: preserva e publica a camada administrativa de status/participação.
 _status_map_final = {}
 _status_antigo = cred_state.get("colaborador_status", {}) if isinstance(cred_state.get("colaborador_status", {}), dict) else {}
@@ -5179,7 +5227,7 @@ for _login_st, _u_st in list(auth_users.items()):
         _base_st["tipo"] = "Painel"
     else:
         _base_st["tipo"] = "Gerente" if _is_ger_st else "Vendedor"
-    _base_st["status"] = "inativo" if str(_base_st.get("status") or "ativo").lower().strip() in ("inativo","desligado","bloqueado","0","false") else "ativo"
+    _base_st["status"] = _v10122_status_norm_py(_base_st.get("status") or "ativo")
     if _u_st.get("is_cob_externa"):
         for _flag_cob_ext in ("participa_cobrancas","participa_sem_movimento","participa_aniversariantes","participa_murais"):
             _base_st[_flag_cob_ext] = False
@@ -5192,7 +5240,7 @@ for _login_st, _u_st in list(auth_users.items()):
         if _login_st in credenciais:
             credenciais[_login_st][_flag_st] = _base_st[_flag_st]
     _u_st["status_operacional"] = _base_st["status"]
-    _u_st["access_disabled"] = (_base_st["status"] != "ativo")
+    _u_st["access_disabled"] = (_base_st["status"] == "inativo")
     _u_st["data_entrada"] = _base_st.get("data_entrada", "")
     _u_st["data_entrada_cobranca"] = _base_st.get("data_entrada_cobranca") or _base_st.get("data_entrada", "")
     _u_st["data_saida"] = _base_st.get("data_saida", "")
@@ -5200,14 +5248,14 @@ for _login_st, _u_st in list(auth_users.items()):
     _u_st["obs"] = _base_st.get("obs", "")
     if _login_st in credenciais:
         credenciais[_login_st]["status_operacional"] = _base_st["status"]
-        credenciais[_login_st]["access_disabled"] = (_base_st["status"] != "ativo")
+        credenciais[_login_st]["access_disabled"] = (_base_st["status"] == "inativo")
         credenciais[_login_st]["data_saida"] = _base_st.get("data_saida", "")
         credenciais[_login_st]["substituto"] = _base_st.get("substituto", "")
     _status_map_final[_key_st] = _base_st
 
 # Mantém registros antigos inativos mesmo que não tenham vindo no SGI nesta execução, para histórico/configuração.
 for _key_old_st, _old_st in _status_antigo.items():
-    if _key_old_st not in _status_map_final and isinstance(_old_st, dict) and str(_old_st.get("status") or "").lower() == "inativo":
+    if _key_old_st not in _status_map_final and isinstance(_old_st, dict) and _v10122_status_norm_py(_old_st.get("status") or "") in ("inativo","ferias"):
         _status_map_final[_key_old_st] = _old_st
 
 cred_state["users"] = auth_users
@@ -8837,7 +8885,7 @@ def _validar_rateio_operacional_v10120():
     _ativos_nomes = set()
     for _vs in (_vendedores_ativos_filial_v10116 or {}).values():
         _ativos_nomes.update(_vs or set())
-    _todos_vendedores = sorted(_ativos_nomes | set((clientes_por_vend_js or {}).keys()))
+    _todos_vendedores = sorted(_ativos_nomes)  # V10.121: somente vendedores ativos reais; gerentes fixos não entram como vendedor
     for _vend in _todos_vendedores:
         _data = (clientes_por_vend_js or {}).get(_vend) or {"grave": [], "alerta": [], "atencao": []}
         _keys = set()
@@ -8861,14 +8909,14 @@ def _validar_rateio_operacional_v10120():
             pass
         _rows.append({"vendedor": _vend, "filial": _fil, "clientes": len(_keys), "titulos": _tit, "acionaveis": len(_free)})
     _crit = [r for r in _rows if r["clientes"] == 0 or r["acionaveis"] == 0]
-    print(f"🧪 V10.120 validação rateio: {len(_rows)} vendedor(es) | sem carteira acionável={len(_crit)}")
+    print(f"🧪 V10.121 validação rateio: {len(_rows)} vendedor(es) ATIVOS reais | sem carteira acionável={len(_crit)}")
     for _r in _crit:
         print(f"   ⚠️ {_r['filial']} {_r['vendedor']}: {_r['clientes']} CPF(s), {_r['titulos']} título(s), {_r['acionaveis']} acionáveis")
     try:
         with open(os.path.join(pasta, "relatorio_rateio_operacional_v10120.json"), "w", encoding="utf-8") as _fh:
             json.dump({"gerado_em": now_brasilia().isoformat(), "versao": DASHBOARD_BUILD_VERSION, "vendedores": _rows, "sem_acionaveis": _crit}, _fh, ensure_ascii=False, indent=2)
     except Exception as _e:
-        print(f"⚠️ V10.120 não conseguiu salvar relatório de validação: {_e}")
+        print(f"⚠️ V10.121 não conseguiu salvar relatório de validação: {_e}")
 
 _validar_rateio_operacional_v10120()
 
@@ -17254,12 +17302,12 @@ function isLegacyGerenteNominalV1026(u){
   }catch(e){return false}
 }
 function colabBool(u,k,def=true){return u && Object.prototype.hasOwnProperty.call(u,k) ? !!u[k] : def}
-function colabStatusBadge(u){const st=String(u?.status_operacional||'ativo').toLowerCase(); return st==='inativo'?'<span class="mini-chip" style="background:#450a0a;color:#fecaca;border:1px solid #991b1b">Inativo</span>':'<span class="mini-chip" style="background:#052e16;color:#bbf7d0;border:1px solid #166534">Ativo</span>'}
+function colabStatusBadge(u){const st=String(u?.status_operacional||'ativo').toLowerCase(); if(st==='ferias')return '<span class="mini-chip" style="background:#172554;color:#bfdbfe;border:1px solid #2563eb">🏖️ Férias</span>'; return st==='inativo'?'<span class="mini-chip" style="background:#450a0a;color:#fecaca;border:1px solid #991b1b">Inativo</span>':'<span class="mini-chip" style="background:#052e16;color:#bbf7d0;border:1px solid #166534">Ativo</span>'}
 function renderColaboradorStatusPanel(users){
   const normalUsers=(users||[]).filter(u=>u && !u.is_viewer && !isLegacyGerenteNominalV1026(u));
   const options=normalUsers.map(u=>`<option value="${esc(u.login||'')}">${esc(u.nome||u.login||'')} ${u.filial?`- ${esc(u.filial)}`:''}</option>`).join('');
   return `<div class="glass panel" style="margin-bottom:14px;border-color:rgba(34,197,94,.28)">
-    <div class="section-head" style="margin:0 0 10px"><div><h2 style="font-size:18px">👥 Status operacional dos colaboradores</h2><div class="hint">Use quando alguém sair, entrar ou trocar de função. Inativo não acessa e, na próxima geração, sai do rateio de cobrança. A data de saída é só histórico/controle interno. As flags controlam em quais murais/listas ele participa.</div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn primary" onclick="adminSalvarTodasEntradasCobrancaV1040()">💾 Salvar datas de entrada cobrança</button><button class="btn soft" onclick="adminLimparDatasEntradaCobrancaV1040()">🧹 Limpar datas preenchidas</button></div></div>
+    <div class="section-head" style="margin:0 0 10px"><div><h2 style="font-size:18px">👥 Status operacional dos colaboradores</h2><div class="hint">Use quando alguém sair, entrar, entrar em férias ou trocar de função. Férias mantém o acesso/histórico, mas tira o colaborador das filas operacionais e do rateio; ao voltar para Ativo ele retorna automaticamente. Inativo bloqueia o acesso.</div></div><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn primary" onclick="adminSalvarTodasEntradasCobrancaV1040()">💾 Salvar datas de entrada cobrança</button><button class="btn soft" onclick="adminLimparDatasEntradaCobrancaV1040()">🧹 Limpar datas preenchidas</button></div></div>
     <div id="colab_entrada_all_msg" class="note" style="margin:0 0 10px;color:#fbbf24;font-weight:800">Preencha a data somente para vendedor novo. Nos primeiros 30 dias corridos o rateio será proporcional; depois fica 100% automaticamente. Vazio mantém rateio normal.</div>
     <div class="senhas-table-wrap"><table class="senhas-table senhas-status-table"><thead><tr><th>Colaborador</th><th>Filial</th><th>Tipo</th><th>Status</th><th>Cobrança</th><th>Sem movimento</th><th>Aniversário</th><th>Murais</th><th>Data entrada cobrança</th><th>Saída</th><th>Substituto</th><th>Obs</th><th>Ações</th></tr></thead><tbody>${normalUsers.map(u=>{
       const login=String(u.login||'').toLowerCase(); const dom=_senhaDomKey(login);
@@ -17267,7 +17315,7 @@ function renderColaboradorStatusPanel(users){
         <td><strong>${esc(u.nome||login)}</strong><div class="small muted">${esc(login)}</div></td>
         <td>${esc(u.filial||'-')}</td>
         <td>${u.is_crediarista?'Crediarista':(u.is_terceiro?'Terceiro':(u.is_gerente?'Gerente':'Vendedor'))}</td>
-        <td><select id="colab_status_${dom}" style="min-width:110px"><option value="ativo" ${String(u.status_operacional||'ativo')!=='inativo'?'selected':''}>Ativo</option><option value="inativo" ${String(u.status_operacional||'ativo')==='inativo'?'selected':''}>Inativo</option></select><div style="margin-top:6px">${colabStatusBadge(u)}</div></td>
+        <td><select id="colab_status_${dom}" style="min-width:110px"><option value="ativo" ${String(u.status_operacional||'ativo')==='ativo'?'selected':''}>Ativo</option><option value="ferias" ${String(u.status_operacional||'ativo')==='ferias'?'selected':''}>🏖️ Férias</option><option value="inativo" ${String(u.status_operacional||'ativo')==='inativo'?'selected':''}>Inativo</option></select><div style="margin-top:6px">${colabStatusBadge(u)}</div></td>
         <td style="text-align:center"><input type="checkbox" id="colab_cob_${dom}" ${colabBool(u,'participa_cobrancas')?'checked':''}></td>
         <td style="text-align:center"><input type="checkbox" id="colab_mov_${dom}" ${colabBool(u,'participa_sem_movimento')?'checked':''}></td>
         <td style="text-align:center"><input type="checkbox" id="colab_ani_${dom}" ${colabBool(u,'participa_aniversariantes')?'checked':''}></td>
@@ -17300,7 +17348,7 @@ async function adminSalvarStatusColaborador(login){
   }catch(e){
     // fallback local para testar a tela abrindo o HTML pelo arquivo, sem FTP/API.
     const u=(AUTH_STATE?.users||{})[login];
-    if(u){u.status_operacional=fd.get('status'); u.access_disabled=(u.status_operacional==='inativo'); ['participa_cobrancas','participa_sem_movimento','participa_aniversariantes','participa_murais'].forEach(k=>u[k]=fd.get(k)==='1'); u.data_entrada=fd.get('data_entrada'); u.data_entrada_cobranca=fd.get('data_entrada'); u.data_saida=fd.get('data_saida'); u.substituto=fd.get('substituto'); u.obs=fd.get('obs');}
+    if(u){const oldStatus=String(u.status_operacional||'ativo').toLowerCase();u.status_operacional=fd.get('status'); u.access_disabled=(u.status_operacional==='inativo'); if(u.status_operacional==='ferias'){['participa_cobrancas','participa_sem_movimento','participa_aniversariantes','participa_murais'].forEach(k=>u[k]=false);} else if(u.status_operacional==='ativo'&&oldStatus==='ferias'){['participa_cobrancas','participa_sem_movimento','participa_aniversariantes','participa_murais'].forEach(k=>u[k]=true);} else {['participa_cobrancas','participa_sem_movimento','participa_aniversariantes','participa_murais'].forEach(k=>u[k]=fd.get(k)==='1');} u.data_entrada=fd.get('data_entrada'); u.data_entrada_cobranca=fd.get('data_entrada'); u.data_saida=fd.get('data_saida'); u.substituto=fd.get('substituto'); u.obs=fd.get('obs');}
     localStorage.setItem('mdl_colab_status_teste_'+login, JSON.stringify(u||{}));
     if(msg) msg.textContent='🧪 Salvo só no navegador para teste local. Para recalcular rateio, precisa salvar no JSON/API e rodar o robô.';
     renderSenhasTab();
@@ -27407,6 +27455,64 @@ if ($action === 'change_password') {
   else { if (($data['users'][$ref['key']]['password'] ?? '') !== $current) { echo json_encode(['ok'=>false,'error'=>'senha_atual_invalida']); exit; } $data['users'][$ref['key']]['password']=$new; $data['users'][$ref['key']]['must_change_password']=false; }
   mark_reset_resolved($data, $login); save_all($file, $data); echo json_encode(['ok'=>true], JSON_UNESCAPED_UNICODE); exit;
 }
+if ($action === 'admin_sgi_absence') {
+  ensure_colab_status($data);
+  $login = strtolower(trim($_POST['login'] ?? ''));
+  $decision = strtolower(trim($_POST['decision'] ?? ''));
+  $ref = resolve_login_ref($data, $login);
+  if (!$ref || $ref['type'] !== 'user') { echo json_encode(['ok'=>false,'error'=>'login_nao_encontrado']); exit; }
+  $key = $ref['key'];
+  $u =& $data['users'][$key];
+  $flags = ['participa_cobrancas','participa_sem_movimento','participa_aniversariantes','participa_murais'];
+  $nowIso = date('c');
+  if ($decision === 'prompt') {
+    $u['sgi_ausencia_pendente'] = true;
+    $u['sgi_ausencia_pergunta_em'] = $nowIso;
+    $u['sgi_ausencia_motivo'] = trim((string)($_POST['motivo'] ?? 'Sem meta/venda no SGI'));
+  } elseif (in_array($decision, ['yes','sim','ferias'], true)) {
+    $u['status_operacional'] = 'ferias';
+    $u['access_disabled'] = false;
+    foreach($flags as $fl){ $u[$fl] = false; }
+    $u['sgi_ausencia_pendente'] = false;
+    $u['sgi_ausencia_confirmacao'] = 'ferias';
+    $u['sgi_ausencia_confirmada_em'] = $nowIso;
+    $u['sgi_ausencia_nao_ferias_ate'] = '';
+    $u['session_revision'] = intval($u['session_revision'] ?? 0) + 1;
+    $u['force_logout_at'] = $nowIso;
+  } elseif (in_array($decision, ['no','nao','não','ativo'], true)) {
+    $u['status_operacional'] = 'ativo';
+    $u['access_disabled'] = false;
+    foreach($flags as $fl){ $u[$fl] = true; }
+    $u['sgi_ausencia_pendente'] = false;
+    $u['sgi_ausencia_confirmacao'] = 'nao_ferias';
+    $u['sgi_ausencia_confirmada_em'] = $nowIso;
+    $u['sgi_ausencia_nao_ferias_ate'] = date('Y-m-d', strtotime('+7 days'));
+  } elseif (in_array($decision, ['return','retorno','volta'], true)) {
+    $u['status_operacional'] = 'ativo';
+    $u['access_disabled'] = false;
+    foreach($flags as $fl){ $u[$fl] = true; }
+    $u['sgi_ausencia_pendente'] = false;
+    $u['sgi_ausencia_confirmacao'] = 'retorno_automatico';
+    $u['sgi_ausencia_confirmada_em'] = $nowIso;
+    $u['sgi_ausencia_nao_ferias_ate'] = '';
+    $u['session_revision'] = intval($u['session_revision'] ?? 0) + 1;
+    $u['force_logout_at'] = $nowIso;
+  } else { echo json_encode(['ok'=>false,'error'=>'decisao_invalida']); exit; }
+  $sk = colab_status_key($u['nome'] ?? $login, $u['filial'] ?? '', !empty($u['is_gerente']));
+  $data['colaborador_status'][$sk] = [
+    'login'=>$key, 'nome'=>($u['nome'] ?? $login), 'filial'=>($u['filial'] ?? ''),
+    'tipo'=>!empty($u['is_gerente'])?'Gerente':'Vendedor',
+    'status'=>$u['status_operacional'] ?? 'ativo',
+    'participa_cobrancas'=>$u['participa_cobrancas'] ?? true,
+    'participa_sem_movimento'=>$u['participa_sem_movimento'] ?? true,
+    'participa_aniversariantes'=>$u['participa_aniversariantes'] ?? true,
+    'participa_murais'=>$u['participa_murais'] ?? true,
+    'data_entrada'=>$u['data_entrada'] ?? '', 'data_saida'=>$u['data_saida'] ?? '',
+    'substituto'=>$u['substituto'] ?? '', 'obs'=>$u['obs'] ?? '', 'updated_at'=>$nowIso
+  ];
+  save_all($file, $data);
+  echo json_encode(['ok'=>true,'decision'=>$decision,'login'=>$key,'status'=>$u['status_operacional'] ?? 'ativo','data'=>$data], JSON_UNESCAPED_UNICODE); exit;
+}
 if ($action === 'admin_update_user_status') {
   ensure_colab_status($data);
   $login = strtolower(trim($_POST['login'] ?? ''));
@@ -27415,10 +27521,13 @@ if ($action === 'admin_update_user_status') {
   $key = $ref['key'];
   $u =& $data['users'][$key];
   $status = strtolower(trim($_POST['status'] ?? 'ativo'));
-  $status = in_array($status, ['inativo','desligado','bloqueado']) ? 'inativo' : 'ativo';
+  $status = in_array($status, ['ferias','férias'], true) ? 'ferias' : (in_array($status, ['inativo','desligado','bloqueado'], true) ? 'inativo' : 'ativo');
   $flags = ['participa_cobrancas','participa_sem_movimento','participa_aniversariantes','participa_murais'];
+  $oldStatus = strtolower(trim((string)($u['status_operacional'] ?? 'ativo')));
   $u['status_operacional'] = $status;
-  $u['access_disabled'] = ($status !== 'ativo');
+  $u['access_disabled'] = ($status === 'inativo');
+  if ($status === 'ferias') { foreach($flags as $fl){ $_POST[$fl] = '0'; } }
+  elseif ($status === 'ativo' && in_array($oldStatus, ['ferias','férias'], true)) { foreach($flags as $fl){ $_POST[$fl] = '1'; } }
   $u['session_revision'] = intval($u['session_revision'] ?? 0) + 1;
   $u['force_logout_at'] = date('c');
   foreach($flags as $fl){ $u[$fl] = (($_POST[$fl] ?? '1') === '1'); }
@@ -27796,14 +27905,72 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
                     _ok_det_v1048 += 1
                 else:
                     _detalhes_ok_v10120 = False
+            # V10.121: depois do STOR, confirma REMOTAMENTE presença e tamanho.
+            # V10.120 ainda podia receber retorno OK do FTP e, mesmo assim, uma
+            # carteira não aparecer na listagem remota (caso real Daniele/F3).
+            def _verificar_carteiras_remotas_v10121(_items):
+                _problemas = []
+                _ftp = None
+                try:
+                    _ftp = _ftp_conectar_v1019()
+                    _ftp_ensure_rel_dir_v1020(_ftp, 'clientes_detalhes')
+                    try:
+                        _ftp.voidcmd('TYPE I')
+                    except Exception:
+                        pass
+                    for _local_chk, _name_chk in (_items or []):
+                        _esperado = os.path.getsize(_local_chk) if os.path.exists(_local_chk) else -1
+                        try:
+                            _remoto = _ftp.size(_name_chk)
+                        except Exception:
+                            _remoto = None
+                        if _remoto is None or int(_remoto) != int(_esperado):
+                            _problemas.append((_local_chk, _name_chk, _esperado, _remoto))
+                    return _problemas
+                except Exception as _e_chk:
+                    print(f'⚠️ FTP V10.121 falha verificando carteiras remotas: {_e_chk}')
+                    return [(p, n, os.path.getsize(p) if os.path.exists(p) else -1, None) for p, n in (_items or [])]
+                finally:
+                    try:
+                        if _ftp:
+                            _ftp.quit()
+                    except Exception:
+                        try:
+                            if _ftp:
+                                _ftp.close()
+                        except Exception:
+                            pass
+
+            if _detalhes_ok_v10120:
+                _problemas_v10121 = _verificar_carteiras_remotas_v10121(_detail_items_v10120)
+                if _problemas_v10121:
+                    print(f'⚠️ FTP V10.121: {len(_problemas_v10121)} carteira(s) ausente(s)/divergente(s) após upload; refazendo direto.')
+                    for _local_det, _name_det, _esp_det, _rem_det in _problemas_v10121:
+                        print(f'   ↳ {_name_det}: local={_esp_det} remoto={_rem_det}')
+                        # fallback sem rename atômico, útil para servidores FTP que
+                        # confirmam rename mas não materializam o nome final corretamente.
+                        _ftp_upload_file_to_dir_v1020(
+                            _local_det, 'clientes_detalhes', _name_det,
+                            atomic=False, label=f'clientes_detalhes/{_name_det} reparo V10.121'
+                        )
+                    _problemas_v10121 = _verificar_carteiras_remotas_v10121(_detail_items_v10120)
+
+                if _problemas_v10121:
+                    _detalhes_ok_v10120 = False
+                    _faltantes_v10121 = ', '.join(x[1] for x in _problemas_v10121[:12])
+                    _ftp_fail_v1019.append(('clientes_detalhes', f'V10.121 verificação remota falhou: {_faltantes_v10121}'))
+                    print(f'🛡️ FTP V10.121: manifest/HTML BLOQUEADOS; carteiras ainda divergentes: {_faltantes_v10121}')
+                else:
+                    print(f'✅ FTP V10.121: verificação remota OK em {len(_detail_items_v10120)}/{len(_detail_items_v10120)} carteiras (nome + bytes).')
+
             if _detalhes_ok_v10120:
                 for _local_det, _name_det in _manifest_items_v10120:
                     if not _ftp_upload_file_to_dir_v1020(_local_det, 'clientes_detalhes', _name_det, atomic=True, label='clientes_detalhes/manifest.json'):
                         _detalhes_ok_v10120 = False
-            print(f'🪶 FTP V10.120: {_ok_det_v1048}/{len(_detail_items_v10120)} carteiras publicadas; manifest={"OK" if _detalhes_ok_v10120 else "PRESERVADO/BLOQUEADO"}.')
+            print(f'🪶 FTP V10.121: {_ok_det_v1048}/{len(_detail_items_v10120)} uploads iniciais; manifest={"OK" if _detalhes_ok_v10120 else "PRESERVADO/BLOQUEADO"}.')
         except Exception as _e_det_v1048:
             _detalhes_ok_v10120 = False
-            print(f'⚠️ V10.120: falha publicando carteiras sob demanda: {_e_det_v1048}')
+            print(f'⚠️ V10.121: falha publicando carteiras sob demanda: {_e_det_v1048}')
 
     # Só troca o HTML depois de confirmar que os JSONs de carteira foram publicados.
     if (not DASHBOARD_MODO_LEVE) or _detalhes_ok_v10120:
@@ -28216,3 +28383,7 @@ driver.quit()
 # V10.118_FIX_CONCILIACAO_DATA_DDMMYYYY_E_ANIVERSARIOS_ATUAIS
 
 # V10.119_FIX_CONCILIACAO_REGEX_MES_RENEG_DATA_DIA
+
+# V10.121_FTP_VERIFY_REMOTE_WALLETS_AND_REAL_SELLER_VALIDATION
+
+# V10.122_FERIAS_STATUS_RATEIO_TELEGRAM

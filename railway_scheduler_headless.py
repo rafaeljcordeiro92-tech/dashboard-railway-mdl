@@ -32,6 +32,7 @@ try:
         load_auditorias_master, build_audit_master_alert,
     )
     from telegram_monitor_mdl import telegram_send, build_daily_collection_summary, send_daily_collection_now_v10100, build_collection_progress_3h, send_collection_progress_3h_now, telegram_contacts_diagnostic_v10108
+    from sgi_vendedores_monitor import poll_telegram_callbacks_v10123
 except Exception as e:
     def whatsapp_send(text, *a, **k): return (False, f"whatsapp notificações import erro: {e}")
     def build_whatsapp_daily_summary(base_dir, date_str=None): return f"Resumo indisponível: {e}"
@@ -54,6 +55,7 @@ except Exception as e:
     def build_collection_progress_3h(base_dir, date_str=None): return f'Resumo 3h indisponível: {e}'
     def send_collection_progress_3h_now(base_dir, date_str=None): return (False, f'Resumo 3h indisponível: {e}')
     def telegram_contacts_diagnostic_v10108(base_dir=None): return {'ok':False,'error':str(e),'contacts':[]}
+    def poll_telegram_callbacks_v10123(base_dir=None, offset=0): return {'offset':offset,'force_main':False,'processed':0}
 
 BR_TZ = ZoneInfo(os.getenv('APP_TZ', 'America/Sao_Paulo'))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -89,6 +91,7 @@ SALES_LOG = os.path.join(LOG_DIR, 'vendas_unificadas.log')
 PREVENTIVA_LOG = os.path.join(LOG_DIR, 'whatsapp_master_preventiva.log')
 COB_TERCEIRA_LOG = os.path.join(LOG_DIR, 'cobranca_terceira.log')
 AUDIT_LOG = os.path.join(LOG_DIR, 'cobranca_auditoria.log')
+SGI_VENDEDORES_LOG = os.path.join(LOG_DIR, 'sgi_vendedores_monitor.log')
 PREVENTIVA_STATUS = os.path.join(BASE_DIR, 'whatsapp_master_preventiva_status.json')
 PREVENTIVA_PREVIEW = os.path.join(BASE_DIR, 'whatsapp_master_preventiva_preview.json')
 PREVENTIVA_HISTORY = os.path.join(BASE_DIR, 'whatsapp_master_preventiva_historico.json')
@@ -99,6 +102,10 @@ COBRANCA_CMD = [sys.executable, os.path.join(BASE_DIR, 'dashboard_railway_main_h
 PREVENTIVA_CMD = [sys.executable, os.path.join(BASE_DIR, 'whatsapp_master_preventiva_worker.py')]
 COB_TERCEIRA_CMD = [sys.executable, os.path.join(BASE_DIR, 'cobranca_terceira_worker_v1096.py')]
 AUDIT_CMD = [sys.executable, os.path.join(BASE_DIR, 'cobranca_auditoria_worker_v1105.py')]
+SGI_VENDEDORES_CMD = [sys.executable, os.path.join(BASE_DIR, 'sgi_vendedores_monitor.py')]
+SGI_VENDEDORES_HOUR = int(os.getenv('SGI_VENDEDORES_MONITOR_HOUR','8'))
+SGI_VENDEDORES_MINUTE = int(os.getenv('SGI_VENDEDORES_MONITOR_MINUTE','10'))
+SGI_VENDEDORES_RETRY_MIN = max(15,int(os.getenv('SGI_VENDEDORES_MONITOR_RETRY_MIN','30')))
 AUDIT_INTERVAL_SECONDS = max(30, int(os.getenv('COBRANCA_AUDITORIA_FALLBACK_SECONDS', '60')))
 AUDIT_WEBHOOK_SECRET = os.getenv('COBRANCA_AUDITORIA_WEBHOOK_SECRET', '').strip()
 
@@ -107,6 +114,7 @@ _cobranca_proc = None
 _preventiva_proc = None
 _cob_terceira_proc = None
 _audit_proc = None
+_sgi_vendedores_proc = None
 _last_audit_start_ts = 0.0
 _last_sales_slot = None
 _last_cobranca_slot = None
@@ -116,9 +124,10 @@ _last_cobranca_diaria_date = None
 _last_cobranca_3h_slot = None
 _force_main_boot = True
 _force_sales_after_main = False
+_force_main_status_sync = False
 
 STATE = {
-    'version': 'V10.116_PROTECAO_CARTEIRA_MINIMA',
+    'version': 'V10.123_SGI_VENDEDORES_MONITOR',
     'started_at': None,
     'updated_at': None,
     'scheduler': 'starting',
@@ -133,6 +142,9 @@ STATE = {
     'last_cobranca_diaria_date': None,
     'last_cobranca_3h_slot': None,
     'last_daily_lists_date': None,
+    'last_sgi_vendedores_date': None,
+    'last_sgi_vendedores_attempt_at': None,
+    'telegram_update_offset': 0,
     'last_cob_terceira_date': None,
     'last_cob_terceira_attempt_at': None,
     'whatsapp_sent_message_ids': [],
@@ -149,6 +161,7 @@ STATE = {
         'whatsapp_master_preventiva': {'running': False, 'last_start': None, 'last_end': None, 'last_exit': None, 'last_error': ''},
         'cobranca_terceira': {'running': False, 'last_start': None, 'last_end': None, 'last_exit': None, 'last_error': ''},
         'cobranca_auditoria': {'running': False, 'last_start': None, 'last_end': None, 'last_exit': None, 'last_error': ''},
+        'sgi_vendedores_monitor': {'running': False, 'last_start': None, 'last_end': None, 'last_exit': None, 'last_error': ''},
     },
     'recent_events': []
 }
@@ -158,7 +171,7 @@ try:
     if os.path.exists(STATUS_PATH):
         with open(STATUS_PATH, 'r', encoding='utf-8') as _f:
             _old_state = json.load(_f)
-        for _k in ['last_summary_date','last_cobranca_diaria_date','last_cobranca_3h_slot','last_daily_lists_date','last_cob_terceira_date','last_cob_terceira_attempt_at','whatsapp_sent_message_ids','whatsapp_sent_meta_keys','whatsapp_sent_meta100_keys','whatsapp_sent_audit_ids','whatsapp_audit_watcher_initialized']:
+        for _k in ['last_summary_date','last_cobranca_diaria_date','last_cobranca_3h_slot','last_daily_lists_date','last_cob_terceira_date','last_cob_terceira_attempt_at','last_sgi_vendedores_date','last_sgi_vendedores_attempt_at','telegram_update_offset','whatsapp_sent_message_ids','whatsapp_sent_meta_keys','whatsapp_sent_meta100_keys','whatsapp_sent_audit_ids','whatsapp_audit_watcher_initialized']:
             if _k in _old_state:
                 STATE[_k] = _old_state.get(_k)
 except Exception:
@@ -212,12 +225,14 @@ def notify(text, alert_type='erros'):
 def is_running(proc): return proc is not None and proc.poll() is None
 
 def _job_log_path(name):
+    if 'sgi_vendedores' in name: return SGI_VENDEDORES_LOG
     if 'auditoria' in name or 'audit' in name: return AUDIT_LOG
     if 'terceira' in name or 'cob_externa' in name: return COB_TERCEIRA_LOG
     if 'preventiva' in name or 'whatsapp_master' in name: return PREVENTIVA_LOG
     return MAIN_LOG if 'cobranca' in name or 'dashboard' in name else SALES_LOG
 
 def _state_job_key(name):
+    if 'sgi_vendedores' in name: return 'sgi_vendedores_monitor'
     if 'auditoria' in name or 'audit' in name: return 'cobranca_auditoria'
     if 'terceira' in name or 'cob_externa' in name: return 'cobranca_terceira'
     if 'preventiva' in name or 'whatsapp_master' in name: return 'whatsapp_master_preventiva'
@@ -270,6 +285,9 @@ def finish_if_done(name, proc):
             log(f'🔓 {DEPLOY_BUILD_VERSION} liberado: primeiro MAIN do deploy terminou com Exit 0. Token={_deploy_token_v10115}.')
     if key == 'cobranca_terceira' and code == 0:
         STATE['last_cob_terceira_date'] = br_now().strftime('%Y-%m-%d')
+        _save_status()
+    if key == 'sgi_vendedores_monitor' and code == 0:
+        STATE['last_sgi_vendedores_date'] = br_now().strftime('%Y-%m-%d')
         _save_status()
     if code != 0:
         tail = '\n'.join(tail_file(_job_log_path(name), 35))
@@ -341,6 +359,18 @@ def next_daily_lists_time(dt):
 def daily_lists_due(dt):
     day = dt.strftime('%Y-%m-%d')
     return (dt.hour == DAILY_LISTS_HOUR and 0 <= dt.minute <= DAILY_LISTS_MINUTE_MAX and STATE.get('last_daily_lists_date') != day)
+
+def sgi_vendedores_due(dt):
+    day = dt.strftime('%Y-%m-%d')
+    if STATE.get('last_sgi_vendedores_date') == day:
+        return False
+    sched = dt.replace(hour=SGI_VENDEDORES_HOUR, minute=SGI_VENDEDORES_MINUTE, second=0, microsecond=0)
+    if dt < sched:
+        return False
+    last = _parse_iso_state_dt(STATE.get('last_sgi_vendedores_attempt_at'))
+    if last and (dt-last).total_seconds() < SGI_VENDEDORES_RETRY_MIN*60:
+        return False
+    return True
 
 def main_job_env(with_daily_lists=False):
     return {
@@ -590,7 +620,7 @@ def preventiva_history_payload():
     return _load_json_safe(PREVENTIVA_HISTORY, {'version':'V10.49','runs':[]})
 
 def force_run(kind):
-    global _sales_proc, _cobranca_proc, _preventiva_proc, _cob_terceira_proc, _audit_proc, _last_audit_start_ts, _force_sales_after_main
+    global _sales_proc, _cobranca_proc, _preventiva_proc, _cob_terceira_proc, _audit_proc, _sgi_vendedores_proc, _last_audit_start_ts, _force_sales_after_main
     if kind == 'audit':
         if is_running(_audit_proc): return True, 'Auditoria IA já está processando a fila.'
         _last_audit_start_ts = time.time()
@@ -609,6 +639,10 @@ def force_run(kind):
         _preventiva_proc = start_job('whatsapp_master_preventiva_manual', PREVENTIVA_CMD)
         return True, 'Preventiva WhatsApp Master iniciada em modo configurado. Confira o log/preview.'
     if is_running(_sales_proc) or is_running(_cobranca_proc): return False, 'Já existe job rodando. Aguarde finalizar.'
+    if kind == 'sgi_vendedores':
+        if is_running(_sgi_vendedores_proc): return False,'Monitor SGI vendedores já está rodando.'
+        _sgi_vendedores_proc = start_job('sgi_vendedores_monitor_manual', SGI_VENDEDORES_CMD)
+        return True,'Monitor SGI vendedores iniciado.'
     if kind == 'main':
         _force_sales_after_main = True
         _cobranca_proc = start_job('dashboard_completo_cobranca_manual', COBRANCA_CMD, main_job_env(False))
@@ -644,7 +678,7 @@ class Handler(BaseHTTPRequestHandler):
             if '?' in self.path:
                 for part in self.path.split('?',1)[1].split('&'):
                     if part.startswith('file='): which=part.split('=',1)[1]
-            path = SCHED_LOG if which=='scheduler' else (MAIN_LOG if which=='main' else (PREVENTIVA_LOG if which=='preventiva' else (COB_TERCEIRA_LOG if which=='cob_terceira' else (AUDIT_LOG if which=='audit' else SALES_LOG))))
+            path = SCHED_LOG if which=='scheduler' else (MAIN_LOG if which=='main' else (PREVENTIVA_LOG if which=='preventiva' else (COB_TERCEIRA_LOG if which=='cob_terceira' else (AUDIT_LOG if which=='audit' else (SGI_VENDEDORES_LOG if which=='sgi_vendedores' else SALES_LOG)))))
             self._send(200, '\n'.join(tail_file(path, 320)), 'text/plain; charset=utf-8')
         elif self.path.startswith('/health'): self._send(200, {'ok': True, 'updated_at': iso_now()})
         else: self._send(200, HTML)
@@ -655,6 +689,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(403, {'ok':False,'message':'audit secret inválido'})
             else:
                 ok,msg=force_run('audit'); self._send(200, {'ok':ok,'message':msg})
+        elif self.path.startswith('/run/sgi_vendedores'):
+            ok,msg=force_run('sgi_vendedores'); self._send(200, {'ok':ok,'message':msg})
         elif self.path.startswith('/run/main'):
             ok,msg=force_run('main'); self._send(200, {'ok':ok,'message':msg})
         elif self.path.startswith('/run/sales'):
@@ -686,7 +722,7 @@ def start_http_panel():
     server.serve_forever()
 
 
-DEPLOY_BUILD_VERSION = "V10.120"
+DEPLOY_BUILD_VERSION = "V10.123"
 DEPLOY_STATE_PUBLIC_URL = "https://moveisdolar.com.br/colaborador/dashboard_deploy_state.json"
 
 def _remote_deploy_version_v10100():
@@ -721,7 +757,7 @@ _last_deploy_remote_recheck_v10115 = 0.0
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log(f'VERSAO V10.119: corrige conciliação mensal após auditoria; preserva rateio V10.117, aniversários V10.118 e lock V10.115 | canal={NOTIFICATION_CHANNEL} | manual_only={COB_TERCEIRA_MANUAL_ONLY}')
+log(f'VERSAO V10.123: monitor diário SGI vendedores/gerentes + confirmação de férias Telegram | canal={NOTIFICATION_CHANNEL} | manual_only={COB_TERCEIRA_MANUAL_ONLY}')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
@@ -730,9 +766,29 @@ while True:
     _preventiva_proc, preventiva_finished = finish_if_done('whatsapp_master_preventiva', _preventiva_proc)
     _cob_terceira_proc, cob_terceira_finished = finish_if_done('cobranca_terceira', _cob_terceira_proc)
     _audit_proc, audit_finished = finish_if_done('cobranca_auditoria', _audit_proc)
+    _sgi_vendedores_proc, sgi_vendedores_finished = finish_if_done('sgi_vendedores_monitor', _sgi_vendedores_proc)
     if cobranca_finished: _force_sales_after_main = True
+    try:
+        _flag_sgi123=os.path.join(BASE_DIR,'sgi_vendedores_force_main.flag')
+        if os.path.exists(_flag_sgi123):
+            os.remove(_flag_sgi123); _force_main_status_sync=True
+            log('👥 V10.123 alteração automática do monitor SGI; MAIN agendado para recompor carteiras.')
+    except Exception as _e_flag123:
+        log(f'ℹ️ V10.123 force-main flag: {_e_flag123}')
 
     now = br_now(); maybe_send_daily_summary(now); maybe_send_daily_collection_report(now); maybe_send_collection_progress_3h(now); maybe_send_general_message_alerts(now); maybe_send_meta_diaria_alerts(now); maybe_send_meta_mercantil_100_alerts(now); maybe_send_audit_master_alerts(now)
+
+    # V10.123: processa respostas dos botões Telegram do monitor de vendedores.
+    try:
+        _cb123 = poll_telegram_callbacks_v10123(BASE_DIR, int(STATE.get('telegram_update_offset') or 0))
+        STATE['telegram_update_offset'] = int(_cb123.get('offset') or STATE.get('telegram_update_offset') or 0)
+        if _cb123.get('force_main'):
+            _force_main_status_sync = True
+            log('👥 V10.123 resposta Telegram alterou status; MAIN será executado para redistribuir carteira.')
+        if int(_cb123.get('processed') or 0) > 0:
+            _save_status()
+    except Exception as _e_cb123:
+        log(f'ℹ️ V10.123 callback Telegram: {_e_cb123}')
 
     # V10.115: auto-heal do lock de deploy a cada ~30s.
     if STATE.get('deploy_update_active') and (time.time() - _last_deploy_remote_recheck_v10115 >= 30):
@@ -752,7 +808,7 @@ while True:
     STATE['next_cob_terceira_label'] = fmt_delta(next_cob_terceira_time(now))
     _save_status()
 
-    sales_running = is_running(_sales_proc); cobranca_running = is_running(_cobranca_proc); cob_terceira_running = is_running(_cob_terceira_proc); audit_running = is_running(_audit_proc)
+    sales_running = is_running(_sales_proc); cobranca_running = is_running(_cobranca_proc); cob_terceira_running = is_running(_cob_terceira_proc); audit_running = is_running(_audit_proc); sgi_vendedores_running = is_running(_sgi_vendedores_proc)
 
     # V10.105: fallback leve a cada ~60s. O webhook do upload tenta antes;
     # este ciclo garante processamento mesmo se o trigger HTTP falhar.
@@ -790,10 +846,16 @@ while True:
         if _daily:
             STATE['last_daily_lists_date'] = now.strftime('%Y-%m-%d')
         _cobranca_proc=start_job('dashboard_completo_cobranca_prioridade' + ('_com_listas_07h' if _daily else ''), COBRANCA_CMD, main_job_env(_daily)); cobranca_running=True
-    elif _force_sales_after_main and not sales_running and not cobranca_running and not cob_terceira_running:
+    elif _force_main_status_sync and not sales_running and not cobranca_running and not cob_terceira_running and not sgi_vendedores_running:
+        _force_main_status_sync=False; _last_cobranca_slot=ckey
+        _cobranca_proc=start_job('dashboard_completo_cobranca_status_sgi_telegram', COBRANCA_CMD, main_job_env(False)); cobranca_running=True
+    elif sgi_vendedores_due(now) and not sales_running and not cobranca_running and not cob_terceira_running and not sgi_vendedores_running:
+        STATE['last_sgi_vendedores_attempt_at'] = iso_now(); _save_status()
+        _sgi_vendedores_proc=start_job('sgi_vendedores_monitor_diario', SGI_VENDEDORES_CMD); sgi_vendedores_running=True
+    elif _force_sales_after_main and not sales_running and not cobranca_running and not cob_terceira_running and not sgi_vendedores_running:
         _force_sales_after_main=False; _last_sales_slot=skey
         _sales_proc=start_job('vendas_unificadas_pos_main', SALES_CMD); sales_running=True
-    elif not sales_running and not cobranca_running and not cob_terceira_running and _last_sales_slot != skey:
+    elif not sales_running and not cobranca_running and not cob_terceira_running and not sgi_vendedores_running and _last_sales_slot != skey:
         _last_sales_slot=skey
         _sales_proc=start_job('vendas_unificadas', SALES_CMD); sales_running=True
 
@@ -863,3 +925,7 @@ while True:
 # V10.119_FIX_CONCILIACAO_REGEX_MES_RENEG_DATA_DIA
 
 # V10.120_RATEIO_PISO_DURO_E_TELEGRAM_SEM_CARTEIRA
+
+# V10.121_FTP_VERIFY_REMOTE_WALLETS
+
+# V10.122_FERIAS_OPERACIONAL
