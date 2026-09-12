@@ -686,7 +686,7 @@ def start_http_panel():
     server.serve_forever()
 
 
-DEPLOY_BUILD_VERSION = "V10.118"
+DEPLOY_BUILD_VERSION = "V10.120"
 DEPLOY_STATE_PUBLIC_URL = "https://moveisdolar.com.br/colaborador/dashboard_deploy_state.json"
 
 def _remote_deploy_version_v10100():
@@ -721,7 +721,7 @@ _last_deploy_remote_recheck_v10115 = 0.0
 STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
-log(f'VERSAO V10.116: protege carteira mínima dos vendedores sem duplicar CPF + V10.115 preservada | canal={NOTIFICATION_CHANNEL} | manual_only={COB_TERCEIRA_MANUAL_ONLY}')
+log(f'VERSAO V10.119: corrige conciliação mensal após auditoria; preserva rateio V10.117, aniversários V10.118 e lock V10.115 | canal={NOTIFICATION_CHANNEL} | manual_only={COB_TERCEIRA_MANUAL_ONLY}')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
@@ -859,3 +859,7 @@ while True:
 # V10.117_CONCILIACAO_ANIVERSARIOS_GERENTE_BALANCEADO
 
 # V10.118_PRESERVA_RATEIO_V10117
+
+# V10.119_FIX_CONCILIACAO_REGEX_MES_RENEG_DATA_DIA
+
+# V10.120_RATEIO_PISO_DURO_E_TELEGRAM_SEM_CARTEIRA

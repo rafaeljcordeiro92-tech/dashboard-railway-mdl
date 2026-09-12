@@ -38,8 +38,8 @@ URL   = "https://smart.sgisistemas.com.br"
 APP_TZ = ZoneInfo(os.getenv("APP_TZ", "America/Sao_Paulo"))
 BR_TZ = APP_TZ  # V10.106: alias usado pelo histórico operacional V10.104
 
-DASHBOARD_BUILD_VERSION = "V10.118"
-DASHBOARD_BUILD_TAG = "v10118_fix_conciliacao_data_aniversarios"
+DASHBOARD_BUILD_VERSION = "V10.120"
+DASHBOARD_BUILD_TAG = "v10120_rateio_piso_duro_sticky_acionavel_sem_carteira"
 
 # V10.57: corrige resumo por marco do WhatsApp Master e força contagens numéricas.
 # V10.52: base V10.50 + bloqueio global/individual com derrubada de sessão em tempo real.
@@ -3593,6 +3593,19 @@ _COB_MIN_DISPONIVEIS_V10116 = max(
 _COB_MIN_CPFS_GERENTE_V10117 = max(
     0, int(float(os.getenv("COBRANCA_GERENTE_MIN_CPFS_CARTEIRA", "5") or 5))
 )
+# V10.120: piso DURO usado antes de montar o pool global da Cobrança Interna.
+# A regra antiga protegia vendedor/gerente só depois que os CPFs sticky já tinham
+# sido retirados da filial. Em filial pequena isso podia deixar o vendedor com
+# 1-2 CPFs e, após a janela de 3 dias, com zero título acionável.
+_COB_MIN_CPFS_VENDEDOR_DURO_V10120 = max(
+    0, int(float(os.getenv("COBRANCA_VENDEDOR_MIN_CPFS_DURO", "5") or 5))
+)
+_COB_MIN_LIVRES_VENDEDOR_V10120 = max(
+    0, int(float(os.getenv("COBRANCA_VENDEDOR_MIN_LIVRES", "5") or 5))
+)
+_COB_MIN_LIVRES_GERENTE_V10120 = max(
+    0, int(float(os.getenv("COBRANCA_GERENTE_MIN_LIVRES", "5") or 5))
+)
 _COB_FILIAIS_V10116 = {"F1","F2","F3","F4","F5","F6","F8","F9"}
 
 def _group_filiais_v10116(_rows):
@@ -3634,17 +3647,74 @@ for _gk116, _rows116 in _clientes_grupos_hash:
     for _ff116 in _fs116:
         _total_grupos_filial_v10116[_ff116] = _total_grupos_filial_v10116.get(_ff116, 0) + 1
 
-# Reserva operacional: até N CPFs por vendedor ativo, limitada ao que a filial realmente possui.
+# V10.120: detecta quais CPFs já receberam cobrança oficial nos últimos 3 dias
+# ANTES de montar o pool global. Assim conseguimos preservar, dentro da filial,
+# não só quantidade de carteira, mas também uma quantidade mínima acionável.
+def _recent_pool_groups_v10120():
+    _keys = set()
+    _cut = now_brasilia() - timedelta(days=3)
+    for _ev in (_log_seed_v10110 or []):
+        if not isinstance(_ev, dict):
+            continue
+        if str(_ev.get("acao") or "").strip().lower() != "whatsapp":
+            continue
+        if str(_ev.get("titulo") or "").strip().upper() in {"ANIVERSARIO", "REATIVACAO"}:
+            continue
+        _raw = str(
+            _ev.get("server_time")
+            or _ev.get("created_at")
+            or _ev.get("criado_em")
+            or _ev.get("data")
+            or ""
+        ).strip()
+        if not _raw:
+            continue
+        try:
+            _dt = datetime.fromisoformat(_raw.replace("Z", "+00:00"))
+            if _dt.tzinfo is None:
+                _dt = _dt.replace(tzinfo=BR_TZ)
+            _dt = _dt.astimezone(BR_TZ)
+        except Exception:
+            continue
+        if _dt < _cut:
+            continue
+        _gk = cliente_grupo_key_py(_ev)
+        if _gk:
+            _keys.add(_gk)
+    return _keys
+
+_recent_pool_keys_v10120 = _recent_pool_groups_v10120()
+
+# Reserva operacional conjunta da filial ANTES de retirar o pool interno.
+# Piso duro padrão: 5 CPFs por vendedor + 5 para gerente. O alvo antigo de 10
+# por vendedor continua sendo tentado mais adiante no rateio operacional.
 _reserva_filial_v10116 = {}
+_reserva_livres_filial_v10120 = {}
+_total_livres_filial_v10120 = {f: 0 for f in _COB_FILIAIS_V10116}
+for _gk120, _rows120 in _clientes_grupos_hash:
+    if _gk120 in _recent_pool_keys_v10120:
+        continue
+    for _ff120 in _filiais_por_grupo_v10116.get(_gk120, set()):
+        _total_livres_filial_v10120[_ff120] = _total_livres_filial_v10120.get(_ff120, 0) + 1
+
 for _ff116 in sorted(_COB_FILIAIS_V10116):
     _nv116 = len(_vendedores_ativos_filial_v10116.get(_ff116) or set())
     _tot116 = int(_total_grupos_filial_v10116.get(_ff116) or 0)
-    _reserva_filial_v10116[_ff116] = min(
-        _tot116,
-        _nv116 * _COB_MIN_CPFS_POR_VENDEDOR_V10116
-    ) if _nv116 > 0 else 0
+    _livres116 = int(_total_livres_filial_v10120.get(_ff116) or 0)
+    _piso_total120 = (
+        (_nv116 * _COB_MIN_CPFS_VENDEDOR_DURO_V10120)
+        + (_COB_MIN_CPFS_GERENTE_V10117 if _tot116 > 0 else 0)
+    )
+    _piso_livre120 = (
+        (_nv116 * _COB_MIN_LIVRES_VENDEDOR_V10120)
+        + (_COB_MIN_LIVRES_GERENTE_V10120 if _tot116 > 0 else 0)
+    )
+    _reserva_filial_v10116[_ff116] = min(_tot116, _piso_total120)
+    _reserva_livres_filial_v10120[_ff116] = min(_livres116, _piso_livre120)
 
-# V10.110 continua valendo: CPFs já acompanhados pela cobrança interna têm prioridade.
+# V10.110 continua valendo, porém V10.120 só mantém sticky no pool interno se
+# ele não destruir os pisos locais acima. Sticky protegido pela filial volta
+# para a loja; o percentual GLOBAL é recomposto com CPFs de filiais com sobra.
 _sticky_present_v10110 = [
     (k, rows)
     for k, rows in _clientes_grupos_hash
@@ -3658,20 +3728,63 @@ _sticky_present_v10110.sort(
     reverse=True,
 )
 
-_sticky_selected_v10110 = _sticky_present_v10110[:_qtd_terceiro_grupos]
+_sel_por_filial_v10116 = {f: 0 for f in _COB_FILIAIS_V10116}
+_sel_livres_por_filial_v10120 = {f: 0 for f in _COB_FILIAIS_V10116}
+
+
+def _pool_pode_receber_v10120(_gk):
+    _fs = _filiais_por_grupo_v10116.get(_gk, set())
+    _is_livre = _gk not in _recent_pool_keys_v10120
+    for _ff in _fs:
+        _tot = int(_total_grupos_filial_v10116.get(_ff) or 0)
+        _sel = int(_sel_por_filial_v10116.get(_ff) or 0)
+        _res = int(_reserva_filial_v10116.get(_ff) or 0)
+        if (_tot - (_sel + 1)) < _res:
+            return False
+        if _is_livre:
+            _liv = int(_total_livres_filial_v10120.get(_ff) or 0)
+            _sel_liv = int(_sel_livres_por_filial_v10120.get(_ff) or 0)
+            _res_liv = int(_reserva_livres_filial_v10120.get(_ff) or 0)
+            if (_liv - (_sel_liv + 1)) < _res_liv:
+                return False
+    return True
+
+
+def _pool_marcar_selecionado_v10120(_gk):
+    _is_livre = _gk not in _recent_pool_keys_v10120
+    for _ff in _filiais_por_grupo_v10116.get(_gk, set()):
+        _sel_por_filial_v10116[_ff] = _sel_por_filial_v10116.get(_ff, 0) + 1
+        if _is_livre:
+            _sel_livres_por_filial_v10120[_ff] = _sel_livres_por_filial_v10120.get(_ff, 0) + 1
+
+
+_sticky_selected_v10110 = []
+_sticky_protegidos_local_v10120 = []
+for _gk120, _rows120 in _sticky_present_v10110:
+    if len(_sticky_selected_v10110) >= _qtd_terceiro_grupos:
+        break
+    if _pool_pode_receber_v10120(_gk120):
+        _sticky_selected_v10110.append((_gk120, _rows120))
+        _pool_marcar_selecionado_v10120(_gk120)
+    else:
+        _sticky_protegidos_local_v10120.append((_gk120, _rows120))
+
 _sticky_selected_keys_v10110 = {k for k, _ in _sticky_selected_v10110}
 
-# Conta quanto da reserva de cada filial já foi consumido por sticky.
-_sel_por_filial_v10116 = {f: 0 for f in _COB_FILIAIS_V10116}
-for _gk116, _rows116 in _sticky_selected_v10110:
-    for _ff116 in _filiais_por_grupo_v10116.get(_gk116, set()):
-        _sel_por_filial_v10116[_ff116] = _sel_por_filial_v10116.get(_ff116, 0) + 1
-
+# Restantes: prioriza CPFs já em janela de recobrança (menos úteis hoje para a
+# filial) e depois hash estável. Sticky liberado por proteção local permanece local.
 _remaining_hash_v10110 = [
     (k, rows)
     for k, rows in _clientes_grupos_hash
     if k not in _sticky_selected_keys_v10110
 ]
+_remaining_hash_v10110.sort(
+    key=lambda kv: (
+        0 if kv[0] in _recent_pool_keys_v10120 else 1,
+        0 if kv[0] in _sticky_internal_seed_v10110 else 1,
+        _hashlib.md5(str(kv[0]).encode("utf-8")).hexdigest(),
+    )
+)
 _needed_v10110 = max(0, _qtd_terceiro_grupos - len(_sticky_selected_v10110))
 
 _clientes_terceiro_grupos = list(_sticky_selected_v10110)
@@ -3683,21 +3796,9 @@ for _gk116, _rows116 in _remaining_hash_v10110:
         _restantes_nao_selecionados_v10116.append((_gk116, _rows116))
         continue
 
-    _fs116 = _filiais_por_grupo_v10116.get(_gk116, set())
-    _pode116 = True
-    for _ff116 in _fs116:
-        _tot116 = int(_total_grupos_filial_v10116.get(_ff116) or 0)
-        _sel116 = int(_sel_por_filial_v10116.get(_ff116) or 0)
-        _res116 = int(_reserva_filial_v10116.get(_ff116) or 0)
-        # Depois de selecionar este CPF para o pool interno, ainda precisa sobrar a reserva.
-        if (_tot116 - (_sel116 + 1)) < _res116:
-            _pode116 = False
-            break
-
-    if _pode116:
+    if _pool_pode_receber_v10120(_gk116):
         _clientes_terceiro_grupos.append((_gk116, _rows116))
-        for _ff116 in _fs116:
-            _sel_por_filial_v10116[_ff116] = _sel_por_filial_v10116.get(_ff116, 0) + 1
+        _pool_marcar_selecionado_v10120(_gk116)
     else:
         _restantes_nao_selecionados_v10116.append((_gk116, _rows116))
 
@@ -3719,6 +3820,7 @@ if len(_clientes_terceiro_grupos) < _qtd_terceiro_grupos:
             _res = int(_reserva_filial_v10116.get(_ff) or 0)
             _sobras.append(_tot - _sel - _res)
         return (
+            0 if _gk in _recent_pool_keys_v10120 else 1,
             -min(_sobras or [0]),
             _hashlib.md5(str(_gk).encode("utf-8")).hexdigest()
         )
@@ -3727,8 +3829,7 @@ if len(_clientes_terceiro_grupos) < _qtd_terceiro_grupos:
         if _faltam116 <= 0:
             break
         _clientes_terceiro_grupos.append((_gk116, _rows116))
-        for _ff116 in _filiais_por_grupo_v10116.get(_gk116, set()):
-            _sel_por_filial_v10116[_ff116] = _sel_por_filial_v10116.get(_ff116, 0) + 1
+        _pool_marcar_selecionado_v10120(_gk116)
         _faltam116 -= 1
 
     if _faltam116 > 0:
@@ -3739,10 +3840,11 @@ if len(_clientes_terceiro_grupos) < _qtd_terceiro_grupos:
 _clientes_terceiro_cliente_keys = {k for k, _rows in _clientes_terceiro_grupos}
 
 print(
-    f"🔒 V10.116 continuidade/proteção pool interno: "
-    f"{len(_sticky_selected_v10110)} CPF(s) sticky preservados | "
+    f"🔒 V10.120 proteção pool interno: "
+    f"sticky mantidos={len(_sticky_selected_v10110)} | "
+    f"sticky devolvidos à filial={len(_sticky_protegidos_local_v10120)} | "
     f"pool={len(_clientes_terceiro_cliente_keys)}/{_qtd_terceiro_grupos} CPF(s) | "
-    f"mínimo carteira por vendedor={_COB_MIN_CPFS_POR_VENDEDOR_V10116}"
+    f"piso duro vendedor/gerente={_COB_MIN_CPFS_VENDEDOR_DURO_V10120}/{_COB_MIN_CPFS_GERENTE_V10117}"
 )
 for _ff116 in sorted(_COB_FILIAIS_V10116):
     _tot116 = int(_total_grupos_filial_v10116.get(_ff116) or 0)
@@ -3750,10 +3852,14 @@ for _ff116 in sorted(_COB_FILIAIS_V10116):
     _sobrou116 = max(0, _tot116 - _sel116)
     _nv116 = len(_vendedores_ativos_filial_v10116.get(_ff116) or set())
     _res116 = int(_reserva_filial_v10116.get(_ff116) or 0)
+    _liv116 = int(_total_livres_filial_v10120.get(_ff116) or 0)
+    _sel_liv116 = int(_sel_livres_por_filial_v10120.get(_ff116) or 0)
+    _res_liv116 = int(_reserva_livres_filial_v10120.get(_ff116) or 0)
     if _tot116 or _nv116:
         print(
-            f"   ↳ {_ff116}: base={_tot116} CPF(s) | vendedores={_nv116} | "
-            f"reserva alvo={_res116} | internos={_sel116} | sobraram={_sobrou116}"
+            f"   ↳ {_ff116}: base={_tot116} | vendedores={_nv116} | reserva local={_res116} | "
+            f"internos={_sel116} | sobraram={_sobrou116} | livres base={_liv116} | "
+            f"livres enviados interno={_sel_liv116} | livres reservados={_res_liv116}"
         )
 
 _clientes_terceiro_lista = [
@@ -8724,6 +8830,48 @@ def aplicar_anti_duplicidade_operacional_carteiras():
 
 aplicar_anti_duplicidade_operacional_carteiras()
 
+# V10.120: validação final da distribuição publicada. Não penaliza escassez física,
+# mas deixa explícito no log qualquer vendedor que terminar sem CPF acionável.
+def _validar_rateio_operacional_v10120():
+    _rows = []
+    _ativos_nomes = set()
+    for _vs in (_vendedores_ativos_filial_v10116 or {}).values():
+        _ativos_nomes.update(_vs or set())
+    _todos_vendedores = sorted(_ativos_nomes | set((clientes_por_vend_js or {}).keys()))
+    for _vend in _todos_vendedores:
+        _data = (clientes_por_vend_js or {}).get(_vend) or {"grave": [], "alerta": [], "atencao": []}
+        _keys = set()
+        _free = set()
+        _tit = 0
+        for _fx in ("grave", "alerta", "atencao"):
+            for _r in ((_data or {}).get(_fx) or []):
+                _tit += 1
+                _k = cliente_grupo_key_py(_r)
+                if not _k:
+                    continue
+                _keys.add(_k)
+                if _k not in (_recent_groups_v10116 or set()):
+                    _free.add(_k)
+        _fil = ""
+        try:
+            _m = df_vend[df_vend["nome_exibicao"] == _vend]
+            if not _m.empty:
+                _fil = str(_m.iloc[0].get("filial_vendedor") or "").upper()
+        except Exception:
+            pass
+        _rows.append({"vendedor": _vend, "filial": _fil, "clientes": len(_keys), "titulos": _tit, "acionaveis": len(_free)})
+    _crit = [r for r in _rows if r["clientes"] == 0 or r["acionaveis"] == 0]
+    print(f"🧪 V10.120 validação rateio: {len(_rows)} vendedor(es) | sem carteira acionável={len(_crit)}")
+    for _r in _crit:
+        print(f"   ⚠️ {_r['filial']} {_r['vendedor']}: {_r['clientes']} CPF(s), {_r['titulos']} título(s), {_r['acionaveis']} acionáveis")
+    try:
+        with open(os.path.join(pasta, "relatorio_rateio_operacional_v10120.json"), "w", encoding="utf-8") as _fh:
+            json.dump({"gerado_em": now_brasilia().isoformat(), "versao": DASHBOARD_BUILD_VERSION, "vendedores": _rows, "sem_acionaveis": _crit}, _fh, ensure_ascii=False, indent=2)
+    except Exception as _e:
+        print(f"⚠️ V10.120 não conseguiu salvar relatório de validação: {_e}")
+
+_validar_rateio_operacional_v10120()
+
 _historico_comissao_cobranca10()
 
 
@@ -10317,7 +10465,7 @@ DETALHES_DIR_V1048 = os.path.join(pasta, 'clientes_detalhes')
 os.makedirs(DETALHES_DIR_V1048, exist_ok=True)
 DETALHES_FILES_V1048 = []
 DETALHES_MANIFEST_V1048 = {
-    'version': 'V10.49',
+    'version': DASHBOARD_BUILD_VERSION,
     'updated_at': now_brasilia().isoformat(),
     'updated_at_label': now_brasilia().strftime('%d/%m/%Y %H:%M:%S'),
     'mode': 'lazy_per_entity' if DASHBOARD_MODO_LEVE else 'embedded',
@@ -10336,7 +10484,7 @@ def _save_detail_v1048(kind, key, data):
     filename = f'{kind}_{_slug_v1048(key)}.json'
     path = os.path.join(DETALHES_DIR_V1048, filename)
     payload = {
-        'ok': True, 'version': 'V10.49', 'kind': kind, 'key': str(key),
+        'ok': True, 'version': DASHBOARD_BUILD_VERSION, 'kind': kind, 'key': str(key),
         'updated_at': now_brasilia().isoformat(), 'data': data or {'grave': [], 'alerta': [], 'atencao': []},
     }
     with open(path, 'w', encoding='utf-8') as fh:
@@ -10358,6 +10506,11 @@ def _save_detail_v1048(kind, key, data):
         'atencao_pend': _sum_pending_v1049(_atencao_v1049),
     }
     entry['pendente'] = round(entry['grave_pend'] + entry['alerta_pend'] + entry['atencao_pend'], 2)
+    _rows_all_v10120 = list(_grave_v1049) + list(_alerta_v1049) + list(_atencao_v1049)
+    _keys_all_v10120 = {cliente_grupo_key_py(r) for r in _rows_all_v10120 if cliente_grupo_key_py(r)}
+    entry['clientes'] = len(_keys_all_v10120)
+    entry['titulos'] = len(_rows_all_v10120)
+    entry['acionaveis'] = sum(1 for k in _keys_all_v10120 if k not in (_recent_groups_v10116 or set()))
     DETALHES_FILES_V1048.append((path, filename))
     return entry
 
@@ -10686,7 +10839,7 @@ def _v10117_is_reneg_title(q):
     if _v10117_truth((q or {}).get("is_renegociacao_titulo")):
         return True
     f = _v1099_norm((q or {}).get("forma_pagamento") or "")
-    return bool(re.search(r"\\bRENEGOCI", f) or re.search(r"\\bACORDO\\b", f) or re.search(r"(^| )17($| )", f))
+    return bool(re.search(r"\bRENEGOCI", f) or re.search(r"\bACORDO\b", f) or re.search(r"(^| )17($| )", f))
 
 def _v10117_is_accounting_reneg(q):
     return (
@@ -10701,6 +10854,19 @@ def _v10117_audit_dt(a):
         or (a or {}).get("ia_analisado_em")
         or (a or {}).get("updated_at")
     )
+
+# V10.119: o relatório SGI normalmente informa a data do pagamento sem horário.
+# Para não rejeitar uma cobrança/auditoria válida ocorrida no mesmo dia, a
+# cronologia da conciliação compara DIA (Brasília), não 00:00 contra timestamp.
+def _v10119_payment_dt(q):
+    return _v1099_dt((q or {}).get("pagamento") or (q or {}).get("data_pagamento"))
+
+def _v10119_audit_not_after_payment_day(a, q):
+    ad = _v10117_audit_dt(a)
+    pd = _v10119_payment_dt(q)
+    if not ad or not pd:
+        return True
+    return ad.date() <= pd.date()
 
 def _v10117_audit_intent(a):
     ia = (a or {}).get("ia_resultado")
@@ -10720,7 +10886,7 @@ def _v10117_audit_intent(a):
         str(ia.get("resposta_cliente_resumida") or ""), str(ia.get("motivo") or ""),
         str((a or {}).get("motivo") or ""), str((a or {}).get("master_motivo") or ""), *trans
     ]))
-    pats=(r"\\bRENEGOCI",r"\\bFAZER ACORDO\\b",r"\\bQUERO ACORDO\\b",r"\\bQUITAR TUDO\\b",r"\\bPAGAR TUDO\\b",r"\\bACERTAR TUDO\\b",r"\\bTODOS OS TITULOS\\b",r"\\bTODA A DIVIDA\\b",r"\\bPARCELAR NOVAMENTE\\b")
+    pats=(r"\bRENEGOCI",r"\bFAZER ACORDO\b",r"\bQUERO ACORDO\b",r"\bQUITAR TUDO\b",r"\bPAGAR TUDO\b",r"\bACERTAR TUDO\b",r"\bTODOS OS TITULOS\b",r"\bTODA A DIVIDA\b",r"\bPARCELAR NOVAMENTE\b")
     return any(re.search(p, txt) for p in pats)
 
 def _v10117_payment_key(q):
@@ -10753,7 +10919,8 @@ def _v10117_collection_before_pay(a, q, ent, logs_all):
         return True
     for l in logs:
         ld=_v1099_dt(l.get("server_time") or l.get("criado_em") or l.get("data") or l.get("server_date"))
-        if not ld or ld <= pay_dt:
+        # V10.119: pagamento SGI sem horário representa o dia inteiro.
+        if not ld or ld.date() <= pay_dt.date():
             return True
     return False
 
@@ -10772,7 +10939,8 @@ def _v10117_origin_for_reneg(q, audits_all, quitados_all, memo):
         if not isinstance(a,dict) or not _v10104_status_aprovado(a.get("status")): continue
         if _v10117_doc(a) != doc: continue
         ad=_v10117_audit_dt(a)
-        if not ad or (first_dt and ad>first_dt): continue
+        # V10.119: aceita auditoria/cobrança e pagamento no mesmo dia.
+        if not ad or (first_dt and ad.date() > first_dt.date()): continue
         cand.append(a)
     cand.sort(key=lambda a:_v10117_audit_dt(a) or datetime(2000,1,1,tzinfo=BR_TZ))
     explicit=[a for a in cand if _v10117_audit_intent(a)]
@@ -10784,7 +10952,7 @@ def _v10117_origin_for_reneg(q, audits_all, quitados_all, memo):
         for a in cand:
             ad=_v10117_audit_dt(a)
             if not ad: continue
-            dd=(first_dt-ad).total_seconds()/86400.0
+            dd=(first_dt.date()-ad.date()).days
             if 0 <= dd <= 30: near.append(a)
         if near:
             chosen=near[-1]; method="fallback_30d"
@@ -10793,7 +10961,9 @@ def _v10117_origin_for_reneg(q, audits_all, quitados_all, memo):
     return out
 
 def _v10117_recovery_rows(ent, month, audits_all, quitados_all, logs_all):
-    if not re.match(r"^\\d{4}-\\d{2}$", str(month or "")):
+    # V10.119: corrige escape duplo. Antes o regex procurava literalmente "\\d"
+    # e rejeitava todo mês real (ex.: 2026-09), retornando [] antes do cruzamento.
+    if not re.match(r"^\d{4}-\d{2}$", str(month or "")):
         return []
     ent_aud=[a for a in (audits_all or []) if isinstance(a,dict) and _v10104_status_aprovado(a.get("status")) and _v10104_audit_matches_ent(a,ent)]
     ent_aud.sort(key=lambda a:_v10117_audit_dt(a) or datetime(2000,1,1,tzinfo=BR_TZ))
@@ -10807,6 +10977,7 @@ def _v10117_recovery_rows(ent, month, audits_all, quitados_all, logs_all):
             if not _v10117_same_exact(a,q): continue
             pdt=_v10117_iso_date(q.get("pagamento") or q.get("data_pagamento"))
             if pdt[:7] != month: continue
+            if not _v10119_audit_not_after_payment_day(a, q): continue
             if not _v10117_collection_before_pay(a,q,ent,logs_all): continue
             cand.append(q)
         cand.sort(key=lambda q:float(q.get("pago") or 0), reverse=True)
@@ -10860,7 +11031,7 @@ def _v10117_apply_monthly_reconciliation(months, audits_all, quitados_all, logs_
                     _invalid_examples118.append(str(_raw118))
         _current_month118 = now_brasilia().strftime("%Y-%m")
         print(
-            f"🧪 V10.118 datas de pagamento: válidas={_valid_dates118} | "
+            f"🧪 V10.119 datas de pagamento: válidas={_valid_dates118} | "
             f"inválidas={_invalid_dates118} | {_current_month118}={_month_counts118.get(_current_month118,0)} baixa(s)"
         )
         if _invalid_examples118:
@@ -10869,9 +11040,45 @@ def _v10117_apply_monthly_reconciliation(months, audits_all, quitados_all, logs_
             1 for _a118 in (audits_all or [])
             if isinstance(_a118, dict) and _v10104_status_aprovado(_a118.get("status"))
         )
-        print(f"🧪 V10.118 auditorias carregadas: total={len(audits_all or [])} | aprovadas={_approved118}")
+        print(f"🧪 V10.119 auditorias carregadas: total={len(audits_all or [])} | aprovadas={_approved118}")
+
+        # V10.119: mede o cruzamento bruto antes do rateio por entidade. Serve para
+        # comprovar no log se CPF+título+parcela encontram baixas no mês corrente.
+        _paid_month119 = [
+            _q for _q in (quitados_all or [])
+            if isinstance(_q, dict)
+            and _v10117_iso_date(_q.get("pagamento") or _q.get("data_pagamento"))[:7] == _current_month118
+            and not _v10117_is_accounting_reneg(_q)
+        ]
+        _approved_rows119 = [
+            _a for _a in (audits_all or [])
+            if isinstance(_a, dict) and _v10104_status_aprovado(_a.get("status"))
+        ]
+        _exact_keys119 = set()
+        _after_keys119 = set()
+        for _a119 in _approved_rows119:
+            for _q119 in _paid_month119:
+                if not _v10117_same_exact(_a119, _q119):
+                    continue
+                _pk119 = _v10117_payment_key(_q119)
+                if _v10119_audit_not_after_payment_day(_a119, _q119):
+                    if _pk119: _exact_keys119.add(_pk119)
+                elif _pk119:
+                    _after_keys119.add(_pk119)
+        _reneg_keys119 = {
+            _v10117_payment_key(_q) for _q in _paid_month119
+            if _v10117_is_reneg_title(_q) and _v10117_payment_key(_q)
+        }
+        _month_regex_ok119 = bool(re.match(r"^\d{4}-\d{2}$", _current_month118))
+        print(
+            f"🔗 V10.119 pré-conciliação {_current_month118}: "
+            f"mês_regex_ok={_month_regex_ok119} | "
+            f"vínculos_exatos_validos={len(_exact_keys119)} | "
+            f"auditoria_posterior_ao_dia={len(_after_keys119)} | "
+            f"baixas_renegociadas={len(_reneg_keys119)}"
+        )
     except Exception as _diag118:
-        print(f"⚠️ V10.118 diagnóstico conciliação: {_diag118}")
+        print(f"⚠️ V10.119 diagnóstico conciliação: {_diag118}")
 
     for month, payload in months.items():
         if not isinstance(payload,dict): continue
@@ -10888,6 +11095,7 @@ def _v10117_apply_monthly_reconciliation(months, audits_all, quitados_all, logs_
                 cob=int(row.get("cobrancas_feitas") or 0)
                 row["taxa_efetividade"]=round((len(recs)/cob*100.0) if cob else 0.0,2)
                 row["reconciliacao_v10117"]="pagamento_no_mes_apos_auditoria"
+                row["reconciliacao_engine"]="V10.119"
                 if field=="filiais" or (field=="entities" and str(row.get("tipo") or "").lower()=="terceiro"):
                     for rr in recs:
                         company_rows.setdefault(rr.get("key"),rr)
@@ -10897,9 +11105,10 @@ def _v10117_apply_monthly_reconciliation(months, audits_all, quitados_all, logs_
         cob=int(summary.get("cobrancas_feitas") or 0)
         summary["taxa_efetividade"]=round((len(company_rows)/cob*100.0) if cob else 0.0,2)
         summary["reconciliacao_v10117"]="filiais_unicas_mais_cobranca_interna"
+        summary["reconciliacao_engine"]="V10.119"
         payload["summary"]=summary
         if month == now_brasilia().strftime("%Y-%m"):
-            print(f"💵 V10.118 conciliação mensal {month}: {len(company_rows)} pagamento(s) | R$ {summary['recebido_conciliado']:.2f}")
+            print(f"💵 V10.119 conciliação mensal {month}: {len(company_rows)} pagamento(s) | R$ {summary['recebido_conciliado']:.2f}")
     return months
 
 def _v1099_entity_daily(tipo, login, nome, filial, buckets, logs_all, audits_all, quitados_all, now):
@@ -11025,7 +11234,7 @@ def _v1099_entity_daily(tipo, login, nome, filial, buckets, logs_all, audits_all
         pagamentos = len(_rec_day117)
         recebido = sum(float(x.get("recebido") or 0) for x in _rec_day117)
     except Exception as _e_day117:
-        print(f"⚠️ V10.118 conciliação diária {tipo}/{login or nome}: {_e_day117}")
+        print(f"⚠️ V10.119 conciliação diária {tipo}/{login or nome}: {_e_day117}")
 
     previstos = len(plan)
     cobrancas = len(today_logs)
@@ -11328,9 +11537,9 @@ try:
             _logs_v1099,
         ),
     }
-    _hist_cob_v10104["version"] = "V10.117"
+    _hist_cob_v10104["version"] = "V10.119"
     _hist_cob_v10104["reconciliacao_pagamentos"] = {
-        "version":"V10.117",
+        "version":"V10.119",
         "regra":"pagamento no mês após auditoria aprovada; baixa exata ou renegociação efetivamente paga",
         "generated_at":_now_v1099.isoformat(),
     }
@@ -14167,14 +14376,24 @@ function countCobrancasHojePorOwner(keys,filial=''){
   const hoje=dateOnlyISO(new Date());
   return (COB_LOGS||[]).filter(x=>logIsHojeCobrancaReal(x,hoje) && logMatchesAnyOwner(x,keys,filial)).length;
 }
-function detailManifestCount(entry){return Number(entry?.grave||0)+Number(entry?.alerta||0)+Number(entry?.atencao||0)}
+function detailManifestCount(entry){return Number(entry?.titulos??(Number(entry?.grave||0)+Number(entry?.alerta||0)+Number(entry?.atencao||0)))}
+function detailManifestClients(entry){return Number(entry?.clientes??detailManifestCount(entry))}
+function detailManifestActionable(entry){return Number(entry?.acionaveis??detailManifestClients(entry))}
+function detailManifestEntry(kind,key){
+  if(kind==='filial')return DETALHES_MANIFEST?.filiais?.[String(key||'').toUpperCase()]||null;
+  if(kind==='vendedor')return DETALHES_MANIFEST?.vendedores?.[String(key||'')]||null;
+  if(kind==='crediarista')return DETALHES_MANIFEST?.crediaristas?.[String(key||'').toLowerCase()]||null;
+  if(kind==='terceiro')return DETALHES_MANIFEST?.terceiros?.[String(key||'').toLowerCase()]||DETALHES_MANIFEST?.terceiro||null;
+  return null;
+}
 function detailPendingCount(kind,key,loaded){
   const live=((loaded?.grave||[]).length+(loaded?.alerta||[]).length+(loaded?.atencao||[]).length); if(live>0||!DASHBOARD_LAZY_MODE)return live;
-  if(kind==='filial')return detailManifestCount(DETALHES_MANIFEST?.filiais?.[String(key||'').toUpperCase()]);
-  if(kind==='vendedor')return detailManifestCount(DETALHES_MANIFEST?.vendedores?.[String(key||'')]);
-  if(kind==='crediarista')return detailManifestCount(DETALHES_MANIFEST?.crediaristas?.[String(key||'').toLowerCase()]);
-  if(kind==='terceiro')return detailManifestCount(DETALHES_MANIFEST?.terceiro);
-  return live;
+  return detailManifestCount(detailManifestEntry(kind,key));
+}
+function detailPortfolioSummary(kind,key,loaded){
+  const rows=[...(loaded?.grave||[]),...(loaded?.alerta||[]),...(loaded?.atencao||[])];
+  if(rows.length && !DASHBOARD_LAZY_MODE){const keys=new Set(rows.map(r=>String(r?.cliente_key||r?.cpf_cnpj_normalizado||r?.cpf_cnpj||r?.cliente||r?.nome||'').trim()).filter(Boolean));return {clientes:keys.size,titulos:rows.length,acionaveis:keys.size};}
+  const e=detailManifestEntry(kind,key); return {clientes:detailManifestClients(e),titulos:detailManifestCount(e),acionaveis:detailManifestActionable(e)};
 }
 function renderNoChargeAlerts(){
   const totalPend=(obj)=>((obj?.grave||[]).length+(obj?.alerta||[]).length+(obj?.atencao||[]).length);
@@ -14182,30 +14401,29 @@ function renderNoChargeAlerts(){
 
   // Vendedores / colaboradores: usa nome, login e filial do próprio usuário.
   flattenVendedores().forEach(v=>{
-    const pending=detailPendingCount('vendedor',v.nome,CLIENTES_VEND[v.nome]||{});
+    const ps=detailPortfolioSummary('vendedor',v.nome,CLIENTES_VEND[v.nome]||{});
     const done=countCobrancasHojePorOwner([v.nome, v.login], v.filial);
-    if(pending>0 && done===0) entries.push({tipo:'Colaborador',nome:v.nome,filial:v.filial,pending,done});
+    if(ps.acionaveis>0 && done===0) entries.push({tipo:'Colaborador',nome:v.nome,filial:v.filial,pending:ps.clientes,titulos:ps.titulos,acionaveis:ps.acionaveis,done});
   });
 
   // Filiais / gerentes: se qualquer cobrança daquela filial foi registrada hoje, não aparece no mural.
   flattenFiliais().forEach(f=>{
-    const pending=detailPendingCount('filial',f.filial,CLIENTES_FIL[f.filial]||{});
+    const ps=detailPortfolioSummary('filial',f.filial,CLIENTES_FIL[f.filial]||{});
     const done=countCobrancasHojePorOwner([f.nome, f.filial, filialLabel(f.filial)], f.filial);
-    if(pending>0 && done===0) entries.push({tipo:'Filial',nome:filialLabel(f.filial),filial:f.filial,pending,done});
+    if(ps.acionaveis>0 && done===0) entries.push({tipo:'Filial',nome:filialLabel(f.filial),filial:f.filial,pending:ps.clientes,titulos:ps.titulos,acionaveis:ps.acionaveis,done});
   });
 
   // Crediaristas: reconhece login, nome e logs com destino_tipo=crediarista da mesma filial.
   crediaristaEntities().forEach(c=>{
     const key=String(c.login||'').toLowerCase();
-    const pending=detailPendingCount('crediarista',key,CLIENTES_CREDIARISTA[key]||{});
+    const ps=detailPortfolioSummary('crediarista',key,CLIENTES_CREDIARISTA[key]||{});
     const done=countCobrancasHojePorOwner([c.nome, c.login], c.filial);
-    if(pending>0 && done===0) entries.push({tipo:'Crediarista',nome:c.nome,filial:c.filial,pending,done});
+    if(ps.acionaveis>0 && done===0) entries.push({tipo:'Crediarista',nome:c.nome,filial:c.filial,pending:ps.clientes,titulos:ps.titulos,acionaveis:ps.acionaveis,done});
   });
 
-  // Cobrança Interna Global / Cobrança10
-  const pendingTer=detailPendingCount('terceiro','cobranca10',CLIENTES_TERCEIRO||{});
-  const doneTer=countCobrancasHojePorOwner([COBRANCA10_NOME, COBRANCA10_LOGIN, 'cobranca10', 'cobranca 10'], 'FTER');
-  if(pendingTer>0 && doneTer===0) entries.push({tipo:'Cobrança',nome:COBRANCA10_NOME,filial:'FTER',pending:pendingTer,done:doneTer});
+  // Cobrança Interna Global: cada login usa sua própria fatia do manifest.
+  const terceiros=(DETALHES_MANIFEST?.terceiros&&typeof DETALHES_MANIFEST.terceiros==='object')?Object.keys(DETALHES_MANIFEST.terceiros):[COBRANCA10_LOGIN];
+  terceiros.forEach(loginTer=>{const ps=detailPortfolioSummary('terceiro',loginTer,{});const nomeTer=DETALHES_MANIFEST?.terceiros?.[loginTer]?.nome||loginTer;const doneTer=countCobrancasHojePorOwner([nomeTer,loginTer], 'FTER');if(ps.acionaveis>0&&doneTer===0)entries.push({tipo:'Cobrança',nome:nomeTer,filial:'FTER',pending:ps.clientes,titulos:ps.titulos,acionaveis:ps.acionaveis,done:doneTer});});
 
   const uniq=[];
   const seen=new Set();
@@ -14215,7 +14433,7 @@ function renderNoChargeAlerts(){
   });
   uniq.sort((a,b)=>String(a.tipo).localeCompare(String(b.tipo),'pt-BR') || Number(b.pending||0)-Number(a.pending||0));
   if(!uniq.length) return '';
-  return renderAvisoTicker('Sem cobranças hoje','Lista giratória de usuários/carteiras com cobrança pendente e sem registro de WhatsApp hoje.', uniq.map(e=>({nome:e.nome, info:`${e.tipo}${e.filial?` · ${e.filial}`:''} · ${e.pending} clientes`})), {icon:'⏰',color:'rgba(239,68,68,.30)'});
+  return renderAvisoTicker('Sem cobranças hoje','Lista giratória de usuários/carteiras com cobrança pendente e sem registro de WhatsApp hoje.', uniq.map(e=>({nome:e.nome, info:`${e.tipo}${e.filial?` · ${e.filial}`:''} · ${e.acionaveis} acionáveis · ${e.pending} clientes · ${e.titulos} títulos`})), {icon:'⏰',color:'rgba(239,68,68,.30)'});
 }
 
 function renderNoReactivationAlerts(){
@@ -27561,19 +27779,38 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
         stamp = now_brasilia().strftime('%Y-%m-%d_%H%M%S')
         return f"{prefixo}_{stamp}{_safe_ext_v1020(local_path, default_ext)}"
 
-    # 1) Primeiro recupera o dashboard online. Sobe em arquivo temporário e só troca no final.
-    _ftp_upload_file_v1019(html_path, 'dashboard_vendedores.html', atomic=True, label='dashboard_vendedores.html (HTML atômico)')
-
-    # V10.48: publica as carteiras detalhadas separadas. O HTML inicial permanece leve.
+    # V10.120: publica carteiras ANTES do HTML e deixa o manifest por último.
+    # Isso evita HTML/manifest novo apontando para JSON que falhou no FTP.
+    _detalhes_ok_v10120 = True
     if DASHBOARD_MODO_LEVE:
         try:
+            _detail_items_v10120 = [(p, n) for p, n in DETALHES_FILES_V1048 if n != 'manifest.json']
+            _manifest_items_v10120 = [(p, n) for p, n in DETALHES_FILES_V1048 if n == 'manifest.json']
             _ok_det_v1048 = 0
-            for _local_det, _name_det in DETALHES_FILES_V1048:
-                if _ftp_upload_file_to_dir_v1020(_local_det, 'clientes_detalhes', _name_det, atomic=True, label=f'clientes_detalhes/{_name_det}'):
+            for _local_det, _name_det in _detail_items_v10120:
+                _ok_one = _ftp_upload_file_to_dir_v1020(_local_det, 'clientes_detalhes', _name_det, atomic=True, label=f'clientes_detalhes/{_name_det}')
+                if not _ok_one:
+                    # uma tentativa extra para falha transitória de FTP
+                    _ok_one = _ftp_upload_file_to_dir_v1020(_local_det, 'clientes_detalhes', _name_det, atomic=True, label=f'clientes_detalhes/{_name_det} retry')
+                if _ok_one:
                     _ok_det_v1048 += 1
-            print(f'🪶 FTP V10.48: {_ok_det_v1048}/{len(DETALHES_FILES_V1048)} arquivos de carteira sob demanda enviados.')
+                else:
+                    _detalhes_ok_v10120 = False
+            if _detalhes_ok_v10120:
+                for _local_det, _name_det in _manifest_items_v10120:
+                    if not _ftp_upload_file_to_dir_v1020(_local_det, 'clientes_detalhes', _name_det, atomic=True, label='clientes_detalhes/manifest.json'):
+                        _detalhes_ok_v10120 = False
+            print(f'🪶 FTP V10.120: {_ok_det_v1048}/{len(_detail_items_v10120)} carteiras publicadas; manifest={"OK" if _detalhes_ok_v10120 else "PRESERVADO/BLOQUEADO"}.')
         except Exception as _e_det_v1048:
-            print(f'⚠️ V10.48: falha publicando carteiras sob demanda: {_e_det_v1048}')
+            _detalhes_ok_v10120 = False
+            print(f'⚠️ V10.120: falha publicando carteiras sob demanda: {_e_det_v1048}')
+
+    # Só troca o HTML depois de confirmar que os JSONs de carteira foram publicados.
+    if (not DASHBOARD_MODO_LEVE) or _detalhes_ok_v10120:
+        _ftp_upload_file_v1019(html_path, 'dashboard_vendedores.html', atomic=True, label='dashboard_vendedores.html (HTML atômico)')
+    else:
+        _ftp_fail_v1019.append(('dashboard_vendedores.html', 'V10.120 bloqueou HTML novo porque houve falha em clientes_detalhes'))
+        print('🛡️ V10.120: HTML novo NÃO publicado porque uma ou mais carteiras falharam no FTP.')
 
     # 2) APIs pequenas e essenciais.
     _ftp_upload_bytes_v1019('cobrancas_api.php', COBRANCAS_API_PHP.encode('utf-8'), label='cobrancas_api.php')
@@ -27716,6 +27953,9 @@ if FTP_USER and FTP_PASS and not MODO_TESTE_LOCAL:
         _dup_path = os.path.join(pasta, 'relatorio_duplicidades_carteira.json')
         if os.path.exists(_dup_path):
             _ftp_upload_file_v1019(_dup_path, 'relatorio_duplicidades_carteira.json', label='relatorio_duplicidades_carteira.json')
+        _rateio_v10120_path = os.path.join(pasta, 'relatorio_rateio_operacional_v10120.json')
+        if os.path.exists(_rateio_v10120_path):
+            _ftp_upload_file_v1019(_rateio_v10120_path, 'relatorio_rateio_operacional_v10120.json', label='relatorio_rateio_operacional_v10120.json')
     except Exception as e_extra_ftp:
         print(f'⚠️ Erro ao enviar extras dashboard 2.0 ao FTP: {e_extra_ftp}')
 
@@ -27971,5 +28211,8 @@ driver.quit()
 # V10.116_PROTECAO_CARTEIRA_MINIMA_SEM_DUPLICACAO
 
 # V10.117_CONCILIACAO_MENSAL_ANIVERSARIOS_ATUAIS_GERENTE_PISO
+# V10.120_RATEIO_PISO_DURO_STICKY_ACIONAVEL_MANIFEST_SEGURO
 
 # V10.118_FIX_CONCILIACAO_DATA_DDMMYYYY_E_ANIVERSARIOS_ATUAIS
+
+# V10.119_FIX_CONCILIACAO_REGEX_MES_RENEG_DATA_DIA

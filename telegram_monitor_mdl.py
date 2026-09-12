@@ -34,7 +34,7 @@ def _extract_list_payload(data):
     return []
 
 
-# VERSAO: TELEGRAM_MONITOR_MDL_V10_101_COBRANCA_DIARIA_LIVE
+# VERSAO: TELEGRAM_MONITOR_MDL_V10_120_SEM_CARTEIRA_LIVE
 import json
 import os
 import re
@@ -1873,9 +1873,9 @@ def build_daily_collection_summary(base_dir, date_str=None):
             "taxa_efetividade": round((len(paid_keys)/feitos*100.0) if feitos else 0.0,1),
         })
 
-    with_queue=[r for r in rows if int(r.get("previstos") or 0)>0]
-    no_work=[r for r in with_queue if int(r.get("cobrancas_feitas") or 0)==0]
-    partial=[r for r in with_queue if 0<int(r.get("cobrancas_feitas") or 0)<int(r.get("previstos") or 0)]
+    users_queue = [r for r in rows if int(r.get("previstos") or 0) > 0]
+    no_work = [r for r in users_queue if int(r.get("cobrancas_feitas") or 0) == 0]
+    partial = [r for r in users_queue if 0 < int(r.get("cobrancas_feitas") or 0) < int(r.get("previstos") or 0)]
     total_cob=sum(int(r.get("cobrancas_feitas") or 0) for r in rows)
     total_aud=sum(int(r.get("auditorias_aprovadas") or 0) for r in rows)
     total_pay=sum(int(r.get("pagamentos_conciliados") or 0) for r in rows)
@@ -1959,7 +1959,9 @@ def _v10101_entry_for_user(user, manifest):
     if user.get("is_crediarista"):
         return (manifest.get("crediaristas") or {}).get(str(user.get("login") or "").lower())
     if user.get("is_terceiro"):
-        return manifest.get("terceiro")
+        login = str(user.get("login") or "").lower()
+        terceiros = manifest.get("terceiros") if isinstance(manifest.get("terceiros"), dict) else {}
+        return terceiros.get(login) or manifest.get("terceiro")
     vendors = manifest.get("vendedores") if isinstance(manifest.get("vendedores"), dict) else {}
     uname = _v1099_norm(user.get("nome"))
     filial = str(user.get("filial") or "").upper()
@@ -2004,7 +2006,13 @@ def _v10101_live_rows(base_dir, date_str):
             "filial":str(user.get("filial") or "").upper(),
             "ativo":True,
         }
-        detail = _v10101_fetch_detail(base_dir, _v10101_entry_for_user(user, manifest))
+        detail_entry = _v10101_entry_for_user(user, manifest)
+        detail = _v10101_fetch_detail(base_dir, detail_entry)
+        manifest_titles = 0
+        if isinstance(detail_entry, dict):
+            manifest_titles = int(detail_entry.get("titulos") or 0)
+            if not manifest_titles:
+                manifest_titles = sum(int(detail_entry.get(fx) or 0) for fx in ("grave", "alerta", "atencao"))
         detail_rows = []
         value_by_key = {}
         for fx in ("grave","alerta","atencao"):
@@ -2066,6 +2074,9 @@ def _v10101_live_rows(base_dir, date_str):
             "previstos_keys":sorted(plan.keys()),
             "nao_trabalhados_keys":sorted(not_worked.keys()),
             "valores_por_key":{k:round(_float(value_by_key.get(k,0.0),0.0),2) for k in plan},
+            "carteira_manifest_titulos": manifest_titles,
+            "carteira_lida_titulos": len(detail_rows),
+            "carteira_leitura_ok": not (manifest_titles > 0 and len(detail_rows) == 0),
         })
     return out
 
@@ -2141,7 +2152,9 @@ def build_daily_collection_summary(base_dir, date_str=None):
         })
 
     not_worked_global={k:v for k,v in global_plan.items() if k not in global_cob}
-    with_queue=[r for r in rows if int(r.get("previstos") or 0)>0]
+    unread=[r for r in rows if r.get("carteira_leitura_ok") is False]
+    no_queue=[r for r in rows if r.get("carteira_leitura_ok") is not False and int(r.get("previstos") or 0)==0 and int(r.get("cobrancas_feitas") or 0)==0]
+    with_queue=[r for r in rows if r.get("carteira_leitura_ok") is not False and int(r.get("previstos") or 0)>0]
     no_work=[r for r in with_queue if int(r.get("cobrancas_feitas") or 0)==0]
     partial=[r for r in with_queue if 0<int(r.get("cobrancas_feitas") or 0)<int(r.get("previstos") or 0)]
     total_cob=sum(int(r.get("cobrancas_feitas") or 0) for r in rows)
@@ -2172,6 +2185,18 @@ def build_daily_collection_summary(base_dir, date_str=None):
         if len(no_work)>12:lines.append(f"• +{len(no_work)-12} usuário(s)")
     else:
         lines.append("✅ Todos os usuários com fila fizeram ao menos uma cobrança.")
+
+    if no_queue:
+        lines += ["", f"ℹ️ SEM CARTEIRA A COBRAR ({len(no_queue)}):"]
+        for r in no_queue[:16]:
+            lines.append(f"• {r.get('nome') or r.get('login')} · {r.get('filial') or '-'} · sem título acionável hoje")
+        if len(no_queue) > 16:
+            lines.append(f"• +{len(no_queue)-16} usuário(s)")
+
+    if unread:
+        lines += ["", f"⚠️ CARTEIRA NÃO CARREGADA ({len(unread)}):"]
+        for r in unread[:10]:
+            lines.append(f"• {r.get('nome') or r.get('login')} · {r.get('filial') or '-'} · não contabilizado como zero")
 
     if partial:
         lines += ["",f"🟠 PARCIAIS ({len(partial)}):"]
@@ -2265,6 +2290,16 @@ def build_collection_progress_3h(base_dir, date_str=None):
     # Usuários/carteiras: mantém a regra V10.107.
     # Gerentes ficam representados acima pela filial consolidada.
     # ---------------------------------------------------------
+    # V10.120: a mensagem "Cobranças até o momento" consulta a fila LIVE.
+    # Usuário com zero cobranças e zero título acionável NÃO é tratado como falha:
+    # aparece como "SEM CARTEIRA A COBRAR" e fica fora do contador de zero.
+    try:
+        live_rows = _v10101_live_rows(base_dir, date_str)
+    except Exception as e:
+        live_rows = []
+        print(f"⚠️ V10.120 fila LIVE para cobrança 3h falhou: {e}")
+    live_by_login = {str(r.get("login") or "").lower().strip(): r for r in live_rows if isinstance(r, dict) and r.get("login")}
+
     user_rows = []
     for u in regular_users:
         ent = {
@@ -2280,7 +2315,17 @@ def build_collection_progress_3h(base_dir, date_str=None):
                 k = _v1099_row_key(log)
                 if k:
                     keys.add(k)
-        user_rows.append({**ent, "cobrancas": len(keys)})
+        live = live_by_login.get(ent["login"]) or {}
+        leitura_ok = live.get("carteira_leitura_ok") is not False
+        previstos = int(live.get("previstos") or 0) if leitura_ok else 0
+        sem_carteira = leitura_ok and previstos == 0 and len(keys) == 0
+        user_rows.append({
+            **ent,
+            "cobrancas": len(keys),
+            "previstos": previstos,
+            "sem_carteira": sem_carteira,
+            "carteira_leitura_ok": leitura_ok,
+        })
 
     user_rows.sort(
         key=lambda r: (
@@ -2294,7 +2339,14 @@ def build_collection_progress_3h(base_dir, date_str=None):
     total_unique = len(all_keys)
 
     filial_zero = sum(1 for r in filial_rows if int(r.get("cobrancas") or 0) == 0)
-    user_zero = sum(1 for r in user_rows if int(r.get("cobrancas") or 0) == 0)
+    user_sem_carteira = sum(1 for r in user_rows if r.get("sem_carteira"))
+    user_indisponivel = sum(1 for r in user_rows if r.get("carteira_leitura_ok") is False)
+    user_zero = sum(
+        1 for r in user_rows
+        if int(r.get("cobrancas") or 0) == 0
+        and not r.get("sem_carteira")
+        and r.get("carteira_leitura_ok") is not False
+    )
 
     try:
         date_br = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")
@@ -2328,15 +2380,24 @@ def build_collection_progress_3h(base_dir, date_str=None):
             last_filial = filial
         nome = str(r.get("nome") or r.get("login") or "Usuário")
         qtd = int(r.get("cobrancas") or 0)
-        palavra = "COBRANÇA" if qtd == 1 else "COBRANÇAS"
-        lines.append(f"• {nome} = {qtd} {palavra}")
+        if r.get("carteira_leitura_ok") is False:
+            lines.append(f"• {nome} = ⚠️ CARTEIRA NÃO CARREGADA · não contabilizado como zero")
+        elif r.get("sem_carteira"):
+            lines.append(f"• {nome} = ✅ SEM CARTEIRA A COBRAR")
+        else:
+            palavra = "COBRANÇA" if qtd == 1 else "COBRANÇAS"
+            fila = int(r.get("previstos") or 0)
+            lines.append(f"• {nome} = {qtd} {palavra}" + (f" · fila {fila}" if fila else ""))
 
     lines += [
         "",
         f"📲 TOTAL ÚNICO ATÉ AGORA = {total_unique} COBRANÇAS",
         f"⚠️ FILIAIS/GERENTES COM ZERO = {filial_zero}",
-        f"⚠️ USUÁRIOS/CARTEIRAS COM ZERO = {user_zero}",
+        f"⚠️ USUÁRIOS/CARTEIRAS COM ZERO E FILA = {user_zero}",
+        f"✅ USUÁRIOS SEM CARTEIRA A COBRAR = {user_sem_carteira}",
+        f"⚠️ CARTEIRAS NÃO CARREGADAS = {user_indisponivel}",
         "",
+        "ℹ️ Usuário sem título acionável não é contabilizado como quem deixou de cobrar.",
         "ℹ️ Filial/Gerente = visão consolidada da loja e não é somada novamente no total.",
         "ℹ️ Total único = CPF/título/parcela registrado hoje, sem duplicar filial + usuário.",
         f"🕒 Gerado em {now_br().strftime('%d/%m/%Y %H:%M:%S')}",
@@ -2358,3 +2419,5 @@ def send_collection_progress_3h_now(base_dir, date_str=None):
 # V10.108_FIX_RAW_CONFIG_TELEGRAM_COBRANCA3H
 
 # V10.109_TELEGRAM3H_FILIAIS_GERENTES
+
+# V10.120_TELEGRAM_SEM_CARTEIRA_A_COBRAR_LIVE
