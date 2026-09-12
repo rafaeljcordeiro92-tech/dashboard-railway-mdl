@@ -1,4 +1,4 @@
-# VERSAO: SGI_VENDEDORES_MONITOR_V10.125
+# VERSAO: SGI_VENDEDORES_MONITOR_V10.126
 # Auditoria diaria de vendedores/gerentes ativos no SGI + confirmacao de ferias via Telegram.
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ CONFIG_URL = PUBLIC_BASE + '/config_meta.json'
 MONITOR_JSON = os.path.join(BASE_DIR, 'sgi_vendedores_monitor.json')
 FORCE_MAIN_FLAG = os.path.join(BASE_DIR, 'sgi_vendedores_force_main.flag')
 FILIAIS = ('F1','F2','F3','F4','F5','F6','F8','F9')
-MONITOR_BUILD = 'SGI_VENDEDORES_MONITOR_V10.125'
+MONITOR_BUILD = 'SGI_VENDEDORES_MONITOR_V10.126'
 LOGIN_STRATEGY = 'INTERACTABLE_ONLY_NO_CLEAR'
 
 
@@ -58,14 +58,14 @@ def _filial_marker(desc):
 
 
 def _http_json(url, timeout=20):
-    req=urllib.request.Request(url + ('&' if '?' in url else '?') + '_='+str(int(time.time())), headers={'User-Agent':'MDL-SGI-Vendedores-V10.125','Cache-Control':'no-cache'})
+    req=urllib.request.Request(url + ('&' if '?' in url else '?') + '_='+str(int(time.time())), headers={'User-Agent':'MDL-SGI-Vendedores-V10.126','Cache-Control':'no-cache'})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode('utf-8','replace'))
 
 
 def _post_form(url, data, timeout=25):
     body=urllib.parse.urlencode({k:'' if v is None else str(v) for k,v in data.items()}).encode('utf-8')
-    req=urllib.request.Request(url, data=body, headers={'User-Agent':'MDL-SGI-Vendedores-V10.125','Content-Type':'application/x-www-form-urlencoded'})
+    req=urllib.request.Request(url, data=body, headers={'User-Agent':'MDL-SGI-Vendedores-V10.126','Content-Type':'application/x-www-form-urlencoded'})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode('utf-8','replace'))
 
@@ -78,7 +78,7 @@ def _telegram_api(method, payload=None, timeout=20):
     if not tok: return {'ok':False,'description':'TELEGRAM_BOT_TOKEN ausente'}
     url=f'https://api.telegram.org/bot{tok}/{method}'
     body=urllib.parse.urlencode(payload or {}, doseq=True).encode('utf-8')
-    req=urllib.request.Request(url, data=body, headers={'Content-Type':'application/x-www-form-urlencoded','User-Agent':'MDL-SGI-Vendedores-V10.125'})
+    req=urllib.request.Request(url, data=body, headers={'Content-Type':'application/x-www-form-urlencoded','User-Agent':'MDL-SGI-Vendedores-V10.126'})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode('utf-8','replace'))
 
@@ -214,6 +214,147 @@ def _fill_interactable(driver, el, value, label):
     raise RuntimeError(f'nao foi possivel preencher {label}: '+', '.join(err))
 
 
+
+def _workplace_diag(driver):
+    """Resumo curto da tela de local de trabalho, sem dados sensíveis."""
+    try:
+        buttons=[]
+        for el in driver.find_elements(By.CSS_SELECTOR, 'button,input[type="submit"],input[type="button"]')[:20]:
+            try:
+                buttons.append({
+                    'id': el.get_attribute('id') or '',
+                    'name': el.get_attribute('name') or '',
+                    'value': el.get_attribute('value') or '',
+                    'text': (el.text or '').strip()[:80],
+                    'displayed': bool(el.is_displayed()),
+                    'enabled': bool(el.is_enabled()),
+                })
+            except Exception:
+                pass
+        selects=[]
+        for el in driver.find_elements(By.TAG_NAME,'select')[:12]:
+            try:
+                sel=Select(el)
+                selects.append({
+                    'id':el.get_attribute('id') or '',
+                    'name':el.get_attribute('name') or '',
+                    'value':el.get_attribute('value') or '',
+                    'options':[{'value':o.get_attribute('value') or '', 'text':(o.text or '').strip()[:80]} for o in sel.options[:12]],
+                })
+            except Exception:
+                pass
+        radios=[]
+        for el in driver.find_elements(By.CSS_SELECTOR,'input[type="radio"]')[:20]:
+            try:
+                radios.append({
+                    'id':el.get_attribute('id') or '',
+                    'name':el.get_attribute('name') or '',
+                    'value':el.get_attribute('value') or '',
+                    'checked':bool(el.is_selected()),
+                    'displayed':bool(el.is_displayed()),
+                    'enabled':bool(el.is_enabled()),
+                })
+            except Exception:
+                pass
+        return {'url':str(driver.current_url or ''),'title':str(driver.title or ''),'buttons':buttons,'selects':selects,'radios':radios}
+    except Exception as e:
+        return {'url':str(getattr(driver,'current_url','') or ''),'error':type(e).__name__}
+
+
+def _resolve_workplace(driver, timeout=35):
+    """Conclui /login/informa_local_de_trabalho de forma tolerante.
+
+    O SGI varia entre botão normal, botão encoberto por máscara e formulário com
+    seleção de local. Primeiro respeita qualquer seleção já existente; só escolhe
+    automaticamente uma opção quando nenhuma estiver selecionada.
+    """
+    deadline=time.time()+max(5,int(timeout))
+    last_action='nenhuma'
+    while time.time() < deadline:
+        cur=str(driver.current_url or '')
+        if 'informa_local_de_trabalho' not in cur:
+            return True
+
+        # Se existir select de local e estiver sem valor, escolhe a primeira opção válida.
+        try:
+            for el in driver.find_elements(By.TAG_NAME,'select'):
+                try:
+                    if not el.is_enabled():
+                        continue
+                    sel=Select(el)
+                    current=str(el.get_attribute('value') or '').strip()
+                    valid=[]
+                    for opt in sel.options:
+                        val=str(opt.get_attribute('value') or '').strip()
+                        disabled=opt.get_attribute('disabled')
+                        if val and disabled is None:
+                            valid.append((val,(opt.text or '').strip()))
+                    if not current and valid:
+                        sel.select_by_value(valid[0][0])
+                        driver.execute_script(
+                            "arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", el
+                        )
+                        last_action=f"select:{el.get_attribute('id') or el.get_attribute('name')}={valid[0][1]}"
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        # Se a tela usa radio e nenhum está marcado, escolhe o primeiro habilitado.
+        try:
+            radios=[r for r in driver.find_elements(By.CSS_SELECTOR,'input[type="radio"]') if r.is_enabled()]
+            if radios and not any(r.is_selected() for r in radios):
+                driver.execute_script('arguments[0].click();', radios[0])
+                last_action=f"radio:{radios[0].get_attribute('value') or radios[0].get_attribute('id') or 'primeiro'}"
+        except Exception:
+            pass
+
+        # Tenta o ID conhecido e depois botões por texto/tipo. JS evita overlay/máscara.
+        candidates=[]
+        selectors=[
+            (By.ID,'botao_prosseguir_informa_local_trabalho'),
+            (By.XPATH,"//button[contains(translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'prosseguir')]"),
+            (By.XPATH,"//button[contains(translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'continuar')]"),
+            (By.XPATH,"//button[contains(translate(normalize-space(.),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'entrar')]"),
+            (By.CSS_SELECTOR,"button[type='submit']"),
+            (By.CSS_SELECTOR,"input[type='submit']"),
+        ]
+        for by,sel in selectors:
+            try:
+                for el in driver.find_elements(by,sel):
+                    if el not in candidates:
+                        candidates.append(el)
+            except Exception:
+                pass
+        for el in candidates:
+            try:
+                driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
+                driver.execute_script('arguments[0].click();', el)
+                last_action='click:'+(el.get_attribute('id') or el.get_attribute('value') or (el.text or '').strip()[:40] or 'submit')
+                time.sleep(1.2)
+                if 'informa_local_de_trabalho' not in str(driver.current_url or ''):
+                    print(f'✅ V10.126 local de trabalho confirmado | {last_action}', flush=True)
+                    return True
+            except Exception:
+                continue
+
+        # Último fallback: requestSubmit()/submit() do primeiro form da tela.
+        try:
+            forms=driver.find_elements(By.TAG_NAME,'form')
+            if forms:
+                driver.execute_script("if(arguments[0].requestSubmit){arguments[0].requestSubmit()}else{arguments[0].submit()}", forms[0])
+                last_action='form.requestSubmit'
+                time.sleep(1.2)
+                if 'informa_local_de_trabalho' not in str(driver.current_url or ''):
+                    print(f'✅ V10.126 local de trabalho confirmado | {last_action}', flush=True)
+                    return True
+        except Exception:
+            pass
+        time.sleep(.7)
+
+    print('⚠️ V10.126 local de trabalho não concluído | '+json.dumps(_workplace_diag(driver),ensure_ascii=False)[:3500], flush=True)
+    return False
+
 def _login(driver):
     driver.get(URL)
     wait=WebDriverWait(driver,30)
@@ -262,19 +403,27 @@ def _login(driver):
         except Exception:
             driver.execute_script("arguments[0].form && arguments[0].form.submit();", pwd)
 
-    # SGI pode pedir filial/local de trabalho após autenticação.
+    # SGI pode exigir a confirmação do local de trabalho após autenticação.
+    # Espera a navegação do POST e trata explicitamente essa etapa antes de /vendedores.
     try:
-        wait.until(EC.element_to_be_clickable((By.ID,'botao_prosseguir_informa_local_trabalho'))).click()
+        WebDriverWait(driver,20).until(lambda d: ('informa_local_de_trabalho' in str(d.current_url or '')) or ('/home' in str(d.current_url or '')) or bool(d.find_elements(By.ID,'barra_superior')))
     except Exception:
         pass
+    if 'informa_local_de_trabalho' in str(driver.current_url or ''):
+        if not _resolve_workplace(driver,35):
+            raise RuntimeError('login SGI autenticou, mas não concluiu local de trabalho | '+json.dumps(_workplace_diag(driver),ensure_ascii=False)[:2500])
 
     # Confirma autenticação acessando diretamente a tela que será usada.
     driver.get(URL+'/vendedores')
+    if 'informa_local_de_trabalho' in str(driver.current_url or ''):
+        if not _resolve_workplace(driver,25):
+            raise RuntimeError('SGI redirecionou /vendedores para local de trabalho e não foi possível prosseguir | '+json.dumps(_workplace_diag(driver),ensure_ascii=False)[:2500])
+        driver.get(URL+'/vendedores')
     try:
         WebDriverWait(driver,30).until(EC.presence_of_element_located((By.ID,'vendedores.descricao_ilike')))
     except Exception as e:
         raise RuntimeError(
-            f'login SGI não confirmado após envio das credenciais | url={driver.current_url} | title={driver.title} | {type(e).__name__}'
+            f'login SGI não confirmado após local de trabalho | url={driver.current_url} | title={driver.title} | {type(e).__name__}'
         )
 
 
@@ -291,9 +440,12 @@ def _collect_sgi_roster():
                 ativo=driver.find_element(By.ID,'ativo')
                 Select(ativo).select_by_value('true')
             except Exception: pass
-            inp.clear(); inp.send_keys(f)
+            _fill_interactable(driver,inp,f,f'filtro {f}')
             btn=driver.find_element(By.XPATH,"//button[@type='submit'][contains(.,'Filtrar')]")
-            btn.click()
+            try:
+                btn.click()
+            except Exception:
+                driver.execute_script('arguments[0].click();', btn)
             wait.until(EC.presence_of_element_located((By.ID,'lista_padrao_vendedor')))
             time.sleep(.8)
             rows=driver.find_elements(By.CSS_SELECTOR,'#lista_padrao_vendedor tbody tr')
@@ -395,7 +547,7 @@ def _send_question(u):
 
 
 def run_monitor():
-    print(f'👥 V10.125 monitor SGI vendedores/gerentes iniciado | arquivo={__file__} | login_fix=interactable_no_clear', flush=True)
+    print(f'👥 V10.126 monitor SGI vendedores/gerentes iniciado | arquivo={__file__} | login_fix=interactable_no_clear | local_fix=robust_workplace', flush=True)
     roster=_collect_sgi_roster()
     print(f'✅ SGI /vendedores: {len(roster)} ativo(s) com tag F#/GERF#')
     creds=_load_creds(); dash=_commercial_dashboard_users(creds)
@@ -446,9 +598,9 @@ def run_monitor():
             if asked==now_br().strftime('%Y-%m-%d'): continue
             if _send_question(u): perguntas.append(u)
             time.sleep(.25)
-    snap={'version':'V10.125','generated_at':now_br().isoformat(),'sgi_ativos':roster,'dashboard':[{k:v for k,v in u.items() if k!='raw'} for u in dash], 'sgi_only':sgi_only,'dashboard_only':[{k:v for k,v in u.items() if k!='raw'} for u in dash_only], 'meta_names':sorted(metas), 'perguntas_ferias':[u['login'] for u in perguntas], 'reativados':[u['login'] for u in reativados]}
+    snap={'version':'V10.126','generated_at':now_br().isoformat(),'sgi_ativos':roster,'dashboard':[{k:v for k,v in u.items() if k!='raw'} for u in dash], 'sgi_only':sgi_only,'dashboard_only':[{k:v for k,v in u.items() if k!='raw'} for u in dash_only], 'meta_names':sorted(metas), 'perguntas_ferias':[u['login'] for u in perguntas], 'reativados':[u['login'] for u in reativados]}
     with open(MONITOR_JSON,'w',encoding='utf-8') as f: json.dump(snap,f,ensure_ascii=False,indent=2)
-    print(f"✅ V10.125 final: divergências SGI→Dash={len(sgi_only)} Dash→SGI={len(dash_only)} | perguntas férias={len(perguntas)} | retornos={len(reativados)}")
+    print(f"✅ V10.126 final: divergências SGI→Dash={len(sgi_only)} Dash→SGI={len(dash_only)} | perguntas férias={len(perguntas)} | retornos={len(reativados)}")
     return 0
 
 
@@ -497,7 +649,7 @@ def poll_telegram_callbacks_v10123(base_dir=None, offset=0):
 if __name__=='__main__':
     try: raise SystemExit(run_monitor())
     except Exception as e:
-        print('❌ V10.125 monitor SGI vendedores:',repr(e), flush=True)
+        print('❌ V10.126 monitor SGI vendedores:',repr(e), flush=True)
         try: _send_text('🚨 ERRO MONITOR SGI VENDEDORES\n'+str(e)[:1200])
         except Exception: pass
         raise
