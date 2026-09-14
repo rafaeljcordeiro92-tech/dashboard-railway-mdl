@@ -1,5 +1,5 @@
-# VERSAO: SGI_VENDEDORES_MONITOR_V10.126
-# Auditoria diaria de vendedores/gerentes ativos no SGI + confirmacao de ferias via Telegram.
+# VERSAO: SGI_VENDEDORES_MONITOR_V10.127
+# Lista diaria de vendedores/gerentes ativos no SGI, enviada ao Telegram por destino configuravel.
 from __future__ import annotations
 
 import os, re, sys, json, time, hmac, hashlib, unicodedata, urllib.request, urllib.parse, urllib.error, tempfile, shutil
@@ -26,13 +26,10 @@ URL = os.getenv('SGI_BASE_URL','https://smart.sgisistemas.com.br').rstrip('/')
 LOGIN = os.getenv('SGI_LOGIN','administrativo01.moveisdolar')
 SENHA = os.getenv('SGI_SENHA','mdladm01')
 PUBLIC_BASE = os.getenv('MDL_COLAB_PUBLIC_BASE','https://moveisdolar.com.br/colaborador').rstrip('/')
-CRED_API = PUBLIC_BASE + '/credenciais_api.php'
-METAS_URL = PUBLIC_BASE + '/metas_vendas_mes_atual.json'
 CONFIG_URL = PUBLIC_BASE + '/config_meta.json'
 MONITOR_JSON = os.path.join(BASE_DIR, 'sgi_vendedores_monitor.json')
-FORCE_MAIN_FLAG = os.path.join(BASE_DIR, 'sgi_vendedores_force_main.flag')
-FILIAIS = ('F1','F2','F3','F4','F5','F6','F8','F9')
-MONITOR_BUILD = 'SGI_VENDEDORES_MONITOR_V10.126'
+FILIAIS = ('F1','F2','F3','F4','F5','F6','F7','F8','F9')
+MONITOR_BUILD = 'SGI_VENDEDORES_MONITOR_V10.127'
 LOGIN_STRATEGY = 'INTERACTABLE_ONLY_NO_CLEAR'
 
 
@@ -58,14 +55,14 @@ def _filial_marker(desc):
 
 
 def _http_json(url, timeout=20):
-    req=urllib.request.Request(url + ('&' if '?' in url else '?') + '_='+str(int(time.time())), headers={'User-Agent':'MDL-SGI-Vendedores-V10.126','Cache-Control':'no-cache'})
+    req=urllib.request.Request(url + ('&' if '?' in url else '?') + '_='+str(int(time.time())), headers={'User-Agent':'MDL-SGI-Vendedores-V10.127','Cache-Control':'no-cache'})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode('utf-8','replace'))
 
 
 def _post_form(url, data, timeout=25):
     body=urllib.parse.urlencode({k:'' if v is None else str(v) for k,v in data.items()}).encode('utf-8')
-    req=urllib.request.Request(url, data=body, headers={'User-Agent':'MDL-SGI-Vendedores-V10.126','Content-Type':'application/x-www-form-urlencoded'})
+    req=urllib.request.Request(url, data=body, headers={'User-Agent':'MDL-SGI-Vendedores-V10.127','Content-Type':'application/x-www-form-urlencoded'})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode('utf-8','replace'))
 
@@ -78,27 +75,43 @@ def _telegram_api(method, payload=None, timeout=20):
     if not tok: return {'ok':False,'description':'TELEGRAM_BOT_TOKEN ausente'}
     url=f'https://api.telegram.org/bot{tok}/{method}'
     body=urllib.parse.urlencode(payload or {}, doseq=True).encode('utf-8')
-    req=urllib.request.Request(url, data=body, headers={'Content-Type':'application/x-www-form-urlencoded','User-Agent':'MDL-SGI-Vendedores-V10.126'})
+    req=urllib.request.Request(url, data=body, headers={'Content-Type':'application/x-www-form-urlencoded','User-Agent':'MDL-SGI-Vendedores-V10.127'})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode('utf-8','replace'))
 
 
-def _telegram_chat_ids():
-    out=[]
+def _telegram_config():
     try:
         cfg=_http_json(CONFIG_URL)
-        glob=(cfg.get('global') if isinstance(cfg,dict) else {}) or {}
-        for c in (glob.get('telegram_contacts') or []):
-            if not isinstance(c,dict) or not c.get('ativo'): continue
-            cid=str(c.get('chat_id') or '').strip()
-            if cid and (c.get('avisos',True) or c.get('erros',True)):
-                out.append(cid)
-    except Exception:
-        pass
-    env=str(os.getenv('TELEGRAM_CHAT_ID','')).strip()
-    if env and env not in out: out.append(env)
-    return out
+        if isinstance(cfg,dict) and isinstance(cfg.get('global'),dict):
+            return cfg.get('global') or {}
+        return cfg if isinstance(cfg,dict) else {}
+    except Exception as e:
+        print(f'⚠️ V10.127 config Telegram indisponível: {type(e).__name__}: {e}', flush=True)
+        return {}
 
+
+def _telegram_chat_ids():
+    """Retorna APENAS os chats marcados para a lista diária de ativos SGI.
+
+    Migração segura: enquanto o campo sgi_ativos ainda não foi salvo pela UI,
+    seleciona somente o contato ativo cujo nome contenha MASTER. Não usa o
+    TELEGRAM_CHAT_ID genérico para evitar duplicar a lista em outros grupos.
+    """
+    glob=_telegram_config()
+    rows=[c for c in (glob.get('telegram_contacts') or []) if isinstance(c,dict) and c.get('ativo')]
+    explicit=any('sgi_ativos' in c for c in rows)
+    selected=[]
+    if explicit:
+        selected=[c for c in rows if bool(c.get('sgi_ativos'))]
+    else:
+        selected=[c for c in rows if 'MASTER' in _norm(c.get('nome') or '')]
+    out=[]
+    for c in selected:
+        cid=str(c.get('chat_id') or '').strip()
+        if cid and cid not in out:
+            out.append(cid)
+    return out
 
 def _send_text(text, keyboard=None):
     results=[]
@@ -333,7 +346,7 @@ def _resolve_workplace(driver, timeout=35):
                 last_action='click:'+(el.get_attribute('id') or el.get_attribute('value') or (el.text or '').strip()[:40] or 'submit')
                 time.sleep(1.2)
                 if 'informa_local_de_trabalho' not in str(driver.current_url or ''):
-                    print(f'✅ V10.126 local de trabalho confirmado | {last_action}', flush=True)
+                    print(f'✅ V10.127 local de trabalho confirmado | {last_action}', flush=True)
                     return True
             except Exception:
                 continue
@@ -346,13 +359,13 @@ def _resolve_workplace(driver, timeout=35):
                 last_action='form.requestSubmit'
                 time.sleep(1.2)
                 if 'informa_local_de_trabalho' not in str(driver.current_url or ''):
-                    print(f'✅ V10.126 local de trabalho confirmado | {last_action}', flush=True)
+                    print(f'✅ V10.127 local de trabalho confirmado | {last_action}', flush=True)
                     return True
         except Exception:
             pass
         time.sleep(.7)
 
-    print('⚠️ V10.126 local de trabalho não concluído | '+json.dumps(_workplace_diag(driver),ensure_ascii=False)[:3500], flush=True)
+    print('⚠️ V10.127 local de trabalho não concluído | '+json.dumps(_workplace_diag(driver),ensure_ascii=False)[:3500], flush=True)
     return False
 
 def _login(driver):
@@ -477,179 +490,121 @@ def _collect_sgi_roster():
         shutil.rmtree(prof,ignore_errors=True)
 
 
-def _load_creds():
-    j=_http_json(CRED_API)
-    return (j.get('data') if isinstance(j,dict) and isinstance(j.get('data'),dict) else j) or {}
+
+def _display_name(x):
+    # Prefere Pessoa; remove marcadores administrativos e mantém acentuação do nome.
+    raw=str(x.get('pessoa') or x.get('descricao') or '').strip()
+    raw=re.sub(r'\s+\*?(ADV\d*|NC|OBT|MEL|COB)\b.*$', '', raw, flags=re.I).strip()
+    raw=re.sub(r'\s*\((?:GER)?F0?[1-9]\)\s*$', '', raw, flags=re.I).strip()
+    return re.sub(r'\s+',' ',raw).strip() or str(x.get('nome_norm') or '').title()
 
 
-def _load_meta_names():
-    try: j=_http_json(METAS_URL)
-    except Exception: return set(),False
-    if isinstance(j,dict) and isinstance(j.get('dados'),dict): j=j['dados']
-    metas=(j.get('metas') if isinstance(j,dict) else {}) or {}
-    names=set()
-    for key in ('venda_filial_vendedor_meta','servico_filial_vendedor_ouro_fob','venda_vendedor_subgrupo_20k'):
-        obj=metas.get(key) or {}
-        for r in (obj.get('linhas') or []):
-            if not isinstance(r,dict): continue
-            nm=r.get('Vendedor_2') or r.get('Vendedor 2') or r.get('Vendedor') or ''
-            if nm: names.add(_norm(nm))
-    return names,True
+def _format_roster(roster):
+    order={f:i for i,f in enumerate(FILIAIS)}
+    rows=sorted(roster, key=lambda x:(order.get(x.get('filial'),99), 0 if x.get('is_gerente') else 1, _norm(_display_name(x))))
+    total_g=sum(1 for x in rows if x.get('is_gerente'))
+    total_v=len(rows)-total_g
+    parts=[
+        '👥 VENDEDORES E GERENTES ATIVOS — SGI',
+        f"📅 {now_br().strftime('%d/%m/%Y')} · consulta automática diária",
+        '',
+    ]
+    for f in FILIAIS:
+        fr=[x for x in rows if x.get('filial')==f]
+        parts.append(f'📍 {f} — {len(fr)} ativo(s)')
+        if not fr:
+            parts.append('• — nenhum ativo com tag da filial')
+        else:
+            for x in fr:
+                icon='👔' if x.get('is_gerente') else '🧑‍💼'
+                parts.append(f"• {icon} {x.get('tipo')}: {_display_name(x)}")
+        parts.append('')
+    parts += [
+        f'✅ TOTAL: {len(rows)} ativo(s) · {total_v} vendedor(es) · {total_g} gerente(s)',
+        'Fonte: SGI → Cadastro de Vendedores → Ativo = Sim + tag (F#)/(GERF#).',
+    ]
+    return '\n'.join(parts).strip()
 
 
-def _commercial_dashboard_users(creds):
-    out=[]
-    for login,u in (creds.get('users') or {}).items():
-        if not isinstance(u,dict): continue
-        f=str(u.get('filial') or '').upper().strip()
-        if f not in FILIAIS: continue
-        if u.get('is_terceiro') or u.get('is_crediarista') or u.get('is_cob_externa') or u.get('is_viewer'): continue
-        nome=str(u.get('nome') or '').strip()
-        if not nome: continue
-        isg=bool(u.get('is_gerente'))
-        out.append({'login':str(login).lower(),'nome':nome,'nome_norm':_norm(nome),'filial':f,'is_gerente':isg,'tipo':'Gerente' if isg else 'Vendedor','status':str(u.get('status_operacional') or 'ativo').lower(),'raw':u})
-    return out
+def _split_telegram(text, limit=3900):
+    if len(text)<=limit:
+        return [text]
+    chunks=[]; cur=[]; n=0
+    for line in text.splitlines():
+        add=len(line)+1
+        if cur and n+add>limit:
+            chunks.append('\n'.join(cur)); cur=[]; n=0
+        cur.append(line); n+=add
+    if cur: chunks.append('\n'.join(cur))
+    return chunks
 
 
-def _date_suppressed(u):
-    s=str((u.get('raw') or {}).get('sgi_ausencia_nao_ferias_ate') or '').strip()
-    if not s: return False
-    try: return datetime.strptime(s[:10],'%Y-%m-%d').date() >= now_br().date()
-    except Exception: return False
-
-
-def _mark_prompt(login, motivo):
-    return _post_form(CRED_API,{'action':'admin_sgi_absence','login':login,'decision':'prompt','motivo':motivo})
-
-
-def _set_decision(login, decision):
-    return _post_form(CRED_API,{'action':'admin_sgi_absence','login':login,'decision':decision})
-
-
-def _touch_force_main(reason='status_sgi'):
-    with open(FORCE_MAIN_FLAG,'w',encoding='utf-8') as f: f.write(reason+'\n'+now_br().isoformat())
-
-
-def _send_question(u):
-    day=now_br().strftime('%Y%m%d')
-    text=(f"🏖️ POSSÍVEL FÉRIAS / AUSÊNCIA\n\n"
-          f"{u['nome']} · {u['filial']} · {u['tipo']}\n"
-          f"Está ATIVO no cadastro de vendedores do SGI, mas não apareceu nas metas/vendas do mês.\n\n"
-          f"Esse colaborador está de férias/ausente?\n"
-          f"Se SIM, o Dashboard retira das filas e redistribui a carteira automaticamente.")
-    kb=[[{'text':'🏖️ SIM · Férias','callback_data':_callback_data('y',u['login'],day)},
-         {'text':'✅ NÃO · Manter ativo','callback_data':_callback_data('n',u['login'],day)}]]
-    res=_send_text(text,kb)
-    if any(bool((r or {}).get('ok')) for _,r in res):
-        _mark_prompt(u['login'],'Ativo no SGI, ausente das metas/vendas do mês')
-        return True
-    return False
+def _send_roster(text):
+    ids=_telegram_chat_ids()
+    if not ids:
+        print('⚠️ V10.127 lista SGI coletada, mas nenhum grupo Telegram está marcado em “Ativos SGI”.', flush=True)
+        return []
+    results=[]
+    chunks=_split_telegram(text)
+    for cid in ids:
+        ok_all=True
+        details=[]
+        for i,ch in enumerate(chunks,1):
+            payload={'chat_id':cid,'text':ch,'disable_web_page_preview':'true'}
+            try:
+                r=_telegram_api('sendMessage',payload)
+            except Exception as e:
+                r={'ok':False,'description':str(e)}
+            details.append(r)
+            ok_all=ok_all and bool(r.get('ok'))
+        results.append((cid,{'ok':ok_all,'chunks':len(chunks),'details':details}))
+    return results
 
 
 def run_monitor():
-    print(f'👥 V10.126 monitor SGI vendedores/gerentes iniciado | arquivo={__file__} | login_fix=interactable_no_clear | local_fix=robust_workplace', flush=True)
+    print(f'👥 V10.127 monitor SGI ativos iniciado | arquivo={__file__} | modo=LISTA_SGI_SEM_CONCILIACAO | destino=telegram_sgi_ativos', flush=True)
     roster=_collect_sgi_roster()
-    print(f'✅ SGI /vendedores: {len(roster)} ativo(s) com tag F#/GERF#')
-    creds=_load_creds(); dash=_commercial_dashboard_users(creds)
-    metas,metas_ok=_load_meta_names()
-    print(f"✅ Dashboard comercial: {len(dash)} usuário(s) | metas/vendas legíveis={metas_ok} | nomes em meta={len(metas)}")
-    sgi_map={(x['nome_norm'],x['filial'],x['is_gerente']):x for x in roster}
-    dash_map={(x['nome_norm'],x['filial'],x['is_gerente']):x for x in dash}
-    sgi_only=[x for k,x in sgi_map.items() if k not in dash_map]
-    dash_only=[x for k,x in dash_map.items() if k not in sgi_map and x['status']!='inativo']
-    if sgi_only or dash_only:
-        parts=['⚠️ AUDITORIA DIÁRIA SGI × DASHBOARD']
-        if sgi_only:
-            parts.append('\nATIVOS NO SGI SEM CORRESPONDENTE NO DASHBOARD:')
-            parts += [f"• {x['nome_norm']} · {x['filial']} · {x['tipo']}" for x in sgi_only[:25]]
-        if dash_only:
-            parts.append('\nNO DASHBOARD, MAS SEM TAG ATIVA NO SGI:')
-            parts += [f"• {x['nome']} · {x['filial']} · {x['tipo']} · status {x['status']}" for x in dash_only[:25]]
-        parts.append('\nNenhuma alteração foi feita automaticamente por divergência de quadro.')
-        _send_text('\n'.join(parts))
-    # auto retorno: férias que voltaram a ter meta/venda
-    reativados=[]
-    for u in dash:
-        # V10.124: ausência de venda/meta é sinal confiável somente para vendedor.
-        # Gerente continua auditado pelo roster SGI (GERF#), mas não é inferido como férias por falta de venda.
-        if u['is_gerente']:
-            continue
-        k=(u['nome_norm'],u['filial'],u['is_gerente'])
-        if u['status']=='ferias' and k in sgi_map and metas_ok and u['nome_norm'] in metas:
-            try:
-                r=_set_decision(u['login'],'return')
-                if r.get('ok'):
-                    reativados.append(u); _touch_force_main('retorno_'+u['login'])
-            except Exception as e: print('⚠️ retorno',u['login'],e)
-    for u in reativados:
-        _send_text(f"✅ RETORNO DETECTADO\n\n{u['nome']} · {u['filial']} voltou a aparecer nas metas/vendas do SGI.\nStatus alterado automaticamente de FÉRIAS para ATIVO e a carteira será recomposta.")
-    # perguntas de possível férias: somente ativo + presente no SGI + sem meta/venda
-    perguntas=[]
-    if metas_ok:
-        for u in dash:
-            if u['status']!='ativo': continue
-            # V10.124: não perguntar férias de gerente apenas por ausência em metas/vendas.
-            if u['is_gerente']: continue
-            k=(u['nome_norm'],u['filial'],u['is_gerente'])
-            if k not in sgi_map: continue
-            if u['nome_norm'] in metas: continue
-            if _date_suppressed(u): continue
-            asked=str((u.get('raw') or {}).get('sgi_ausencia_pergunta_em') or '')[:10]
-            if asked==now_br().strftime('%Y-%m-%d'): continue
-            if _send_question(u): perguntas.append(u)
-            time.sleep(.25)
-    snap={'version':'V10.126','generated_at':now_br().isoformat(),'sgi_ativos':roster,'dashboard':[{k:v for k,v in u.items() if k!='raw'} for u in dash], 'sgi_only':sgi_only,'dashboard_only':[{k:v for k,v in u.items() if k!='raw'} for u in dash_only], 'meta_names':sorted(metas), 'perguntas_ferias':[u['login'] for u in perguntas], 'reativados':[u['login'] for u in reativados]}
-    with open(MONITOR_JSON,'w',encoding='utf-8') as f: json.dump(snap,f,ensure_ascii=False,indent=2)
-    print(f"✅ V10.126 final: divergências SGI→Dash={len(sgi_only)} Dash→SGI={len(dash_only)} | perguntas férias={len(perguntas)} | retornos={len(reativados)}")
+    roster=sorted(roster,key=lambda x:(FILIAIS.index(x['filial']) if x.get('filial') in FILIAIS else 99, 0 if x.get('is_gerente') else 1, x.get('nome_norm') or ''))
+    print(f'✅ V10.127 SGI /vendedores: {len(roster)} ativo(s) com tag F#/GERF#', flush=True)
+    for f in FILIAIS:
+        fr=[x for x in roster if x.get('filial')==f]
+        nomes=' | '.join(f"{x.get('tipo')}={_display_name(x)}" for x in fr) or 'nenhum'
+        print(f'   ↳ {f}: {len(fr)} ativo(s) | {nomes}', flush=True)
+
+    text=_format_roster(roster)
+    sent=_send_roster(text)
+    ok=sum(1 for _,r in sent if r.get('ok'))
+    print(f'📲 V10.127 Telegram ativos SGI: destinos selecionados={len(sent)} | enviados_ok={ok}', flush=True)
+
+    snap={
+        'version':'V10.127',
+        'generated_at':now_br().isoformat(),
+        'modo':'lista_sgi_sem_conciliacao',
+        'filiais':list(FILIAIS),
+        'sgi_ativos':roster,
+        'telegram_destinos':[cid for cid,_ in sent],
+        'telegram_ok':ok,
+        'texto':text,
+    }
+    with open(MONITOR_JSON,'w',encoding='utf-8') as f:
+        json.dump(snap,f,ensure_ascii=False,indent=2)
+    print(f'✅ V10.127 final: lista diária concluída | ativos={len(roster)} | destinos={len(sent)} | SEM comparação Dashboard/metas | SEM alteração de status', flush=True)
     return 0
 
 
 def poll_telegram_callbacks_v10123(base_dir=None, offset=0):
-    tok=_telegram_token()
-    if not tok: return {'offset':int(offset or 0),'processed':0,'force_main':False}
-    payload={'offset':str(int(offset or 0)),'timeout':'0','allowed_updates':json.dumps(['callback_query'])}
-    try: j=_telegram_api('getUpdates',payload,timeout=8)
-    except Exception as e: return {'offset':int(offset or 0),'processed':0,'force_main':False,'error':str(e)}
-    if not j.get('ok'): return {'offset':int(offset or 0),'processed':0,'force_main':False,'error':j.get('description')}
-    newoff=int(offset or 0); processed=0; force=False
-    for upd in (j.get('result') or []):
-        uid=int(upd.get('update_id') or 0); newoff=max(newoff,uid+1)
-        cq=upd.get('callback_query') or {}; parsed=_verify_callback(cq.get('data'))
-        if not parsed: continue
-        action,login,day=parsed
-        # aceita até 7 dias, evitando botão muito antigo
-        try:
-            d=datetime.strptime(day,'%Y%m%d').date()
-            if abs((now_br().date()-d).days)>7: continue
-        except Exception: continue
-        decision='yes' if action=='y' else 'no'
-        try:
-            r=_set_decision(login,decision)
-            ok=bool(r.get('ok'))
-        except Exception as e:
-            ok=False; r={'error':str(e)}
-        ans='Status atualizado.' if ok else ('Falha: '+str(r.get('error') or 'erro'))
-        try: _telegram_api('answerCallbackQuery',{'callback_query_id':cq.get('id'),'text':ans,'show_alert':'false'})
-        except Exception: pass
-        if ok:
-            processed+=1
-            user=cq.get('from') or {}; who=(user.get('username') and '@'+user['username']) or user.get('first_name') or 'Telegram'
-            status='🏖️ FÉRIAS' if action=='y' else '✅ ATIVO'
-            oldmsg=(cq.get('message') or {}).get('text') or ''
-            final=oldmsg+f"\n\nResposta: {status} · confirmado por {who} em {now_br().strftime('%d/%m/%Y %H:%M')}"
-            try:
-                msg=cq.get('message') or {}
-                _telegram_api('editMessageText',{'chat_id':msg.get('chat',{}).get('id'),'message_id':msg.get('message_id'),'text':final,'disable_web_page_preview':'true'})
-            except Exception: pass
-            if action=='y':
-                force=True; _touch_force_main('ferias_'+login)
-    return {'offset':newoff,'processed':processed,'force_main':force}
+    # Compatibilidade temporária com schedulers antigos: V10.127 não usa mais botões
+    # de férias nem altera status de vendedor/gerente automaticamente.
+    return {'offset':int(offset or 0),'processed':0,'force_main':False}
 
 
 if __name__=='__main__':
-    try: raise SystemExit(run_monitor())
+    try:
+        raise SystemExit(run_monitor())
     except Exception as e:
-        print('❌ V10.126 monitor SGI vendedores:',repr(e), flush=True)
-        try: _send_text('🚨 ERRO MONITOR SGI VENDEDORES\n'+str(e)[:1200])
-        except Exception: pass
+        print('❌ V10.127 monitor SGI ativos:',repr(e), flush=True)
+        try:
+            _send_roster('🚨 ERRO NA LISTA DIÁRIA DE VENDEDORES/GERENTES ATIVOS DO SGI\n\n'+str(e)[:1200])
+        except Exception:
+            pass
         raise

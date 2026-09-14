@@ -33,7 +33,6 @@ try:
         load_auditorias_master, build_audit_master_alert,
     )
     from telegram_monitor_mdl import telegram_send, build_daily_collection_summary, send_daily_collection_now_v10100, build_collection_progress_3h, send_collection_progress_3h_now, telegram_contacts_diagnostic_v10108
-    from sgi_vendedores_monitor import poll_telegram_callbacks_v10123
 except Exception as e:
     def whatsapp_send(text, *a, **k): return (False, f"whatsapp notificações import erro: {e}")
     def build_whatsapp_daily_summary(base_dir, date_str=None): return f"Resumo indisponível: {e}"
@@ -56,7 +55,6 @@ except Exception as e:
     def build_collection_progress_3h(base_dir, date_str=None): return f'Resumo 3h indisponível: {e}'
     def send_collection_progress_3h_now(base_dir, date_str=None): return (False, f'Resumo 3h indisponível: {e}')
     def telegram_contacts_diagnostic_v10108(base_dir=None): return {'ok':False,'error':str(e),'contacts':[]}
-    def poll_telegram_callbacks_v10123(base_dir=None, offset=0): return {'offset':offset,'force_main':False,'processed':0}
 
 BR_TZ = ZoneInfo(os.getenv('APP_TZ', 'America/Sao_Paulo'))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -105,7 +103,7 @@ COB_TERCEIRA_CMD = [sys.executable, os.path.join(BASE_DIR, 'cobranca_terceira_wo
 AUDIT_CMD = [sys.executable, os.path.join(BASE_DIR, 'cobranca_auditoria_worker_v1105.py')]
 SGI_VENDEDORES_PATH = os.path.join(BASE_DIR, 'sgi_vendedores_monitor.py')
 SGI_VENDEDORES_CMD = [sys.executable, '-u', SGI_VENDEDORES_PATH]
-SGI_VENDEDORES_EXPECTED_MARKER = 'SGI_VENDEDORES_MONITOR_V10.126'
+SGI_VENDEDORES_EXPECTED_MARKER = 'SGI_VENDEDORES_MONITOR_V10.127'
 SGI_VENDEDORES_HOUR = int(os.getenv('SGI_VENDEDORES_MONITOR_HOUR','8'))
 SGI_VENDEDORES_MINUTE = int(os.getenv('SGI_VENDEDORES_MONITOR_MINUTE','10'))
 SGI_VENDEDORES_RETRY_MIN = max(15,int(os.getenv('SGI_VENDEDORES_MONITOR_RETRY_MIN','30')))
@@ -150,10 +148,9 @@ _last_cobranca_diaria_date = None
 _last_cobranca_3h_slot = None
 _force_main_boot = True
 _force_sales_after_main = False
-_force_main_status_sync = False
 
 STATE = {
-    'version': 'V10.126_SGI_MONITOR_LOCAL_TRABALHO',
+    'version': 'V10.127_SGI_ATIVOS_LISTA',
     'started_at': None,
     'updated_at': None,
     'scheduler': 'starting',
@@ -678,7 +675,7 @@ def force_run(kind):
         return True, 'Vendas iniciado manualmente.'
     return False, 'Tipo inválido.'
 
-HTML = '<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>COB+VENDAS Monitor Railway</title><style>:root{--bg:#070a10;--card:#111827;--line:#263244;--txt:#eef2ff;--mut:#94a3b8;--ok:#22c55e;--bad:#ef4444;--warn:#f59e0b}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#111827,#070a10 55%);font-family:Inter,Segoe UI,Arial,sans-serif;color:var(--txt);padding:24px}.wrap{max-width:1180px;margin:auto}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.brand h1{margin:0;font-size:28px}.brand p{margin:6px 0 0;color:var(--mut)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:20px 0}.card{background:rgba(17,24,39,.86);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 18px 55px rgba(0,0,0,.25)}.k{font-size:12px;color:var(--mut);font-weight:900;text-transform:uppercase;letter-spacing:.08em}.v{font-size:24px;font-weight:900;margin-top:8px}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}button{border:0;border-radius:12px;padding:12px 16px;font-weight:900;cursor:pointer;color:#111827;background:#f59e0b}button.soft{background:#1f2937;color:var(--txt);border:1px solid var(--line)}button.blue{background:#2563eb;color:white}button.active{outline:2px solid #f59e0b}.jobs{display:grid;grid-template-columns:1fr 1fr;gap:14px}.row{display:grid;grid-template-columns:160px 1fr;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)}pre{white-space:pre-wrap;background:#030712;border:1px solid var(--line);border-radius:14px;padding:14px;color:#d1d5db;max-height:430px;overflow:auto}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.logbox{height:560px;max-height:70vh;font-family:Consolas,monospace;font-size:12px;line-height:1.35}.mut{color:var(--mut)}@media(max-width:850px){.grid,.jobs{grid-template-columns:1fr}.row{grid-template-columns:1fr}.logbox{height:420px}}</style></head><body><div class="wrap"><div class="top"><div class="brand"><h1>🚦 COB+VENDAS Monitor Railway</h1><p>Ordem: Cobrança Terceira D+91 roda 1x/dia às 06:30; cobrança/recebimentos a cada 2h; vendas a cada 20min; listas pesadas às 07h.</p></div><div class="actions"><button onclick="run(\'main\')">Rodar cobrança agora</button><button class="soft" onclick="run(\'audit\')">Processar auditoria IA</button><button class="blue" onclick="run(\'sales\')">Rodar vendas agora</button><button class="soft" onclick="sendSummary()">Enviar resumo Telegram</button><button class="soft" onclick="sendCobDaily()">Cobrança diária Telegram</button><button class="soft" onclick="sendCob3h()">Cobranças 3h Telegram</button><button class="soft" onclick="testTelegram()">Teste Telegram</button><button class="soft" onclick="run(\'preventiva\')">WhatsApp Master · standby</button><button class="soft" onclick="run(\'cob_terceira\')">Rodar COB Terceira</button></div></div><div id="app">Carregando...</div><div class="card" id="logsCard" style="margin-top:14px"><h2>Logs</h2><div class="actions"><button class="soft" data-log="scheduler" onclick="loadLog(\'scheduler\')">Scheduler</button><button class="soft" data-log="main" onclick="loadLog(\'main\')">Cobrança/Main</button><button class="soft" data-log="sales" onclick="loadLog(\'sales\')">Vendas</button><button class="soft" data-log="preventiva" onclick="loadLog(\'preventiva\')">WhatsApp Master</button><button class="soft" data-log="cob_terceira" onclick="loadLog(\'cob_terceira\')">COB Terceira</button><button class="soft" data-log="audit" onclick="loadLog(\'audit\')">Auditoria IA</button><button class="soft" onclick="togglePause()" id="pauseBtn">Pausar atualização</button></div><div class="mut" id="logStatus">Clique em um log. A tela não será mais recriada quando você estiver lendo.</div><pre id="logbox" class="logbox">Clique em um log.</pre></div></div><script>const R=v=>v==null?\'-\':String(v).replace(\'T\',\' \').slice(0,19);let selectedLog=\'\';let paused=false;let refreshing=false;async function api(p,o){const r=await fetch(p,o);return await r.json()}function esc(s){return String(s??\'\').replace(/[&<>]/g,m=>({\'&\':\'&amp;\',\'<\':\'&lt;\',\'>\':\'&gt;\'}[m]))}async function refresh(){if(paused||refreshing)return;refreshing=true;try{const s=await api(\'/api/status\');const j=s.jobs||{};const ev=(s.recent_events||[]).slice(-18).reverse().join(\'\\n\');document.getElementById(\'app\').innerHTML=`<div class="grid"><div class="card"><div class="k">Scheduler</div><div class="v ok">${s.scheduler||\'-\'}</div></div><div class="card"><div class="k">Próxima vendas</div><div class="v warn">${s.next_sales_label||\'-\'}</div></div><div class="card"><div class="k">Próxima cobrança</div><div class="v warn">${s.next_cobranca_label||\'-\'}</div></div><div class="card"><div class="k">Próxima COB Terceira</div><div class="v warn">${s.next_cob_terceira_label||\'-\'}</div></div><div class="card"><div class="k">Listas 07h</div><div class="v warn">${s.next_daily_lists_label||\'-\'}</div></div><div class="card"><div class="k">Atualizado</div><div class="v" style="font-size:17px">${R(s.updated_at)}</div></div></div><div class="jobs">${Object.entries(j).map(([name,x])=>`<div class="card"><h2>${name}</h2><div class="row"><b>Status</b><span class="${x.running?\'warn\':\'ok\'}">${x.running?\'Rodando\':\'Parado\'}</span></div><div class="row"><b>Início</b><span>${R(x.last_start)}</span></div><div class="row"><b>Fim</b><span>${R(x.last_end)}</span></div><div class="row"><b>Exit</b><span class="${x.last_exit===0?\'ok\':(x.last_exit?\'bad\':\'\')}">${x.last_exit??\'-\'}</span></div>${x.last_error?`<h3 class="bad">Último erro</h3><pre>${esc(x.last_error)}</pre>`:\'\'}</div>`).join(\'\')}</div><div class="card" style="margin-top:14px"><h2>Eventos recentes</h2><pre>${esc(ev)}</pre></div>`; if(selectedLog) await loadLog(selectedLog,true);}finally{refreshing=false}}async function loadLog(f,keepScroll=false){selectedLog=f;document.querySelectorAll(\'[data-log]\').forEach(b=>b.classList.toggle(\'active\',b.dataset.log===f));const box=document.getElementById(\'logbox\');const status=document.getElementById(\'logStatus\');const nearBottom=box && (box.scrollHeight-box.scrollTop-box.clientHeight<80);const oldTop=box?box.scrollTop:0;const r=await fetch(\'/api/logs?file=\'+encodeURIComponent(f)+\'&_=\'+Date.now());const txt=await r.text();if(box){box.textContent=txt||\'Sem log ainda.\'; if(keepScroll&&!nearBottom) box.scrollTop=oldTop; else box.scrollTop=box.scrollHeight;}if(status)status.textContent=\'Exibindo: \'+f+\' • atualizado \'+new Date().toLocaleTimeString(\'pt-BR\')+\'.\'}function togglePause(){paused=!paused;document.getElementById(\'pauseBtn\').textContent=paused?\'Retomar atualização\':\'Pausar atualização\';}async function run(k){const r=await api(\'/run/\'+k,{method:\'POST\'});alert(r.message||JSON.stringify(r));refresh()}async function sendSummary(){const r=await api(\'/telegram/summary\',{method:\'POST\'});alert(r.message||JSON.stringify(r))}async function testTelegram(){const r=await api(\'/telegram/test\',{method:\'POST\'});alert(r.message||JSON.stringify(r))}setInterval(refresh,7000);refresh();</script></body></html>'
+HTML = '<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>COB+VENDAS Monitor Railway</title><style>:root{--bg:#070a10;--card:#111827;--line:#263244;--txt:#eef2ff;--mut:#94a3b8;--ok:#22c55e;--bad:#ef4444;--warn:#f59e0b}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#111827,#070a10 55%);font-family:Inter,Segoe UI,Arial,sans-serif;color:var(--txt);padding:24px}.wrap{max-width:1180px;margin:auto}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.brand h1{margin:0;font-size:28px}.brand p{margin:6px 0 0;color:var(--mut)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin:20px 0}.card{background:rgba(17,24,39,.86);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 18px 55px rgba(0,0,0,.25)}.k{font-size:12px;color:var(--mut);font-weight:900;text-transform:uppercase;letter-spacing:.08em}.v{font-size:24px;font-weight:900;margin-top:8px}.ok{color:var(--ok)}.bad{color:var(--bad)}.warn{color:var(--warn)}button{border:0;border-radius:12px;padding:12px 16px;font-weight:900;cursor:pointer;color:#111827;background:#f59e0b}button.soft{background:#1f2937;color:var(--txt);border:1px solid var(--line)}button.blue{background:#2563eb;color:white}button.active{outline:2px solid #f59e0b}.jobs{display:grid;grid-template-columns:1fr 1fr;gap:14px}.row{display:grid;grid-template-columns:160px 1fr;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06)}pre{white-space:pre-wrap;background:#030712;border:1px solid var(--line);border-radius:14px;padding:14px;color:#d1d5db;max-height:430px;overflow:auto}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.logbox{height:560px;max-height:70vh;font-family:Consolas,monospace;font-size:12px;line-height:1.35}.mut{color:var(--mut)}@media(max-width:850px){.grid,.jobs{grid-template-columns:1fr}.row{grid-template-columns:1fr}.logbox{height:420px}}</style></head><body><div class="wrap"><div class="top"><div class="brand"><h1>🚦 COB+VENDAS Monitor Railway</h1><p>Ordem: Cobrança Terceira D+91 roda 1x/dia às 06:30; cobrança/recebimentos a cada 2h; vendas a cada 20min; listas pesadas às 07h.</p></div><div class="actions"><button onclick="run(\'main\')">Rodar cobrança agora</button><button class="soft" onclick="run(\'audit\')">Processar auditoria IA</button><button class="blue" onclick="run(\'sales\')">Rodar vendas agora</button><button class="soft" onclick="sendSummary()">Enviar resumo Telegram</button><button class="soft" onclick="sendCobDaily()">Cobrança diária Telegram</button><button class="soft" onclick="sendCob3h()">Cobranças 3h Telegram</button><button class="soft" onclick="testTelegram()">Teste Telegram</button><button class="soft" onclick="run(\'preventiva\')">WhatsApp Master · standby</button><button class="soft" onclick="run(\'cob_terceira\')">Rodar COB Terceira</button><button class="soft" onclick="run(\'sgi_vendedores\')">👥 Ativos SGI agora</button></div></div><div id="app">Carregando...</div><div class="card" id="logsCard" style="margin-top:14px"><h2>Logs</h2><div class="actions"><button class="soft" data-log="scheduler" onclick="loadLog(\'scheduler\')">Scheduler</button><button class="soft" data-log="main" onclick="loadLog(\'main\')">Cobrança/Main</button><button class="soft" data-log="sales" onclick="loadLog(\'sales\')">Vendas</button><button class="soft" data-log="preventiva" onclick="loadLog(\'preventiva\')">WhatsApp Master</button><button class="soft" data-log="cob_terceira" onclick="loadLog(\'cob_terceira\')">COB Terceira</button><button class="soft" data-log="audit" onclick="loadLog(\'audit\')">Auditoria IA</button><button class="soft" data-log="sgi_vendedores" onclick="loadLog(\'sgi_vendedores\')">Vendedores SGI</button><button class="soft" onclick="togglePause()" id="pauseBtn">Pausar atualização</button></div><div class="mut" id="logStatus">Clique em um log. A tela não será mais recriada quando você estiver lendo.</div><pre id="logbox" class="logbox">Clique em um log.</pre></div></div><script>const R=v=>v==null?\'-\':String(v).replace(\'T\',\' \').slice(0,19);let selectedLog=\'\';let paused=false;let refreshing=false;async function api(p,o){const r=await fetch(p,o);return await r.json()}function esc(s){return String(s??\'\').replace(/[&<>]/g,m=>({\'&\':\'&amp;\',\'<\':\'&lt;\',\'>\':\'&gt;\'}[m]))}async function refresh(){if(paused||refreshing)return;refreshing=true;try{const s=await api(\'/api/status\');const j=s.jobs||{};const ev=(s.recent_events||[]).slice(-18).reverse().join(\'\\n\');document.getElementById(\'app\').innerHTML=`<div class="grid"><div class="card"><div class="k">Scheduler</div><div class="v ok">${s.scheduler||\'-\'}</div></div><div class="card"><div class="k">Próxima vendas</div><div class="v warn">${s.next_sales_label||\'-\'}</div></div><div class="card"><div class="k">Próxima cobrança</div><div class="v warn">${s.next_cobranca_label||\'-\'}</div></div><div class="card"><div class="k">Próxima COB Terceira</div><div class="v warn">${s.next_cob_terceira_label||\'-\'}</div></div><div class="card"><div class="k">Listas 07h</div><div class="v warn">${s.next_daily_lists_label||\'-\'}</div></div><div class="card"><div class="k">Atualizado</div><div class="v" style="font-size:17px">${R(s.updated_at)}</div></div></div><div class="jobs">${Object.entries(j).map(([name,x])=>`<div class="card"><h2>${name}</h2><div class="row"><b>Status</b><span class="${x.running?\'warn\':\'ok\'}">${x.running?\'Rodando\':\'Parado\'}</span></div><div class="row"><b>Início</b><span>${R(x.last_start)}</span></div><div class="row"><b>Fim</b><span>${R(x.last_end)}</span></div><div class="row"><b>Exit</b><span class="${x.last_exit===0?\'ok\':(x.last_exit?\'bad\':\'\')}">${x.last_exit??\'-\'}</span></div>${x.last_error?`<h3 class="bad">Último erro</h3><pre>${esc(x.last_error)}</pre>`:\'\'}</div>`).join(\'\')}</div><div class="card" style="margin-top:14px"><h2>Eventos recentes</h2><pre>${esc(ev)}</pre></div>`; if(selectedLog) await loadLog(selectedLog,true);}finally{refreshing=false}}async function loadLog(f,keepScroll=false){selectedLog=f;document.querySelectorAll(\'[data-log]\').forEach(b=>b.classList.toggle(\'active\',b.dataset.log===f));const box=document.getElementById(\'logbox\');const status=document.getElementById(\'logStatus\');const nearBottom=box && (box.scrollHeight-box.scrollTop-box.clientHeight<80);const oldTop=box?box.scrollTop:0;const r=await fetch(\'/api/logs?file=\'+encodeURIComponent(f)+\'&_=\'+Date.now());const txt=await r.text();if(box){box.textContent=txt||\'Sem log ainda.\'; if(keepScroll&&!nearBottom) box.scrollTop=oldTop; else box.scrollTop=box.scrollHeight;}if(status)status.textContent=\'Exibindo: \'+f+\' • atualizado \'+new Date().toLocaleTimeString(\'pt-BR\')+\'.\'}function togglePause(){paused=!paused;document.getElementById(\'pauseBtn\').textContent=paused?\'Retomar atualização\':\'Pausar atualização\';}async function run(k){const r=await api(\'/run/\'+k,{method:\'POST\'});alert(r.message||JSON.stringify(r));refresh()}async function sendSummary(){const r=await api(\'/telegram/summary\',{method:\'POST\'});alert(r.message||JSON.stringify(r))}async function testTelegram(){const r=await api(\'/telegram/test\',{method:\'POST\'});alert(r.message||JSON.stringify(r))}setInterval(refresh,7000);refresh();</script></body></html>'
 
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code=200, body='', ctype='text/html; charset=utf-8'):
@@ -748,7 +745,7 @@ def start_http_panel():
     server.serve_forever()
 
 
-DEPLOY_BUILD_VERSION = "V10.126"
+DEPLOY_BUILD_VERSION = "V10.127"
 DEPLOY_STATE_PUBLIC_URL = "https://moveisdolar.com.br/colaborador/dashboard_deploy_state.json"
 
 def _remote_deploy_version_v10100():
@@ -771,12 +768,12 @@ STATE["deploy_update_active"] = bool(_deploy_update_active_v10100)
 STATE["deploy_update_version"] = DEPLOY_BUILD_VERSION
 STATE["deploy_update_started_at"] = iso_now() if _deploy_update_active_v10100 else None
 if _deploy_update_active_v10100:
-    # V10.126: nova versão do monitor deve testar imediatamente após o primeiro MAIN,
+    # V10.127: nova versão do monitor deve testar imediatamente após o primeiro MAIN,
     # sem herdar cooldown/data de uma tentativa falha da versão anterior.
     STATE['last_sgi_vendedores_date'] = None
     STATE['last_sgi_vendedores_attempt_at'] = None
     log(f"🔒 NOVO DEPLOY detectado: público={_remote_deploy_v10100 or 'sem marcador'} -> código={DEPLOY_BUILD_VERSION}. Acesso ficará bloqueado somente até o primeiro MAIN finalizar.")
-    log('👥 V10.126 monitor SGI liberado para nova tentativa após o primeiro MAIN do deploy.')
+    log('👥 V10.127 lista de ativos SGI liberada para nova tentativa após o primeiro MAIN do deploy.')
 else:
     log(f"✅ Reinício sem mudança de versão: {DEPLOY_BUILD_VERSION}. Não haverá bloqueio de acesso.")
 
@@ -789,8 +786,8 @@ STATE['started_at']=iso_now(); STATE['scheduler']='running'; _save_status()
 threading.Thread(target=start_http_panel, daemon=True).start()
 log('Scheduler Railway ativo | TZ=America/Sao_Paulo')
 _sgi_guard_ok_125, _sgi_guard_info_125 = _sgi_monitor_runtime_guard_v10125()
-log(f"👥 V10.126 runtime monitor SGI | ok={_sgi_guard_ok_125} | info={_sgi_guard_info_125}")
-log(f'VERSAO V10.126: monitor SGI com confirmação robusta de local de trabalho; mantém guard runtime + férias Telegram | canal={NOTIFICATION_CHANNEL} | manual_only={COB_TERCEIRA_MANUAL_ONLY}')
+log(f"👥 V10.127 runtime monitor SGI | ok={_sgi_guard_ok_125} | info={_sgi_guard_info_125}")
+log(f'VERSAO V10.127: lista diária SGI sem conciliação; envia ativos por filial apenas aos grupos marcados em Ativos SGI | canal={NOTIFICATION_CHANNEL} | manual_only={COB_TERCEIRA_MANUAL_ONLY}')
 log(f'Cobrança: janelas {sorted(COBRANCA_HOURS)} com intervalo mínimo {COBRANCA_MIN_GAP_MIN} min | Listas pesadas: {DAILY_LISTS_HOUR:02d}:00 1x/dia')
 
 while True:
@@ -801,27 +798,9 @@ while True:
     _audit_proc, audit_finished = finish_if_done('cobranca_auditoria', _audit_proc)
     _sgi_vendedores_proc, sgi_vendedores_finished = finish_if_done('sgi_vendedores_monitor', _sgi_vendedores_proc)
     if cobranca_finished: _force_sales_after_main = True
-    try:
-        _flag_sgi123=os.path.join(BASE_DIR,'sgi_vendedores_force_main.flag')
-        if os.path.exists(_flag_sgi123):
-            os.remove(_flag_sgi123); _force_main_status_sync=True
-            log('👥 V10.123 alteração automática do monitor SGI; MAIN agendado para recompor carteiras.')
-    except Exception as _e_flag123:
-        log(f'ℹ️ V10.123 force-main flag: {_e_flag123}')
-
     now = br_now(); maybe_send_daily_summary(now); maybe_send_daily_collection_report(now); maybe_send_collection_progress_3h(now); maybe_send_general_message_alerts(now); maybe_send_meta_diaria_alerts(now); maybe_send_meta_mercantil_100_alerts(now); maybe_send_audit_master_alerts(now)
 
-    # V10.123: processa respostas dos botões Telegram do monitor de vendedores.
-    try:
-        _cb123 = poll_telegram_callbacks_v10123(BASE_DIR, int(STATE.get('telegram_update_offset') or 0))
-        STATE['telegram_update_offset'] = int(_cb123.get('offset') or STATE.get('telegram_update_offset') or 0)
-        if _cb123.get('force_main'):
-            _force_main_status_sync = True
-            log('👥 V10.123 resposta Telegram alterou status; MAIN será executado para redistribuir carteira.')
-        if int(_cb123.get('processed') or 0) > 0:
-            _save_status()
-    except Exception as _e_cb123:
-        log(f'ℹ️ V10.123 callback Telegram: {_e_cb123}')
+    # V10.127: monitor SGI é somente leitura; não processa férias/status nem callbacks.
 
     # V10.115: auto-heal do lock de deploy a cada ~30s.
     if STATE.get('deploy_update_active') and (time.time() - _last_deploy_remote_recheck_v10115 >= 30):
@@ -879,14 +858,11 @@ while True:
         if _daily:
             STATE['last_daily_lists_date'] = now.strftime('%Y-%m-%d')
         _cobranca_proc=start_job('dashboard_completo_cobranca_prioridade' + ('_com_listas_07h' if _daily else ''), COBRANCA_CMD, main_job_env(_daily)); cobranca_running=True
-    elif _force_main_status_sync and not sales_running and not cobranca_running and not cob_terceira_running and not sgi_vendedores_running:
-        _force_main_status_sync=False; _last_cobranca_slot=ckey
-        _cobranca_proc=start_job('dashboard_completo_cobranca_status_sgi_telegram', COBRANCA_CMD, main_job_env(False)); cobranca_running=True
     elif sgi_vendedores_due(now) and not sales_running and not cobranca_running and not cob_terceira_running and not sgi_vendedores_running:
         STATE['last_sgi_vendedores_attempt_at'] = iso_now(); _save_status()
         _ok125, _info125 = _sgi_monitor_runtime_guard_v10125()
         if not _ok125:
-            _msg125 = f"V10.126 BLOQUEOU monitor SGI incompatível: {_info125}"
+            _msg125 = f"V10.127 BLOQUEOU monitor SGI incompatível: {_info125}"
             STATE['jobs']['sgi_vendedores_monitor']['last_error'] = _msg125
             log('🚫 ' + _msg125)
             try:
@@ -895,8 +871,8 @@ while True:
                 pass
             _save_status()
         else:
-            log(f"👥 V10.126 iniciando monitor SGI verificado | sha256={_info125.get('sha256','')[:16]} | bytes={_info125.get('bytes')}")
-            _sgi_vendedores_proc=start_job('sgi_vendedores_monitor_diario_v10126', SGI_VENDEDORES_CMD); sgi_vendedores_running=True
+            log(f"👥 V10.127 iniciando lista de ativos SGI | sha256={_info125.get('sha256','')[:16]} | bytes={_info125.get('bytes')}")
+            _sgi_vendedores_proc=start_job('sgi_vendedores_monitor_diario_v10127', SGI_VENDEDORES_CMD); sgi_vendedores_running=True
     elif _force_sales_after_main and not sales_running and not cobranca_running and not cob_terceira_running and not sgi_vendedores_running:
         _force_sales_after_main=False; _last_sales_slot=skey
         _sales_proc=start_job('vendas_unificadas_pos_main', SALES_CMD); sales_running=True
@@ -974,3 +950,5 @@ while True:
 # V10.121_FTP_VERIFY_REMOTE_WALLETS
 
 # V10.122_FERIAS_OPERACIONAL
+
+# V10.127_SGI_ATIVOS_LISTA_SEM_CONCILIACAO
